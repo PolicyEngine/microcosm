@@ -2,8 +2,8 @@
   "inventory_sha256_by_revision": {
     "base": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
     "head": "2f98c788a247eb722de0fb4b533c0a183f5aecf16a10e964d8351244510ef58d",
-    "transport_after": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
-    "us_only": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093"
+    "seal_and_battery": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093",
+    "transport_after": "58513b5b4c25b75eb6677cf42fbb7dd4e55cc713c52607ad58ebd003d9785093"
   },
   "moved_module_digests": {
     "base->head": {
@@ -68,6 +68,7 @@
         }
       }
     },
+    "base->seal_and_battery": {},
     "base->transport_after": {
       "authenticated_survey_population_v1": {
         "microcosm.build/us_runtime/survey_population_preparation.py": {
@@ -76,7 +77,6 @@
         }
       }
     },
-    "base->us_only": {},
     "head->base": {
       "acs_codec_2024": {
         "microcosm.graph/executor.py": {
@@ -136,6 +136,68 @@
         "microcosm.graph/executor.py": {
           "base": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed",
           "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740"
+        }
+      }
+    },
+    "head->seal_and_battery": {
+      "acs_codec_2024": {
+        "microcosm.graph/executor.py": {
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "acs_housing_universe_2024": {
+        "microcosm.graph/executor.py": {
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "asec_codec_v4": {
+        "microcosm.graph/executor.py": {
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "asec_prepared_v3": {
+        "microcosm.graph/executor.py": {
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "assembly_harmonize": {
+        "microcosm.graph/executor.py": {
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "assembly_prepare": {
+        "microcosm.graph/executor.py": {
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "authenticated_survey_population_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "composed_asec_binding_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "composed_population_v1": {
+        "microcosm.graph/executor.py": {
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      },
+      "geography": {
+        "microcosm.graph/executor.py": {
+          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
         }
       }
     },
@@ -205,65 +267,74 @@
         }
       }
     },
-    "head->us_only": {
+    "seal_and_battery->base": {},
+    "seal_and_battery->head": {
       "acs_codec_2024": {
         "microcosm.graph/executor.py": {
           "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
         }
       },
       "acs_housing_universe_2024": {
         "microcosm.graph/executor.py": {
           "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
         }
       },
       "asec_codec_v4": {
         "microcosm.graph/executor.py": {
           "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
         }
       },
       "asec_prepared_v3": {
         "microcosm.graph/executor.py": {
           "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
         }
       },
       "assembly_harmonize": {
         "microcosm.graph/executor.py": {
           "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
         }
       },
       "assembly_prepare": {
         "microcosm.graph/executor.py": {
           "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
         }
       },
       "authenticated_survey_population_v1": {
         "microcosm.graph/executor.py": {
           "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
         }
       },
       "composed_asec_binding_v1": {
         "microcosm.graph/executor.py": {
           "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
         }
       },
       "composed_population_v1": {
         "microcosm.graph/executor.py": {
           "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
         }
       },
       "geography": {
         "microcosm.graph/executor.py": {
           "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+          "seal_and_battery": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
+        }
+      }
+    },
+    "seal_and_battery->transport_after": {
+      "authenticated_survey_population_v1": {
+        "microcosm.build/us_runtime/survey_population_preparation.py": {
+          "seal_and_battery": "72069483b81fae6169df1bae63d1426689e902896e5fad01e451826bf95f223c",
+          "transport_after": "fb42b962ebdae195ba11089d2de1893a978f53cc1baaa66ec6895b13b484f933"
         }
       }
     },
@@ -341,82 +412,11 @@
         }
       }
     },
-    "transport_after->us_only": {
+    "transport_after->seal_and_battery": {
       "authenticated_survey_population_v1": {
         "microcosm.build/us_runtime/survey_population_preparation.py": {
-          "transport_after": "fb42b962ebdae195ba11089d2de1893a978f53cc1baaa66ec6895b13b484f933",
-          "us_only": "72069483b81fae6169df1bae63d1426689e902896e5fad01e451826bf95f223c"
-        }
-      }
-    },
-    "us_only->base": {},
-    "us_only->head": {
-      "acs_codec_2024": {
-        "microcosm.graph/executor.py": {
-          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
-        }
-      },
-      "acs_housing_universe_2024": {
-        "microcosm.graph/executor.py": {
-          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
-        }
-      },
-      "asec_codec_v4": {
-        "microcosm.graph/executor.py": {
-          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
-        }
-      },
-      "asec_prepared_v3": {
-        "microcosm.graph/executor.py": {
-          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
-        }
-      },
-      "assembly_harmonize": {
-        "microcosm.graph/executor.py": {
-          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
-        }
-      },
-      "assembly_prepare": {
-        "microcosm.graph/executor.py": {
-          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
-        }
-      },
-      "authenticated_survey_population_v1": {
-        "microcosm.graph/executor.py": {
-          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
-        }
-      },
-      "composed_asec_binding_v1": {
-        "microcosm.graph/executor.py": {
-          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
-        }
-      },
-      "composed_population_v1": {
-        "microcosm.graph/executor.py": {
-          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
-        }
-      },
-      "geography": {
-        "microcosm.graph/executor.py": {
-          "head": "feb26666af48c00113775b999066197a936cec73e7a19e921aa25c2e57697740",
-          "us_only": "46b2424b67c68c983b069cad463c707fab18db6320ee12d506642dbabb38beed"
-        }
-      }
-    },
-    "us_only->transport_after": {
-      "authenticated_survey_population_v1": {
-        "microcosm.build/us_runtime/survey_population_preparation.py": {
-          "transport_after": "fb42b962ebdae195ba11089d2de1893a978f53cc1baaa66ec6895b13b484f933",
-          "us_only": "72069483b81fae6169df1bae63d1426689e902896e5fad01e451826bf95f223c"
+          "seal_and_battery": "72069483b81fae6169df1bae63d1426689e902896e5fad01e451826bf95f223c",
+          "transport_after": "fb42b962ebdae195ba11089d2de1893a978f53cc1baaa66ec6895b13b484f933"
         }
       }
     }
@@ -425,8 +425,8 @@
   "revisions": {
     "base": "a64f7b733",
     "head": "HEAD",
-    "transport_after": "5307249b3",
-    "us_only": "1b0b915b0"
+    "seal_and_battery": "1b0b915b0",
+    "transport_after": "5307249b3"
   },
   "scope": "diagnostic only; not a build, certification or release artifact",
   "stages": [

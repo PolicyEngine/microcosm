@@ -431,7 +431,7 @@ recomputes every roster file's digest at three revisions:
 
 | comparison | roster module digests that move |
 |---|---|
-| `a64f7b733` → this lane's **US-only** commits | **none** |
+| `a64f7b733` → the seal and its battery (`1b0b915b0`) | **none** |
 | `a64f7b733` → this lane's head | `microcosm.graph/executor.py`, in **all ten** stages |
 
 `survey_population_replay.py`, `graph_atomic_survey_financial.py` and
@@ -439,11 +439,29 @@ recomputes every roster file's digest at three revisions:
 **every** one. The inventory re-pin of §5 also moves `inventory_sha256`, which
 is in every stage manifest.
 
-So: **the US half of this change moves no key at all**, and the
-`microcosm-graph` half moves every node key and every store address — for the
-reason the base branch's own report gave, that a US stage's implementation hash
-is over its whole module roster. That is why the executor change is its own
-commit and its own future PR.
+**Said precisely, because the loose version of this sentence is wrong.** Two
+things move, and they come from exactly one commit each — verifiable with
+`git log a64f7b733..HEAD -- <path>`, which returns a single commit for both:
+
+| what moves | how far it reaches | the one commit | which half |
+|---|---|---|---|
+| `microcosm.graph/executor.py` | the roster of **all ten** stages | `9bef866c5` | the graph half |
+| `graph_implementation_inventory.json` → `inventory_sha256` | **all ten** stage manifests | `43fb39270` | the **US** half |
+
+So **the seal and the retention change move no key**: the receipt's
+`base → seal_and_battery` row — the seal plus its battery, the lane's first five
+commits — is empty, and `survey_population_replay.py`,
+`graph_atomic_survey_financial.py` and `survey_atomic_geography.py` are in no
+stage roster at all. But **the US half is not key-neutral**, because it carries
+the inherited-contract re-pin of §5, and `inventory_sha256` is in every stage
+manifest. An earlier draft of this section said "the US half of this change
+moves no key at all"; that was true of the seal and false of the half, and the
+next paragraph of the same section already contradicted it.
+
+The graph half moves every node key and every store address for the reason the
+base branch's own report gave: a US stage's implementation hash is over its
+whole module roster. That is why the executor change is its own commit and its
+own future PR.
 
 ## 7. The 1/1000 cold run and its required replay
 
@@ -526,24 +544,30 @@ Any one of the three moves every node key downstream of the stage it touches;
 `implementation_manifest` folds `sha256` of each roster module's **whole file**
 (`graph_implementation.py:431-435`) and `inventory_sha256` besides.
 
-The row that matters for review is **`base → us_only`**, and it is empty: *no
-roster module digest moved.* That is the claim "this lane's US commits alone
-move nothing at all", stated by the receipt rather than derived from two other
-rows — which it had to be until now, because the receipt paired every revision
-against `transport_after` alone and had no `base → us_only` row at all. An
-earlier draft of this section cited `transport_after → us_only` for it, and
-that row says the **opposite**: it shows
-`survey_population_preparation.py` moving, because `b6081efcb` is in
-`a64f7b733` and not in `5307249b3`. The generator now emits **every ordered
-pair** of the four revisions, so each claim cites a row that states it:
+The generator now emits **every ordered pair** of the four revisions, so each
+claim cites a row that states it. Two earlier drafts of this paragraph got it
+wrong and both are worth recording: the first cited
+`transport_after → us_only`, a row that says the **opposite** of what it was
+quoted for (it shows `survey_population_preparation.py` moving, because
+`b6081efcb` is in `a64f7b733` and not in `5307249b3`); the second cited
+`base → us_only` for "the US half moves no key", when that revision is only the
+seal and its battery and excludes the US re-pin that moves `inventory_sha256`
+in all ten stages. §6 now carries the exact two-commit attribution.
 
 | row | what it says |
 |---|---|
-| `base → us_only` | **no roster module digest moved** — the US half moves no key |
-| `base → head` | 10 stages, `microcosm.graph/executor.py` only — the executor half moves every key |
+| `base → seal_and_battery` | **no roster module digest moved** — the seal and its battery move no key |
+| `base → head` | 10 stages, `microcosm.graph/executor.py` only — every *module* digest that moves is the graph half's |
 | `transport_after → head` | 10 stages, `survey_population_preparation.py` **and** `executor.py` — causes 1 and 3 above |
 | `base → transport_after` | `survey_population_preparation.py` — `b6081efcb`, which is §5's inherited defect |
-| `us_only → base` | nothing moved — `us_only` and the branch point are identical in roster terms |
+| `inventory_sha256_by_revision` | `58513b5b…` at base, `transport_after` **and** `seal_and_battery`; `2f98c788…` at head — cause 2, and the one thing the US half moves |
+
+The revision is labelled `seal_and_battery` and not `us_only`, which is what it
+was called until this was checked: `1b0b915b0` is the lane's first five commits
+— journal, probes, note, seal, battery — and it **precedes** both the executor
+commit and the re-pin, so it is not the US half. There is no single revision
+that is "every US commit and not the executor one", because `9bef866c5` lands
+between them; the two-commit attribution in §6 is the exact statement instead.
 
 The regeneration also re-checks the contract arm at the working tree at this
 head: **`contracts accepted at the working tree: True`** over all ten stages,
@@ -895,7 +919,7 @@ ones that did not match were fixed rather than explained.
 | the battery receipt itself | wrote `battery_receipt.py` and regenerated it | every tally identical; rows differ only in order |
 | §5's re-pin values | `git diff` of the inventory JSON | the only changed field, old and new as quoted |
 | §5's headline refusal | re-ran the manifest call in the branch-point worktree, `__file__` asserted | refuses with exactly the quoted error |
-| §6 and §7c's identity claims | regenerated the receipt with **every** ordered pair | `base → us_only` empty; §7c's citation was wrong and is fixed |
+| §6 and §7c's identity claims | regenerated the receipt with **every** ordered pair, then checked which commits the moving files belong to | two wrong drafts, both fixed: the seal moves no key, but the **US half does**, through the re-pin's `inventory_sha256` |
 | the design note's 44 field rows | counted the ids in its own §1 tables | 44: 11 P, 13 F, 5 A, 15 S |
 | the note's "narrow admitted dtype set" | ran ten dtypes through `_series` | the three extension dtypes refuse; the other seven are admitted |
 | the 22 pre-existing refusal codes | diffed the code sets at `a64f7b733` and this head | 22 → 25, **none lost**, three added |
