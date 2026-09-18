@@ -25,6 +25,16 @@ ignore = ["E501"]
 # defaults before numpy/torch load, which requires statements above the
 # import block.
 "tools/build_us_fiscal_refresh_release.py" = ["E402"]
+# The native-scale lane's measurement harnesses are committed byte-identical to
+# what ran, so that the numbers they produced are re-derivable. They import
+# every us_runtime module the measured path loads -- including ones no wrapper
+# names -- because the stray-module assertion beneath the import block proves
+# each one resolves under the measured source tree and not under an editable
+# install. Removing the "unused" import would weaken that check and would make
+# the committed copy differ from the one that ran.
+"experiments/native-scale-transport/harness19_base.py" = ["F401"]
+"experiments/native-scale-transport/harness19_tenth.py" = ["F401"]
+"experiments/native-scale-transport/harness19_after_with_required_replay.py" = ["F401"]
 
 [tool.ruff.lint.isort]
 # microcosm is a PEP 420 namespace package (no top-level __init__.py), so

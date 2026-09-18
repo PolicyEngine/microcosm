@@ -268,7 +268,20 @@ def test_allocation_plan_value_contract(change):
 
 def test_allocation_bound_precedes_map_construction(monkeypatch):
     plan, origins = plan_and_origins()
-    monkeypatch.setattr(graph, "ALLOCATION_MAX_BYTES", 128)
+    monkeypatch.setattr(graph, "ALLOCATION_ROSTER_BYTES", 128)
+    with pytest.raises(graph.SurveyPopulationGraphError, match="ALLOCATION_LIMIT"):
+        graph.allocation_instructions(plan, origins)
+
+
+def test_map_construction_bound_admits_a_full_source_selection(monkeypatch):
+    # 1,587,376 selected households is the US source; the pre-check's own
+    # ceiling admitted only 524,288 of them before the roster ceiling existed.
+    assert graph.ALLOCATION_ROSTER_BYTES // 128 > 1_587_376
+    assert graph.ALLOCATION_MAX_BYTES // 128 < 1_587_376
+    plan, origins = plan_and_origins()
+    monkeypatch.setattr(graph, "ALLOCATION_ROSTER_BYTES", len(plan.selected) * 128)
+    graph.allocation_instructions(plan, origins)
+    monkeypatch.setattr(graph, "ALLOCATION_ROSTER_BYTES", len(plan.selected) * 128 - 1)
     with pytest.raises(graph.SurveyPopulationGraphError, match="ALLOCATION_LIMIT"):
         graph.allocation_instructions(plan, origins)
 
@@ -309,9 +322,58 @@ def test_allocation_transport_streams_canonical_exact_rows_and_refuses_before_ov
     assert document["households"][2]["importance_weight_float64_hex"] == "0x0.0p+0"
     monkeypatch.setattr(graph, "ALLOCATION_MAX_BYTES", len(raw))
     assert graph._allocation_payload(instructions, **kwargs) == raw
-    monkeypatch.setattr(graph, "ALLOCATION_MAX_BYTES", len(raw) - 1)
+    # A segment must hold one row plus the tail it reserves; above that the
+    # payload segments and its bytes are unchanged, which is the transport's
+    # whole point.
+    rows = [
+        graph._bounded_json(graph._instruction_document(r), 4096) for r in instructions
+    ]
+    tail = len(raw) - sum(len(r) for r in rows) - (len(rows) - 1) - 15
+    smallest = max(len(r) for r in rows) + tail + 1
+    assert smallest < len(raw)
+    for segment in (len(raw) - 1, smallest * 2, smallest):
+        monkeypatch.setattr(graph, "ALLOCATION_MAX_BYTES", segment)
+        assert graph._allocation_payload(instructions, **kwargs) == raw
+    # ALLOCATION_LIMIT keeps its code and still fails closed, on the condition a
+    # segmented stream can still reach: one row plus the tail, in one segment.
+    monkeypatch.setattr(graph, "ALLOCATION_MAX_BYTES", min(map(len, rows)) + tail - 1)
     with pytest.raises(graph.SurveyPopulationGraphError, match="ALLOCATION_LIMIT"):
         graph._allocation_payload(instructions, **kwargs)
+    # The total is the new, separately named ceiling, and it fails closed too.
+    monkeypatch.setattr(graph, "ALLOCATION_MAX_BYTES", 64 * 1024**2)
+    monkeypatch.setattr(graph, "ALLOCATION_ROSTER_BYTES", len(raw))
+    assert graph._allocation_payload(instructions, **kwargs) == raw
+    monkeypatch.setattr(graph, "ALLOCATION_ROSTER_BYTES", len(raw) - 1)
+    with pytest.raises(
+        graph.SurveyPopulationGraphError, match="ALLOCATION_ROSTER_LIMIT"
+    ):
+        graph._allocation_payload(instructions, **kwargs)
+
+
+def test_allocation_payload_is_byte_identical_to_the_unsegmented_stream():
+    """The predecessor accumulation, verbatim, against the shipped transport."""
+    plan, origins = plan_and_origins()
+    instructions = graph.allocation_instructions(plan, origins)
+    metadata = {
+        "protocol": "microcosm.us.survey-population-allocation.v1",
+        "preparation_sha256": "b" * 64,
+        "input_context_sha256": graph._sha(b"{}"),
+        "output_context_sha256": graph._sha(b"[]"),
+        "weight_transition": ["design", "importance"],
+        "release_eligible": False,
+    }
+    tail = b"]," + graph._bounded_json(metadata, 4096)[1:]
+    output = bytearray(b'{"households":[')
+    for index, row in enumerate(instructions):
+        output.extend(b"," if index else b"")
+        output.extend(graph._bounded_json(graph._instruction_document(row), 4096))
+    output.extend(tail)
+    assert graph._allocation_payload(
+        instructions,
+        preparation_sha256="b" * 64,
+        input_context=b"{}",
+        output_context=b"[]",
+    ) == bytes(output)
 
 
 def authenticated_arguments(tmp_path, monkeypatch, **fixture_kwargs):

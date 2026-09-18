@@ -48,6 +48,15 @@ REQUEST_PROTOCOL = "microcosm.us.survey-population-request.v1"
 SOURCE_CODEC = "us-survey-population-source-v1"
 MAX_REQUEST_BYTES = 4096
 MAX_PAYLOAD_BYTES = 64 * 1024**2
+# One whole-roster receipt carries one record per source household and per
+# person, so a full-source document is 1.02 GiB (docs/us-native-scale-transport.md
+# §1) and a single bounded encode refuses at 6.1% of the source. The transport
+# below keeps every accumulation inside the value the old ceiling allowed --
+# MAX_SEGMENT_BYTES is that ceiling, unchanged -- and adds one explicit resource
+# ceiling for the total, which is not a transport shape.
+MAX_SEGMENT_BYTES = MAX_PAYLOAD_BYTES
+MAX_ROSTER_BYTES = 64 * MAX_SEGMENT_BYTES
+ROSTER_PROTOCOL = "microcosm.us.survey-population-roster-transport.v1"
 _MAX_SCALAR_BYTES = 1024**2
 _FRAME_FAST_STRING_CHARS = 4096
 _SOURCE_ROSTER = (
@@ -115,6 +124,141 @@ def _digest(value):
     for chunk in _chunks(value):
         digest.update(chunk.encode("utf-8"))
     return digest.hexdigest()
+
+
+def _roster_segments(value, *, segment=MAX_SEGMENT_BYTES, maximum=MAX_ROSTER_BYTES):
+    """Encode one whole-roster document as bounded, content-addressed segments.
+
+    ``_encode`` accumulates the complete canonical stream before it enforces
+    anything, so its bound is a ceiling on the document rather than on the
+    process's allocation. This walks the same ``_chunks`` stream, closes a
+    segment whenever the next chunk would carry it past ``segment``, and keeps
+    ``PAYLOAD_LIMIT`` on each segment at the same number the single encode used.
+    The total is bounded separately, by ``ROSTER_LIMIT``.
+
+    The running digest is over the chunks in order, so it equals
+    ``_digest(value)`` exactly -- and therefore equals ``_sha(_encode(value))``
+    for every document ``_encode`` accepts, because sha256 is a streaming hash
+    over those same bytes. The canonical byte stream is unchanged; only its
+    materialization is bounded.
+    """
+    digest = hashlib.sha256()
+    segments, table, current, total = [], [], bytearray(), 0
+
+    def close():
+        raw = bytes(current)
+        digest.update(raw)
+        table.append((_sha(raw), len(raw)))
+        segments.append(raw)
+        current.clear()
+
+    for chunk in _chunks(value):
+        encoded = chunk.encode("utf-8")
+        if current and len(current) + len(encoded) > segment:
+            close()
+        # A single chunk is one JSON token, and _check_scalars has already
+        # bounded every string, so this refuses only a token larger than one
+        # whole segment -- the same refusal, at the same number.
+        _require(len(current) + len(encoded) <= segment, "PAYLOAD_LIMIT")
+        _require(total + len(encoded) <= maximum, "ROSTER_LIMIT")
+        current.extend(encoded)
+        total += len(encoded)
+    if current or not segments:
+        close()
+    return segments, tuple(table), digest.hexdigest(), total
+
+
+def _absent(path):
+    """True only when nothing at all sits at ``path``, symlinks included."""
+    try:
+        path.lstat()
+    except FileNotFoundError:
+        return True
+    return False
+
+
+def _spill_roster(root, name, segments, table, digest, total):
+    """Write the segments beside a header naming them, as the store's own shape.
+
+    ``ContentStore.put_frame`` already writes content-addressed bodies under a
+    ``meta.json`` payload table of sha256 and size per file. This is that shape
+    for a receipt: one ``<sha256>.segment`` per segment and one ``header.json``
+    naming the whole-stream digest, the size and the ordered segment table, so
+    the receipt has a re-verifiable on-disk form that does not depend on the
+    graph store.
+    """
+    _require(type(name) is str and name.isidentifier(), "ROSTER_NAME")
+    directory = root / name
+    directory.mkdir(parents=True, exist_ok=True)
+    # The inventory's resource contract covers reads, not writes, so nothing
+    # else in this repository would notice a redirected spill. Every component
+    # of the path this module writes through is checked here: ``root`` is
+    # already a validated snapshot root, ``name`` is an identifier, and each
+    # segment's own name is the sha256 of its bytes.
+    _require(
+        not stat.S_ISLNK(directory.lstat().st_mode) and directory.is_dir(),
+        "ROSTER_SPILL_LOCATION",
+    )
+    for raw, (sha, size) in zip(segments, table, strict=True):
+        path = directory / (sha + ".segment")
+        # lstat, not exists(): a broken symlink does not exist and would be
+        # written straight through.
+        if _absent(path):
+            path.write_bytes(raw)
+        stats = path.lstat()
+        _require(
+            not stat.S_ISLNK(stats.st_mode)
+            and stat.S_ISREG(stats.st_mode)
+            and stats.st_size == size,
+            "ROSTER_SEGMENT_CHANGED",
+        )
+        # A segment that was already there is read back and hashed, not trusted
+        # for its size. The run's own bytes come from memory either way, so this
+        # protects the claim that the spill is a re-verifiable on-disk form --
+        # which it would not be if same-size different content passed.
+        _require(_sha(path.read_bytes()) == sha, "ROSTER_SEGMENT_CHANGED")
+    header = {
+        "protocol": ROSTER_PROTOCOL,
+        "name": name,
+        "sha256": digest,
+        "size": total,
+        "segments": [[sha, size] for sha, size in table],
+    }
+    path = directory / "header.json"
+    if not _absent(path):
+        stats = path.lstat()
+        _require(
+            not stat.S_ISLNK(stats.st_mode) and stat.S_ISREG(stats.st_mode),
+            "ROSTER_SPILL_LOCATION",
+        )
+    path.write_bytes(_encode(header))
+    return header
+
+
+def _roster_payload(
+    value, *, spill=None, name=None, segment=MAX_SEGMENT_BYTES, maximum=MAX_ROSTER_BYTES
+):
+    """One whole-roster receipt's bytes, and the header that names its segments.
+
+    The bytes are identical to ``_encode(value)`` wherever ``_encode`` accepts
+    the document, and exist wherever it does not. They are materialized once,
+    because ``KernelResult.artifacts`` is a mapping of ``bytes`` and
+    ``ContentStore.put_bytes`` takes whole bytes; removing that copy needs a
+    streaming artifact channel in ``microcosm-graph``, which is not this
+    module's to change.
+    """
+    segments, table, digest, total = _roster_segments(
+        value, segment=segment, maximum=maximum
+    )
+    header = None
+    if spill is not None:
+        header = _spill_roster(spill, name, segments, table, digest, total)
+    for raw, (sha, size) in zip(segments, table, strict=True):
+        _require(len(raw) == size and _sha(raw) == sha, "ROSTER_SEGMENT_CHANGED")
+    payload = b"".join(segments)
+    _require(len(payload) == total <= maximum, "ROSTER_LIMIT")
+    _require(_sha(payload) == digest, "ROSTER_DIGEST")
+    return payload, header
 
 
 def _catalogue_fast_path(value):
@@ -537,6 +681,9 @@ def _live():
         SOURCE_CODEC,
         MAX_REQUEST_BYTES,
         MAX_PAYLOAD_BYTES,
+        MAX_SEGMENT_BYTES,
+        MAX_ROSTER_BYTES,
+        ROSTER_PROTOCOL,
         _MAX_SCALAR_BYTES,
         _FRAME_FAST_STRING_CHARS,
         _SOURCE_ROSTER,
@@ -638,6 +785,195 @@ def _frame_cell_encode(value, maximum=MAX_PAYLOAD_BYTES):
     return encoded
 
 
+_HEX_DIGITS = np.frombuffer(b"0123456789abcdef", dtype=np.uint8)
+# ``["float","`` -0x1. <13 mantissa nibbles> p +<=4 exponent digits> "]\n
+_FLOAT_WIDTH = 37
+_FLOAT_HEAD = np.frombuffer(b'["float","', dtype=np.uint8)
+_FLOAT_LEAD = np.stack(
+    (
+        np.frombuffer(b"0x1.", dtype=np.uint8),
+        np.frombuffer(b"0x0.", dtype=np.uint8),
+    )
+)
+_FLOAT_TAIL = np.frombuffer(b'"]\n', dtype=np.uint8)
+_FLOAT_NULL = np.frombuffer(b"null\n", dtype=np.uint8)
+_FLOAT_EXPONENT_DIGITS = 4
+_MANTISSA_SHIFTS = np.arange(48, -1, -4, dtype=np.uint64)
+_BOOL_CELLS = np.array([b"false\n", b"true\n", b"null\n"], dtype=object)
+_INTEGER_DTYPES = frozenset(
+    ("int8", "int16", "int32", "int64", "uint8", "uint16", "uint32", "uint64")
+)
+_NULLABLE_INTEGER_DTYPES = frozenset(
+    ("Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64")
+)
+
+
+def _float_cells(values):
+    """``_frame_cell_encode`` + a newline for one float64 column, per column.
+
+    The record is laid out at fixed offsets with a per-position keep mask, so
+    the variable-length spellings ``float.hex()`` produces are cut out of one
+    padded matrix rather than assembled a cell at a time:
+
+        0..9   ``["float","``        always
+        10     ``-``                 iff the sign bit is set
+        11..14 ``0x1.`` / ``0x0.``   normal / subnormal-or-zero
+        15..27 13 mantissa nibbles   all 13, or only column 15 (``0``) for zero
+        28     ``p``                 always
+        29     ``+`` / ``-``         sign of the unbiased exponent
+        30..33 4 exponent digits     only the last significant ones
+        34..36 ``"]`` and newline    always
+
+    A NaN cell spells ``null`` instead, which is what ``_cell`` makes of it.
+    ``_cell`` refuses a non-finite cell, so an infinity refuses here too, with
+    the same code; it is raised for the column rather than at the first
+    offending cell, and the digest is discarded either way.
+    """
+    _require(not np.isinf(values).any(), "FRAME_NONFINITE")
+    count = values.shape[0]
+    if count == 0:
+        return b""
+    bits = values.view(np.uint64)
+    missing = np.isnan(values)
+    sign = (bits >> np.uint64(63)).astype(bool)
+    biased = ((bits >> np.uint64(52)) & np.uint64(0x7FF)).astype(np.int64)
+    mantissa = bits & np.uint64(0xFFFFFFFFFFFFF)
+    subnormal = biased == 0
+    zero = subnormal & (mantissa == 0)
+    exponent = np.where(subnormal, np.int64(-1022), biased - 1023)
+    exponent = np.where(zero, np.int64(0), exponent)
+
+    cells = np.zeros((count, _FLOAT_WIDTH), dtype=np.uint8)
+    keep = np.zeros((count, _FLOAT_WIDTH), dtype=bool)
+    cells[:, 0:10] = _FLOAT_HEAD
+    cells[:, 10] = np.uint8(0x2D)
+    keep[:, 10] = sign
+    cells[:, 11:15] = _FLOAT_LEAD[subnormal.astype(np.intp)]
+    cells[:, 15:28] = _HEX_DIGITS[
+        ((mantissa[:, None] >> _MANTISSA_SHIFTS[None, :]) & np.uint64(0xF)).astype(
+            np.uint8
+        )
+    ]
+    cells[zero, 15] = np.uint8(0x30)
+    cells[:, 28] = np.uint8(0x70)
+    cells[:, 29] = np.where(exponent < 0, np.uint8(0x2D), np.uint8(0x2B))
+    magnitude = np.abs(exponent)
+    for position in range(_FLOAT_EXPONENT_DIGITS):
+        power = 10 ** (_FLOAT_EXPONENT_DIGITS - 1 - position)
+        cells[:, 30 + position] = np.uint8(0x30) + (magnitude // power % 10).astype(
+            np.uint8
+        )
+    cells[:, 34:37] = _FLOAT_TAIL
+
+    keep[:, 0:10] = True
+    keep[:, 11:28] = True
+    keep[zero, 16:28] = False
+    keep[:, 28:30] = True
+    significant = np.where(
+        magnitude >= 1000,
+        4,
+        np.where(magnitude >= 100, 3, np.where(magnitude >= 10, 2, 1)),
+    )
+    keep[:, 30:34] = (
+        np.arange(_FLOAT_EXPONENT_DIGITS)[None, :]
+        >= (_FLOAT_EXPONENT_DIGITS - significant)[:, None]
+    )
+    keep[:, 34:37] = True
+    if missing.any():
+        cells[missing, 0:5] = _FLOAT_NULL
+        keep[missing, :] = False
+        keep[missing, 0:5] = True
+    return cells[keep].tobytes()
+
+
+def _integer_cells(values):
+    """One integer column's cells. ``str`` on a Python int is ``int.__repr__``.
+
+    Every value an integer dtype can hold lies inside the fast path's
+    ``-2**63 <= value < 2**64`` window and spells at most twenty ASCII bytes,
+    so neither ``_encode`` nor ``PAYLOAD_LIMIT`` is reachable from here.
+    """
+    if values.shape[0] == 0:
+        return b""
+    return ("\n".join(map(str, values.tolist())) + "\n").encode("ascii")
+
+
+def _nullable_integer_cells(series):
+    """One nullable-integer column's cells; ``pd.NA`` is ``_cell``'s ``None``.
+
+    The unsigned widths keep an unsigned carrier: ``UInt64`` holds values above
+    ``2**63 - 1`` that no signed carrier can spell, and the fast path admits
+    every integer below ``2**64``.
+    """
+    if len(series) == 0:
+        return b""
+    carrier = "uint64" if str(series.dtype).startswith("U") else "int64"
+    present = series.to_numpy(dtype=carrier, na_value=0)
+    spelled = list(map(str, present.tolist()))
+    for position in np.flatnonzero(np.asarray(series.isna())).tolist():
+        spelled[position] = "null"
+    return ("\n".join(spelled) + "\n").encode("ascii")
+
+
+def _boolean_cells(series):
+    """One boolean column's cells: three spellings, selected by index."""
+    if len(series) == 0:
+        return b""
+    missing = np.asarray(series.isna())
+    present = series.to_numpy(dtype=bool, na_value=False)
+    codes = np.where(missing, np.intp(2), present.astype(np.intp))
+    return b"".join(_BOOL_CELLS[codes].tolist())
+
+
+def _string_cells(series):
+    """One string column's cells, encoding each distinct value once.
+
+    ``StringDtype`` compares and hashes exactly, so grouping equal values
+    cannot merge two whose encodings differ. ``object`` and ``category``
+    deliberately do not qualify: ``1``, ``True`` and ``1.0`` are equal and hash
+    alike there while ``_frame_cell_encode`` spells them three different ways,
+    so those dtypes keep the cell-at-a-time walk.
+    """
+    if len(series) == 0:
+        return b""
+    codes, uniques = pd.factorize(series, use_na_sentinel=False)
+    encoded = np.empty(len(uniques), dtype=object)
+    for position, value in enumerate(uniques):
+        encoded[position] = _frame_cell_encode(value) + b"\n"
+    return b"".join(encoded[codes].tolist())
+
+
+def _cells_blob(series):
+    """The exact bytes a cell-at-a-time walk over ``series`` would digest.
+
+    Every branch below is proved equal to that walk, byte for byte, in
+    ``test_us_survey_population_frame_seal.py``; a dtype with no proved branch
+    takes the walk itself rather than a guess.
+    """
+    name = str(series.dtype)
+    if name == "float64":
+        return _float_cells(series.to_numpy(dtype=np.float64, copy=False))
+    if name in _INTEGER_DTYPES:
+        return _integer_cells(series.to_numpy(copy=False))
+    if name in _NULLABLE_INTEGER_DTYPES:
+        return _nullable_integer_cells(series)
+    if name in ("bool", "boolean"):
+        return _boolean_cells(series)
+    if name == "string":
+        return _string_cells(series)
+    return b"".join(_frame_cell_encode(value) + b"\n" for value in series)
+
+
+def _index_blob(index):
+    """The same, for an axis, which the walk reads exactly as it reads a column."""
+    name = str(index.dtype)
+    if name in _INTEGER_DTYPES:
+        return _integer_cells(index.to_numpy(copy=False))
+    if name == "float64":
+        return _float_cells(index.to_numpy(dtype=np.float64, copy=False))
+    return b"".join(_frame_cell_encode(value) + b"\n" for value in index)
+
+
 def _frame_identity(frame):
     _require(
         isinstance(frame, Frame) and frame.schema == US_SCHEMA and not frame.links,
@@ -647,10 +983,6 @@ def _frame_identity(frame):
 
     def update(value):
         digest.update(_encode(value))
-        digest.update(b"\n")
-
-    def update_cell(value):
-        digest.update(_frame_cell_encode(value))
         digest.update(b"\n")
 
     update([list(frame.entities), list(frame.weighted_entities)])
@@ -672,8 +1004,7 @@ def _frame_identity(frame):
                 list(table.index.names),
             ]
         )
-        for value in table.index:
-            update_cell(value)
+        digest.update(_index_blob(table.index))
         for column in table:
             series = table[column]
             dtype = series.dtype
@@ -685,8 +1016,7 @@ def _frame_identity(frame):
                     str(getattr(dtype, "na_value", "")),
                 ]
             )
-            for value in series:
-                update_cell(value)
+            digest.update(_cells_blob(series))
     update(
         [
             str(frame.strata.dtype),
@@ -697,10 +1027,8 @@ def _frame_identity(frame):
             frame.strata.name,
         ]
     )
-    for value in frame.strata.index:
-        update_cell(value)
-    for value in frame.strata:
-        update_cell(value)
+    digest.update(_index_blob(frame.strata.index))
+    digest.update(_cells_blob(frame.strata))
     for entity in frame.weighted_entities:
         weights = frame.weights_for(entity)
         update(
@@ -814,8 +1142,11 @@ def _verify_normalized_copy(original: Frame, normalized: Frame):
 
 
 def _bounded_append(rows, row, budget):
+    # A bound on the Python row list, not on a transport: one record per source
+    # household or per person, so a full-source roster is 1.02 GiB. The code and
+    # the per-row encode are unchanged; the ceiling is the explicit resource one.
     size = len(_encode(row)) + 1
-    _require(budget[0] + size <= MAX_PAYLOAD_BYTES, "ORIGIN_LIMIT")
+    _require(budget[0] + size <= MAX_ROSTER_BYTES, "ORIGIN_LIMIT")
     budget[0] += size
     rows.append(row)
 
@@ -1562,7 +1893,7 @@ def prepare_authenticated_survey_population(
     try:
         _require(type(candidate) is bytes or candidate is None, "CANDIDATE_TYPE")
         _require(
-            candidate is None or len(candidate) <= MAX_PAYLOAD_BYTES, "CANDIDATE_LIMIT"
+            candidate is None or len(candidate) <= MAX_ROSTER_BYTES, "CANDIDATE_LIMIT"
         )
         root, request, request_bytes, requested_fraction, requested_seed = _request(
             source_dir
@@ -1676,7 +2007,7 @@ def prepare_authenticated_survey_population(
             },
         }
         identity = _frame_identity(frame)
-        payload = _encode(
+        payload, _ = _roster_payload(
             {
                 "protocol": PROTOCOL,
                 "request": request,
@@ -1700,7 +2031,9 @@ def prepare_authenticated_survey_population(
                 "frame_sha256": identity,
                 "context_sha256": _sha(context),
                 "release_eligible": False,
-            }
+            },
+            spill=snapshots,
+            name="preparation",
         )
         nested = _nested_seals((acs, asec), (actual_acs, actual_asec))
         acs_owned = acs_catalogue._lookup(acs)
@@ -1836,7 +2169,8 @@ def _current_survey_wage_projection(preparation, entry):
         ],
         "rows": rows,
     }
-    payload = _encode(document)
+    # One row per selected wage earner, so this is a whole-roster receipt too.
+    payload, _ = _roster_payload(document)
     # ready() may perform I/O. Recheck the actual retained entries and all pure
     # owner seals after it; this does not reread the national catalogues.
     _pure_final(state)
