@@ -912,6 +912,18 @@ from microcosm.build.us_runtime.spine_agreement import (
     validate_spine_agreement_registry,
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
+from microcosm.build.us_runtime.spm_independence_role import (
+    US_SPM_INDEPENDENCE_ROLE_NONCONSTANT_PERSON_COLUMNS,
+    US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
+    US_SPM_INDEPENDENCE_ROLE_REQUIRED_SOURCE_COLUMNS,
+    US_SPM_INDEPENDENCE_ROLE_STAGE_NAME,
+    derive_us_spm_independence_role_from_manifest,
+    resolve_asec_spm_role_source_paths,
+    us_spm_independence_role_signal_gate,
+    us_spm_independence_role_stage_spec,
+    us_spm_independence_role_summary,
+    with_us_spm_independence_role,
+)
 from microcosm.build.us_runtime.ssi_disability_criteria import (
     SIPP_2023_SSI_DISABILITY_DONOR_REVISION,
     SIPP_2023_SSI_DISABILITY_DONOR_SHA256,
@@ -1243,11 +1255,21 @@ __all__ = [
     "US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS",
     "US_RELATIONSHIP_INPUTS_REQUIRED_SOURCE_COLUMNS",
     "US_RELATIONSHIP_INPUTS_STAGE_NAME",
+    "US_SPM_INDEPENDENCE_ROLE_NONCONSTANT_PERSON_COLUMNS",
+    "US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS",
+    "US_SPM_INDEPENDENCE_ROLE_REQUIRED_SOURCE_COLUMNS",
+    "US_SPM_INDEPENDENCE_ROLE_STAGE_NAME",
     "derive_us_relationship_inputs_from_manifest",
+    "derive_us_spm_independence_role_from_manifest",
+    "resolve_asec_spm_role_source_paths",
     "us_relationship_inputs_signal_gate",
+    "us_spm_independence_role_signal_gate",
+    "us_spm_independence_role_stage_spec",
+    "us_spm_independence_role_summary",
     "us_relationship_inputs_stage_spec",
     "us_relationship_inputs_summary",
     "with_us_relationship_inputs",
+    "with_us_spm_independence_role",
     "ALIMONY_ASEC_ARCHIVED_DERIVATION_URL",
     "ALIMONY_PUF_ARCHIVED_DERIVATION_URL",
     "STRIKE_BENEFITS_ASEC_ARCHIVED_DERIVATION_URL",
@@ -2217,6 +2239,18 @@ US_DONORS: Mapping[str, DonorSpec] = {
             "from P_SEQ and A_MARITL; nothing is imputed."
         ),
     ),
+    US_SPM_INDEPENDENCE_ROLE_STAGE_NAME: DonorSpec(
+        survey="Census CPS ASEC",
+        source="https://www.census.gov/programs-surveys/cps.html",
+        notes=(
+            "Measured SPM independence role (the engine's one declared dataset "
+            "source input) restored from the SHA-pinned complete Census ASEC "
+            "person files by exact income-year/PERIDNUM identity through the "
+            "certified derive_spm_role_source: SPM_HEAD == 1 OR (A_FAMTYP in "
+            "{1,4} AND A_FAMREL in {1,2}); reconciled against Census's own "
+            "SPM_NUMADULTS/SPM_NUMKIDS/SPM_NUMPER; nothing is imputed."
+        ),
+    ),
     US_MEDICARE_TAKE_UP_STAGE_NAME: DonorSpec(
         survey="Census CPS ASEC",
         source="https://www.census.gov/programs-surveys/cps.html",
@@ -2431,6 +2465,7 @@ US_STAGE_NAMES: tuple[str, ...] = (
     US_HOURS_WORKED_STAGE_NAME,
     US_SNAP_TAKE_UP_STAGE_NAME,
     US_RELATIONSHIP_INPUTS_STAGE_NAME,
+    US_SPM_INDEPENDENCE_ROLE_STAGE_NAME,
     US_MEDICARE_TAKE_UP_STAGE_NAME,
     US_HOUSING_INPUTS_STAGE_NAME,
     US_RETIREMENT_DISTRIBUTION_STAGE_NAME,

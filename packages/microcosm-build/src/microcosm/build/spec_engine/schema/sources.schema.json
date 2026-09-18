@@ -1926,6 +1926,18 @@
      "additionalProperties": false,
      "properties": {
       "kind": {
+       "const": "derive_spm_independence_role"
+      }
+     },
+     "required": [
+      "kind"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "kind": {
        "const": "derive_ons_household_composition"
       },
       "source_columns": {
