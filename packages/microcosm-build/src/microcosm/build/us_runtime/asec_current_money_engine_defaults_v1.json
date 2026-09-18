@@ -2,7 +2,7 @@
   "schema_version": 1,
   "artifact_kind": "microcosm.us.asec_current_money_engine_defaults.v1",
   "engine_package": "policyengine-us",
-  "engine_version": "1.819.0",
+  "engine_version": "2.2.1",
   "allowlist": [],
   "allowlist_policy": "no engine default is an approved input to an admitted output; a closure leaf this graph does not produce blocks its root",
   "admitted_roots": [
@@ -20,14 +20,14 @@
   "scoring_claim": "none; these are engine outputs on an engineering sample, not a tax or benefit score",
   "baseline_runtime": {
     "policyengine-us": {
-      "version": "1.819.0",
-      "files": 12313,
-      "source_and_parameters_sha256": "12c474205741021bb45ae618f85ddd6d15e8cbb51dece8334f2d52c04500c674"
+      "version": "2.2.1",
+      "files": 12368,
+      "source_and_parameters_sha256": "de7ca1b77f503b1ccd9da082211bdaac7e1abcdbaae12b3baab21edfc948f0f4"
     },
     "policyengine-core": {
-      "version": "3.31.0",
+      "version": "3.32.5",
       "files": 175,
-      "source_and_parameters_sha256": "fbcc6f3d8e86c023c29e0782d95103155828cfa4ef6a80ed6f785f619be6439e"
+      "source_and_parameters_sha256": "f9109e90fa5c9aacd94de9af93053da6ddf7b76d4ad4e44a491c2e1b3d787453"
     }
   },
   "baseline_runtime_file_policy": "all package Python source and parameters YAML/JSON; sorted relative paths and SHA256; no population data"

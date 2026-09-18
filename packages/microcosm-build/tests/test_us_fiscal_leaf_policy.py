@@ -91,6 +91,9 @@ def mocked_model(monkeypatch):
             return VariableMetadata(name, "person", "float", "year")
 
     class Engine:
+        def __init__(self, *, spm=None):
+            self.spm = spm
+
         def default_values(self, names):
             calls["defaults"] += 1
             return {name: default["value"] for name in names}
@@ -98,6 +101,8 @@ def mocked_model(monkeypatch):
         def materialize(self, value, names, period):
             calls["materialize"] += 1
             assert period == 2024
+            # Every evaluation carries the declared release selection.
+            assert self.spm == stage.SPM_SELECTION
             return {
                 name: value.table("person").amount.to_numpy(copy=True) for name in names
             }

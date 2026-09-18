@@ -345,7 +345,7 @@ def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
     )
     assert payload["engine"] == {
         "package": "policyengine-us",
-        "version": "1.819.0",
+        "version": "2.2.1",
     }
     assert len(payload["programs"]) == 17
     assert len({row["variable"] for row in payload["programs"].values()}) == 17
@@ -370,7 +370,7 @@ def test_checked_in_us_lock_is_fresh_schema_valid_and_not_authored() -> None:
         "simulate": 991,
     }
     assert remaining["receipt"]["manifest_sha256"] == (
-        "98231086a18676778346fc3219bb9450f7eb85eb77791640598cba7a5ae66ef6"
+        "df42a6d95e4b98ce158334014dc9524de8f7791757eeaf3c6392d8d9b8469edf"
     )
     assert (
         remaining["receipt"]["ssi_dependency_contract"]["engine_version_ref"]

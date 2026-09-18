@@ -69,13 +69,14 @@
       "source": {
         "source": "U8 adjudication and upstream issue uk-data#452; lever run receipts in data/ukds/acceptance/757-swap (2026-08-26)",
         "agency": "PolicyEngine",
-        "citation": "Frozen at 0.55 by adjudication for parity with the incumbent UK pipeline. The pre-registered U8 lever (a raise to 0.85 at build year 2024) was run and measured on 2026-08-26 per the #757 uk_target_fit dispositions and REVERTED on the receipts: the raise left every failing UC caseload cell unchanged (dwp.uc.households -44.9% at both rates) while destroying the legacy housing-benefit surface (obr.housing_benefit -0.0% at 0.55, -52.4% at 0.85 - the raise moves claimants off legacy benefits) and polluting the QRF predictor surface through engine-computed household_net_income. The binding constraint on UC caseload is capital-test support (uk-data#452 mechanism 2, microcosm#750), not take-up support.",
+        "citation": "Frozen at 0.55 by adjudication for parity with the incumbent UK pipeline. The pre-registered U8 lever (a raise to 0.85 at build year 2024) was run and measured on 2026-08-26 per the #757 uk_target_fit dispositions and REVERTED on the receipts: the raise left every failing UC caseload cell unchanged (dwp.uc.households -44.9% at both rates) while destroying the legacy housing-benefit surface (obr.housing_benefit -0.0% at 0.55, -52.4% at 0.85 - the raise moves claimants off legacy benefits) and polluting the QRF predictor surface through engine-computed household_net_income. The binding constraint on UC caseload is capital-test support (uk-data#452 mechanism 2, microcosm#750), not take-up support. Re-signed 2026-09-16 (#882, microcosm#867): the rate is a share of the benefit units with an adult under State Pension age; units with every adult at or over State Pension age cannot claim Universal Credit (the engine's is_uc_eligible requires a working-age adult) and are no longer drawn, which restores the reported Housing Benefit the draw had zeroed for 407k pension-age units on spine-q; those units have no Universal Credit either way, while the working-age draw moves with the population definition (see below). The 0.55 value is unchanged. Measured on the control and repaired twins at design weights (experiments/882-uc-repairs-receipts.md R5): the old all-units draw realized a 0.582 share among units with a working-age adult, because the reported-UC anchors sit almost entirely there while the count target was taken over every unit; the population draw realizes 0.559 among them and paid UC moves -1.8 percent at design weights. María's ruling of 2026-09-16: keep the rate over the eligible population; the calibrated UC rows absorb the level.",
         "status": "frozen_by_adjudication",
         "freeze": {
-          "decision": "U8 (re-opened and re-frozen by the 2026-08-26 lever run)",
+          "decision": "U8 (re-opened and re-frozen by the 2026-08-26 lever run; population re-signed 2026-09-16 to benefit units with an adult under State Pension age, rate unchanged)",
           "followup": "uk-data#452"
         }
-      }
+      },
+      "population": "benefit units with an adult under State Pension age"
     },
     {
       "key": "marriage_allowance",
@@ -258,6 +259,106 @@
         "source": "incumbent UK pipeline @ ebf733c",
         "seed": 42,
         "status": "frozen parity value"
+      }
+    },
+    {
+      "key": "uc_childcare_single",
+      "output": "would_claim_uc_childcare",
+      "entity": "benunit",
+      "population": "single benefit units (FRS famtypb2 couple flag persisted as is_married)",
+      "values": {
+        "2024-04-06": 0.441
+      },
+      "source": {
+        "source": "DWP Universal Credit childcare element statistics to May 2026, Table 1 (households receiving the childcare element by family type), calendar-2025 mean via chronicle#260",
+        "agency": "PolicyEngine",
+        "citation": "Share of single benefit units that the engine would pay the childcare element (paid UC award, work condition met, registered childcare costs) which claim it, fitted so the expected count equals the published calendar-2025 mean (144,750 households) at the Q50f calibrated weights (#882). Realization caveat: frs_take_up draws the flag at stage 10, and the SPI support channel (stage 20) clones benefit-unit rows wholesale, so synthetic units inherit their donor's flag rather than drawing afresh; a realized count on a thin base can sit below rate times base (experiments/882-uc-repairs-receipts.md R6: 116k realized against 150k expected on the repaired twin), which biases the realized childcare count low and makes the retirement projection conservative.",
+        "url": "https://www.gov.uk/government/collections/universal-credit-statistics",
+        "status": "fitted_offline"
+      },
+      "fitting_receipt": {
+        "tool": "fit_uk_uc_childcare_takeup",
+        "source": "tools/fit_uk_uc_childcare_takeup.py (microcosm#882, fitted on the Q50f candidate at its calibrated weights, engine 2.98.0; the spine-q design-weight fit is recorded in experiments/882-uc-repairs-receipts.md R3)",
+        "tool_version": 1,
+        "receipt_sha256": "dd408687ca3078b36f220154d2f6e6bf4dd46f10833ea409857b3951adc8674a",
+        "seed": 0,
+        "objective": "expected_count",
+        "engine_version": "2.98.0",
+        "model_period": 2025,
+        "input_h5": "data/ukds/acceptance/355-dataset-size/spine-q/f100-k15-h55000-e2000-p50-f001-s42/microcosm_uk_2025_local.h5",
+        "input_sha256": "838d1c4a05fea531b75bd76e89585dd4ac190198808fe665ba14dc4a6e83a510",
+        "ledger_facts_sha256": "3e7d5a4fe18be9e5a19e5475a6e9f91a5d5b0ab827faedccdc755584957e59e7",
+        "stochastic_contract_sha256_at_fit": "be07b7af00bfbcbc037a07d63f793add17fbd8bba745c302abc06c6dbaa5d569",
+        "basis": "rate = published calendar-year mean / paid-UC GB benefit units with a positive childcare element of that family type, weighted as the input H5 carries them (a calibrated candidate fits at its calibrated weights, a spine at design weights); one target per rate, so the expected-count objective is exact and needs no optimizer",
+        "published_means": {
+          "couple": 34166.666666666664,
+          "single": 144750.0
+        },
+        "achieved": {
+          "dwp.uc.households_childcare_element_couple": {
+            "base_at_rate_one": 127403.392,
+            "ratio": 1.0001,
+            "target": 34166.667,
+            "value": 34169.59
+          },
+          "dwp.uc.households_childcare_element_single": {
+            "base_at_rate_one": 328230.993,
+            "ratio": 1.0,
+            "target": 144750.0,
+            "value": 144749.868
+          }
+        },
+        "status": "fitted at the input's weights; realized counts are measured on the twins in the receipts"
+      }
+    },
+    {
+      "key": "uc_childcare_couple",
+      "output": "would_claim_uc_childcare",
+      "entity": "benunit",
+      "population": "couple benefit units (FRS famtypb2 couple flag persisted as is_married)",
+      "values": {
+        "2024-04-06": 0.2682
+      },
+      "source": {
+        "source": "DWP Universal Credit childcare element statistics to May 2026, Table 1 (households receiving the childcare element by family type), calendar-2025 mean via chronicle#260",
+        "agency": "PolicyEngine",
+        "citation": "Share of couple benefit units that the engine would pay the childcare element (paid UC award, work condition met, registered childcare costs) which claim it, fitted so the expected count equals the published calendar-2025 mean (34,167 households) at the Q50f calibrated weights (#882). Realization caveat: frs_take_up draws the flag at stage 10, and the SPI support channel (stage 20) clones benefit-unit rows wholesale, so synthetic units inherit their donor's flag rather than drawing afresh; a realized count on a thin base can sit below rate times base (experiments/882-uc-repairs-receipts.md R6: 116k realized against 150k expected on the repaired twin), which biases the realized childcare count low and makes the retirement projection conservative.",
+        "url": "https://www.gov.uk/government/collections/universal-credit-statistics",
+        "status": "fitted_offline"
+      },
+      "fitting_receipt": {
+        "tool": "fit_uk_uc_childcare_takeup",
+        "source": "tools/fit_uk_uc_childcare_takeup.py (microcosm#882, fitted on the Q50f candidate at its calibrated weights, engine 2.98.0; the spine-q design-weight fit is recorded in experiments/882-uc-repairs-receipts.md R3)",
+        "tool_version": 1,
+        "receipt_sha256": "dd408687ca3078b36f220154d2f6e6bf4dd46f10833ea409857b3951adc8674a",
+        "seed": 0,
+        "objective": "expected_count",
+        "engine_version": "2.98.0",
+        "model_period": 2025,
+        "input_h5": "data/ukds/acceptance/355-dataset-size/spine-q/f100-k15-h55000-e2000-p50-f001-s42/microcosm_uk_2025_local.h5",
+        "input_sha256": "838d1c4a05fea531b75bd76e89585dd4ac190198808fe665ba14dc4a6e83a510",
+        "ledger_facts_sha256": "3e7d5a4fe18be9e5a19e5475a6e9f91a5d5b0ab827faedccdc755584957e59e7",
+        "stochastic_contract_sha256_at_fit": "be07b7af00bfbcbc037a07d63f793add17fbd8bba745c302abc06c6dbaa5d569",
+        "basis": "rate = published calendar-year mean / paid-UC GB benefit units with a positive childcare element of that family type, weighted as the input H5 carries them (a calibrated candidate fits at its calibrated weights, a spine at design weights); one target per rate, so the expected-count objective is exact and needs no optimizer",
+        "published_means": {
+          "couple": 34166.666666666664,
+          "single": 144750.0
+        },
+        "achieved": {
+          "dwp.uc.households_childcare_element_couple": {
+            "base_at_rate_one": 127403.392,
+            "ratio": 1.0001,
+            "target": 34166.667,
+            "value": 34169.59
+          },
+          "dwp.uc.households_childcare_element_single": {
+            "base_at_rate_one": 328230.993,
+            "ratio": 1.0,
+            "target": 144750.0,
+            "value": 144749.868
+          }
+        },
+        "status": "fitted at the input's weights; realized counts are measured on the twins in the receipts"
       }
     },
     {

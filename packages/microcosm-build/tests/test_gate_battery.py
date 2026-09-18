@@ -803,3 +803,64 @@ class TestFrozenGateParameters:
             entry.parameters["reviewed_exclusions"]["unused"]
             == "reviewed before evaluation"
         )
+
+
+def test_population_fact_check_failures_do_not_block_a_synthetic_smoke(
+    tmp_path, signing_env
+) -> None:
+    """A population fact check fails on a synthetic fixture without blocking it.
+
+    The gate still runs and its failure is recorded; only a synthetic smoke
+    posture (``synthetic_smoke=True``) declines to block on it. A licensed
+    non-release build and a release candidate block as before, and an entry
+    without the flag blocks every posture.
+    """
+
+    manifest = _manifest(
+        [
+            _entry("fact", population_fact_check=True),
+            _entry("plain", gate="nonconstant_columns"),
+        ]
+    )
+    registry = {
+        "exported_nonzero": _binding("exported_nonzero", passes=False),
+        "nonconstant_columns": _binding("nonconstant_columns"),
+    }
+
+    def run(*, synthetic_smoke: bool, release_candidate: bool = False):
+        battery = GateBatteryRun(
+            manifest,
+            release_id="xx-test-build",
+            report_path=tmp_path / f"gates-{synthetic_smoke}-{release_candidate}.json",
+            release_candidate=release_candidate,
+            registry=registry,
+            synthetic_smoke=synthetic_smoke,
+        )
+        battery.run_phase("preflight", EvidenceContext())
+        battery.run_phase("terminal", EvidenceContext())
+        return battery
+
+    smoke = run(synthetic_smoke=True)
+    assert smoke.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT) is False
+    payload = smoke.report_payload()
+    assert payload["synthetic_smoke"] is True
+    assert payload["gates"]["fact"]["status"] == "failed"
+    licensed = run(synthetic_smoke=False)
+    with pytest.raises(GateBatteryBlockedError):
+        licensed.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)
+    assert licensed.report_payload()["synthetic_smoke"] is False
+    with pytest.raises(ValueError, match="release candidate"):
+        run(synthetic_smoke=True, release_candidate=True)
+    # Without the flag the synthetic smoke blocks on the same failure.
+    plain = GateBatteryRun(
+        _manifest([_entry("fact")]),
+        release_id="xx-test-build",
+        report_path=tmp_path / "gates-plain.json",
+        release_candidate=False,
+        registry=registry,
+        synthetic_smoke=True,
+    )
+    plain.run_phase("preflight", EvidenceContext())
+    plain.run_phase("terminal", EvidenceContext())
+    with pytest.raises(GateBatteryBlockedError):
+        plain.enforce("terminal", mode=BlockingMode.BLOCKS_ARTIFACT)

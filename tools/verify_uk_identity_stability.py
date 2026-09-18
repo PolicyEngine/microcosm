@@ -30,6 +30,8 @@ from microcosm.build.uk_runtime.frs_person_draws import derive_frs_person_draws
 from microcosm.build.uk_runtime.frs_take_up import (
     aggregate_person_reported_to_benunit,
     derive_frs_take_up,
+    uc_age_eligible_benunits,
+    uk_take_up_population_policy,
 )
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
@@ -86,8 +88,13 @@ def e4_identity_receipt(
     count_resource: Mapping[str, object],
     lha_category: Sequence[object],
     permutation_seed: int,
+    population_policy=None,
 ) -> dict[str, object]:
     """Recompute every E4 column in original and permuted row order.
+
+    ``population_policy`` is the engine's working-age bounds the take-up draw
+    used (``uk_take_up_population_policy``); it is read from the engine when
+    not supplied, so a hermetic caller passes one.
 
     Two claims are receipted: a row permutation of the input tables changes
     no assignment per entity id, and the original-order recomputation equals
@@ -97,6 +104,8 @@ def e4_identity_receipt(
     person = frame.table("person")
     benunit = frame.table("benunit").copy()
     household = frame.table("household")
+    if population_policy is None:
+        population_policy = uk_take_up_population_policy(uk_time_period(frame))
     if len(lha_category) != len(benunit):
         raise ValueError("LHA_category materialization must align to benunit rows.")
     benunit["LHA_category"] = [_enum_name(value) for value in lha_category]
@@ -104,7 +113,14 @@ def e4_identity_receipt(
 
     def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
         anchors = aggregate_person_reported_to_benunit(person_t, benunit_t)
-        take_up = derive_frs_take_up(benunit_t, anchors=anchors, contract=contract)
+        take_up = derive_frs_take_up(
+            benunit_t,
+            anchors=anchors,
+            contract=contract,
+            uc_age_eligible=uc_age_eligible_benunits(
+                person_t, benunit_t, population_policy
+            ),
+        )
         take_up.index = benunit_t["benunit_id"].to_numpy()
         person_draws = derive_frs_person_draws(person_t, contract=contract)
         person_draws.index = person_t["person_id"].to_numpy()
@@ -353,10 +369,11 @@ def e6_identity_receipt(
     from microcosm.build.uk_runtime.etb_services import (
         allocate_nhs_by_age_gender,
         load_etb_services_anchors,
+        rail_fare_index_denominator_key,
     )
 
     rail_fare_index = float(
-        load_etb_services_anchors()["rail_fare_index_2023"]["value"]
+        load_etb_services_anchors()[rail_fare_index_denominator_key()]["value"]
     )
 
     def recompute(person_t, benunit_t, household_t) -> dict[str, pd.DataFrame]:
@@ -1061,6 +1078,7 @@ def main() -> int:
             count_resource=load_brma_count_resource(),
             lha_category=lha_category,
             permutation_seed=args.permutation_seed,
+            population_policy=uk_take_up_population_policy(uk_time_period(frame)),
         )
         ok = bool(
             receipt["identical_under_permutation"] and receipt["matches_stored_columns"]

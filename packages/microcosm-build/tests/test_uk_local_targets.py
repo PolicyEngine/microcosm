@@ -88,7 +88,7 @@ def test_metric_names_match_expected_la_surface() -> None:
     assert "tenure/private_rent" in names
     assert "rent/private_rent" in names
     assert "uc_hh_0_children" not in names
-    assert names[-9:] == (
+    assert names[-10:] == (
         "households",
         "council_tax/band_a",
         "council_tax/band_b",
@@ -98,6 +98,7 @@ def test_metric_names_match_expected_la_surface() -> None:
         "council_tax/band_f",
         "council_tax/band_g",
         "council_tax/band_h",
+        "council_tax/band_i",
     )
 
 

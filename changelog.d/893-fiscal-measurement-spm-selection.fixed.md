@@ -1,0 +1,1 @@
+The declared fiscal measurement kernel now binds the release SPM selection into its model contract and passes it to the engine, and a model output that reaches an SPM measurement variable must declare the household county, the unit's tenure and each member's age as leaves, which the static dependency closure does not see.

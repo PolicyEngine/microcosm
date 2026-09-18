@@ -1006,7 +1006,7 @@ class TestShippedManifest:
 
         assert column in manifest.required_columns
         assert column not in manifest.reviewed_exclusions
-        # PolicyEngine-US 1.819.0 consumes this leaf through the AL, NY, OK,
+        # PolicyEngine-US 2.2.1 consumes this leaf through the AL, NY, OK,
         # and PA unemployment-benefit formulas. A direct neutralization would
         # test the column against itself rather than an independent policy
         # path, so this family deliberately adds no such probe.

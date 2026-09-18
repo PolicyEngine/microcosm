@@ -937,7 +937,7 @@ def us_asec_prepared_graph(
     fraction: float,
     seed: int,
     period: int = 2024,
-    engine_version: str = "1.819.0",
+    engine_version: str = "2.2.1",
 ) -> Graph:
     """Declare the five-node slice over the caller's prepared column inventory."""
     inventory = {(owned.entity, owned.column) for owned in columns}
