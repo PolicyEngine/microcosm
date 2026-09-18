@@ -1,0 +1,24 @@
+native-retention-seal lane — 1/10 refusal diagnostic
+launched: 2026-09-18T00:0xZ (second attempt; the first exited immediately because
+          setsid_exec had been given a 1,800 s RLIMIT_CPU that the harness then
+          tried to raise to 21,660 -- "not allowed to raise maximum limit")
+pid:  65093
+pgid: 65093   (session leader)
+purpose: the native-scale lane's own 1/10 run reached its 70 GB gate at
+         2026-09-17T22:58:25Z, ran 573 CPU-s to 8.17 GB, and STOPPED with
+         SurveyPopulationPreparationError: PREPARATION_ISSUANCE_REFUSED. That
+         is a catch-all that discards the cause (`raise ... from None`,
+         survey_population_preparation.py:2084), so its artifact cannot name
+         what refused. Its snapshots directory holds the ACS housing capture
+         and no `preparation/` roster spill, so it refused before the roster
+         transport, inside source authentication.
+tree: /Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-diagnostic
+      detached at this lane's head, with ONE uncommitted change: the catch-all
+      carries the original exception's module, type and message into the
+      SurveyPopulationPreparationError it raises, and chains it with `from`.
+      That change is diagnostic only and is never committed to this branch.
+sources: /Users/maxghenis/PolicyEngine/_worktrees/native-scale-runs/run-tenth
+         (the native-scale lane's own 1/10 clone; read only, never written)
+harness: experiments/native-scale-transport/harness19_tenth.py, copied unedited
+ceilings: RLIMIT_CPU hard 21660 s, harness soft 21600 CPU-s, 43200 wall-s, 64 GiB
+kill, if ever needed: kill 65093   -- exact pid only, never a pattern kill
