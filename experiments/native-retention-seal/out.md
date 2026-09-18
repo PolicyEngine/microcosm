@@ -314,7 +314,7 @@ Its snapshots directory holds the ACS housing capture and **no** `preparation/`
 roster spill, so it refused before the roster transport, inside source
 authentication. `PREPARATION_ISSUANCE_REFUSED` is a catch-all that discards the
 cause (`raise ... from None`, `survey_population_preparation.py:2084`), so the
-artifact cannot name what refused — §6 is this lane's answer to that.
+artifact cannot name what refused — §8a is this lane's answer to that.
 
 **The repair, and the guard that should have existed.** One field re-pinned:
 
@@ -474,7 +474,7 @@ invent a mechanism for it. What can be said:
   top twelve.
 
 What would settle it is a repeat on a quiet machine, or the same comparison at
-a fraction where nineteen snapshots are not noise. §9 question 6 asks for it.
+a fraction where nineteen snapshots are not noise. §10 question 5 asks for it.
 
 ## 8. The 1/15 run, and the ceiling that stops it
 
@@ -575,7 +575,7 @@ a refusal brackets the ceiling from the other side.
 
 *(the run's own outcome follows once it has run)*
 
-## 10. Tests, as CI runs them
+## 9. Tests, as CI runs them
 
 **The battery's "before" half, at the branch point and against branch-point
 sources.** The brief asked for the current comparison's refusals to be shown
@@ -625,11 +625,11 @@ $ MICROCOSM_BATTERY_RECEIPT=... uv run python -m pytest \
 `packages/microcosm-graph/tests` is 783 against the base branch's 778: the five
 are this lane's, and every other test in that package is unchanged and green.
 
-### 10a. The twenty-one dependent files, one pytest process each
+### 9a. The twenty-one dependent files, one pytest process each
 
 *(in flight)*
 
-## 9. Questions for Max
+## 10. Questions for Max
 
 **1. Where should the inherited contract repair live?** §5's re-pin is another
 lane's defect, repaired here because no run this brief requires was possible
@@ -673,7 +673,8 @@ I shipped (a) because the brief asked for the executor mode in its own commit,
 which it is, and because the re-pin moves the keys regardless. (b) is the
 cleaner history if you want the US half reviewable on its own.
 
-**3. Should an object-dtype axis keep `OBJECT_VALUE`?** §4 item 4: on an
+**3. Should an object-dtype axis keep `OBJECT_VALUE`?** §1's answer (4),
+item 4: on an
 object axis the seal refuses under `AXIS` where the comparison refuses under
 `OBJECT_VALUE`, because `Index.equals` there is an element-wise `!=` over
 arbitrary Python objects that no digest reproduces.
@@ -763,8 +764,14 @@ one whose memory matters?
   frame does not carry; what it does not buy is evidence that a real frame
   carries them.
 - **`PREPARATION_ISSUANCE_REFUSED` is a catch-all.** Any statement here about
-  *what* refused at 1/10 comes from the diagnostic run of §6, which patches the
-  catch-all in a throwaway tree, and not from the shipped code's own artifact.
+  *what* refused at 1/10 or at 1/15 comes from the diagnostic runs of §8a and
+  §8e, not from the shipped code's own artifact. The committed traces come from
+  the round that **patches nothing**: it installs a `sys.monitoring` `RAISE`
+  callback and changes no byte of the measured tree. The two rounds that did
+  patch the catch-alls are recorded in
+  `experiments/native-retention-seal/RUN-RECORD-diagnostic.txt` for what they
+  found, and the second of them refused before it started — which is itself
+  §8a's third finding.
 - **The inherited defect is another lane's**, and the bisect above is this
   lane's reading of that lane's commits, not an accusation about intent: the
   contract went stale because nothing in the repository tested it.
