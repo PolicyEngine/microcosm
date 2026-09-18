@@ -157,11 +157,14 @@ refuses `CategoricalDtype`, `Float64Dtype` and `DatetimeTZDtype` with
 `StringDtype`, `object` and plain numpy dtypes get through.
 
 The forty-four rows are a reading of the code, not a census of every mutation
-that can reach it: §5's battery drives 109 comparisons, over twenty of the
-twenty-two codes plus eleven pairs both paths accept, and two codes are
+that can reach it: §5's battery drives **116** comparisons, over twenty of the
+twenty-two codes plus **fourteen** pairs both paths accept, and two codes are
 unreachable (`FRAME_TYPE`, because `Population` validates its own frame;
 `STRING_POLICY`, because `StringDtype.__eq__` already compares storage and
-`na_value`, so `SERIES_DTYPE_OR_LENGTH` fires first).
+`na_value`, so `SERIES_DTYPE_OR_LENGTH` fires first). Those figures are the
+committed receipt's own
+(`experiments/native-retention-seal/battery-receipt.json`: `comparisons`,
+`agreements`, `by_verdict`), not a count taken by hand.
 
 ## 2. Which of them `_population_stamp` already folds
 
@@ -356,6 +359,20 @@ note lists them rather than saying "none" and being wrong:
 | `FINANCIAL_SEALED_NODE_SCOPE` | a sealed node reaching the completion-boundary or manifest stamp arms, which the retention flag makes unreachable |
 | `RETAIN_EVERY_NODE_POPULATION_FLAG` | the private retention flag is not a bool, or is set together with `child_property` |
 
+**Five of those six are pinned; the sixth is not, and this note says which.**
+The three seal codes are pinned in
+`test_us_survey_population_replay.py` — `test_a_foreign_frame_seal_record_refuses_frame_seal_protocol`,
+`test_a_foreign_population_seal_record_refuses_population_seal_protocol` and
+`test_seal_identity_refuses_anything_that_is_not_a_seal_record`, each verified
+to go red when its own guard is reverted — and `RETAIN_EVERY_NODE_POPULATION_FLAG`
+and `FINANCIAL_SEALED_NODE_SCOPE` in `test_us_graph_atomic_survey_financial.py`.
+`ATOMIC_OBSERVER_RETENTION` has no test: its first conjunct
+(`set(observed) == declared_consumers`) is reachable only from inside a real
+nineteen-node run with an observer made to retain the wrong roster, and its
+second conjunct re-derives `seal_identity` from the very record whose identity
+it compares against, so it cannot fail while a seal record's `repr` is stable.
+That asymmetry is stated rather than smoothed over, and it is a question for
+the owner rather than a silent gap.
 **`FINANCIAL_NODE_POPULATION_CHANGED` after the change** means: *for a node
 whose `Population` object the run still retains — the declared-consumer roster —
 the object's in-process `_population_stamp` differs from the one recorded when

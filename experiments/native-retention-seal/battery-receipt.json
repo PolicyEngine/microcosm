@@ -1,6 +1,7 @@
 {
   "scope": "diagnostic receipt of the discrimination battery; not a build, certification or release artifact",
   "release_eligible": false,
+  "pytest_summary": "122 passed in 0.84s",
   "comparisons": 116,
   "agreements": 116,
   "disagreements": [],
@@ -13,109 +14,25 @@
     "ACCEPTED (both paths)": 14,
     "SURVEY_POPULATION_REPLAY_NATIVE_BITS": 13,
     "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT": 12,
-    "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT": 9,
     "SURVEY_POPULATION_REPLAY_OBJECT_VALUE": 9,
+    "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT": 9,
     "SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING": 7,
-    "SURVEY_POPULATION_REPLAY_AXIS_NAME": 6,
     "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH": 6,
+    "SURVEY_POPULATION_REPLAY_AXIS_NAME": 6,
     "SURVEY_POPULATION_REPLAY_MASKED_STORAGE": 5,
     "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES": 4,
     "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME": 3,
-    "SURVEY_POPULATION_REPLAY_DESIGN_BYTES": 2,
     "SURVEY_POPULATION_REPLAY_STRING_VALUE": 2,
     "SURVEY_POPULATION_REPLAY_UNSUPPORTED_EXTENSION_DTYPE": 2,
-    "SURVEY_POPULATION_REPLAY_POPULATION_TYPE": 1,
+    "SURVEY_POPULATION_REPLAY_DESIGN_BYTES": 2,
     "SURVEY_POPULATION_REPLAY_PRESENT_BITS": 1,
-    "SURVEY_POPULATION_REPLAY_STRATA_NAME": 1,
-    "SURVEY_POPULATION_REPLAY_STRING_MASK": 1,
+    "SURVEY_POPULATION_REPLAY_UNSUPPORTED_OBJECT": 1,
     "SURVEY_POPULATION_REPLAY_TABLE_TYPE_OR_FLAGS": 1,
-    "SURVEY_POPULATION_REPLAY_UNSUPPORTED_OBJECT": 1
+    "SURVEY_POPULATION_REPLAY_POPULATION_TYPE": 1,
+    "SURVEY_POPULATION_REPLAY_STRATA_NAME": 1,
+    "SURVEY_POPULATION_REPLAY_STRING_MASK": 1
   },
   "rows": [
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_actual_store_roundtrip_accepts_canonical_nulls_and_typed_objects",
-      "operand": "frame",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_actual_store_roundtrip_accepts_canonical_nulls_and_typed_objects",
-      "operand": "population",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_observer_snapshot_preserves_the_replay_seal",
-      "operand": "population",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_observer_snapshot_preserves_the_replay_seal",
-      "operand": "population",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[Int64-Int64-True]",
-      "operand": "frame",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[datetime-datetime-True]",
-      "operand": "frame",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[string-string-True]",
-      "operand": "frame",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_non_finite_metadata_keeps_its_sign_on_both_paths",
-      "operand": "frame",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_object_scalar_equivalence_uses_actual_store_types[before0-7]",
-      "operand": "frame",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_object_scalar_equivalence_uses_actual_store_types[before1-True]",
-      "operand": "frame",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_object_scalar_equivalence_uses_actual_store_types[before2-1.25]",
-      "operand": "frame",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_object_scalar_equivalence_uses_actual_store_types[x-x]",
-      "operand": "frame",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_owner_mapping_order_alone_is_accepted_by_both_paths",
-      "operand": "population",
-      "object_path": null,
-      "seal_path": null
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_unchanged_noncanonical_hidden_storage_is_accepted",
-      "operand": "frame",
-      "object_path": null,
-      "seal_path": null
-    },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_comparable_whose_equality_refuses_itself_still_refuses",
       "operand": "frame",
@@ -123,10 +40,172 @@
       "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
     },
     {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_declared_link_table_refuses_on_both_paths",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT",
+      "seal_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_degenerate_mask_dtype_refuses_though_both_sides_carry_it",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_masked_backing_that_is_falsy_but_not_zero_is_not_canonical",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_mass_change_record_subclass_refuses_though_the_values_match",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT",
+      "seal_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_mass_record_subclass_refuses_though_the_values_match",
+      "operand": "population",
+      "object_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT",
+      "seal_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_native_dtype_change_at_equal_values_still_refuses",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH",
+      "seal_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_non_pandas_masked_carrier_refuses_though_the_bytes_match[pyarrow]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_non_pandas_masked_carrier_refuses_though_the_bytes_match[sparse]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_population_subclass_refuses_though_the_content_matches",
+      "operand": "population",
+      "object_path": "SURVEY_POPULATION_REPLAY_POPULATION_TYPE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_POPULATION_TYPE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_series_subclass_column_refuses_though_the_values_match",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH",
+      "seal_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_str_subclass_cell_refuses_though_the_characters_match",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_STRING_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_STRING_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_string_columns_missing_mask_alone_is_part_of_the_comparison",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_STRING_MASK",
+      "seal_path": "SURVEY_POPULATION_REPLAY_STRING_MASK"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_structured_dtype_carrying_an_object_field_refuses_as_native_bits",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_actual_store_roundtrip_accepts_canonical_nulls_and_typed_objects",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_actual_store_roundtrip_accepts_canonical_nulls_and_typed_objects",
+      "operand": "population",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_byte_difference_equals_does_not_see_keeps_the_series_code",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_byte_difference_equals_tolerates_keeps_the_series_code[bool]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_byte_difference_equals_tolerates_keeps_the_series_code[complex]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_byte_difference_equals_tolerates_keeps_the_series_code[float]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_dtype_class_difference_keeps_the_series_code",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH",
+      "seal_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_name_outside_the_store_grammar_refuses_on_both_paths[bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME",
+      "seal_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_name_outside_the_store_grammar_refuses_on_both_paths[name0]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME",
+      "seal_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_name_outside_the_store_grammar_refuses_on_both_paths[name1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME",
+      "seal_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_nan_payload_difference_keeps_the_series_code",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_ndarray_subclass_backing_refuses_though_both_sides_carry_it",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE"
+    },
+    {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_object_axis_keeps_its_null_sentinel_identity",
       "operand": "frame",
       "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
       "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_observer_snapshot_preserves_the_replay_seal",
+      "operand": "population",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_observer_snapshot_preserves_the_replay_seal",
+      "operand": "population",
+      "object_path": null,
+      "seal_path": null
     },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_axes_schema_and_strata_are_exact[column_axis_name]",
@@ -159,58 +238,16 @@
       "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[Int64-Int64-mask-False]",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_axes_schema_and_strata_are_exact[schema_order]",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+      "object_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT",
+      "seal_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[Int64-Int64-value-False]",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_axes_schema_and_strata_are_exact[strata]",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[datetime-datetime-nat-False]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[string-string-value-False]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_index_comparables_beyond_the_name_are_part_of_the_comparison",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_multiindex_outside_reviewed_store_profile_refuses",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_strata_index_name_is_part_of_the_comparison",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_columns_axis_dtype_is_part_of_the_comparison",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_exact_index_class_is_part_of_the_comparison",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
     },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_axis_names_preserve_store_scalar_types[-0.0-0.0-columns]",
@@ -249,34 +286,64 @@
       "seal_path": "SURVEY_POPULATION_REPLAY_AXIS_NAME"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_population_provenance_and_original_design_bytes_are_exact[design_signed_zero]",
-      "operand": "population",
-      "object_path": "SURVEY_POPULATION_REPLAY_DESIGN_BYTES",
-      "seal_path": "SURVEY_POPULATION_REPLAY_DESIGN_BYTES"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_population_provenance_and_original_design_bytes_are_exact[design_value]",
-      "operand": "population",
-      "object_path": "SURVEY_POPULATION_REPLAY_DESIGN_BYTES",
-      "seal_path": "SURVEY_POPULATION_REPLAY_DESIGN_BYTES"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_declared_link_table_refuses_on_both_paths",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_equal_unsupported_store_values_still_refuse[category]",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT",
-      "seal_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
+      "object_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_EXTENSION_DTYPE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_EXTENSION_DTYPE"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_mass_change_record_subclass_refuses_though_the_values_match",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_equal_unsupported_store_values_still_refuse[nullable_float]",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT",
-      "seal_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
+      "object_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_EXTENSION_DTYPE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_EXTENSION_DTYPE"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_axes_schema_and_strata_are_exact[schema_order]",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_equal_unsupported_store_values_still_refuse[object]",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT",
-      "seal_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
+      "object_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_OBJECT",
+      "seal_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_OBJECT"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[Int64-Int64-True]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[Int64-Int64-mask-False]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[Int64-Int64-value-False]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[datetime-datetime-True]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[datetime-datetime-nat-False]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[string-string-True]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[string-string-value-False]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
     },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_frame_context_and_exact_weight_contract_are_preserved[mass_log]",
@@ -303,130 +370,22 @@
       "seal_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_metadata_key_order_is_part_of_the_comparison",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_frame_context_and_exact_weight_contract_are_preserved[weight_bits]",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT",
-      "seal_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
+      "object_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES",
+      "seal_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_non_finite_metadata_keeps_its_sign_on_both_paths",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_frame_context_and_exact_weight_contract_are_preserved[weight_kind]",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT",
-      "seal_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
+      "object_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES",
+      "seal_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_degenerate_mask_dtype_refuses_though_both_sides_carry_it",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_frame_context_and_exact_weight_contract_are_preserved[weight_signed_zero]",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE",
-      "seal_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_non_pandas_masked_carrier_refuses_though_the_bytes_match[pyarrow]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE",
-      "seal_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_non_pandas_masked_carrier_refuses_though_the_bytes_match[sparse]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE",
-      "seal_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_ndarray_subclass_backing_refuses_though_both_sides_carry_it",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE",
-      "seal_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_observed_values_masks_and_dtypes_are_exact[mask]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE",
-      "seal_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_structured_dtype_carrying_an_object_field_refuses_as_native_bits",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_byte_difference_equals_does_not_see_keeps_the_series_code",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_byte_difference_equals_tolerates_keeps_the_series_code[bool]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_byte_difference_equals_tolerates_keeps_the_series_code[complex]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_byte_difference_equals_tolerates_keeps_the_series_code[float]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_nan_payload_difference_keeps_the_series_code",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_native_nan_payload_bits_are_part_of_the_comparison",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_native_signed_zero_and_nan_payload_bits_cannot_change[0-float32-bits1]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_native_signed_zero_and_nan_payload_bits_cannot_change[0-float64-bits0]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_native_signed_zero_and_nan_payload_bits_cannot_change[1-float32-bits1]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_native_signed_zero_and_nan_payload_bits_cannot_change[1-float64-bits0]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_observed_values_masks_and_dtypes_are_exact[membership]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_quiet_and_signalling_nan_are_distinguished",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_masked_backing_that_is_falsy_but_not_zero_is_not_canonical",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING",
-      "seal_path": "SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING"
+      "object_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES",
+      "seal_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES"
     },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_hidden_storage_exception_is_directional_and_whole_column[noncanonical-nullable_boolean]",
@@ -465,10 +424,76 @@
       "seal_path": "SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_axes_schema_and_strata_are_exact[strata]",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_index_comparables_beyond_the_name_are_part_of_the_comparison",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
-      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_mapping_order_is_part_of_the_comparison[design_weights]",
+      "operand": "population",
+      "object_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT",
+      "seal_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_mapping_order_is_part_of_the_comparison[weight_kind]",
+      "operand": "population",
+      "object_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT",
+      "seal_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_metadata_key_order_is_part_of_the_comparison",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT",
+      "seal_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_multiindex_outside_reviewed_store_profile_refuses",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_native_nan_payload_bits_are_part_of_the_comparison",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_native_signed_zero_and_nan_payload_bits_cannot_change[0-float32-bits1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_native_signed_zero_and_nan_payload_bits_cannot_change[0-float64-bits0]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_native_signed_zero_and_nan_payload_bits_cannot_change[1-float32-bits1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_native_signed_zero_and_nan_payload_bits_cannot_change[1-float64-bits0]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_non_finite_metadata_keeps_its_sign_on_both_paths",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_non_finite_metadata_keeps_its_sign_on_both_paths",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT",
+      "seal_path": "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT"
     },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_object_nan_payload_bits_cannot_change",
@@ -481,6 +506,30 @@
       "operand": "frame",
       "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
       "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_object_scalar_equivalence_uses_actual_store_types[before0-7]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_object_scalar_equivalence_uses_actual_store_types[before1-True]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_object_scalar_equivalence_uses_actual_store_types[before2-1.25]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_object_scalar_equivalence_uses_actual_store_types[x-x]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
     },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_object_scalar_types_null_sentinels_and_float_bits_cannot_change[-0.0-0.0]",
@@ -519,22 +568,34 @@
       "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_mass_record_subclass_refuses_though_the_values_match",
-      "operand": "population",
-      "object_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT",
-      "seal_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT"
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_observed_values_masks_and_dtypes_are_exact[dtype]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH",
+      "seal_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_mapping_order_is_part_of_the_comparison[design_weights]",
-      "operand": "population",
-      "object_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT",
-      "seal_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT"
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_observed_values_masks_and_dtypes_are_exact[mask]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_MASKED_STORAGE"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_mapping_order_is_part_of_the_comparison[weight_kind]",
-      "operand": "population",
-      "object_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT",
-      "seal_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT"
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_observed_values_masks_and_dtypes_are_exact[membership]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_observed_values_masks_and_dtypes_are_exact[text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_STRING_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_STRING_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_observed_values_masks_and_dtypes_are_exact[value]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_PRESENT_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_PRESENT_BITS"
     },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_one_sided_population_type_assertions_refuse_on_both_paths[mass_ledger-value2]",
@@ -567,6 +628,24 @@
       "seal_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT"
     },
     {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_owner_mapping_order_alone_is_accepted_by_both_paths",
+      "operand": "population",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_population_provenance_and_original_design_bytes_are_exact[design_signed_zero]",
+      "operand": "population",
+      "object_path": "SURVEY_POPULATION_REPLAY_DESIGN_BYTES",
+      "seal_path": "SURVEY_POPULATION_REPLAY_DESIGN_BYTES"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_population_provenance_and_original_design_bytes_are_exact[design_value]",
+      "operand": "population",
+      "object_path": "SURVEY_POPULATION_REPLAY_DESIGN_BYTES",
+      "seal_path": "SURVEY_POPULATION_REPLAY_DESIGN_BYTES"
+    },
+    {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_population_provenance_and_original_design_bytes_are_exact[ledger]",
       "operand": "population",
       "object_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT",
@@ -591,40 +670,22 @@
       "seal_path": "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_population_subclass_refuses_though_the_content_matches",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_population_provenance_and_original_design_bytes_are_exact[weight_kind]",
       "operand": "population",
-      "object_path": "SURVEY_POPULATION_REPLAY_POPULATION_TYPE",
-      "seal_path": "SURVEY_POPULATION_REPLAY_POPULATION_TYPE"
+      "object_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES",
+      "seal_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_observed_values_masks_and_dtypes_are_exact[value]",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_quiet_and_signalling_nan_are_distinguished",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_PRESENT_BITS",
-      "seal_path": "SURVEY_POPULATION_REPLAY_PRESENT_BITS"
+      "object_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_NATIVE_BITS"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_native_dtype_change_at_equal_values_still_refuses",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_strata_index_name_is_part_of_the_comparison",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH",
-      "seal_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_series_subclass_column_refuses_though_the_values_match",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH",
-      "seal_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_dtype_class_difference_keeps_the_series_code",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH",
-      "seal_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_observed_values_masks_and_dtypes_are_exact[dtype]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH",
-      "seal_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
     },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_string_storage_and_null_policy_are_part_of_the_comparison[pyarrow]",
@@ -639,94 +700,34 @@
       "seal_path": "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_strata_name_is_part_of_the_comparison",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_STRATA_NAME",
-      "seal_path": "SURVEY_POPULATION_REPLAY_STRATA_NAME"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_string_columns_missing_mask_alone_is_part_of_the_comparison",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_STRING_MASK",
-      "seal_path": "SURVEY_POPULATION_REPLAY_STRING_MASK"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_str_subclass_cell_refuses_though_the_characters_match",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_STRING_VALUE",
-      "seal_path": "SURVEY_POPULATION_REPLAY_STRING_VALUE"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_observed_values_masks_and_dtypes_are_exact[text]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_STRING_VALUE",
-      "seal_path": "SURVEY_POPULATION_REPLAY_STRING_VALUE"
-    },
-    {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_table_flags_are_part_of_the_comparison",
       "operand": "frame",
       "object_path": "SURVEY_POPULATION_REPLAY_TABLE_TYPE_OR_FLAGS",
       "seal_path": "SURVEY_POPULATION_REPLAY_TABLE_TYPE_OR_FLAGS"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_name_outside_the_store_grammar_refuses_on_both_paths[bytes]",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_columns_axis_dtype_is_part_of_the_comparison",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME",
-      "seal_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME"
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_name_outside_the_store_grammar_refuses_on_both_paths[name0]",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_exact_index_class_is_part_of_the_comparison",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME",
-      "seal_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME"
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_axis_name_outside_the_store_grammar_refuses_on_both_paths[name1]",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_strata_name_is_part_of_the_comparison",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME",
-      "seal_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME"
+      "object_path": "SURVEY_POPULATION_REPLAY_STRATA_NAME",
+      "seal_path": "SURVEY_POPULATION_REPLAY_STRATA_NAME"
     },
     {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_equal_unsupported_store_values_still_refuse[category]",
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_unchanged_noncanonical_hidden_storage_is_accepted",
       "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_EXTENSION_DTYPE",
-      "seal_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_EXTENSION_DTYPE"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_equal_unsupported_store_values_still_refuse[nullable_float]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_EXTENSION_DTYPE",
-      "seal_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_EXTENSION_DTYPE"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_equal_unsupported_store_values_still_refuse[object]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_OBJECT",
-      "seal_path": "SURVEY_POPULATION_REPLAY_UNSUPPORTED_OBJECT"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_frame_context_and_exact_weight_contract_are_preserved[weight_bits]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES",
-      "seal_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_frame_context_and_exact_weight_contract_are_preserved[weight_kind]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES",
-      "seal_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_frame_context_and_exact_weight_contract_are_preserved[weight_signed_zero]",
-      "operand": "frame",
-      "object_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES",
-      "seal_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES"
-    },
-    {
-      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_population_provenance_and_original_design_bytes_are_exact[weight_kind]",
-      "operand": "population",
-      "object_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES",
-      "seal_path": "SURVEY_POPULATION_REPLAY_WEIGHT_BYTES"
+      "object_path": null,
+      "seal_path": null
     }
   ]
 }

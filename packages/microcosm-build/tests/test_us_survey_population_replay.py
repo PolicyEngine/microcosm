@@ -12,6 +12,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime.survey_population_replay import (
+    SEAL_PROTOCOL,
     _axis,
     _axis_seal,
     _same_axis_seal,
@@ -1227,3 +1228,81 @@ def test_exotic_index_dtypes_agree_on_both_paths(left, right, accepted):
         _accepts_frames(expected, actual)
     else:
         assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_AXIS"
+
+
+def test_a_foreign_frame_seal_record_refuses_frame_seal_protocol():
+    """The three codes this change adds are fail-closed guards, not comparisons.
+
+    They cannot go through the agreement driver above, because the object path
+    never holds a seal, so a malformed or foreign record has no counterpart
+    there. They are what stands between a swapped, truncated or foreign record
+    and a silently vacuous ``FINANCIAL_NODE_POPULATION_CHANGED``, and until
+    this test they were the only refusals in the module with no test at all.
+    """
+    good = replayed_frame_seal(_frame())
+    assert len(good) == 11 and good[0] == SEAL_PROTOCOL
+    for spoiled in (
+        list(good),  # not a tuple at all
+        good[:-1],  # truncated
+        good + (None,),  # lengthened
+        ("microcosm.us.survey-population-replay-seal.v0", *good[1:]),  # older tag
+    ):
+        with pytest.raises(ValueError, match=_ERROR + "FRAME_SEAL_PROTOCOL$"):
+            same_replayed_frame_seals(good, spoiled)
+        with pytest.raises(ValueError, match=_ERROR + "FRAME_SEAL_PROTOCOL$"):
+            same_replayed_frame_seals(spoiled, good)
+
+    # Agreeing on the wrong protocol is still a refusal: the guard pins the
+    # version, it does not merely require the two sides to match.
+    stale = ("microcosm.us.survey-population-replay-seal.v0", *good[1:])
+    with pytest.raises(ValueError, match=_ERROR + "FRAME_SEAL_PROTOCOL$"):
+        same_replayed_frame_seals(stale, stale)
+
+
+def test_a_foreign_population_seal_record_refuses_population_seal_protocol():
+    """The population guard, and that it fires before any content comparison."""
+    good = replayed_population_seal(_population(_frame()))
+    assert len(good) == 8 and good[0] == SEAL_PROTOCOL
+    for spoiled in (
+        list(good),
+        good[:-1],
+        good + (None,),
+        ("microcosm.us.survey-population-replay-seal.v0", *good[1:]),
+    ):
+        with pytest.raises(ValueError, match=_ERROR + "POPULATION_SEAL_PROTOCOL$"):
+            same_replayed_population_seals(good, spoiled)
+        with pytest.raises(ValueError, match=_ERROR + "POPULATION_SEAL_PROTOCOL$"):
+            same_replayed_population_seals(spoiled, good)
+
+    stale = ("microcosm.us.survey-population-replay-seal.v0", *good[1:])
+    with pytest.raises(ValueError, match=_ERROR + "POPULATION_SEAL_PROTOCOL$"):
+        same_replayed_population_seals(stale, stale)
+
+    # A record that is both truncated and different in content refuses under
+    # the protocol code, not under the content code the difference would earn.
+    other = replayed_population_seal(
+        _population(_rebuild(_frame(), metadata={"source": {"arm": "other"}}))
+    )
+    assert same_replayed_population_seals(good, good) is None
+    with pytest.raises(ValueError, match=_ERROR + "POPULATION_SEAL_PROTOCOL$"):
+        same_replayed_population_seals(good, other[:-1])
+
+
+def test_seal_identity_refuses_anything_that_is_not_a_seal_record():
+    """``seal_identity`` is what the run retains per node, so it fails closed.
+
+    A list digests as readily as a tuple under ``repr``, so without this guard
+    a caller that handed it the wrong object would get a plausible digest back
+    and the node's fence would compare that digest to itself for the rest of
+    the run.
+    """
+    good = replayed_population_seal(_population(_frame()))
+    assert len(seal_identity(good)) == 64
+    for foreign in (list(good), {"seal": good}, repr(good), None, 7, iter(good)):
+        with pytest.raises(ValueError, match=_ERROR + "SEAL_TYPE$"):
+            seal_identity(foreign)
+
+    # The frame seal nested inside a population seal *is* a tuple, so it
+    # digests -- the guard is a type fence, not a protocol fence, and the two
+    # protocol guards above are what catch a record of the wrong shape.
+    assert len(seal_identity(good[1])) == 64
