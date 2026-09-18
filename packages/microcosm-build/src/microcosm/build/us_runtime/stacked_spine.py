@@ -8616,6 +8616,7 @@ def validate_stacked_late_producer_transition_authority(
         transfer,
         boundary=boundary,
         frame=frame,
+        legacy_worker_authentication=legacy_worker_authentication,
     )
     _validate_late_transition_authority(
         frame,

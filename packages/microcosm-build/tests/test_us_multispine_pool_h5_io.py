@@ -2491,7 +2491,12 @@ def test_current_worker_authentication_ignores_audit_alias_relocation(
         manifest_path
     )
 
-    assert frame.n("household") == 3
+    positive_draws = [
+        draw
+        for draw in immigration_runtime.us_immigration_controls().humanitarian
+        if draw.target > 0
+    ]
+    assert frame.n("household") == 1 + len(positive_draws)
     assert authenticated.sha256 == pool_sha256
     assert (
         manifest["worker_execution_authentication"]["audit_aliases"]
@@ -2554,7 +2559,12 @@ def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
         "compatibility_attestation_sha256": _sha256(attestation_path),
         "purpose": "scoring_only",
     }
-    assert frame.n("household") == 3
+    positive_draws = [
+        draw
+        for draw in immigration_runtime.us_immigration_controls().humanitarian
+        if draw.target > 0
+    ]
+    assert frame.n("household") == 1 + len(positive_draws)
     assert manifest["status"] == "gate_failed"
     assert manifest["simulation_ready"] is False
     assert authenticated.sha256 == manifest["pool_h5"]["sha256"]
