@@ -341,8 +341,20 @@ also accept. A mutation the seal misses is a finding, not a test to delete.
 **Every refusal code that exists today still fires on the same defect.** All
 twenty-two are raised by the seal constructor (one-sided) or the seal
 comparison (two-sided), with the same `SURVEY_POPULATION_REPLAY_` prefix and
-the same suffix. No code is retired and none is added, and §5's receipt records
-which comparison reached which.
+the same suffix. **None is retired**, and §5's receipt records which comparison
+reached which.
+
+Six codes are **added**, none of them about a population's content, and this
+note lists them rather than saying "none" and being wrong:
+
+| code | guards |
+|---|---|
+| `SURVEY_POPULATION_REPLAY_FRAME_SEAL_PROTOCOL` | a seal record that is not a frame seal of this protocol version |
+| `SURVEY_POPULATION_REPLAY_POPULATION_SEAL_PROTOCOL` | the same for a population seal |
+| `SURVEY_POPULATION_REPLAY_SEAL_TYPE` | `seal_identity` handed something that is not a seal record |
+| `ATOMIC_OBSERVER_RETENTION` | the observed roster is not exactly the declared consumers, or an arrival seal's identity has moved |
+| `FINANCIAL_SEALED_NODE_SCOPE` | a sealed node reaching the completion-boundary or manifest stamp arms, which the retention flag makes unreachable |
+| `RETAIN_EVERY_NODE_POPULATION_FLAG` | the private retention flag is not a bool, or is set together with `child_property` |
 
 **`FINANCIAL_NODE_POPULATION_CHANGED` after the change** means: *for a node
 whose `Population` object the run still retains — the declared-consumer roster —
