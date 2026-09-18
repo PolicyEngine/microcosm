@@ -1,18 +1,18 @@
 {
   "scope": "diagnostic receipt of the discrimination battery; not a build, certification or release artifact",
   "release_eligible": false,
-  "comparisons": 109,
-  "agreements": 109,
+  "comparisons": 116,
+  "agreements": 116,
   "disagreements": [],
   "unreachable_codes": {
     "SURVEY_POPULATION_REPLAY_FRAME_TYPE": "Population validates frame is a Frame (population.py), so no Population can carry a non-Frame",
     "SURVEY_POPULATION_REPLAY_STRING_POLICY": "StringDtype.__eq__ compares storage and na_value, so SERIES_DTYPE_OR_LENGTH fires first"
   },
   "by_verdict": {
+    "SURVEY_POPULATION_REPLAY_AXIS": 16,
+    "ACCEPTED (both paths)": 14,
     "SURVEY_POPULATION_REPLAY_NATIVE_BITS": 13,
-    "SURVEY_POPULATION_REPLAY_AXIS": 12,
     "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT": 12,
-    "ACCEPTED (both paths)": 11,
     "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT": 9,
     "SURVEY_POPULATION_REPLAY_OBJECT_VALUE": 9,
     "SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING": 7,
@@ -53,6 +53,24 @@
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_observer_snapshot_preserves_the_replay_seal",
       "operand": "population",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[Int64-Int64-True]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[datetime-datetime-True]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[string-string-True]",
+      "operand": "frame",
       "object_path": null,
       "seal_path": null
     },
@@ -136,6 +154,30 @@
     },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_axes_schema_and_strata_are_exact[rows]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[Int64-Int64-mask-False]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[Int64-Int64-value-False]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[datetime-datetime-nat-False]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_exotic_index_dtypes_agree_on_both_paths[string-string-value-False]",
       "operand": "frame",
       "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
       "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"

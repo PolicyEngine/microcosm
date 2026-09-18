@@ -1190,3 +1190,40 @@ def test_an_axis_name_outside_the_store_grammar_refuses_on_both_paths(name):
         _refuses_frames(unsupported, unsupported)
         == "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME"
     )
+
+
+@pytest.mark.parametrize(
+    "left,right,accepted",
+    [
+        ("Int64", "Int64", True),
+        ("Int64", "Int64-value", False),
+        ("Int64", "Int64-mask", False),
+        ("string", "string", True),
+        ("string", "string-value", False),
+        ("datetime", "datetime", True),
+        ("datetime", "datetime-nat", False),
+    ],
+)
+def test_exotic_index_dtypes_agree_on_both_paths(left, right, accepted):
+    """A masked, string or datetime axis materialises through ``np.asarray``.
+
+    These are the acceptance halves as much as the refusals: a seal that is
+    stricter than the predicate it replaces turns a green run red, and an axis
+    is the easiest place to become stricter by accident.
+    """
+    built = {
+        "Int64": pd.Index(pd.array([1, 2, pd.NA], dtype="Int64")),
+        "Int64-value": pd.Index(pd.array([1, 3, pd.NA], dtype="Int64")),
+        "Int64-mask": pd.Index(pd.array([1, pd.NA, 3], dtype="Int64")),
+        "string": pd.Index(pd.array(["a", "b", pd.NA], dtype="string")),
+        "string-value": pd.Index(pd.array(["a", "c", pd.NA], dtype="string")),
+        "datetime": pd.DatetimeIndex(["2020-01-01", "2020-01-02", "2020-01-03"]),
+        "datetime-nat": pd.DatetimeIndex(["2020-01-01", "NaT", "2020-01-03"]),
+    }
+    frame = _frame()
+    expected = _with_person_axis(frame, built[left])
+    actual = _with_person_axis(frame, built[right])
+    if accepted:
+        _accepts_frames(expected, actual)
+    else:
+        assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_AXIS"
