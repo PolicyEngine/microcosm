@@ -1,0 +1,4181 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "nts_trip_rates.json",
+  "purpose": "DfT NTS0303 average trips per person per year by main mode (all modes, bus in London, other local bus; England, all ages) and NTS0601 the same rates by age band, survey years 2023 to 2025. Consumed by the NTS bus-travel stage's fact checks on the imputed trip rates by age and the level of local-bus trips per resident (microcosm#930).",
+  "consumers": [],
+  "planned_consumers": [
+    "uk_runtime.nts_bus_travel"
+  ],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "78466057401af48f9a53da41b87295241e4af1ba",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 277183,
+    "facts_sha256": "8dc4336d776533d0c878d008311f81f936568d6471ee82f025dc8c996ad8867a",
+    "manifest_sha256": "0ff28c71e7d3c6b61ad776ff223aaad32aa01c8bb832e9834b8969a232ad77d2"
+  },
+  "selections": [
+    {
+      "label": "nts0303_trips_per_person_by_mode",
+      "selector": {
+        "source_name": "dft",
+        "source_concept": [
+          "dft.all_modes_trips_per_person",
+          "dft.bus_in_london_trips_per_person",
+          "dft.other_local_bus_trips_per_person"
+        ],
+        "groupby_dimension": "dft.survey_year",
+        "period_type": "calendar_year",
+        "period_value": [
+          "2023",
+          "2024",
+          "2025"
+        ]
+      },
+      "row_count": 9
+    },
+    {
+      "label": "nts0601_trips_per_person_by_age_band",
+      "selector": {
+        "source_name": "dft",
+        "source_concept": [
+          "dft.all_modes_trips_per_person",
+          "dft.bus_in_london_trips_per_person",
+          "dft.other_local_bus_trips_per_person"
+        ],
+        "groupby_dimension": "dft.age_band",
+        "period_type": "calendar_year",
+        "period_value": [
+          "2023",
+          "2024",
+          "2025"
+        ]
+      },
+      "row_count": 81
+    }
+  ],
+  "row_count": 90,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6cd8cb8c5acd36cf5b95087d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_79ba832bc151ba5803635365",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_0_to_16.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_0_to_16",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "0 to 16",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 788.870214845467
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_97dc2150b09f7ba7758d5080",
+      "semantic_fact_key": "ledger_semantic_fact_v2_69b4aa69c1a2ce12107a6794",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_17_to_20.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_17_to_20",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "17 to 20",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 709.843179051385
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_de475225c1220a1201622a7f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dbd8719bf0b807b2c95f16ec",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_21_to_29.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_21_to_29",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "21 to 29",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 842.400765037472
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e5687a99bbd997637d6ec491",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8d044419662626f49c6a87ac",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_30_to_39.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_30_to_39",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "30 to 39",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 996.03763051672
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_60d48497c669112d88b168f1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e76d0bdb8503708c1a12ee16",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_40_to_49.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_40_to_49",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "40 to 49",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 1097.34904595885
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_60720166f502f5e6a1624288",
+      "semantic_fact_key": "ledger_semantic_fact_v2_06f0c5073bf2cabf99ed18ff",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_50_to_59.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_50_to_59",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "50 to 59",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 1032.12439252329
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ae6796b5fe5891d061427b30",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e08e6abb8a7c96afc376af35",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_60_to_69.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_60_to_69",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 to 69",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 966.574301408932
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_785402e0a3aa37f703957616",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c3419e668bca2df55ec98c22",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_70_and_over.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_70_and_over",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "70 and over",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 810.695472873024
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c9dbd8e7abaccd39593ddc57",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d6bcf5ed523bb076bd7a92b5",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.all_ages.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "All Ages",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 915.293045573491
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9e1fe1fbb13da8be7e2f447d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2b85a1caf9768aa9a57edbce",
+      "source_record_id": "dft.nts0303a.mode_trips.cy2023.cy2023.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0303a.mode_trips.cy2023",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0303a: Average number of trips by main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0303.ods",
+        "source_sha256": "6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0303-mode-trips-2025/2025/6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7/nts0303.ods"
+      },
+      "value": 915.293045573491
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6584548405000655d794c037",
+      "semantic_fact_key": "ledger_semantic_fact_v2_26c3c082ed402719d3b08472",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_0_to_16.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_0_to_16",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "0 to 16",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 804.099137624011
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_98a801bd6db785b5f67e164d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3c7684d3583303358431eb0d",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_17_to_20.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_17_to_20",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "17 to 20",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 736.009328480068
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dfe785d1d15397bd2cbbed7b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_327f05d25c4bb9c1c6f9bd30",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_21_to_29.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_21_to_29",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "21 to 29",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 850.676436788137
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7b09e4b1e5ffab44227e9bd8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8640006b7cb6ca4991714da3",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_30_to_39.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_30_to_39",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "30 to 39",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 1023.08633877304
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_45501eb1c197f5758e248a33",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ed1f4fea07edba3c03bab9cc",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_40_to_49.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_40_to_49",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "40 to 49",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 1047.4480089754
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ae79630f655dd05c6ad36eb1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b51459b7c8ef5cf057669eda",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_50_to_59.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_50_to_59",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "50 to 59",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 1027.90363535261
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c7de5da3445d42bd732245fa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ae10cbd3d588e9ce6c5a53c5",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_60_to_69.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_60_to_69",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 to 69",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 999.931259688495
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f6a42e551528b5117acf07e4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d1755930ab1fed2365ab3ac8",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_70_and_over.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_70_and_over",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "70 and over",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 818.309699678068
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_88e78ff622ebdec3abb885a9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5dbb267a5f6cd91884288770",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.all_ages.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "All Ages",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 921.806459412313
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4a71786fa92f8d5fb2b5eb70",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8711cdfed4ad45697f747234",
+      "source_record_id": "dft.nts0303a.mode_trips.cy2024.cy2024.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0303a.mode_trips.cy2024",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0303a: Average number of trips by main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0303.ods",
+        "source_sha256": "6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0303-mode-trips-2025/2025/6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7/nts0303.ods"
+      },
+      "value": 921.806459412313
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7573be26e41003af6531f2f6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b8a513bc1754dcdfee300ea0",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_0_to_16.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_0_to_16",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "0 to 16",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 744.36368714882
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1ac0e79e254054249c5694d5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ec93851e6fc458466b264982",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_17_to_20.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_17_to_20",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "17 to 20",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 620.375479324839
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f7e8027a8cabc28c738464ca",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bea0f82d9b51bada87ad1d6b",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_21_to_29.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_21_to_29",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "21 to 29",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 706.541136829928
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_89341dbf37ec79357fa9aaf8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9442e9e84c03ada3360c7d7e",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_30_to_39.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_30_to_39",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "30 to 39",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 930.170603547636
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_932e3fa07a72ce0cf51a3b76",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c7280098c719c30445d35592",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_40_to_49.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_40_to_49",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "40 to 49",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 984.072419714394
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_83974721b744e9d59ae4de2b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c8bedb0adfe66d081c19798c",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_50_to_59.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_50_to_59",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "50 to 59",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 926.658538330061
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fe6e37cf8298db86836c6f09",
+      "semantic_fact_key": "ledger_semantic_fact_v2_44f9992aeffceea46d201947",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_60_to_69.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_60_to_69",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 to 69",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 923.154292874512
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_714571743dd548fdafdb7e39",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b158da054b394a535ec58a86",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_70_and_over.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_70_and_over",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "70 and over",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 783.246318341494
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f88154f5fd403065015c17d8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ff553dafcd036beab0f316b4",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.all_ages.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "All Ages",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 840.582374315825
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8a155e55eccd640d3577debd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9090f9336d2f89f90cb4d218",
+      "source_record_id": "dft.nts0303a.mode_trips.cy2025.cy2025.all_modes_trips_per_person",
+      "concept": "dft.all_modes_trips_per_person",
+      "measure_id": "all_modes_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0303a.mode_trips.cy2025",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2025",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0303a: Average number of trips by main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0303.ods",
+        "source_sha256": "6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0303-mode-trips-2025/2025/6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7/nts0303.ods"
+      },
+      "value": 840.582374315825
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_043805a61b80293f683e6c65",
+      "semantic_fact_key": "ledger_semantic_fact_v2_42547b97b4ff9f3323488761",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_0_to_16.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_0_to_16",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "0 to 16",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 12.351129510862
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0afe0e28218c6ee541a78e5f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f65caa6d67cd274c4875fff3",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_17_to_20.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_17_to_20",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "17 to 20",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 27.2827713964697
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_07d2021d8645d18e44ca4be5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c5fb35808eaf41bcfe47076d",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_21_to_29.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_21_to_29",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "21 to 29",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 20.6266409538376
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0e12125333a73e0c2d8e6bb7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_64a45d0ebd79db6e4c7a088a",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_30_to_39.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_30_to_39",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "30 to 39",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 15.8129619689879
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e505278b9d19c717cce00bfc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2af500189b7c9d28a5a64270",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_40_to_49.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_40_to_49",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "40 to 49",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 13.6081338608428
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d78204043b5742a0a3374513",
+      "semantic_fact_key": "ledger_semantic_fact_v2_24af10451602d31ec48bf984",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_50_to_59.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_50_to_59",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "50 to 59",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 9.53283074646507
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_58fb02fbdcb7f5cda638030c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7d6b30ee42a9fe6dff89c762",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_60_to_69.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_60_to_69",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 to 69",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 13.7555338391058
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_137c75f6a3b783e362b67df2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8cb4f77259d1d07e5f5c11a2",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_70_and_over.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_70_and_over",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "70 and over",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 10.5575855600522
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_76befc56f9608f5ff806909e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ca8668d5e263a594ec813d3f",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.all_ages.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "All Ages",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 14.0687444929693
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d29aaa9128d0121008a025c3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9598aa3edb90ca01d5fccab1",
+      "source_record_id": "dft.nts0303a.mode_trips.cy2023.cy2023.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0303a.mode_trips.cy2023",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0303a: Average number of trips by main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0303.ods",
+        "source_sha256": "6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0303-mode-trips-2025/2025/6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7/nts0303.ods"
+      },
+      "value": 14.0687444929693
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_61a48e9a1aee4776bbb430f1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_52070a1a1773774a19babc92",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_0_to_16.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_0_to_16",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "0 to 16",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 14.1770296913304
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a505313293a0fd4ec6e923fd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_18ef89691d54aa06c2386a47",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_17_to_20.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_17_to_20",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "17 to 20",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 22.2509807468839
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_04a263d25b9064b876aa322f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3613367e856eb5afdbd14c77",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_21_to_29.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_21_to_29",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "21 to 29",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 12.4256764762614
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_00894a216c51e17580570946",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7b082d3da06e90eb3afabaeb",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_30_to_39.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_30_to_39",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "30 to 39",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 12.5026184092548
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_973586b16b73445df2a72aed",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cd43bfc576e4e1dec59d6464",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_40_to_49.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_40_to_49",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "40 to 49",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 14.2850781887529
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7ede3bf424d4daad0b43bc40",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ca639cc8c0a08403e1de1a73",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_50_to_59.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_50_to_59",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "50 to 59",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 10.4120219834301
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4a74e8a6470b1cc54bf1eb2b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dbf6ee6ed508e6c66aef1de7",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_60_to_69.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_60_to_69",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 to 69",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 12.3972711622741
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4d26b51a6137b2b7b218d86d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c80ecd9f89c0ace8fd209b92",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_70_and_over.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_70_and_over",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "70 and over",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 12.1540228639839
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7c1a5369d07e64128bb6e1b0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_605b5e682a996bdf45d36265",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.all_ages.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "All Ages",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 13.1155774642333
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9d489026dcd764df744a2958",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7f937f775f3aa7c7248e0235",
+      "source_record_id": "dft.nts0303a.mode_trips.cy2024.cy2024.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0303a.mode_trips.cy2024",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0303a: Average number of trips by main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0303.ods",
+        "source_sha256": "6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0303-mode-trips-2025/2025/6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7/nts0303.ods"
+      },
+      "value": 13.1155774642333
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_af67d37d4149ece9d344bfaa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_09589a4f739331e91847e79d",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_0_to_16.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_0_to_16",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "0 to 16",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 15.6213173419227
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7528182f9c72c37ca5c90c04",
+      "semantic_fact_key": "ledger_semantic_fact_v2_662f3dbf7c26ce98e1ab70bd",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_17_to_20.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_17_to_20",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "17 to 20",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 19.7700845867196
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_73339f04adb9af59cde510f2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5b3c65150a1d6a0d23f6009a",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_21_to_29.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_21_to_29",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "21 to 29",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 16.9845226111601
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5761f5ca236eacb730fc35b5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7f2275882145205e6af98770",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_30_to_39.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_30_to_39",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "30 to 39",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 13.701504088504
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d4b0bf926cbf20da3f7e2200",
+      "semantic_fact_key": "ledger_semantic_fact_v2_69f6e26d87a7e08cd4016b3c",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_40_to_49.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_40_to_49",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "40 to 49",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 15.0928260377259
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fe983aac36b66ff77bcea42c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_89625423fdbb090329c8a179",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_50_to_59.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_50_to_59",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "50 to 59",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 13.1172786284122
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8b30fa9f41f99c523341f584",
+      "semantic_fact_key": "ledger_semantic_fact_v2_06c836de0bcea2b5261c8819",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_60_to_69.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_60_to_69",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 to 69",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 12.0857252971509
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0f4b798e7cce2b98f50a7e72",
+      "semantic_fact_key": "ledger_semantic_fact_v2_16aac5f512bd4b558ab041e9",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_70_and_over.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_70_and_over",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "70 and over",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 14.2388772737541
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_15f37ac004a9450136bbaf7d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2912a6a4d553f8c86d44aa66",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.all_ages.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "All Ages",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 14.703747432279
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_21d0e33cfce6ba701a555439",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a8d701154a46b4c01d12226d",
+      "source_record_id": "dft.nts0303a.mode_trips.cy2025.cy2025.bus_in_london_trips_per_person",
+      "concept": "dft.bus_in_london_trips_per_person",
+      "measure_id": "bus_in_london_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0303a.mode_trips.cy2025",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2025",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0303a: Average number of trips by main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0303.ods",
+        "source_sha256": "6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0303-mode-trips-2025/2025/6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7/nts0303.ods"
+      },
+      "value": 14.703747432279
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_834264b3ab6be47282f12e75",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c13dccbac6e804af50c1da8d",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_0_to_16.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_0_to_16",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "0 to 16",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 26.7793478224147
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_95683bbaebb16204b7223cc8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dc041ef6186ee93c1469f158",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_17_to_20.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_17_to_20",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "17 to 20",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 57.0942758457833
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_71a510e900035e1ca9435d2c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8e970ee047e80f061c59509b",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_21_to_29.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_21_to_29",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "21 to 29",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 27.2838405317941
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fed89d0d7e346cbed466e615",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d74241566201346db92120b0",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_30_to_39.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_30_to_39",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "30 to 39",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 24.2835281021163
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8b2c5f6c3d1f9a05b0131df5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f3b060cd0be0372a544fd588",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_40_to_49.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_40_to_49",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "40 to 49",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 16.4434784368462
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5016f4147c665c0651bc10b8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f7c088be8172258607c3e51f",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_50_to_59.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_50_to_59",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "50 to 59",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 14.6383286695019
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fa6a4208062a020eb7dabf11",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d3fa943b8f86f47a9c9bc0bb",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_60_to_69.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_60_to_69",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 to 69",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 21.7814384195701
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b41613ff414d915c13f1aab5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_507ba1c7224da4d6a8a5dcc7",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.age_70_and_over.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_70_and_over",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "70 and over",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 33.0383448627926
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_09faa29f6001c432b3da8982",
+      "semantic_fact_key": "ledger_semantic_fact_v2_aa5ec266359a6906c14ee8ef",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2023.all_ages.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2023",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "All Ages",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 25.0671459605513
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d42f34bd5a0b3d55756df448",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bc72172f341a84aa234452f9",
+      "source_record_id": "dft.nts0303a.mode_trips.cy2023.cy2023.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0303a.mode_trips.cy2023",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0303a: Average number of trips by main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0303.ods",
+        "source_sha256": "6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0303-mode-trips-2025/2025/6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7/nts0303.ods"
+      },
+      "value": 25.0671459605513
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bf0413048d1d7f0f735e1185",
+      "semantic_fact_key": "ledger_semantic_fact_v2_791f8300cb5396a4a6a4a478",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_0_to_16.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_0_to_16",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "0 to 16",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 29.6801694294585
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_38bf40aa3161b3bf0ba02af1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_28bd866d1e33c53e7d232ade",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_17_to_20.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_17_to_20",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "17 to 20",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 65.4899089582547
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c2514f8ce7df175fc4d1c665",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f1d1fac4ec0d10c37a4f72d3",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_21_to_29.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_21_to_29",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "21 to 29",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 35.9830691395679
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ab9c2173f470a5e706387db6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1cab345ad09a397b8e1e3308",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_30_to_39.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_30_to_39",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "30 to 39",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 25.3574370692756
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_44104356a307c4b0e4b9be7f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_699430597e1ab3f10522c14e",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_40_to_49.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_40_to_49",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "40 to 49",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 19.4438163785248
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ed0d1dcf7002ec243b15799d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bf9572b61d4802303f5bae78",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_50_to_59.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_50_to_59",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "50 to 59",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 17.1021792942901
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a76f9873575aaa5faf1545a6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6ca0c9b8ec524da72fb601b5",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_60_to_69.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_60_to_69",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 to 69",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 21.8462623528516
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e3a6d3709dba6babfd9b3c5a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_eb366f8128b63d667b71deed",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.age_70_and_over.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_70_and_over",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "70 and over",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 34.8004103450646
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e247cd8b566500557853954c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4fd3c38fbf8bb05d5d0e8b00",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2024.all_ages.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2024",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "All Ages",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 28.0685543170643
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0c2e0f86f2a11f056d2fde7a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0298115c7956775d9878017b",
+      "source_record_id": "dft.nts0303a.mode_trips.cy2024.cy2024.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0303a.mode_trips.cy2024",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0303a: Average number of trips by main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0303.ods",
+        "source_sha256": "6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0303-mode-trips-2025/2025/6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7/nts0303.ods"
+      },
+      "value": 28.0685543170643
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cea1eb53ab413cec73c3fd33",
+      "semantic_fact_key": "ledger_semantic_fact_v2_432f84e86ac25c5328b8bf5b",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_0_to_16.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_0_to_16",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "0 to 16",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 28.2559617350621
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bc7ccdc881fc0dfbb50c1a7c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_89f1f6a4b105e5672c69e76c",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_17_to_20.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_17_to_20",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "17 to 20",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 63.0524537460203
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_51247f7270ea7990596853d6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ce551d8944952cdb00ceabcc",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_21_to_29.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_21_to_29",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "21 to 29",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 33.7064010416618
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8e02a45a076c7fb3dcef0b05",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7ff248c8410629d073d27a51",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_30_to_39.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_30_to_39",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "30 to 39",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 22.7385012451484
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1c58da6151973727533aa91e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e70b1a0ddda01ffe8e478865",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_40_to_49.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_40_to_49",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "40 to 49",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 18.3290590121647
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d6084a3b39d53da7be88de2e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d12ec0758dc4abbff7527c44",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_50_to_59.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_50_to_59",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "50 to 59",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 15.3431543774008
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b156f382f9cb7c14ad0f69e4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3d66fc154a46bcf68776f628",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_60_to_69.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_60_to_69",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "60 to 69",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 28.1946082651287
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_44b3277d563abaa07acf86e7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_feea5555fbdce74c344dafe8",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.age_70_and_over.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "age_70_and_over",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "age_band": "70 and over",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 36.2889056732402
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3081efae57a88fe2717e73c4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3d966a9987304abd4fbebe3b",
+      "source_record_id": "dft.nts0601a.mode_trips_by_age.cy2025.all_ages.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0601a.mode_trips_by_age.cy2025",
+        "groupby_dimension": "dft.age_band",
+        "groupby_value_id": "all_ages",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "age_band": "All Ages",
+        "sex": "All people"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0601a: Average number of trips by sex, age and main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0601.ods",
+        "source_sha256": "9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0601-age-mode-trips-2025/2025/9040dfe7e68231f1d1271e349a369ac47b8c78d1f9299ac3bc705b2682ebf1b3/nts0601.ods"
+      },
+      "value": 27.7152103800693
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4263895652b50576febaeb0f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ebf2299c1cf539491de1c871",
+      "source_record_id": "dft.nts0303a.mode_trips.cy2025.cy2025.other_local_bus_trips_per_person",
+      "concept": "dft.other_local_bus_trips_per_person",
+      "measure_id": "other_local_bus_trips_per_person",
+      "unit": "trips_per_person_per_year",
+      "aggregation": "mean",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "survey_reference"
+      },
+      "layout": {
+        "record_set_id": "dft.nts0303a.mode_trips.cy2025",
+        "groupby_dimension": "dft.survey_year",
+        "groupby_value_id": "cy2025",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "NTS0303a: Average number of trips by main mode (trips per person per year): England, 2002 onwards",
+        "source_file": "nts0303.ods",
+        "source_sha256": "6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7",
+        "vintage": "2025",
+        "raw_r2_key": "raw/uk/dft/dft-nts0303-mode-trips-2025/2025/6dee1fabbae1721674f5298c83df4d66b72b0fe5c49dcbca7952b80677ae00a7/nts0303.ods"
+      },
+      "value": 27.7152103800693
+    }
+  ]
+}

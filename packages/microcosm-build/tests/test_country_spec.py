@@ -988,6 +988,9 @@ class TestUKCountryPackage:
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
+            "dft_bus_journeys.json",
+            "nts_trip_rates.json",
+            "nts_car_availability.json",
         )
 
     def test_uk_source_manifest_loads_thirty_stages(self) -> None:
@@ -1096,6 +1099,9 @@ class TestExistingPackagesGeneralize:
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
+            "dft_bus_journeys.json",
+            "nts_trip_rates.json",
+            "nts_car_availability.json",
         )
 
     def test_uk_target_references_accept_regenerated_contract_fields(self) -> None:
