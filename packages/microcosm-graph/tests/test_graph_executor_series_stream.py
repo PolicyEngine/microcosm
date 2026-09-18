@@ -289,3 +289,77 @@ def test_random_frames_of_every_kind_stream_identical_bytes():
                 dtype="object",
             )
         _assert_identical(series)
+
+
+# --------------------------------------------------------------------------
+# The length prefix, built without numpy on either side.
+# --------------------------------------------------------------------------
+
+
+def _expected_stream(payloads):
+    """The framed stream, assembled in pure Python.
+
+    Every parity assertion above compares one numpy construction against
+    another, so a byte order both sides take from the host cancels out. This
+    reference takes its byte order from `int.to_bytes(8, "little")` and its
+    payloads from Python `bytes`, which is what `_update_scalar` writes and
+    what neither branch of `_object_stream` may drift from.
+    """
+
+    return b"".join(
+        len(payload).to_bytes(8, "little") + payload for payload in payloads
+    )
+
+
+@pytest.mark.parametrize(
+    "dtype", ["int64", "int32", "int16", "int8", "uint32", "uint8"]
+)
+def test_the_integer_prefix_is_little_endian_whatever_the_host_is(dtype):
+    """The vectorised prefix is cast after the arithmetic, not before it.
+
+    `filled.sum(axis=1)` is a ufunc result and a ufunc's output carries the
+    host's byte order, so casting it to `<u8` and then adding one for the type
+    byte hands `tobytes()` a native-order array again. Casting the finished
+    length is what makes these eight bytes little-endian on every host. The
+    two agree on a little-endian host, which is every host this suite runs on
+    today, so what this case pins is the construction rather than a difference
+    visible here.
+    """
+
+    info = np.iinfo(dtype)
+    values = [0, 1, 9, 10, info.min, info.max]
+    series = pd.Series(np.array(values, dtype=dtype))
+    expected = _expected_stream(
+        [b"i" + str(int(value)).encode("ascii") for value in values]
+    )
+
+    assert _object_stream(series) == expected
+    # The first prefix is the shortest payload's, so a byte-swapped eight-byte
+    # word would be caught by this whole-stream comparison and not only by the
+    # widest one.
+    assert expected[:8] == (2).to_bytes(8, "little")
+
+
+def test_the_boolean_prefix_is_little_endian_too():
+    """`_framed`'s `<u8` prefix, against the same pure-Python reference."""
+
+    series = pd.Series(np.array([True, False, True], dtype=bool))
+    assert _object_stream(series) == _expected_stream([b"b1", b"b0", b"b1"])
+
+
+def test_the_float_prefix_is_little_endian_while_its_payload_is_native():
+    """Nine bytes of payload, prefixed little-endian, packed in host order.
+
+    The payload deliberately follows the host: the loop packs
+    `np.asarray([value], dtype=np.float64).tobytes()`. The prefix deliberately
+    does not.
+    """
+
+    values = [1.5, -0.0, np.inf]
+    series = pd.Series(np.array(values, dtype="float64"))
+    expected = _expected_stream(
+        [b"f" + np.asarray([value], dtype=np.float64).tobytes() for value in values]
+    )
+
+    assert _object_stream(series) == expected
+    assert expected[:8] == (9).to_bytes(8, "little")

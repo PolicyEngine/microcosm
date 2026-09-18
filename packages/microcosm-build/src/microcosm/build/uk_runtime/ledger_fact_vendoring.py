@@ -341,6 +341,41 @@ def load_vendored_resource(name: str) -> dict[str, Any]:
     return payload
 
 
+def vendored_rows(
+    name: str, *, fiscal_start: str | None = None, **criteria: object
+) -> list[dict[str, Any]]:
+    """Rows of a committed vendored resource, refused if it lags the feed pin.
+
+    The one reader every stage consumer goes through: the resource must have
+    been vendored from the Chronicle feed ``uk/chronicle_feed.json`` declares
+    (a stale copy is refused before any row is read), ``criteria`` filter as
+    :func:`rows_matching`, and ``fiscal_start`` selects fiscal-year rows by
+    their ``period_coverage.start_date`` because publishers label fiscal years
+    differently (DfT by the closing year, HMRC, OBR, ORR and the devolved
+    publishers by the opening year).
+    """
+
+    from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
+
+    payload = load_vendored_resource(name)
+    expected = feed_identity(load_uk_chronicle_feed())
+    if payload.get("source_fact_feed") != expected:
+        raise ValueError(
+            f"{name} was vendored from a different Chronicle feed than "
+            "uk/chronicle_feed.json declares; regenerate it with "
+            "tools/vendor_uk_ledger_facts.py before compiling."
+        )
+    rows = rows_matching(payload, **criteria)
+    if fiscal_start is None:
+        return rows
+    return [
+        row
+        for row in rows
+        if isinstance(row.get("period_coverage"), Mapping)
+        and str(row["period_coverage"].get("start_date")) == str(fiscal_start)
+    ]
+
+
 def rows_matching(
     payload: Mapping[str, Any], **criteria: object
 ) -> list[dict[str, Any]]:
@@ -363,6 +398,15 @@ def rows_matching(
     for row in payload["rows"]:
         keep = True
         for key, expected in criteria.items():
+            if key == "dimensions" and isinstance(expected, Mapping):
+                actual_dims = row.get("dimensions") or {}
+                if any(
+                    str(actual_dims.get(dim)) != str(value)
+                    for dim, value in expected.items()
+                ):
+                    keep = False
+                    break
+                continue
             path = aliases.get(key, (key,))
             actual: Any = row
             for part in path:

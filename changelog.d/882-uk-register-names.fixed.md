@@ -1,0 +1,1 @@
+Key the three UC element rows on the UK measure-exclusion register by their reference names (`dwp.uc.households_{carer,childcare,housing}_element`) instead of their binding metric names, which matched no compiled spec and made the calibration run refuse; a test now requires every register name to resolve to a committed reference (#882).

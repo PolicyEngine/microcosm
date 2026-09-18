@@ -99,7 +99,7 @@ sources:
 stage_asset:
   id: source_stages
   path: microcosm.build.us/source_stages.json
-  sha256: dc58a0d700f0add7b658cec774df6e9587303beb58a1f432a35a18dcd1ac4097
+  sha256: 7935d891ed16eac618f04813a7b8a3ceb9a971c8b4c4273683594ba61e7dd631
 stage_manifest:
   version: 1
   country: us
@@ -626,7 +626,7 @@ stages:
     floor-eligible spouse. Selection is a seeded weight-targeted permutation prefix over sorted unit ids
     (invariant to person-row order) at the measured usage rate; levels are a distribution-preserving weighted-quantile
     draw whose grid is the selected units'' own cumulative-weight midpoints, placed on the qualifying
-    person with the smallest person_id. PolicyEngine-US 1.819.0 owns all downstream CDCC formulas; is_incapable_of_self_care
+    person with the smallest person_id. PolicyEngine-US 2.2.1 owns all downstream CDCC formulas; is_incapable_of_self_care
     is also consumed by SNAP/Medicaid work-requirement logic and multiple state dependent-care formulas,
     moving those programs from flag-off defaults toward the measured disability structure.'
 - stage: energy_subsidy
@@ -2882,12 +2882,12 @@ stages:
     coverage (has_esi - the conservative, incomplete proxy for the 26 USC 162(l)(2)(B) subsidized-employer-plan
     month exclusion; eligibility through a spouse''s or dependent''s employer is not measured and remains
     documented residual overbreadth), and marks is_self_employed for every strictly-positive Schedule
-    C person. PolicyEngine-US 1.819.0 then computes self_employed_health_insurance_premiums (a formula-owned
+    C person. PolicyEngine-US 2.2.1 then computes self_employed_health_insurance_premiums (a formula-owned
     adds-aggregation gated by is_self_employed, so it cannot ship as a column) and the section 162(l)
     ALD as min(total_self_employment_income, premiums). The Medicare proxy keeps the statutory medical-expense
     premium concept numerically invariant because the direct input equals the decomposed reported premium
-    whenever the modeled Part B add-on is zero. Beyond the federal ALD, PolicyEngine-US 1.819.0 reads
-    the bare health_insurance_premiums input in five state/local formulas (MO qualified-premium subtraction,
+    whenever the modeled Part B add-on is zero. Beyond the federal ALD, PolicyEngine-US 2.2.1 reads the
+    bare health_insurance_premiums input in five state/local formulas (MO qualified-premium subtraction,
     MI household resources, OH uninsured unreimbursed medical expenses, CA Orange County general relief
     countable income, MO child-care-subsidy adjusted income): attribution moves those programs from premiums-invisible
     toward the measured premium structure for the self-employed slice, outside the federal income_tax

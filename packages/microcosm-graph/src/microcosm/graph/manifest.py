@@ -456,7 +456,10 @@ class RunManifest:
     inferring it. It is the caller's own mapping and is kept as a live view of
     it, not a copy, because such a record is finalised when that scope closes --
     after ``run_graph`` returns and before the caller receives this manifest.
-    It holds counts and labels only: no key, digest or path.
+    That holds for any mapping, not only a ``dict``: the caller's object is
+    wrapped in a read-only proxy over itself, and a mapping type that cannot be
+    wrapped is refused rather than copied into a snapshot that would look live
+    and not be. It holds counts and labels only: no key, digest or path.
     """
 
     country: str
@@ -549,17 +552,28 @@ class RunManifest:
                 )
         # A live view of the caller's record, deliberately not a copy: see the
         # class docstring. Values are checked once, here.
-        object.__setattr__(
-            self,
-            "verification_epoch",
-            verification_epoch
-            if isinstance(verification_epoch, MappingProxyType)
-            else MappingProxyType(
-                verification_epoch
-                if isinstance(verification_epoch, dict)
-                else dict(verification_epoch)
-            ),
-        )
+        #
+        # Every mapping is wrapped, not only a dict. `MappingProxyType` takes
+        # any object with the mapping protocol, so wrapping a caller's own
+        # `Mapping` subclass keeps the reference the contract promises, where
+        # `dict(...)` would have taken a snapshot and dropped exactly the
+        # counts the scope finalises after `run_graph` returns. An already
+        # read-only proxy is kept as it is rather than wrapped again.
+        if isinstance(verification_epoch, MappingProxyType):
+            record: Mapping[str, object] = verification_epoch
+        else:
+            try:
+                record = MappingProxyType(verification_epoch)
+            except TypeError as error:
+                # A type registered as a Mapping without implementing the
+                # protocol cannot be held live, and a copy would be a silent
+                # snapshot, so it is refused rather than accepted as one.
+                raise TypeError(
+                    "RunManifest.verification_epoch must be a mapping that "
+                    "supports MappingProxyType, so the manifest can hold it "
+                    "as a live view rather than a copy"
+                ) from error
+        object.__setattr__(self, "verification_epoch", record)
 
     @property
     def content_addressed(self) -> Mapping[str, object]:

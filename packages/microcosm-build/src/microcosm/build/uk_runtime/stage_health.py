@@ -57,6 +57,8 @@ def uk_stage_health_gate(
         return _latent_attribute_realization_gate(stage, evidence)
     if check == "household_composition":
         return _household_composition_gate(stage, evidence, parameters)
+    if check == "energy_rake":
+        return _energy_rake_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -171,7 +173,263 @@ def _support_clip_gate(
         "columns_checked": len(expected_columns) - len(exempt_columns),
         "exempt_columns": sorted(exempt_columns),
     }
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _energy_rake_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The energy kWh rake fits the NEED shape at the DESNZ level, at design weights.
+
+    Fact checks on the lcfs ``energy_rake`` receipt, every published value
+    recomputed here from the vendored rows the stage declares (never taken
+    from the receipt): each cell's ``shape_target`` must be the vendored NEED
+    mean of the declared consumption year; each fuel's level block must be
+    the vendored DESNZ Energy Trends fiscal-year total, its ``factor`` that
+    total over the frame's pre-level total, and the levelled frame total the
+    published one; each cell's ``target`` must be shape times factor; and,
+    where the stage declares the published gas-connected share, every region
+    with a published share must sit within ``maximum_connected_share_deviation``
+    of it after the imposition (a region the draw could not fill records a
+    shortfall instead). The residual check then holds the maximum absolute
+    relative deviation of any cell mean from its levelled target, per margin
+    and fuel, to ``maximum_relative_deviation``, one fixed tolerance on the
+    IPF's cross-margin residual. The rake must have run in kWh with gas over
+    gas-connected rows and no zero-current cell; a missing margin, block or
+    tolerance fails closed.
+
+    This is where NEED, DESNZ and the connection share are checked; the
+    calibrated frame is held to the bound ONS 04.5.1 and 04.5.2 spend rows
+    instead (María's ruling, 2026-09-15), and no gate re-checks these facts
+    after calibration.
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.energy_pricing import (
+        ELECTRICITY_KWH,
+        GAS_CONNECTED_PUBLISHED_METER_SHARE,
+        GAS_KWH,
+        PRICE_DOMESTIC_ENERGY_KIND,
+        need_margins_from_facts,
+        pricing_operation,
+        published_energy_level,
+        published_gas_connected_shares,
+    )
+
+    check = "energy_rake"
+    receipt = _mapping(evidence.get("energy_rake"), label=f"{stage}.energy_rake")
+    tolerance = _finite_number(
+        parameters.get("maximum_relative_deviation"),
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    share_tolerance = _finite_number(
+        parameters.get("maximum_connected_share_deviation"),
+        label=f"{stage}.maximum_connected_share_deviation",
+    )
+    expected_margins = [str(m) for m in parameters.get("margins", ())]
+    if not expected_margins:
+        raise ValueError(f"{stage}: energy_rake declares no margins.")
+    margins_period = parameters.get("margins_period_value")
+    if not isinstance(margins_period, int) or isinstance(margins_period, bool):
+        raise ValueError(f"{stage}: energy_rake declares no margins_period_value.")
+    declared = pricing_operation(load_country_spec("uk").sources.stage_map()[stage])
+    if declared is None:
+        raise ValueError(
+            f"{stage}: declares no {PRICE_DOMESTIC_ENERGY_KIND} operation."
+        )
+    if int(declared.get("margins_period_value", -1)) != margins_period:
+        raise ValueError(
+            f"{stage}: the gate's margins_period_value {margins_period} differs from "
+            f"the stage's declared {declared.get('margins_period_value')!r}."
+        )
+    failures: list[str] = []
+    if receipt.get("unit") != "kwh":
+        failures.append(
+            f"{stage}: energy rake unit is {receipt.get('unit')!r}, not kwh."
+        )
+    if receipt.get("gas_rake_population") != "gas_connected_rows":
+        failures.append(
+            f"{stage}: gas rake population is "
+            f"{receipt.get('gas_rake_population')!r}, not gas_connected_rows."
+        )
+    if receipt.get("margins_period_value") != margins_period:
+        failures.append(
+            f"{stage}: receipt raked NEED {receipt.get('margins_period_value')!r}, "
+            f"not the declared consumption year {margins_period}."
+        )
+    fit = receipt.get("fit")
+    if not isinstance(fit, Mapping):
+        failures.append(f"{stage}: energy_rake receipt carries no fit block.")
+        fit = {}
+    declared_margins = [str(m) for m in receipt.get("margins", ())]
+    undeclared = sorted(set(declared_margins) - set(expected_margins))
+    if undeclared:
+        failures.append(f"{stage}: receipt rakes undeclared margins {undeclared}.")
+    published = need_margins_from_facts(period_value=margins_period).targets
+    level, _ = published_energy_level(declared)
+    factors_block = receipt.get("level_factor")
+    level_block = receipt.get("level")
+    factors: dict[str, float] = {}
+    details: dict[str, object] = {
+        "margins": expected_margins,
+        "margins_period_value": margins_period,
+        "maximum_relative_deviation": tolerance,
+        "maximum_connected_share_deviation": share_tolerance,
+        "level_factor": {},
+        "worst": {},
+        "cells_fact_checked": 0,
+        "connected_share": {},
+    }
+    if not isinstance(factors_block, Mapping) or not isinstance(level_block, Mapping):
+        failures.append(f"{stage}: energy_rake receipt carries no level block.")
+        factors_block, level_block = {}, {}
+
+    def _close(observed: object, expected: float, rtol: float) -> bool:
+        return isinstance(observed, int | float) and abs(
+            float(observed) - expected
+        ) <= rtol * max(1.0, abs(expected))
+
+    for fuel in (ELECTRICITY_KWH, GAS_KWH):
+        block = level_block.get(fuel)
+        factor = factors_block.get(fuel)
+        if not isinstance(block, Mapping) or not isinstance(factor, int | float):
+            failures.append(f"{stage}: level block lacks {fuel}.")
+            continue
+        published_kwh = float(level[fuel])
+        before = block.get("frame_kwh_before")
+        if not _close(block.get("published_kwh"), published_kwh, 1e-9):
+            failures.append(
+                f"{stage}: {fuel} was levelled to {block.get('published_kwh')!r}, not "
+                f"the vendored DESNZ total {published_kwh}."
+            )
+        if not isinstance(before, int | float) or float(before) <= 0:
+            failures.append(f"{stage}: {fuel} level block has no positive frame total.")
+        elif not _close(factor, published_kwh / float(before), 1e-9) or not _close(
+            block.get("factor"), float(factor), 1e-12
+        ):
+            failures.append(
+                f"{stage}: {fuel} level factor {factor!r} is not the published total "
+                f"over the frame total {published_kwh / float(before)}."
+            )
+        if not _close(block.get("frame_kwh_after"), published_kwh, 1e-6):
+            failures.append(
+                f"{stage}: {fuel} frame total after levelling is "
+                f"{block.get('frame_kwh_after')!r}, not the published {published_kwh}."
+            )
+        factors[fuel] = float(factor)
+        details["level_factor"][fuel] = float(factor)
+    for margin in expected_margins:
+        if margin not in declared_margins:
+            failures.append(f"{stage}: margin {margin!r} was not raked.")
+            continue
+        block = fit.get(margin)
+        if not isinstance(block, Mapping) or not isinstance(
+            block.get("max_abs_relative_deviation"), Mapping
+        ):
+            failures.append(f"{stage}: fit carries no block for margin {margin!r}.")
+            continue
+        for key, cell in _mapping(
+            block.get("cells"), label=f"{stage}.{margin}.cells"
+        ).items():
+            geography, _, category = str(key).partition(":")
+            fact = published.get(margin, {}).get((geography, category))
+            if fact is None:
+                failures.append(
+                    f"{stage}: {margin} cell {key!r} has no vendored NEED row."
+                )
+                continue
+            for fuel in (ELECTRICITY_KWH, GAS_KWH):
+                entry = _mapping(
+                    _mapping(cell, label=f"{stage}.{key}").get(fuel),
+                    label=f"{stage}.{key}.{fuel}",
+                )
+                if not _close(entry.get("shape_target"), float(fact[fuel]), 1e-6):
+                    failures.append(
+                        f"{stage}: {margin} cell {key!r} {fuel} was raked to "
+                        f"{entry.get('shape_target')!r}, not the vendored NEED mean "
+                        f"{fact[fuel]}."
+                    )
+                if fuel in factors and not _close(
+                    entry.get("target"), float(fact[fuel]) * factors[fuel], 1e-9
+                ):
+                    failures.append(
+                        f"{stage}: {margin} cell {key!r} {fuel} target "
+                        f"{entry.get('target')!r} is not the NEED mean times the level "
+                        f"factor {factors[fuel]}."
+                    )
+            details["cells_fact_checked"] = int(details["cells_fact_checked"]) + 1
+        worst = block["max_abs_relative_deviation"]
+        for fuel in (ELECTRICITY_KWH, GAS_KWH):
+            value = _finite_number(worst.get(fuel), label=f"{stage}.{margin}.{fuel}")
+            details["worst"][f"{margin}:{fuel}"] = value
+            if value > tolerance:
+                failures.append(
+                    f"{stage}: {margin} {fuel} cell mean deviates {value:.4f} "
+                    f"from its levelled NEED target, above the residual tolerance "
+                    f"{tolerance}."
+                )
+    zero_cells = receipt.get("zero_current_cells")
+    if zero_cells:
+        failures.append(
+            f"{stage}: {len(zero_cells)} NEED cell(s) had a zero current mean and "
+            "could not be raked."
+        )
+    if declared.get("gas_connected") == GAS_CONNECTED_PUBLISHED_METER_SHARE:
+        connection = receipt.get("gas_connection")
+        if (
+            not isinstance(connection, Mapping)
+            or connection.get("rule") != GAS_CONNECTED_PUBLISHED_METER_SHARE
+        ):
+            failures.append(
+                f"{stage}: gas connection was not imposed at the published meter share."
+            )
+        else:
+            shares, _ = published_gas_connected_shares(declared)
+            by_region = connection.get("by_region")
+            by_region = by_region if isinstance(by_region, Mapping) else {}
+            if not by_region:
+                failures.append(f"{stage}: gas-connection receipt names no region.")
+            unknown = sorted(set(by_region) - set(shares))
+            if unknown:
+                failures.append(
+                    f"{stage}: gas-connection receipt names regions outside the "
+                    f"crosswalk {unknown}."
+                )
+            # Every region the frame carried is in the receipt (the imposition
+            # walks the frame's regions); each with a published share is checked.
+            for region, entry in sorted(by_region.items()):
+                target = shares.get(region)
+                if target is None or not isinstance(entry, Mapping):
+                    continue
+                after = entry.get("share_after")
+                shortfall = entry.get("shortfall") or 0.0
+                if not isinstance(after, int | float):
+                    failures.append(f"{stage}: {region} has no connected share.")
+                    continue
+                details["connected_share"][region] = {
+                    "published": target,
+                    "achieved": float(after),
+                    "shortfall": float(shortfall),
+                }
+                if (
+                    float(shortfall) <= 0
+                    and abs(float(after) - target) > share_tolerance
+                ):
+                    failures.append(
+                        f"{stage}: {region} gas-connected share {float(after):.4f} is "
+                        f"not the published {target:.4f} (tolerance {share_tolerance})."
+                    )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _realization_target_gate(
@@ -205,7 +463,11 @@ def _realization_target_gate(
     if bool(receipt.get("cap_bound")) and not bool(parameters.get("allow_cap_bound")):
         failures.append(f"{stage}: cap_bound is true but not allowed.")
     details = {"target": target, "abs_realization_deviation": deviation}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _student_loan_plans_gate(
@@ -228,7 +490,9 @@ def _student_loan_plans_gate(
             failures.append(f"{stage}: missing receipt for {plan}.")
             continue
         stock = _finite_number(receipt.get("stock"), label=f"{stage}.{plan}.stock")
-        expected = _finite_number(declared_stock, label=f"{stage}.{plan}.declared_stock")
+        expected = _finite_number(
+            declared_stock, label=f"{stage}.{plan}.declared_stock"
+        )
         if stock != expected:
             failures.append(f"{stage}: {plan} stock {stock} != declared {expected}.")
         final = _finite_number(
@@ -249,7 +513,11 @@ def _student_loan_plans_gate(
                 f"{stage}: {plan} realization_deviation {deviation} exceeds {max_deviation}."
             )
     details = {"plans_checked": len(declared_stocks), "worst_abs_deviation": worst}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _cgt_incidence_mass_gate(
@@ -258,7 +526,9 @@ def _cgt_incidence_mass_gate(
     parameters: Mapping[str, object],
 ) -> GateResult:
     check = "cgt_incidence_mass"
-    mass = _mapping(evidence.get("mass_by_clone_flag"), label=f"{stage}.mass_by_clone_flag")
+    mass = _mapping(
+        evidence.get("mass_by_clone_flag"), label=f"{stage}.mass_by_clone_flag"
+    )
     original = _finite_number(mass.get("false"), label=f"{stage}.mass.false")
     clone = _finite_number(mass.get("true"), label=f"{stage}.mass.true")
     tolerance = _finite_number(
@@ -286,7 +556,11 @@ def _cgt_incidence_mass_gate(
         "floating_point_relative_tolerance": _FLOAT_RELATIVE_TOLERANCE,
         "effective_relative_tolerance": effective_tolerance,
     }
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _spi_support_channel_gate(
@@ -305,13 +579,24 @@ def _spi_support_channel_gate(
     if abs(share - expected_share) > _finite_number(
         parameters.get("absolute_tolerance", 0.0), label=f"{stage}.absolute_tolerance"
     ):
-        failures.append(f"{stage}: spi_prior_mass_share {share} != declared {expected_share}.")
+        failures.append(
+            f"{stage}: spi_prior_mass_share {share} != declared {expected_share}."
+        )
     if evidence.get("household_weight_kind") != parameters.get("household_weight_kind"):
         failures.append(f"{stage}: household_weight_kind drifted.")
-    if int(evidence.get("spi_households", 0)) < int(parameters["minimum_spi_households"]):
+    if int(evidence.get("spi_households", 0)) < int(
+        parameters["minimum_spi_households"]
+    ):
         failures.append(f"{stage}: spi_households below declared minimum.")
-    details = {"spi_prior_mass_share": share, "spi_households": evidence.get("spi_households")}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    details = {
+        "spi_prior_mass_share": share,
+        "spi_households": evidence.get("spi_households"),
+    }
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _spi_income_spine_gate(
@@ -333,15 +618,26 @@ def _spi_income_spine_gate(
     expected_share = _finite_number(
         parameters["spi_prior_mass_share"], label=f"{stage}.spi_prior_mass_share"
     )
-    share = _finite_number(prior.get("mass_share"), label=f"{stage}.spi_prior.mass_share")
+    share = _finite_number(
+        prior.get("mass_share"), label=f"{stage}.spi_prior.mass_share"
+    )
     if abs(share - expected_share) > _finite_number(
         parameters.get("absolute_tolerance", 0.0), label=f"{stage}.absolute_tolerance"
     ):
-        failures.append(f"{stage}: spi prior mass share {share} != declared {expected_share}.")
+        failures.append(
+            f"{stage}: spi prior mass share {share} != declared {expected_share}."
+        )
     if int(targets.get("count", 0)) < int(parameters["minimum_target_count"]):
         failures.append(f"{stage}: target count below declared minimum.")
-    details = {"identity_rows": identity.get("rows_checked"), "target_count": targets.get("count")}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    details = {
+        "identity_rows": identity.get("rows_checked"),
+        "target_count": targets.get("count"),
+    }
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _source_signal_gate(
@@ -350,20 +646,37 @@ def _source_signal_gate(
     parameters: Mapping[str, object],
 ) -> GateResult:
     check = "source_signal"
-    rows = _mapping(evidence.get("source_signal_rows"), label=f"{stage}.source_signal_rows")
-    allowed_zero = {str(column) for column in parameters.get("structural_zero_columns", ())}
-    reported_zero = {str(column) for column in evidence.get("structural_zero_columns", ())}
+    rows = _mapping(
+        evidence.get("source_signal_rows"), label=f"{stage}.source_signal_rows"
+    )
+    allowed_zero = {
+        str(column) for column in parameters.get("structural_zero_columns", ())
+    }
+    reported_zero = {
+        str(column) for column in evidence.get("structural_zero_columns", ())
+    }
     minimum = int(parameters["minimum_signal_rows"])
     failures: list[str] = []
     if reported_zero - allowed_zero:
-        failures.append(f"{stage}: unreviewed structural zero columns {sorted(reported_zero - allowed_zero)}.")
+        failures.append(
+            f"{stage}: unreviewed structural zero columns {sorted(reported_zero - allowed_zero)}."
+        )
     for column, value in rows.items():
         if str(column) in allowed_zero:
             continue
         if int(value) < minimum:
-            failures.append(f"{stage}: {column} has {value} source-signal row(s), below {minimum}.")
-    details = {"columns_checked": len(rows), "structural_zero_columns": sorted(reported_zero)}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+            failures.append(
+                f"{stage}: {column} has {value} source-signal row(s), below {minimum}."
+            )
+    details = {
+        "columns_checked": len(rows),
+        "structural_zero_columns": sorted(reported_zero),
+    }
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _age_tail_targets_gate(
@@ -372,8 +685,12 @@ def _age_tail_targets_gate(
     parameters: Mapping[str, object],
 ) -> GateResult:
     check = "age_tail_targets"
-    achieved = _mapping(evidence.get("achieved_weighted"), label=f"{stage}.achieved_weighted")
-    targets = _mapping(evidence.get("band_populations"), label=f"{stage}.band_populations")
+    achieved = _mapping(
+        evidence.get("achieved_weighted"), label=f"{stage}.achieved_weighted"
+    )
+    targets = _mapping(
+        evidence.get("band_populations"), label=f"{stage}.band_populations"
+    )
     max_relative = _finite_number(
         parameters["maximum_relative_deviation"],
         label=f"{stage}.maximum_relative_deviation",
@@ -393,9 +710,15 @@ def _age_tail_targets_gate(
         relative = abs(value - target) / max(abs(target), 1.0)
         worst = max(worst, relative)
         if relative > max_relative:
-            failures.append(f"{stage}: {key} relative deviation {relative} exceeds {max_relative}.")
+            failures.append(
+                f"{stage}: {key} relative deviation {relative} exceeds {max_relative}."
+            )
     details = {"bands_checked": len(targets), "worst_relative_deviation": worst}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _cgt_band_donor_support_gate(
@@ -417,16 +740,32 @@ def _cgt_band_donor_support_gate(
         if not isinstance(row, Mapping):
             failures.append(f"{stage}: band row is not an object.")
             continue
-        realized_min = _finite_number(row.get("realized_min_gain"), label=f"{stage}.realized_min_gain")
-        realized_max = _finite_number(row.get("realized_max_gain"), label=f"{stage}.realized_max_gain")
-        lower_limit = _finite_number(row.get("lower_limit"), label=f"{stage}.lower_limit")
+        realized_min = _finite_number(
+            row.get("realized_min_gain"), label=f"{stage}.realized_min_gain"
+        )
+        realized_max = _finite_number(
+            row.get("realized_max_gain"), label=f"{stage}.realized_max_gain"
+        )
+        lower_limit = _finite_number(
+            row.get("lower_limit"), label=f"{stage}.lower_limit"
+        )
         band_floor = max(global_lower, lower_limit)
         if realized_min < band_floor:
-            failures.append(f"{stage}: realized gain {realized_min} falls below {band_floor}.")
-        if upper is not None and realized_max >= _finite_number(upper, label="capital_gains.upper"):
-            failures.append(f"{stage}: realized gain {realized_max} exceeds open upper bound.")
+            failures.append(
+                f"{stage}: realized gain {realized_min} falls below {band_floor}."
+            )
+        if upper is not None and realized_max >= _finite_number(
+            upper, label="capital_gains.upper"
+        ):
+            failures.append(
+                f"{stage}: realized gain {realized_max} exceeds open upper bound."
+            )
     details = {"bands_checked": len(bands), "minimum_lower_limit": global_lower}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _cgt_imputation_summary_gate(
@@ -447,7 +786,11 @@ def _cgt_imputation_summary_gate(
         if value < 0.0:
             failures.append(f"{stage}: {key} is negative.")
     details = {"band_rows": len(rows), "taxpayer_mass": evidence.get("taxpayer_mass")}
-    return _fail(stage, check, failures, details) if failures else _pass(stage, check, details)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
 
 
 def _latent_attribute_realization_gate(

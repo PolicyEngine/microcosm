@@ -68,6 +68,38 @@ US_GEOGRAPHY_LADDER_COLUMNS = (
 #: Richmond) — the county rung's regression anchor from microcosm #34.
 US_NYC_COUNTY_FIPS = ("36005", "36047", "36061", "36081", "36085")
 
+
+def non_text_county_fips_failure(values: pd.Series, *, column: str) -> str | None:
+    """Return a failure message when a county column is not carried as text.
+
+    PolicyEngine-US 2.0.0 requires county FIPS as a five-digit *string* and
+    rejects every non-text value the same way, because stringifying whatever
+    arrived enforced the digit count alone: an integer whose decimal form
+    happens to be five digits (``36061``) was silently accepted, while the same
+    mistake for a state whose code carries a leading zero (``6037`` meaning Los
+    Angeles County ``06037``) was reported as an absent county.  The width and
+    digit gates below run on ``.astype(str)``, which reproduces exactly that
+    asymmetry, so the raw element type is checked here first.  The engine
+    accepts ``str`` and ``bytes`` (and their numpy subclasses); anything else
+    is an absent county to it, however it is spelled.
+    """
+    offenders = sorted(
+        {
+            type(value).__name__
+            for value in values.tolist()
+            if not isinstance(value, (str, bytes))
+        }
+    )
+    if not offenders:
+        return None
+    return (
+        f"{column}: values are carried as {', '.join(offenders)} rather than "
+        "text; PolicyEngine-US 2.x rejects a non-string county FIPS however it "
+        "is spelled, so an integer code that happens to render as five digits "
+        "would pass the width gate and still fail SPM measurement"
+    )
+
+
 US_BLOCK_LADDER_SCHEMA_VERSION = 1
 US_BLOCK_LADDER_KIND = "us_block_ladder"
 
@@ -465,6 +497,11 @@ def us_geography_ladder_gate(
             details=details,
         )
 
+    non_text = non_text_county_fips_failure(
+        household["county_fips"], column="county_fips"
+    )
+    if non_text is not None:
+        failures.append(non_text)
     block = household["block_geoid"].astype(str).to_numpy()
     tract = household["tract_geoid"].astype(str).to_numpy()
     county = household["county_fips"].astype(str).to_numpy()
