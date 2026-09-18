@@ -1,0 +1,55 @@
+native-retention-seal lane — the 1/1000 after-run, repeated at the finished head
+                              on a quiet machine
+
+why this run exists, both reasons:
+ 1. The first after-run (RUN-RECORD-after.txt, pid 82878) measured
+    ad77fe3874d2cc5127bad7caf2f6a9cb05ed3ccb. After it, an adversarial
+    verification pass found three divergences in the seal's object-axis value
+    fold and one gate this change broke, and the fixes changed
+    survey_population_replay.py. The brief asks for the cold run and its
+    required replay at the implemented head, so the measured head has to be
+    the head that ships.
+ 2. Report section 7d could not attribute a +6 GB rise in the replay phase's
+    peak RSS, and named the one candidate it could not test: the first run had
+    67-80 GB free throughout where the base branch's runs shared a machine
+    holding 43-62 GB, and pages are returned under pressure and retained
+    without it. Question 5 asked whether to repeat it on a quiet machine. This
+    run is that repeat, launched with nothing else of this lane's running.
+
+launched: 2026-09-18T01:53:40Z (gate opened at 79.7 GB available > 40 GB)
+pid:  4351
+pgid: 4351   (session leader; os.setsid() in setsid_exec.py, pid kept across exec)
+head: f4b4db9a2133856ba875a0e5490e5b4dada97e14 -- the finished head, with the
+      seal fixes and the unpacked seal records
+tree: /Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-after2
+      a fresh throwaway detached worktree, created for this run
+harness: a byte-identical copy of the base branch's committed
+      experiments/native-scale-transport/harness19_after_with_required_replay.py
+      (sha256 b020bec601b9aea7f99eb9675e7cbd879d48a7fad850e974aa2b9f34beb7d5da,
+      verified after copying), copied rather than edited
+launcher: experiments/native-retention-seal/launch_after.sh, unchanged -- it
+      takes the tree, the head and the label from the environment, so the same
+      committed launcher drives both after-runs
+env: MEASURE_RUN=/Users/maxghenis/PolicyEngine/_recovered/pilot-runs/native45-v5/run
+     (read-only, the same staged pilot sources the first after-run read)
+     MEASURE_LABEL=native-retention-seal-after2-1-1000-quiet
+ceilings: RLIMIT_CPU hard 9060 s (setsid_exec), harness soft 9000 CPU-s,
+          12000 wall-s, 48 GiB RSS -- the first after-run's, unchanged, and
+          none lowered
+machine at launch: nothing else of this lane's was running. The 21-file
+      dependent battery is deliberately held until this run exits, because
+      this run's whole second purpose is a reading taken without contention.
+kill, if ever needed: kill 4351   -- exact pid only, never a pattern kill
+
+what this run must reproduce, for the change to be sound:
+  - status COMPLETED_NINETEEN_NODE_AND_REQUIRED_REPLAY
+  - manifest key identical between the cold run and the replay
+  - store bytes identical: 0 paths added, 0 changed
+  - the same manifest key as the first after-run, a08d5536bcc93e0e065e5756
+    a8453c78c526673b998274523906fd77546c015f, because the only source file
+    that changed between the two heads is survey_population_replay.py, which
+    is in no stage roster and in none of the inventory's 124 contracts. If the
+    key moves, that reasoning is wrong and the report says so instead.
+
+--- result ---
+(follows when the run exits)
