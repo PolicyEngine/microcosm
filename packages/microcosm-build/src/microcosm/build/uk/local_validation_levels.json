@@ -5,10 +5,10 @@
   "source_feed": {
     "artifact": ".codex-work/consumer_facts_uk.jsonl",
     "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-    "sha256": "6d039dd869dc1704b0c98fd1d2db72965b1c38de92c165fe4e12c3f530951e2d",
-    "manifest_sha256": "20ac5d22e7d8f3cdb83dbd7fd617e37e290f5c4c480097057f959aa14033391d",
+    "sha256": "8dc4336d776533d0c878d008311f81f936568d6471ee82f025dc8c996ad8867a",
+    "manifest_sha256": "0ff28c71e7d3c6b61ad776ff223aaad32aa01c8bb832e9834b8969a232ad77d2",
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f"
+    "source_commit": "78466057401af48f9a53da41b87295241e4af1ba"
   },
   "rows": [
     {
@@ -19,10 +19,7 @@
       "in_sample": false,
       "geography_id": "S92000003",
       "period": 2025,
-      "estimate": {
-        "metric_name": "rent/private_rent",
-        "reduction": "sum"
-      },
+      "estimate": {"metric_name": "rent/private_rent", "reduction": "sum"},
       "available_component_selector": {
         "record_set_id": "ons.pipr.june2026.average_rent_by_area",
         "source_measure_id": "private_rent",
@@ -39,10 +36,7 @@
       "in_sample": false,
       "geography_id": "W92000004",
       "period": 2025,
-      "estimate": {
-        "metric_name": "rent/private_rent",
-        "reduction": "sum"
-      },
+      "estimate": {"metric_name": "rent/private_rent", "reduction": "sum"},
       "available_component_selector": {
         "record_set_id": "ons.pipr.june2026.average_rent_by_area",
         "source_measure_id": "private_rent",
@@ -59,10 +53,7 @@
       "in_sample": true,
       "geography_id": "W92000004",
       "period": 2025,
-      "estimate": {
-        "target_id": "dwp.uc.households_by_area",
-        "reduction": "sum"
-      },
+      "estimate": {"target_id": "dwp.uc.households_by_area", "reduction": "sum"},
       "needs_facts": "The pinned feed has constituency UC households but no Wales-country UC household benchmark row.",
       "evidence": "uk-data#206 and uk-data#316 Welsh constituency-sum credibility check."
     },
@@ -74,16 +65,10 @@
       "in_sample": true,
       "geography_id": "W92000004",
       "period": 2025,
-      "estimate": {
-        "target_id": "hmrc.employment_income.amount",
-        "reduction": "sum"
-      },
+      "estimate": {"target_id": "hmrc.employment_income.amount", "reduction": "sum"},
       "benchmark_selector": {
         "record_set_id": "hmrc.ty2023_24.spi.by_parliamentary_constituency",
-        "source_measure_ids": [
-          "employment_income_count",
-          "employment_income_mean"
-        ],
+        "source_measure_ids": ["employment_income_count", "employment_income_mean"],
         "geography_id": "W92000004",
         "fact_period": 2023,
         "reduction": "count_x_mean"
@@ -98,16 +83,10 @@
       "in_sample": true,
       "geography_id": "W92000004",
       "period": 2025,
-      "estimate": {
-        "target_id": "hmrc.self_employment_income.amount",
-        "reduction": "sum"
-      },
+      "estimate": {"target_id": "hmrc.self_employment_income.amount", "reduction": "sum"},
       "benchmark_selector": {
         "record_set_id": "hmrc.ty2023_24.spi.by_parliamentary_constituency",
-        "source_measure_ids": [
-          "self_employment_income_count",
-          "self_employment_income_mean"
-        ],
+        "source_measure_ids": ["self_employment_income_count", "self_employment_income_mean"],
         "geography_id": "W92000004",
         "fact_period": 2023,
         "reduction": "count_x_mean"
@@ -122,10 +101,7 @@
       "in_sample": false,
       "geography_id": "E92000001",
       "period": 2025,
-      "estimate": {
-        "metric_name": "council_tax/net",
-        "reduction": "sum"
-      },
+      "estimate": {"metric_name": "council_tax/net", "reduction": "sum"},
       "benchmark_selector": {
         "record_set_id": "mhclg.ct_collection_2025_26.table_5.net_collectable_debit.fy2025",
         "source_measure_id": "amount",
@@ -142,10 +118,7 @@
       "in_sample": false,
       "geography_id": "W92000004",
       "period": 2025,
-      "estimate": {
-        "metric_name": "council_tax/net",
-        "reduction": "sum"
-      },
+      "estimate": {"metric_name": "council_tax/net", "reduction": "sum"},
       "benchmark_selector": {
         "record_set_id": "welshgov.ct_collection_2025_26.table_2.wales",
         "source_measure_id": "net_collectable_debit",
@@ -162,10 +135,7 @@
       "in_sample": false,
       "geography_id": "S92000003",
       "period": 2025,
-      "estimate": {
-        "metric_name": "council_tax/net",
-        "reduction": "sum"
-      },
+      "estimate": {"metric_name": "council_tax/net", "reduction": "sum"},
       "benchmark_selector": {
         "record_set_id": "scotgov.slgfs_2024_25.table_2_8.council_tax_income_after_ctr.scotland",
         "source_measure_id": "council_tax_income_after_ctr",
@@ -182,10 +152,7 @@
       "in_sample": false,
       "geography_id": "all_uk_regions",
       "period": 2025,
-      "estimate": {
-        "target_id": "ons.public_sector_employment",
-        "reduction": "sum_by_region"
-      },
+      "estimate": {"target_id": "ons.public_sector_employment", "reduction": "sum_by_region"},
       "needs_facts": "The pinned feed carries the national ONS PSE control but no regional PSE record set; a Chronicle fact package is required.",
       "evidence": "uk-data national PSE credibility test; microcosm#147 I7 regional placeholder ruling."
     }

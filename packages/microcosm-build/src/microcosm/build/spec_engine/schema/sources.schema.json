@@ -8588,6 +8588,13 @@
         "positive_gas_spend"
        ]
       },
+      "connection_fallback_regions": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
       "disconnect_rule": {
        "enum": [
         "lowest_drawn_gas_first"
@@ -8609,6 +8616,1052 @@
        "enum": [
         "actual_temperature"
        ]
+      }
+     },
+     "if": {
+      "required": [
+       "gas_connected"
+      ],
+      "properties": {
+       "gas_connected": {
+        "const": "published_meter_share"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "connection_resource",
+       "connection_period_value",
+       "connection_rule",
+       "connection_fallback",
+       "connection_fallback_regions",
+       "disconnect_rule"
+      ]
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "lowercase_columns",
+      "survey_years",
+      "cars_clip",
+      "age_band_edges",
+      "columns",
+      "codes",
+      "codebook_status"
+     ],
+     "properties": {
+      "kind": {
+       "const": "clean_nts_travel_tables"
+      },
+      "lowercase_columns": {
+       "type": "boolean"
+      },
+      "survey_years": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "cars_clip": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "age_band_edges": {
+       "type": "array",
+       "items": {
+        "type": "integer"
+       }
+      },
+      "columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "household_id",
+        "individual_id",
+        "trip_id",
+        "survey_year",
+        "region",
+        "income_band",
+        "cars",
+        "household_size",
+        "household_weight",
+        "age_band",
+        "sex",
+        "main_mode",
+        "trip_weight",
+        "short_walk_multiplier"
+       ],
+       "properties": {
+        "household_id": {
+         "type": "string"
+        },
+        "individual_id": {
+         "type": "string"
+        },
+        "trip_id": {
+         "type": "string"
+        },
+        "survey_year": {
+         "type": "string"
+        },
+        "region": {
+         "type": "string"
+        },
+        "income_band": {
+         "type": "string"
+        },
+        "cars": {
+         "type": "string"
+        },
+        "household_size": {
+         "type": "string"
+        },
+        "household_weight": {
+         "type": "string"
+        },
+        "age_band": {
+         "type": "string"
+        },
+        "sex": {
+         "type": "string"
+        },
+        "frequency": {
+         "type": "string"
+        },
+        "main_mode": {
+         "type": "string"
+        },
+        "trip_weight": {
+         "type": "string"
+        },
+        "short_walk_multiplier": {
+         "type": "string"
+        }
+       }
+      },
+      "codes": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "region",
+        "income_band",
+        "female",
+        "main_mode",
+        "frequency"
+       ],
+       "properties": {
+        "region": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "string"
+         }
+        },
+        "income_band": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "integer"
+         }
+        },
+        "female": {
+         "type": "integer"
+        },
+        "main_mode": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "integer"
+         }
+        },
+        "frequency": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "integer"
+         }
+        }
+       }
+      },
+      "codebook_status": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "seed",
+      "n_estimators",
+      "predictors",
+      "categorical_predictors",
+      "income_band_edges",
+      "region_remap",
+      "trip_rates_resource",
+      "trip_rates_period_value",
+      "car_availability_resource",
+      "car_availability_period_value",
+      "fallback"
+     ],
+     "properties": {
+      "kind": {
+       "const": "impute_bus_use_band"
+      },
+      "output": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "n_estimators": {
+       "type": "integer"
+      },
+      "predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "categorical_predictors": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "income_band_edges": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "region_remap": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "trip_rates_resource": {
+       "type": "string"
+      },
+      "trip_rates_period_value": {
+       "type": "integer"
+      },
+      "car_availability_resource": {
+       "type": "string"
+      },
+      "car_availability_period_value": {
+       "type": "integer"
+      },
+      "fallback": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "resource",
+        "period_value",
+        "share_geography",
+        "share_age_coverage",
+        "applied_to",
+        "transport_mode_groupby_value_id",
+        "older_age_band",
+        "age_threshold",
+        "user_definition",
+        "non_user_band",
+        "bands"
+       ],
+       "properties": {
+        "resource": {
+         "type": "string"
+        },
+        "period_value": {
+         "type": "integer"
+        },
+        "share_geography": {
+         "type": "string"
+        },
+        "share_age_coverage": {
+         "enum": [
+          "all_ages"
+         ]
+        },
+        "applied_to": {
+         "enum": [
+          "every_person"
+         ]
+        },
+        "transport_mode_groupby_value_id": {
+         "type": "string"
+        },
+        "older_age_band": {
+         "type": "string"
+        },
+        "age_threshold": {
+         "type": "integer"
+        },
+        "user_definition": {
+         "enum": [
+          "at_least_once_a_year"
+         ]
+        },
+        "non_user_band": {
+         "type": "string"
+        },
+        "bands": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "id",
+           "trips_per_year",
+           "labels"
+          ],
+          "properties": {
+           "id": {
+            "type": "string"
+           },
+           "trips_per_year": {
+            "type": "number"
+           },
+           "labels": {
+            "type": "array",
+            "items": {
+             "type": "string"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "outputs",
+      "household_output",
+      "annualisation_weeks",
+      "trip_rates_resource",
+      "trip_rates_period_value",
+      "band_midpoints"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_trips_from_band_means"
+      },
+      "outputs": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "household_output": {
+       "type": "string"
+      },
+      "annualisation_weeks": {
+       "type": "number"
+      },
+      "trip_rates_resource": {
+       "type": "string"
+      },
+      "trip_rates_period_value": {
+       "type": "integer"
+      },
+      "band_midpoints": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "number"
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "basis",
+      "rules"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_bus_pass_eligibility"
+      },
+      "output": {
+       "type": "string"
+      },
+      "basis": {
+       "type": "string"
+      },
+      "rules": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "regions"
+        ],
+        "properties": {
+         "regions": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "min_age": {
+          "type": "integer"
+         },
+         "max_age_exclusive": {
+          "type": "integer"
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "column",
+      "trips_columns",
+      "eligibility_column",
+      "fiscal_start",
+      "trip_rates_resource",
+      "trip_rates_period_value",
+      "population_resource",
+      "population_period_value",
+      "areas",
+      "unpriced_regions",
+      "scope_translation"
+     ],
+     "properties": {
+      "kind": {
+       "const": "price_bus_journeys"
+      },
+      "column": {
+       "type": "string"
+      },
+      "trips_columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "bus_in_london",
+        "other_local_bus"
+       ],
+       "properties": {
+        "bus_in_london": {
+         "type": "string"
+        },
+        "other_local_bus": {
+         "type": "string"
+        }
+       }
+      },
+      "eligibility_column": {
+       "type": "string"
+      },
+      "fiscal_start": {
+       "type": "string"
+      },
+      "trip_rates_resource": {
+       "type": "string"
+      },
+      "trip_rates_period_value": {
+       "type": "integer"
+      },
+      "population_resource": {
+       "type": "string"
+      },
+      "population_period_value": {
+       "type": "integer"
+      },
+      "areas": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "label",
+         "series",
+         "receipts",
+         "boardings",
+         "concessionary",
+         "trips_concept",
+         "trips_basis",
+         "population_geography_ids"
+        ],
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "series": {
+          "enum": [
+           "bus_in_london",
+           "other_local_bus"
+          ]
+         },
+         "regions": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "receipts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "groupby_value_id": {
+            "type": "string"
+           },
+           "dimension_values": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           },
+           "sum_over": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         },
+         "boardings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "groupby_value_id": {
+            "type": "string"
+           },
+           "dimension_values": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           },
+           "sum_over": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         },
+         "concessionary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "groupby_value_id": {
+            "type": "string"
+           },
+           "dimension_values": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           },
+           "sum_over": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         },
+         "trips_concept": {
+          "type": "string"
+         },
+         "trips_basis": {
+          "enum": [
+           "published_series_rate",
+           "england_other_local_bus_rate_as_proxy"
+          ]
+         },
+         "population_geography_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      },
+      "unpriced_regions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "scope_translation": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "support_column",
+      "trips_columns",
+      "eligibility_column",
+      "fiscal_start",
+      "trip_rates_resource",
+      "trip_rates_period_value",
+      "population_resource",
+      "population_period_value",
+      "pricing_areas",
+      "unpriced_regions",
+      "support_areas",
+      "basis"
+     ],
+     "properties": {
+      "kind": {
+       "const": "record_support_per_journey"
+      },
+      "support_column": {
+       "type": "string"
+      },
+      "trips_columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "bus_in_london",
+        "other_local_bus"
+       ],
+       "properties": {
+        "bus_in_london": {
+         "type": "string"
+        },
+        "other_local_bus": {
+         "type": "string"
+        }
+       }
+      },
+      "eligibility_column": {
+       "type": "string"
+      },
+      "fiscal_start": {
+       "type": "string"
+      },
+      "trip_rates_resource": {
+       "type": "string"
+      },
+      "trip_rates_period_value": {
+       "type": "integer"
+      },
+      "population_resource": {
+       "type": "string"
+      },
+      "population_period_value": {
+       "type": "integer"
+      },
+      "pricing_areas": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "label",
+         "series",
+         "receipts",
+         "boardings",
+         "concessionary",
+         "trips_concept",
+         "trips_basis",
+         "population_geography_ids"
+        ],
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "series": {
+          "enum": [
+           "bus_in_london",
+           "other_local_bus"
+          ]
+         },
+         "regions": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "receipts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "groupby_value_id": {
+            "type": "string"
+           },
+           "dimension_values": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           },
+           "sum_over": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         },
+         "boardings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "groupby_value_id": {
+            "type": "string"
+           },
+           "dimension_values": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           },
+           "sum_over": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         },
+         "concessionary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "groupby_value_id": {
+            "type": "string"
+           },
+           "dimension_values": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           },
+           "sum_over": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         },
+         "trips_concept": {
+          "type": "string"
+         },
+         "trips_basis": {
+          "enum": [
+           "published_series_rate",
+           "england_other_local_bus_rate_as_proxy"
+          ]
+         },
+         "population_geography_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      },
+      "unpriced_regions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "support_areas": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "label",
+         "regions",
+         "reimbursement",
+         "net_support",
+         "boardings",
+         "concessionary"
+        ],
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "regions": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "reimbursement": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "groupby_value_id": {
+            "type": "string"
+           },
+           "dimension_values": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           },
+           "sum_over": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         },
+         "net_support": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "groupby_value_id": {
+            "type": "string"
+           },
+           "dimension_values": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           },
+           "sum_over": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         },
+         "boardings": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "groupby_value_id": {
+            "type": "string"
+           },
+           "dimension_values": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           },
+           "sum_over": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         },
+         "concessionary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "resource",
+           "concept"
+          ],
+          "properties": {
+           "resource": {
+            "type": "string"
+           },
+           "concept": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "groupby_value_id": {
+            "type": "string"
+           },
+           "dimension_values": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           },
+           "sum_over": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         }
+        }
+       }
+      },
+      "basis": {
+       "type": "string"
       }
      }
     }

@@ -1,0 +1,306 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "nts_car_availability.json",
+  "purpose": "DfT NTS0205 shares of households with no car or van, one, and two or more (England, survey years 2023 and 2024). Consumed by the NTS bus-travel stage's receipt of the frame's num_vehicles distribution against the published shares (microcosm#890 item A, carried by microcosm#930).",
+  "consumers": [
+    "uk_runtime.nts_bus_travel"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "78466057401af48f9a53da41b87295241e4af1ba",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 277183,
+    "facts_sha256": "8dc4336d776533d0c878d008311f81f936568d6471ee82f025dc8c996ad8867a",
+    "manifest_sha256": "0ff28c71e7d3c6b61ad776ff223aaad32aa01c8bb832e9834b8969a232ad77d2"
+  },
+  "selections": [
+    {
+      "label": "nts0205_household_car_availability_england",
+      "selector": {
+        "source_name": "dft",
+        "source_concept": [
+          "dft.households_no_car_share",
+          "dft.households_one_car_share",
+          "dft.households_two_plus_cars_share"
+        ],
+        "geography_id": "E92000001",
+        "period_type": "calendar_year",
+        "period_value": [
+          "2023",
+          "2024"
+        ]
+      },
+      "row_count": 6
+    }
+  ],
+  "row_count": 6,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0237373e16baae05b366a2ed",
+      "semantic_fact_key": "ledger_semantic_fact_v2_85161169b325f9bc59977495",
+      "source_record_id": "dft.nts2024.nts0205a.car_availability.cy2023.cy2023.no_car",
+      "concept": "dft.households_no_car_share",
+      "measure_id": "no_car",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "household",
+        "role": "resident_household"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dft.nts2024.nts0205a.car_availability.cy2023",
+        "groupby_dimension": "dft.car_availability_band",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "National Travel Survey 2024, table NTS0205 household car availability",
+        "source_file": "nts-2024-excel-tables.zip!nts0205.xlsx",
+        "source_sha256": "8bcc103e8f2398741ae2dce8e200d4fbbbf0e39afa0cc32d303434def69992e5",
+        "vintage": "nts_2024",
+        "raw_r2_key": "raw/dft/dft-nts-vehicle-ownership-2024/2024/f36b277c3bbb243858d171a8dcd3ad086d76d8afdb53d63b9884df6597071938/nts-2024-excel-tables.zip"
+      },
+      "value": 22.4483535780402
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_408e7a6e98f95110082a847a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d642166f2cb2c112d4b4567a",
+      "source_record_id": "dft.nts2024.nts0205a.car_availability.cy2024.cy2024.no_car",
+      "concept": "dft.households_no_car_share",
+      "measure_id": "no_car",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "household",
+        "role": "resident_household"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dft.nts2024.nts0205a.car_availability.cy2024",
+        "groupby_dimension": "dft.car_availability_band",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "National Travel Survey 2024, table NTS0205 household car availability",
+        "source_file": "nts-2024-excel-tables.zip!nts0205.xlsx",
+        "source_sha256": "8bcc103e8f2398741ae2dce8e200d4fbbbf0e39afa0cc32d303434def69992e5",
+        "vintage": "nts_2024",
+        "raw_r2_key": "raw/dft/dft-nts-vehicle-ownership-2024/2024/f36b277c3bbb243858d171a8dcd3ad086d76d8afdb53d63b9884df6597071938/nts-2024-excel-tables.zip"
+      },
+      "value": 21.784588632006
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c6785d856a4f536c72b7b2e0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6619b7566cedcadc43203ff4",
+      "source_record_id": "dft.nts2024.nts0205a.car_availability.cy2023.cy2023.one_car",
+      "concept": "dft.households_one_car_share",
+      "measure_id": "one_car",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "household",
+        "role": "resident_household"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dft.nts2024.nts0205a.car_availability.cy2023",
+        "groupby_dimension": "dft.car_availability_band",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "National Travel Survey 2024, table NTS0205 household car availability",
+        "source_file": "nts-2024-excel-tables.zip!nts0205.xlsx",
+        "source_sha256": "8bcc103e8f2398741ae2dce8e200d4fbbbf0e39afa0cc32d303434def69992e5",
+        "vintage": "nts_2024",
+        "raw_r2_key": "raw/dft/dft-nts-vehicle-ownership-2024/2024/f36b277c3bbb243858d171a8dcd3ad086d76d8afdb53d63b9884df6597071938/nts-2024-excel-tables.zip"
+      },
+      "value": 44.0060556986154
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4295590e0a69b11c8f49d3f5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f4bcb025f216b745b4693a29",
+      "source_record_id": "dft.nts2024.nts0205a.car_availability.cy2024.cy2024.one_car",
+      "concept": "dft.households_one_car_share",
+      "measure_id": "one_car",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "household",
+        "role": "resident_household"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dft.nts2024.nts0205a.car_availability.cy2024",
+        "groupby_dimension": "dft.car_availability_band",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "National Travel Survey 2024, table NTS0205 household car availability",
+        "source_file": "nts-2024-excel-tables.zip!nts0205.xlsx",
+        "source_sha256": "8bcc103e8f2398741ae2dce8e200d4fbbbf0e39afa0cc32d303434def69992e5",
+        "vintage": "nts_2024",
+        "raw_r2_key": "raw/dft/dft-nts-vehicle-ownership-2024/2024/f36b277c3bbb243858d171a8dcd3ad086d76d8afdb53d63b9884df6597071938/nts-2024-excel-tables.zip"
+      },
+      "value": 44.2490898162473
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a8434798a4f88de24ecff2d1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d936a616d098f02b3f5884e2",
+      "source_record_id": "dft.nts2024.nts0205a.car_availability.cy2023.cy2023.two_plus_cars",
+      "concept": "dft.households_two_plus_cars_share",
+      "measure_id": "two_plus_cars",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "household",
+        "role": "resident_household"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dft.nts2024.nts0205a.car_availability.cy2023",
+        "groupby_dimension": "dft.car_availability_band",
+        "groupby_value_id": "cy2023",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "National Travel Survey 2024, table NTS0205 household car availability",
+        "source_file": "nts-2024-excel-tables.zip!nts0205.xlsx",
+        "source_sha256": "8bcc103e8f2398741ae2dce8e200d4fbbbf0e39afa0cc32d303434def69992e5",
+        "vintage": "nts_2024",
+        "raw_r2_key": "raw/dft/dft-nts-vehicle-ownership-2024/2024/f36b277c3bbb243858d171a8dcd3ad086d76d8afdb53d63b9884df6597071938/nts-2024-excel-tables.zip"
+      },
+      "value": 33.5455907233445
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b13697e505f28ea011eca173",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9a80bbf7bb34db7fbbf36fc9",
+      "source_record_id": "dft.nts2024.nts0205a.car_availability.cy2024.cy2024.two_plus_cars",
+      "concept": "dft.households_two_plus_cars_share",
+      "measure_id": "two_plus_cars",
+      "unit": "percent",
+      "aggregation": "share",
+      "entity": {
+        "name": "household",
+        "role": "resident_household"
+      },
+      "geography": {
+        "id": "E92000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "dft.nts2024.nts0205a.car_availability.cy2024",
+        "groupby_dimension": "dft.car_availability_band",
+        "groupby_value_id": "cy2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "dft",
+        "source_table": "National Travel Survey 2024, table NTS0205 household car availability",
+        "source_file": "nts-2024-excel-tables.zip!nts0205.xlsx",
+        "source_sha256": "8bcc103e8f2398741ae2dce8e200d4fbbbf0e39afa0cc32d303434def69992e5",
+        "vintage": "nts_2024",
+        "raw_r2_key": "raw/dft/dft-nts-vehicle-ownership-2024/2024/f36b277c3bbb243858d171a8dcd3ad086d76d8afdb53d63b9884df6597071938/nts-2024-excel-tables.zip"
+      },
+      "value": 33.9663215517466
+    }
+  ]
+}

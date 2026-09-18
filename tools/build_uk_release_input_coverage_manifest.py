@@ -823,6 +823,10 @@ def build_manifest(
                 stage_name="was_wealth",
                 candidate_source=candidate_source,
             ),
+            "nts_bus_travel": _source_stage_family_coverage_contract(
+                stage_name="nts_bus_travel",
+                candidate_source=candidate_source,
+            ),
             "regional_property_uprating": _source_stage_family_coverage_contract(
                 stage_name="regional_property_uprating",
                 candidate_source=candidate_source,

@@ -591,12 +591,12 @@ def _synthetic_lcfs_donor(
     return person, pd.DataFrame(household)
 
 
-def test_stage_transform_imposes_bus_incidence_and_rakes_fares_to_the_facts() -> None:
+def test_stage_transform_prices_bus_fares_from_journeys() -> None:
     """End to end on synthetic inputs: the committed declaration minus the engine.
 
     The uprating step needs the installed engine and is dropped; the QRF is
     shrunk to four trees. Everything else is the committed lcfs_consumption
-    stage (#890 A, E2, I and D).
+    stage (#890 A, E2; #930 pricing).
     """
 
     import dataclasses
@@ -608,7 +608,6 @@ def test_stage_transform_imposes_bus_incidence_and_rakes_fares_to_the_facts() ->
         UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
         UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
     )
-    from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 
     committed = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
     operations = []
@@ -643,12 +642,22 @@ def test_stage_transform_imposes_bus_incidence_and_rakes_fares_to_the_facts() ->
             "household_gross_income": rng.uniform(5e3, 9e4, n),
         }
     )
+    ages = rng.integers(1, 90, 2 * n).astype(float)
     person = pd.DataFrame(
         {
             "person_id": np.arange(1, 2 * n + 1),
             "person_benunit_id": np.repeat(np.arange(1, n + 1), 2),
             "person_household_id": np.repeat(np.arange(1, n + 1), 2),
-            "age": rng.integers(1, 90, 2 * n).astype(float),
+            "age": ages,
+            # The nts_bus_travel stage's cells: journeys per series and the
+            # statutory concessionary eligibility (here, 66 and over).
+            "bus_in_london_trips": np.where(
+                np.repeat(regions, 2) == "LONDON", rng.uniform(0, 200, 2 * n), 0.0
+            ),
+            "other_local_bus_trips": np.where(
+                np.repeat(regions, 2) == "LONDON", 0.0, rng.uniform(0, 120, 2 * n)
+            ),
+            "bus_pass_eligible": ages >= 66,
         }
     )
     frame = uk_national_frame(
@@ -698,8 +707,7 @@ def test_stage_transform_imposes_bus_incidence_and_rakes_fares_to_the_facts() ->
     assert {
         "support_clip",
         "has_fuel_consumption",
-        "bus_use_incidence",
-        "bus_fare_rake",
+        "bus_pricing",
         "energy_pricing",
         "energy_rake",
     } <= set(evidence)
@@ -719,51 +727,53 @@ def test_stage_transform_imposes_bus_incidence_and_rakes_fares_to_the_facts() ->
     no_vehicle = household["num_vehicles"].to_numpy() == 0
     assert (out.loc[no_vehicle, "petrol_spending"] == 0.0).all()
     assert 0.95 < evidence["has_fuel_consumption"]["ice_share"]["rate"] < 0.97
-    # Bus: non-user households are zero, user cells hit the published totals.
-    incidence = evidence["bus_use_incidence"]
-    assert incidence["users_filled_from_positive_regime"] >= 0
-    assert (
-        incidence["users_in_scope"]
-        == incidence["users_drawn_positive"]
-        + (incidence["users_filled_from_positive_regime"])
-    )
-    assert 0.3 < incidence["household_user_share"] < 0.95
-    rake = evidence["bus_fare_rake"]
-    assert rake["scope"] == "users_only"
-    fares = out["bus_fare_spending"].to_numpy()
-    weights = result.weights_for("household").values
-    london_total = float(
-        np.dot(fares[regions == "LONDON"], weights[regions == "LONDON"])
-    )
-    published_london = float(
-        vendored_rows(
-            "dft_bus_value_anchors.json",
-            concept="dft.local_bus_passenger_fare_receipts",
-            fiscal_start="2024-04-01",
-            geography_id="E12000007",
-        )[0]["value"]
-    )
-    assert london_total == pytest.approx(published_london)
-    ni = regions == "NORTHERN_IRELAND"
-    assert float(np.dot(fares[ni], weights[ni])) == pytest.approx(
-        49_584_434.28 + 100_498_383.21
-    )
+    # Bus: fares are journeys times the published yield in every priced region;
+    # Wales keeps the chain's raw draw, clipped to donor support.
+    pricing = evidence["bus_pricing"]
+    assert pricing["chain_conditioned_on"] == "raw_draw"
+    assert pricing["unpriced_regions"] == ["WALES"]
     wales = regions == "WALES"
-    # The incidence override is imposed only where a fare cell levels the
-    # amounts; Wales (no published receipts) keeps the chain's raw draw, so
-    # its positive share is the QRF's, not the NTS user share.
-    assert incidence["households_outside_scope_keep_raw_draw"] == int(wales.sum())
-    assert incidence["users_in_scope"] == int((fares[~wales] > 0).sum())
-    donor_max = donor_household[list(BUS_FARE_LCFS_CODES)].sum(axis=1).max() * (
-        365.25 / 7
-    )
-    assert fares[wales].max() <= donor_max + 1e-6
-    assert {fit["label"] for fit in rake["fits"]} == {
-        "london",
+    assert pricing["households_priced"] == int((~wales).sum())
+    assert set(pricing["by_area"]) == {
+        "london_series",
         "england_outside_london",
         "scotland",
         "northern_ireland",
     }
+    fares = out["bus_fare_spending"].to_numpy()
+    prices = pricing["prices"]
+    fare_per_trip = {
+        "LONDON": prices["england_outside_london"]["fare_per_trip"],
+        "SOUTH_EAST": prices["england_outside_london"]["fare_per_trip"],
+        "NORTH_WEST": prices["england_outside_london"]["fare_per_trip"],
+        "SCOTLAND": prices["scotland"]["fare_per_trip"],
+        "NORTHERN_IRELAND": prices["northern_ireland"]["fare_per_trip"],
+    }
+    london_fare = prices["london_series"]["fare_per_trip"]
+    expected = np.zeros(n)
+    for row in person.itertuples(index=False):
+        h = int(row.person_household_id) - 1
+        region = regions[h]
+        if region == "WALES" or row.bus_pass_eligible:
+            continue
+        expected[h] += row.bus_in_london_trips * london_fare
+        expected[h] += row.other_local_bus_trips * fare_per_trip[region]
+    assert np.allclose(fares[~wales], expected[~wales])
+    donor_max = donor_household[list(BUS_FARE_LCFS_CODES)].sum(axis=1).max() * (
+        365.25 / 7
+    )
+    assert fares[wales].max() <= donor_max + 1e-6
+    # Every published factor is on the receipt beside its source records.
+    london = prices["london_series"]
+    assert london["yield_per_fare_paying_boarding"] == pytest.approx(
+        london["receipts"]["value"]
+        / (london["boardings"]["value"] - london["concessionary"]["value"])
+    )
+    assert london["boardings_per_trip"] == pytest.approx(
+        london["boardings"]["value"]
+        / (london["trips_per_person"]["value"] * london["population"]["value"])
+    )
+    assert pricing["by_area"]["london_series"]["frame_implied_boardings"] > 0
 
 
 def test_fuel_litres_audit_reads_the_vendored_prices_litres_and_obr_split() -> None:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate the hermetic charter-H2 UK spine parity fixture.
 
-The oracle is the legacy :class:`microcosm.build.plan.StagePlan`: all 30
+The oracle is the legacy :class:`microcosm.build.plan.StagePlan`: all 31
 stages are the current production transform classes.  Private source files
 are replaced only through their supported parsed-input seams.  The bundle's
 ``fixture.json`` is deliberately data-only so the graph's unbound UK registry
@@ -92,6 +92,7 @@ from microcosm.build.uk_runtime.lcfs_consumption import (
     BUS_FARE_LCFS_CODES,
     UKLCFSConsumptionStageTransform,
 )
+from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -136,11 +137,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 30
+UK_FIXTURE_STAGE_COUNT = 31
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 30-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 31-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -669,6 +670,82 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
     return pd.DataFrame(household), person
 
 
+def _nts_donors() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Synthetic NTS Household, Individual and Trip tables (2022-2024).
+
+    Column names and codes follow the stage's declared codebook: nine English
+    GOR codes, the three income bands, W2 household weights, banded ages,
+    the interview frequency band (1 = 3+ a week ... 7 = less than yearly or
+    never) and diary trips whose main mode is bus in London (7) or other
+    local bus (8), each with the trip weight and the short-walk multiplier.
+    """
+
+    households = _DONOR_ROWS
+    rows = np.arange(households, dtype=int)
+    household = pd.DataFrame(
+        {
+            "HouseholdID": 1000 + rows,
+            "SurveyYear": 2022 + rows % 3,
+            "HHoldGOR_B02ID": 1 + rows % 9,
+            "HHIncome2002_B02ID": 1 + rows % 3,
+            "NumCarVan": rows % 4,
+            "HHoldNumPeople": 1 + rows % 4,
+            "W2": 1.0 + (rows % 7) / 10.0,
+        }
+    )
+    person_rows = []
+    for household_id, size in zip(
+        household["HouseholdID"], household["HHoldNumPeople"], strict=True
+    ):
+        for member in range(int(size)):
+            index = int(household_id) * 10 + member
+            person_rows.append(
+                {
+                    "IndividualID": index,
+                    "HouseholdID": int(household_id),
+                    "Age_B01ID": 1 + (index % 10),
+                    "Sex_B01ID": 1 + (index % 2),
+                    # Frequent riders in the low-income, car-free households;
+                    # the never band elsewhere, with every band populated.
+                    "LocalBusFreq_B01ID": 1 + (index % 7),
+                }
+            )
+    individual = pd.DataFrame(person_rows)
+    trip_rows = []
+    trip_id = 1
+    for _, person in individual.iterrows():
+        band = int(person["LocalBusFreq_B01ID"])
+        # More trips for the frequent bands, none for the never band.
+        trips = max(0, 7 - band) if band < 7 else 0
+        london = (int(person["HouseholdID"]) - 1000) % 9 == 6
+        for t in range(trips):
+            trip_rows.append(
+                {
+                    "TripID": trip_id,
+                    "IndividualID": int(person["IndividualID"]),
+                    "HouseholdID": int(person["HouseholdID"]),
+                    "MainMode_B04ID": 7 if london else 8,
+                    "W5xHH": 1.0 + (t % 3) / 10.0,
+                    "JJXSC": 1.0,
+                }
+            )
+            trip_id += 1
+        # One non-bus trip per person so the mode filter is exercised.
+        trip_rows.append(
+            {
+                "TripID": trip_id,
+                "IndividualID": int(person["IndividualID"]),
+                "HouseholdID": int(person["HouseholdID"]),
+                "MainMode_B04ID": 3,
+                "W5xHH": 1.0,
+                "JJXSC": 1.0,
+            }
+        )
+        trip_id += 1
+    trip = pd.DataFrame(trip_rows)
+    return household, individual, trip
+
+
 def _etb_donor() -> pd.DataFrame:
     rows = np.arange(_DONOR_ROWS, dtype=float)
     return pd.DataFrame(
@@ -948,6 +1025,10 @@ def _fixture_stages(
             stage = _replace_operation(
                 stage, "fit_weighted_qrf_chain", n_estimators=_QRF_ESTIMATORS
             )
+        elif stage.stage == "nts_bus_travel":
+            stage = _replace_operation(
+                stage, "impute_bus_use_band", n_estimators=_QRF_ESTIMATORS
+            )
         elif stage.stage == "lcfs_consumption":
             stage = _replace_operation(
                 stage, "fit_weighted_qrf_chain", n_estimators=_QRF_ESTIMATORS
@@ -1104,6 +1185,9 @@ def _build_implementations(
     stages: Mapping[str, SourceStageSpec],
     raw_dir: Path,
     was: pd.DataFrame,
+    nts_household: pd.DataFrame,
+    nts_individual: pd.DataFrame,
+    nts_trip: pd.DataFrame,
     lcfs_household: pd.DataFrame,
     lcfs_person: pd.DataFrame,
     etb: pd.DataFrame,
@@ -1170,6 +1254,13 @@ def _build_implementations(
         "frs_brma": UKFRSBRMAStageTransform(stage=stages["frs_brma"], engine=engine),
         "was_wealth": UKWASWealthStageTransform(
             stage=stages["was_wealth"], engine=engine, donor=was
+        ),
+        "nts_bus_travel": UKNTSBusTravelStageTransform(
+            stage=stages["nts_bus_travel"],
+            engine=engine,
+            nts_household=nts_household,
+            nts_individual=nts_individual,
+            nts_trip=nts_trip,
         ),
         "regional_property_uprating": UKRegionalPropertyUpratingStageTransform(
             stage=stages["regional_property_uprating"]
@@ -1243,7 +1334,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 30-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 31-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")
@@ -1276,7 +1367,7 @@ def _run_legacy_plan(
 def legacy_oracle_frame(fixture: Path) -> Frame:
     """The legacy oracle's final frame on the fixture, computed live.
 
-    Rebuilds the same 30 transforms the graph's UK registry reconstructs from
+    Rebuilds the same 31 transforms the graph's UK registry reconstructs from
     ``fixture/sources``, runs them through the legacy StagePlan in this
     process, root included, and applies the one string normalization the
     fixture documents. The content identity is a byte-exact fingerprint of
@@ -1313,10 +1404,14 @@ def generate(output: Path) -> None:
     stage_map = {stage.stage: stage for stage in stages}
 
     was = _was_donor()
+    nts_household, nts_individual, nts_trip = _nts_donors()
     lcfs_household, lcfs_person = _lcfs_donors()
     etb = _etb_donor()
     spi_donor = _spi_donor()
     _write_csv(sources / "was.csv", was)
+    _write_csv(sources / "nts_household.csv", nts_household)
+    _write_csv(sources / "nts_individual.csv", nts_individual)
+    _write_csv(sources / "nts_trip.csv", nts_trip)
     _write_csv(sources / "lcfs_household.csv", lcfs_household)
     _write_csv(sources / "lcfs_person.csv", lcfs_person)
     _write_csv(sources / "etb.csv", etb)
@@ -1337,6 +1432,9 @@ def generate(output: Path) -> None:
         stages=stage_map,
         raw_dir=raw_dir,
         was=was,
+        nts_household=nts_household,
+        nts_individual=nts_individual,
+        nts_trip=nts_trip,
         lcfs_household=lcfs_household,
         lcfs_person=lcfs_person,
         etb=etb,
@@ -1374,7 +1472,7 @@ def generate(output: Path) -> None:
     descriptor = {
         "schema_version": "uk-spine-parity-fixture.v1",
         "description": (
-            "Data-only inputs for reconstructing the same 30 current UK stage "
+            "Data-only inputs for reconstructing the same 31 current UK stage "
             "transform classes used by the legacy StagePlan oracle."
         ),
         "stages": {stage.stage: _stage_payload(stage) for stage in stages},
@@ -1387,6 +1485,9 @@ def generate(output: Path) -> None:
         "inputs": {
             "frs_raw": "frs_raw",
             "was": "was.csv",
+            "nts_household": "nts_household.csv",
+            "nts_individual": "nts_individual.csv",
+            "nts_trip": "nts_trip.csv",
             "lcfs_household": "lcfs_household.csv",
             "lcfs_person": "lcfs_person.csv",
             "etb": "etb.csv",
@@ -1411,7 +1512,7 @@ def generate(output: Path) -> None:
         _normalization_markdown(), encoding="utf-8"
     )
     (output / "PRODUCED_BY.txt").write_text(
-        "tools/graph_uk_spine_fixture.py; current 30-transform legacy "
+        "tools/graph_uk_spine_fixture.py; current 31-transform legacy "
         "StagePlan oracle with parsed private-source seams. The acceptance "
         "test runs both sides from frs_raw in-process (root weights differ "
         "by one ulp between machines); the captured root tables serve the "

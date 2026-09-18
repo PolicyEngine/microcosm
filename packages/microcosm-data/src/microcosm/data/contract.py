@@ -416,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "211abff22b4eedf9cf69f4b43a6f77ca8966d61a386c1804c3fdb093b0e27aa0"
+    "0797d9a1861a1c1fedf1da70a3b95f756df6534482bb835409661531c8f4d7b2"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "462271cdc72631e4b6780be52b53d7ea7572ad97e9b91a00a1f3da199f56858c"
+    "e12d122a5e52e9a36b7a197a64316f4039a9811b2e8cde34870c820a861d5d76"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "8baa7f5c0db3f64c5e00859ff7fd2bd4cf2daf611367ec36f519d1e428af1ebd"
+    "af7017b2779756b4379f6af3cc5731677d7cb85e55f777751c6ffd8bee11e804"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -467,11 +467,15 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "preflight",
     ),
     "uk_stage_was_wealth_support": ("stage_health", "transferred"),
+    "uk_stage_nts_bus_travel_support": ("stage_health", "transferred"),
+    "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred"),
     "uk_stage_uc_deduction_attributes": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_bus_pricing": ("stage_health", "transferred"),
     "uk_stage_etb_vat_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support": ("stage_health", "transferred"),
+    "uk_stage_etb_services_support_rake": ("stage_health", "transferred"),
     "uk_stage_frs_hmrc_spine_leaves_signal": (
         "stage_health",
         "transferred",
@@ -553,11 +557,15 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_degenerate_release_surface",
         "uk_input_mass_parity",
         "uk_stage_was_wealth_support",
+        "uk_stage_nts_bus_travel_support",
+        "uk_stage_nts_bus_travel_facts",
         "uk_stage_uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support",
         "uk_stage_lcfs_consumption_energy_rake",
+        "uk_stage_lcfs_consumption_bus_pricing",
         "uk_stage_etb_vat_support",
         "uk_stage_etb_services_support",
+        "uk_stage_etb_services_support_rake",
         "uk_stage_frs_hmrc_spine_leaves_signal",
         "uk_stage_spi_support_channel_mass",
         "uk_stage_hmrc_spi_income_spine_identity",
@@ -706,14 +714,18 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_cgt_band_donors_support",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_etb_services_support",
+            "uk_stage_etb_services_support_rake",
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_frs_relationships_composition",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_lcfs_consumption_support",
+            "uk_stage_nts_bus_travel_facts",
+            "uk_stage_nts_bus_travel_support",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_student_loans_realization",
@@ -759,10 +771,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "778f5d32d421c4fb2cc8c37ef4232093070d2606ec17bf9d4f7ee1c1e6de8b8d"
+            "b9f630ded26728fb918c9686fd4718a2944e7320f1e49216e4e015b515feac10"
         ),
         "policy_sha256": (
-            "c59f645c51ec234e91bd582df2a1576116f2c67183c2cb015f51d3f1a2be9ea7"
+            "d4388f8f301f354935e19bccc63a8fec64c38a6fcf2b7a0e61fc6fc206d9a9e0"
         ),
     },
     "calibration_seam": {
@@ -775,10 +787,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "4becf8d00a08d319a26d33681b4bed159711a9873f6cae221af3d161929c5943"
+            "f8a54f01adc17986ef1d2caf60b56868caa3fe479fc0793dd5e6e7a8cbc543b3"
         ),
         "policy_sha256": (
-            "a7250c519e79e22d366316cd4943f5f4bd2cc86a0e76b919ee2ff2eacb2335f3"
+            "9298a9d68b1d719700ab18a2d97b474e6354558b16a5b902d5be25ce9f9f9077"
         ),
     },
 }

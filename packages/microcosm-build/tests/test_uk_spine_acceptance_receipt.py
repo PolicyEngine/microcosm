@@ -74,6 +74,11 @@ def _apply_pending_roster_transformations(
     # gains right after the amounts stage.
     assert "hmrc_cgt_asset_type_spine" not in roster
     roster.insert(roster.index("hmrc_cgt_gains_spine") + 1, "hmrc_cgt_asset_type_spine")
+
+    # #930 re-mint pending: the NTS bus-travel stage imputes the journeys the
+    # consumption stage prices, so it runs right before lcfs_consumption.
+    assert "nts_bus_travel" not in roster
+    roster.insert(roster.index("lcfs_consumption"), "nts_bus_travel")
     return tuple(roster)
 
 

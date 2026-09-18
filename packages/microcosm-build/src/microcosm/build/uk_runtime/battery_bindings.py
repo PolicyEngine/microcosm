@@ -1445,6 +1445,14 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "margins",
                 "margins_period_value",
                 "maximum_connected_share_deviation",
+                # #930 bus_travel_facts check: NTS0313 incidence and NTS0303
+                # trip rates recomputed from the vendored rows.
+                "trip_rates_period_value",
+                "maximum_user_share_deviation",
+                "maximum_trip_rate_deviation",
+                # #930 fact_rake check on a declared rake receipt.
+                "receipt_key",
+                "allowed_resources",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
