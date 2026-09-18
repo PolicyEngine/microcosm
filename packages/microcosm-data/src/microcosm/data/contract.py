@@ -811,7 +811,7 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
             "b87fa7eb0c1e0281b8a5ab5c7a33509758f1663e4fbbfb467fb970b54e21d84a"
         ),
         "policy_sha256": (
-            "af670e88c0c56c18c7a5b72cfbc2a8669b214e9dfb677f00cc2464d491aa186c"
+            "9298a9d68b1d719700ab18a2d97b474e6354558b16a5b902d5be25ce9f9f9077"
         ),
     },
 }
