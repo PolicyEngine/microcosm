@@ -7,7 +7,7 @@ names it: ``ACSCoverageAuthenticationError: CANONICAL_SIZE``, raised through
 ``acs_person_coverage_authentication._json``'s ``charge`` with exactly two
 ``visit`` frames beneath it -- a FLAT list, not the nested evidence receipt --
 called from ``acs_native_coverage_binding.issue_acs_native_coverage``. That is
-the guard at ``acs_native_coverage_binding.py:562-564``:
+the guard at ``acs_native_coverage_binding.py:563-565``:
 
     coverage._json(serialnos, min(MAX_EVIDENCE_BYTES, housing.ACS_HU_RECEIPT_MAX_BYTES))
 
@@ -82,7 +82,7 @@ def main():
         "release_eligible": False,
         "cap_bytes": CAP,
         "cap_name": "acs_housing_universe_source.ACS_HU_RECEIPT_MAX_BYTES",
-        "guard": "acs_native_coverage_binding.py:562-564",
+        "guard": "acs_native_coverage_binding.py:563-565",
         "serialno_widths_observed": widths,
         "json_bytes_per_serialno": per_entry,
         "serialnos_admitted": admitted,

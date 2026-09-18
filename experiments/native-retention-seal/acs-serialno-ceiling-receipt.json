@@ -3,7 +3,7 @@
   "release_eligible": false,
   "cap_bytes": 1048576,
   "cap_name": "acs_housing_universe_source.ACS_HU_RECEIPT_MAX_BYTES",
-  "guard": "acs_native_coverage_binding.py:562-564",
+  "guard": "acs_native_coverage_binding.py:563-565",
   "serialno_widths_observed": [
     13
   ],

@@ -526,7 +526,7 @@ ACSCoverageAuthenticationError: CANONICAL_SIZE
 
 **Exactly two `visit` frames**, which identifies the call: a flat list, not the
 deeply nested evidence receipt further down the same function. That is the
-guard at `acs_native_coverage_binding.py:562-564`:
+guard at `acs_native_coverage_binding.py:563-565`:
 
 ```python
 coverage._json(serialnos, min(MAX_EVIDENCE_BYTES, housing.ACS_HU_RECEIPT_MAX_BYTES))
@@ -566,14 +566,107 @@ coverage binding, and it refuses every run above about 1/24. Its report's
 headline is true of the ceilings it measured and does not hold for the path:
 **no fraction both clears this one and exercises the 96,860 the lane lifted.**
 
-### 8d. What that means for the 1/15 run this brief asked for
+### 8d. The 1/15 run this brief asked for: what it did
 
-The arithmetic above predicts the 1/15 run refuses the same way, at about
-1.63 MB against the 1 MiB cap. It is armed, gated and queued behind the 1/1000
-anyway, because a prediction that is not run is not a measurement, and because
-a refusal brackets the ceiling from the other side.
+The arithmetic above predicted, **before the run and committed first**, that
+1/15 refuses at about 1.63 MB against the 1 MiB cap. The run was armed, gated
+and queued behind the 1/1000 anyway, because a prediction that is not run is
+not a measurement, and because a refusal brackets the ceiling from the other
+side.
 
-*(the run's own outcome follows once it has run)*
+It ran, and it refused.
+
+| | 1/15 run |
+|---|---|
+| launched | 2026-09-18T00:35:15Z, gate open at **76.2 GB** available > 45 GB |
+| pid / pgid | 45669 / 45669, session leader |
+| source tree | `~/PolicyEngine/_worktrees/microcosm-retention-fifteenth`, detached at `0bc160099` |
+| **status** | **`STOPPED_SurveyPopulationPreparationError: PREPARATION_ISSUANCE_REFUSED`** |
+| CPU s | **605.65** of a 21,600 ceiling (2.8%) |
+| wall s | 606.55 of 43,200 |
+| **peak RSS** | **8.28 GB** of the 48 GiB ceiling (16%) |
+| **nodes run** | **0** — `node_wall_times` is the empty list |
+| runner call | entered at wall 2.028 s, returned at 605.690 s |
+| ceilings, as set | 21,600 CPU-s / 43,200 wall-s / 48 GiB — none was lowered |
+| artifact | `experiments/native-retention-seal/measurement-fifteenth-refusal.json` |
+
+**The brief asked for the RSS slope across nodes and the runner-versus-node-loop
+split. Neither exists for this run, and not because they were not recorded.**
+The refusal happens inside source authentication, before the first node
+executes: `node_wall_times` is empty, and the whole 605.65 CPU-s sits between
+the runner call's entry and its return. The RSS series has 574 one-second
+samples, whose own peak is 6.82 GB against the 8.28 GB `ru_maxrss` high-water
+mark the table reports — two different measures, and the harness's own
+`rss_series_note` says so — but every sample is inside source admission, so
+there is no per-node slope to fit. **A row-count ceiling did not fire; a byte-budget
+ceiling did** — §8e names it from the run's own raises, and §8c computes where
+it binds.
+
+**What this run does and does not establish.** It does not measure the seal at
+1/15, because the seal never ran: no node executed, so no population was
+observed, sealed or compared. What it establishes is the ceiling, from the
+other side of the bracket: 1/24 fits and 1/15 refuses, and the refusal is the
+predicted one. The seal's measurement is the 1/1000 run of §7, and the seal's
+memory argument is `test_the_seal_is_proportional_to_columns_and_not_to_rows`,
+neither of which this refusal touches.
+
+### 8e. The 1/15 refusal, named from the run's own raises
+
+The prediction named a code. `PREPARATION_ISSUANCE_REFUSED` cannot confirm it,
+so the 1/15 run was repeated with the diagnostic harness of §8a round 3 —
+`harness19_diag_fifteenth.py`, the 1/15 harness plus the committed
+`sys.monitoring` `RAISE` block, inserted at the same point in the file, which
+changes no byte of the measured tree and so moves no source pin and refuses no
+producer. Same tree (`0bc160099`, `git status` clean), same staged 1/15 clone,
+same gates. pid 47936 / pgid 47936, launched 2026-09-18T00:53:59Z at **79.9 GB**
+available.
+
+It refused the same way — `STOPPED_…PREPARATION_ISSUANCE_REFUSED`, 615.01
+CPU-s, 618.00 wall-s, 8.17 GB `ru_maxrss` (6.88 GB across its own 583 samples),
+**0 nodes** — and its trace
+(`experiments/native-retention-seal/diagnostic-1-15-raises.json`, 208 raises
+observed, the last 120 retained) ends:
+
+```
+ACSCoverageAuthenticationError: CANONICAL_SIZE
+  acs_person_coverage_authentication.py :: _require
+  acs_person_coverage_authentication.py :: _json.<locals>.charge
+  acs_person_coverage_authentication.py :: _json.<locals>.visit
+  acs_person_coverage_authentication.py :: _json.<locals>.visit
+  acs_person_coverage_authentication.py :: _json
+  acs_native_coverage_binding.py        :: issue_acs_native_coverage
+ACSNativeCoverageBindingError: NATIVE_ISSUANCE_REFUSED
+  acs_native_coverage_binding.py        :: issue_acs_native_coverage
+  survey_population_preparation.py      :: prepare_authenticated_survey_population
+SurveyPopulationPreparationError: PREPARATION_ISSUANCE_REFUSED
+  survey_population_preparation.py      :: prepare_authenticated_survey_population
+  graph_survey_population.py            :: run_authenticated_survey_population
+  graph_atomic_survey_population.py     :: run_atomic_survey_population
+  survey_population_preparation.py      :: verification_epoch
+  graph_atomic_survey_financial.py      :: run_atomic_survey_financial
+```
+
+**The prediction on record is confirmed**, at the same guard and with the same
+signature as 1/10: `CANONICAL_SIZE`, **exactly two `visit` frames** — the flat
+`SERIALNO` list, not the nested evidence receipt further down the same function
+— and raised from `issue_acs_native_coverage`. So the two fractions refuse at
+the same place for the same reason, 1.63 MB and 2.45 MB against the same 1 MiB
+cap, and §8c's arithmetic is now bracketed by two observed refusals rather than
+by one plus a calculation.
+
+**A defect in the 1/15 measurement harness's own receipt, which this run
+corrected.** `harness19_fifteenth.py` was described as the tenth harness with
+exactly three changes, and its *code* is: the fraction at `:604`, `RSS_CEILING`
+at `:131`, the label. But two **receipt** fields were left as the tenth's, so
+`measurement-fifteenth-refusal.json` reports `"sample": {"fraction": [1, 10]}`
+and a `scope` sentence naming 1/10 and 158,737 households, while the run it
+describes sampled 1/15. What is authoritative about the fraction is the call
+site and the staged `sources/selection-request.json`, which carries
+`"fraction":[1,15]`; both are cited in the run record. The measurement harness
+is committed as it ran and has **not** been retrofitted — that would break
+byte-identity with the run — and the diagnostic harness corrects both fields,
+says so in its own docstring, and its receipt reads `[1, 15]` and "at 1/15 --
+105,825 source households".
 
 ## 9. Tests, as CI runs them
 
