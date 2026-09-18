@@ -8588,6 +8588,13 @@
         "positive_gas_spend"
        ]
       },
+      "connection_fallback_regions": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string"
+       }
+      },
       "disconnect_rule": {
        "enum": [
         "lowest_drawn_gas_first"
@@ -8610,6 +8617,26 @@
         "actual_temperature"
        ]
       }
+     },
+     "if": {
+      "required": [
+       "gas_connected"
+      ],
+      "properties": {
+       "gas_connected": {
+        "const": "published_meter_share"
+       }
+      }
+     },
+     "then": {
+      "required": [
+       "connection_resource",
+       "connection_period_value",
+       "connection_rule",
+       "connection_fallback",
+       "connection_fallback_regions",
+       "disconnect_rule"
+      ]
      }
     }
    ],
