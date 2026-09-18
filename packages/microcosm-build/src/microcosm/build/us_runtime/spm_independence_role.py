@@ -54,6 +54,7 @@ from microcosm.build.us_runtime.education_assistance_source import (
     ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS,
     fetch_asec_education_assistance_source,
 )
+from microcosm.build.us_runtime.spm_composition import check_spm_composition
 from microcosm.build.us_runtime.spm_role_source import (
     _OPTIONAL_RAW_CHECKS,
     _REQUIRED_RAW_CHECKS,
@@ -435,10 +436,6 @@ def _json_ready(value: Any) -> Any:
 
 def us_spm_independence_role_summary(frame: Frame) -> dict[str, object]:
     """Return role shares, the composition verdict, and the recorded provenance."""
-
-    from microcosm.build.us_runtime.release_gate_preflight import (
-        check_spm_composition,
-    )
 
     person = frame.table("person")
     weights = np.asarray(frame.resolve_weights("person").values, dtype=np.float64)
