@@ -1224,27 +1224,34 @@ I shipped (a) because the brief asked for the executor mode in its own commit,
 which it is, and because the re-pin moves the keys regardless. (b) is the
 cleaner history if you want the US half reviewable on its own.
 
-**3. Should an object-dtype axis keep `OBJECT_VALUE`?** §1's answer (4),
-item 4: on an
-object axis the seal refuses under `AXIS` where the comparison refuses under
-`OBJECT_VALUE`, because `Index.equals` there is an element-wise `!=` over
-arbitrary Python objects that no digest reproduces.
+**3. This question is withdrawn, and what replaced it is worth your attention
+more than the question was.** It used to ask whether an object-dtype axis
+should keep `OBJECT_VALUE`, on the premise that the seal refuses `AXIS` where
+the comparison refuses `OBJECT_VALUE` and that the fold there is "never weaker
+than `equals`". The adversarial pass of §9d showed the premise was wrong in
+both directions — the seal was **weaker** for a value carrying its own
+`__eq__`, and **stricter** for `None` against `float("nan")` — and the fold was
+rewritten to reproduce the equivalence classes `Index.equals` actually has. The
+object-axis code no longer moves, so there is nothing to decide.
 
-- **(a) Keep it as shipped.** The refusal is preserved; only the code moves,
-  and only for an object-dtype axis.
-- **(b) Retain the axes.** An index is `O(rows)` but 8 bytes a row, not a
-  frame. At **full source** that is nineteen person indexes over about
-  3.3e8 person rows, so roughly 50 GB against the ~290 GiB the populations
-  were — the two figures an earlier draft of this option mixed were 0.5 GB at
-  1/10 against 29 GB at full source, which is not a comparison. At **1/10**
-  it is about 0.5 GB against about 29 GB. Either way it is a tenth of the
-  retention, not none of it. Keeping the objects for axes alone would make
-  every axis code exact.
-- **(c) Refuse object-dtype axes outright in the seal.** Strictly more closed,
-  and a behaviour change to a case no US frame is known to carry.
+**What I would rather you ruled on is the process, not the code.** Two of the
+three divergences existed in a change whose own report claimed, in §1, that
+"every defect is still refused", and the report had a battery of 116 agreeing
+comparisons behind that claim. The battery agreed because it tested the cases
+its author thought of. What caught the divergences was an adversarial pass that
+tried to break the claim, and what would have caught them earlier is the
+3,852-pair seeded sweep that is now committed — 40 lines, seconds to run.
 
-I shipped (a). (b) is the only one that makes the codes exact, and it is not
-free.
+- **(a) Require a seeded agreement sweep beside any hand-built battery**, in
+  this lane's own standard and the next one's, whenever a change replaces a
+  predicate with a fold. Cheap, and it is the thing that would have worked.
+- **(b) Require an adversarial pass before a lane reports.** More expensive —
+  68 agents here — and it found things no sweep would, including four
+  documented mechanisms that are not in the code.
+- **(c) Neither as a rule; keep doing both when the change warrants it.**
+
+My reading is **(a) always, (b) for anything that moves a fail-closed
+predicate**, which this was.
 
 **4. Who lifts the ACS serialno ceiling, and does the base branch's headline
 need amending?** §8 shows a 1 MiB canonical-JSON cap on the selected-ACS-
