@@ -1592,6 +1592,213 @@ remain open with concrete reasons in FINAL_REPORT.md. The independently confirme
 old status/tax42 owner repair, inventories, CI/source closure, scientific/native
 capacity and release/default/PR893 decisions remain separately owned.
 
+---
+
+# Lane: verify native sources once per run (`native-verify-once`)
+
+Branch `native-verify-once`, worktree `~/PolicyEngine/_worktrees/microcosm-verify-once`,
+base `f7bb88525a78786f91bc3ebe2083ef4b1c85de18` (PR #893 head). Started
+2026-09-15.
+
+**State (2026-09-16, third session):** all five mechanisms landed with proofs
+and the epoch wired into both atomic capsules; draft PR #935 open; the
+CI-shaped test battery is green (no test group failed; `ruff format --check .`
+is red on 77 pre-existing files that this branch does not touch, and CI does
+not run it); the before/after probe and the nineteen-node harness have run; the
+lane report `experiments/native-verify-once/out.md` is complete, with the
+measurement, the pins, the verbatim summaries and the open questions. The open
+work is the main-only split (its commits sit on
+`graph-verify-once-main-stale-20260916-0057`, unpushed) and Max's answers to the
+report's open questions.
+*(Historical as of 2026-09-17: the split is now draft PR #938, and an
+adversarial verification of this branch has since been resolved by ten further
+commits on a rebased branch — see "Done (2026-09-17, fourth session)" below.)*
+
+**Goal.** The 9/15 pilot v5 measurement
+(`~/PolicyEngine/_recovered/pilot-runs/native45-v5/out.md` §2) attributes ~79 %
+of a native 1/1000 run to repeated admission and verification of 3.48 GiB of
+staged source: node execution is 1,143 s of a 5,362 s run. Make source
+authentication and identity verification happen once per run instead of once
+per accessor use and once per executed node, without weakening any refusal and
+without moving any digest value.
+
+**Done:** read the evidence base; located all five mechanisms at base HEAD.
+
+**Done (2026-09-16):**
+
+- `docs/us-native-verification-once.md` — the design note, written before any
+  capsule changed.
+- **Mechanism 5**: `_object_stream` builds each plain float/int/bool column's
+  context-digest bytes with numpy. Byte-identical against a verbatim copy of the
+  pre-change body over every column kind, the float specials, non-canonical NaN
+  payloads, both int64 endpoints and a 200-frame random sweep. 0.47 s -> 0.09 s
+  on a 6,928 x 240 frame.
+- **Mechanism 4**: the ACS record fence now uses `bytes.find`/`bytes.count` with
+  cached terminator cursors. Proven against the byte loop on 46,655 exhaustive
+  short strings across five ceiling settings, 4,500 random strings, and the real
+  staged `csv_pus.zip`: 3,422,890 records, identical digests, 226.9 s -> 4.6 s
+  (49x). Re-pins `_ACCEPTED["acs_person_coverage_authentication.py"]`.
+- **Mechanism 3**: `run_graph` carries a `_SourceIdentities` cache keyed on stat
+  signatures, and re-derives every source in full before building the manifest.
+  `RunManifest.source_identities` records it without moving any existing value.
+  The refusal it protects had no test at all; `test_graph_executor_source_identity`
+  now pins it. Graph suite 108 s -> 72 s.
+- **Mechanisms 1 and 2**: `survey_population_preparation.verification_epoch()`,
+  an opt-in scoped memo. Cheap tier every borrow (live authority, attached
+  payloads, producer encoding); expensive tier skipped only while a signature
+  over every path it reads — the roster stat identities among them — and every
+  live buffer it digests is unchanged; unconditional full re-validation on
+  leaving the epoch. The two moved inventory contracts are re-derived (below).
+  (The roster stat identities were compared in the cheap tier when this line
+  was first written; the fourth session moved them into the signature so a
+  memo miss raises the code an unmemoised borrow raises. See below.)
+
+**Done (2026-09-16, second session):**
+
+- Draft PR [#935](https://github.com/PolicyEngine/microcosm/pull/935), base
+  `microcosm-us-launch-integration-20260909`.
+- Main-only split branch `graph-verify-once-main`, worktree
+  `~/PolicyEngine/_worktrees/microcosm-graph-verify-once-main`, branched from
+  `origin/main` (51c314382). It carries the graph-shard change only: the three
+  commits re-applied, plus a changelog fragment. Its one deliberate difference
+  from this branch is that `_update_scalar` has no exact-float `struct.pack`
+  shortcut on main -- that belongs to PR #893 -- so the parity test's reference
+  copy was aligned to main's actual pre-change body, which makes it a literal
+  verbatim copy there too.
+- Before/after measurement staging in `.measure/` (gitignored): a parameterised
+  copy of the v5 pilot probe that takes the source tree, the staged run inputs
+  and the output directory from the environment, asserts every imported
+  `microcosm` module resolves inside the measured tree, and enforces a 16 GiB
+  resident ceiling alongside the CPU one. Baseline worktree
+  `~/PolicyEngine/_worktrees/microcosm-verify-once-baseline` is detached at
+  `f7bb88525`.
+
+**Done (2026-09-17, fourth session) — the verification findings:** an
+adversarial static verification of the branch returned four medium and seven low
+findings and no high one
+(`~/PolicyEngine/_recovered/scratch-backup/893/lanes/verify-once-findings-20260916.json`).
+Ten commits answer them, on a branch rebased onto the base tip `363a9033b`:
+
+- rebased onto `363a9033b` and force-pushed, so two-dot and three-dot diffs
+  agree again (26 files, +5,422 / −819);
+- a mutation test per memoised capsule that changes file **content** while the
+  cheap tier's view of it stays byte-identical, so the memo-miss branch itself
+  refuses rather than a stat comparison in front of it;
+- the roster stat identities moved out of the refusing cheap tier into the
+  signature, so an in-epoch refusal carries the code an unmemoised borrow
+  carries (behaviour, not documentation: the design note promised it and the
+  fix is smaller than the divergence, and it deletes a redundant `_file_stats`
+  walk per borrow);
+- `verification_epoch()`'s record is bound by both runners and attached to the
+  manifest as `RunManifest.verification_epoch` — outside the key, the JSON,
+  every node receipt and every cache record. A real nine-node run over invented
+  sources reports `{"capsules": 1, "hits": 20, "misses": 3,
+  "final_validations": 1}`;
+- `_source_stat_signature` follows a member symlink, as `_directory_identity`
+  does, so a target rewritten mid-run refuses at the next node rather than at
+  run end; `_object_stream` packs floats in native order, as the loop it
+  replaces does;
+- the dead `_stat_or_absent` is deleted; the four `_path_stat` copies and the
+  two `_stat_identity` definitions stay, with the pin cost of consolidating
+  them re-derived through the modules' own generator and stated in the report;
+- the design note's five inaccuracies are corrected, the nested finalizer
+  chains its refusal instead of dropping it, and the report's stale items are
+  historicized.
+
+Re-run afterwards, all rc 0: `769 passed, 1 skipped in 44.56s`
+(`packages/microcosm-graph/tests`), `128 passed in 188.39s` (the four new test
+files), `1811 passed, 1 skipped, 38 warnings in 11200.54s (3:06:40)` (the 46
+build test files that reach a changed module), plus `ruff check` clean,
+`17 files already formatted`, `uv lock --check`, both `ci_test_groups` checks.
+
+**Done (2026-09-17, second fix pass) — the two residuals:** a re-verification of
+the ten commits above left two low findings, and two commits answer them. (1)
+Only the nine-node runner had a test that read `RunManifest.verification_epoch`
+back off a real run, so
+`test_nineteen_node_financial_cold_and_required_replay` now reads it off both
+manifests the financial runner returns — its own epoch's and the nested
+population epoch's — for the cold run and the required replay, asserting the
+protocol label, `final_validations == capsules >= 1`, and that `to_json` still
+cannot see it; and the committed probe
+(`experiments/native-verify-once/probe_verify_once.py`) now copies the record
+into its output as `verification_epoch`, so the next measured run is the first
+that will carry counts. Nothing was re-measured, and the three measurement files
+the report quotes predate that line, which the report, the README and the design
+note all state. (2) This journal's "Next" and the report's open question 4
+restated #938 at its current head and size, with the mirror recorded as landed.
+No `packages/*/src` file changed in either commit.
+
+Re-run, both rc 0: `7 passed in 119.98s (0:01:59)`
+(`test_us_graph_atomic_survey_financial.py`) and
+`24 passed in 157.61s (0:02:37)` (`test_us_native_verify_once_epoch.py`), plus
+`ruff check` and `ruff format --check` clean on the two changed Python files.
+
+**Done (2026-09-17, third fix pass) — one medium and two low:** a second
+re-verification found that the 2026-09-16 refusal-code fix had weakened one
+at-borrow refusal, and three commits answer it and the two low findings.
+(1) `_finalize_epoch` recorded its memo signature *after* validating, so at an
+inner nested close — whose memo survives into the outer epoch — a roster file
+whose stat moved during the trailing part of `_validate` was absorbed as the
+new normal and the outer borrows were hits until the outermost close. Each
+close now takes the signature before validating and again after and records
+none when they differ, so the next borrow is a miss that refuses;
+`asec_2024_native_population._epoch_exit` had the same ordering and is fixed
+the same way. Two new tests move a source from a profile hook as that close's
+own validation returns and fail with `DID NOT RAISE` against the previous
+ordering. `_memoized_validate`'s signature handler also narrowed from
+`BaseException` to `Exception`, which is what its own comment describes.
+(2) `RunManifest.verification_epoch` and `run_graph(_verification_epoch=)` had
+no graph-shard test on either branch: `test_graph_verification_epoch.py` adds
+nine, and two build-shard tests cover the signature-cannot-be-taken handler and
+the `raise own from nested` branch. (3) The stale cheap-tier descriptions the
+2026-09-16 fix left behind — test-file docstrings, the module block comment, the
+design note and this report — now say what the code does, and `executor.py:2100`
+is corrected to `:2105`. Two `packages/*/src` files changed and no pin moved:
+`graph_implementation._dependency_contract` was re-run over both edited modules
+and `imports`, `resource_accesses_sha256` and `unbound_uses_sha256` are all
+unchanged.
+
+Re-run, all rc 0: `778 passed, 1 skipped in 37.72s`
+(`packages/microcosm-graph/tests`, up from 769 — the new
+`test_graph_verification_epoch.py` adds nine), `28 passed in 190.65s (0:03:10)`
+(`test_us_native_verify_once_epoch.py`, up from 24),
+`1607 passed, 38 warnings in 8311.33s (2:18:31)` (the 34 build test files naming
+either changed module), `8 passed in 0.68s`
+(`test_us_asec_prepared_resources.py`, which builds the stage implementation
+manifests), and `597 passed, 2 skipped in 17.75s` in the
+`graph-verify-once-main` worktree. Plus `ruff check .`, `ruff format --check` on
+all five changed Python files, `uv lock --check`, both `ci_test_groups` checks.
+
+**Next:** Max's rulings on the report's remaining open questions. Open question
+4 is answered and needs nothing further: the split is draft PR
+[#938](https://github.com/PolicyEngine/microcosm/pull/938), opened 2026-09-16
+and now at head `33f3150bb` (base `main`, 7 files +1,430/−8, MERGEABLE, still
+draft; `gh pr view 938`, 2026-09-17 07:43 UTC). The graph-shard commits made
+after the verification findings were mirrored into it on 2026-09-17 at
+06:45–06:46 UTC — the verification epoch on the manifest, the member-symlink
+follow, the native-order float cast and the docstring fix — and the third fix
+pass's new `test_graph_verification_epoch.py` followed as `33f3150bb`. Diffed
+the same morning, its five earlier graph files differ from this branch's only by
+the documented `import struct` and exact-`float` hunks that belong to #893's
+base.
+#935's body already carries the measurement table. Measured: nine-node prefix
+before 1,803.87 CPU s without completing (ceiling) against after 1,444.78 CPU s
+completing; nineteen-node 5,278.61 -> 2,010.07 CPU s (2.63x) against the v4 cold
+receipt, peak RSS 9.31 -> 13.31 GB.
+
+**Pins re-derived so far:**
+
+| pin | old | new |
+|---|---|---|
+| `acs_native_coverage_binding._ACCEPTED["acs_person_coverage_authentication.py"]` | `475aa795…fe85bcff` | `9ec68721…d88e8e49f` |
+| `graph_implementation_inventory.json` `survey_population_preparation.py` `unbound_uses_sha256` | `29c09f6f…d296ef91` | `d114117c…dd4005910` |
+| `graph_implementation_inventory.json` `asec_2024_native_population.py` `unbound_uses_sha256` | `71463df4…d7f287608` | `7bb20439…40d58cdf4` |
+
+**Lane notes.** Root `out.md` is a tracked file holding the Amendment 19 lane's
+committed report; this lane's report goes to
+`experiments/native-verify-once/out.md`. The v5 cold run (`run_v5.py`, pid
+81194) is live on this machine, so probe runs wait for the window the lane
+brief allows (`pgrep -f run_v5.py` empty, or > 40 GB free).
 ## Stack reconcile after #938 — 2026-09-18
 
 Lane: bring `microcosm-us-launch-integration-20260909` (#893) level with

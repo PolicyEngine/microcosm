@@ -999,6 +999,339 @@ def _origins(frame, sources, selected, native_receipts):
     }
 
 
+# ---------------------------------------------------------------------------
+# Verification epochs: validate once per run, and again in full at the end.
+#
+# Outside an epoch nothing below is reached and every capsule behaves exactly as
+# it did before: one complete validation per accessor use. Inside an epoch each
+# borrow still pays a cheap tier in full -- the live authority, the attached
+# owner payloads and the producer encoding -- and the expensive tier is skipped
+# only while a signature over every file those checks read, the whole source
+# roster's stat identities included, and every live buffer they digest, is
+# identical to the signature recorded when that tier last ran in full. The
+# roster's stat identities are read into that signature and are deliberately
+# not compared in the cheap tier: a signature that moved is a memo miss, not a
+# refusal, so the complete validation runs and raises whatever it would have
+# raised, with the same code, at the same borrow. Leaving the epoch re-validates
+# every capsule it memoised, in full, with the memo bypassed, and records no
+# memo answer for anything whose signature moved while that validation ran.
+# ---------------------------------------------------------------------------
+
+_EPOCHS = []
+_MEMO = {}
+_EPOCH_RECORD = None
+
+
+def _array_witness(values):
+    """A read-free identity of one column's live storage.
+
+    Buffer address, shape, strides, dtype and the writeable flag move whenever
+    a column is replaced, reindexed, retyped or rebound. An extension array
+    that exposes no numpy buffer contributes its object identity, which pandas
+    keeps stable for the arrays that have one.
+    """
+
+    data = getattr(values, "_data", None)
+    mask = getattr(values, "_mask", None)
+    if isinstance(data, np.ndarray) and isinstance(mask, np.ndarray):
+        return ("masked", _buffer_witness(data), _buffer_witness(mask))
+    array = getattr(values, "_ndarray", None)
+    if isinstance(array, np.ndarray):
+        return ("array", _buffer_witness(array))
+    if isinstance(values, np.ndarray):
+        return ("raw", _buffer_witness(values))
+    return ("opaque", type(values).__name__, id(values), len(values))
+
+
+def _buffer_witness(array):
+    return (
+        array.ctypes.data,
+        array.shape,
+        array.strides,
+        array.dtype.str,
+        array.flags.writeable,
+    )
+
+
+def _frame_witness(frame):
+    """A read-free structural identity of one Frame's live storage."""
+
+    if not isinstance(frame, Frame):
+        return ("not-a-frame", type(frame).__name__)
+    tables = []
+    for entity in sorted(frame._tables):
+        table = frame._tables[entity]
+        columns = tuple(str(column) for column in table.columns)
+        tables.append(
+            (
+                entity,
+                id(table),
+                len(table),
+                columns,
+                tuple(str(table[column].dtype) for column in table.columns),
+                tuple(_array_witness(table[column].array) for column in table.columns),
+                _array_witness(table.index),
+                id(table.index),
+            )
+        )
+    weights = tuple(
+        (
+            entity,
+            frame._weights[entity].kind.value,
+            _array_witness(frame._weights[entity].values),
+        )
+        for entity in sorted(frame._weights)
+    )
+    strata = frame.strata
+    return (
+        tuple(tables),
+        weights,
+        (
+            id(strata),
+            len(strata),
+            str(strata.dtype),
+            strata.name,
+            _array_witness(strata.array),
+            _array_witness(strata.index),
+        ),
+        tuple(sorted(frame._link_tables)),
+    )
+
+
+def _verified_source_stats(state):
+    """Stat identities of every path the memoised tier re-reads, per owner."""
+
+    return (
+        _file_stats(state.root),
+        acs_catalogue._verified_source_stats(state.catalogues[0]),
+        asec_catalogue._verified_source_stats(state.catalogues[1]),
+        acs_native._verified_source_stats(state.native[0]),
+        asec_native._verified_source_stats(state.native[1]),
+    )
+
+
+def _memo_signature(state):
+    """Everything cheap the memoised tier's answer can depend on."""
+
+    borrowed = (*state.catalogues, *state.native)
+    return (
+        state.files,
+        _verified_source_stats(state),
+        tuple((id(value.payload), len(value.payload)) for value in borrowed),
+        tuple(id(value) for value in borrowed),
+        _frame_witness(state.frame),
+        tuple(_frame_witness(frame) for frame in state.source_frames),
+        asec_native._parent_frame_witness(state.native[1]),
+        (
+            id(state.plan),
+            len(state.plan.selected),
+            len(state.plan.excluded),
+            len(state.plan.cells),
+        ),
+    )
+
+
+def _cheap_checks(state):
+    """The tier every borrow pays whether or not the expensive tier is skipped.
+
+    The source roster's stat identities are read on every borrow, but they are
+    read into the *signature* and are deliberately not compared here. A moved
+    stat field is a memo miss, and the complete validation the miss runs raises
+    the refusal it raises today, with the same code, at the same borrow --
+    which is exactly what this design promises. Comparing them here as well
+    would refuse first and put SOURCE_STAT_CHANGED in front of the code an
+    unmemoised borrow surfaces, so an appended archive would read as a moved
+    timestamp rather than as the ACS catalogue refusing its own bytes.
+    """
+
+    _require(
+        _live() == _LIVE and _authority() == state.authority, "FINAL_AUTHORITY_CHANGED"
+    )
+    _require(_attached(state) == state.attached, "ATTACHED_EVIDENCE_CHANGED")
+    _require(_encode(_producer()) == state.producer, "PRODUCER_CHANGED")
+
+
+def _memoized_validate(owner, state):
+    """Validate ``state`` unless this epoch already validated it unchanged."""
+
+    if not _EPOCHS:
+        _validate(state)
+        return
+    _cheap_checks(state)
+    try:
+        signature = _memo_signature(state)
+    except Exception:
+        # A signature that cannot even be taken -- a roster entry removed, or
+        # no longer a regular file -- is still a miss rather than a refusal of
+        # its own: the complete validation runs first, so the borrow raises
+        # today's code. `_validate` ends with the same `_file_stats` call and
+        # so cannot pass where this failed; re-raising is the fail-closed
+        # remainder, never the refusal a caller sees in practice. Only an
+        # error is handled here: an interrupt or a process exit landing in the
+        # signature is not a miss and must not buy a complete re-validation
+        # before it propagates.
+        _validate(state)
+        raise
+    entry = _MEMO.get(id(owner))
+    if entry is not None and entry[0]() is owner and entry[1] == signature:
+        _EPOCH_RECORD["hits"] += 1
+        return
+    _validate(state)
+    _MEMO[id(owner)] = (weakref.ref(owner), signature, state)
+    _EPOCH_RECORD["misses"] += 1
+
+
+def _signature_or_none(state):
+    """This state's signature, or ``None`` when one cannot be taken.
+
+    ``None`` never equals a signature, so a close that cannot take one records
+    no memo answer and the borrow that follows runs the complete validation --
+    which is what refuses, with today's code, for whatever made the signature
+    unavailable. At the outermost close no borrow follows, so ``_finalize_epoch``
+    pays that validation itself rather than leaving it to one.
+    """
+
+    try:
+        return _memo_signature(state)
+    except Exception:  # noqa: BLE001 - an absent signature is a miss, not a verdict
+        return None
+
+
+def _finalize_epoch():
+    """Re-validate every memoised capsule in full, with the memo bypassed.
+
+    The refusal class is the one a borrow would have raised: this is the borrow
+    the epoch deferred, so a foreign owner's error is translated exactly as
+    ``_checked`` translates it rather than escaping raw to the run.
+
+    An inner nested close keeps its memo -- ``_MEMO`` is cleared only when the
+    outermost epoch leaves -- so the signature recorded here is what the outer
+    epoch's next borrows are answered against, and it must not absorb anything
+    that moved while this close was validating. ``_validate`` compares the
+    roster stats and then runs a whole trailing ``_pure_final``; a stat that
+    moves in that window would become the new normal and be answered as a hit
+    until the outer close. The signature is therefore taken before validating
+    and again after, and when the two differ no memo answer is recorded at all,
+    so the next borrow is a miss and pays the complete validation -- which
+    raises the code it raises today, ``SOURCE_STAT_CHANGED`` for a touched
+    roster file. The entry itself stays: the outermost close re-validates every
+    capsule the memo still holds, and dropping it here would drop that pass for
+    a capsule nothing borrows again.
+
+    Recording nothing is the whole answer only while a borrow can still follow.
+    At the **outermost** close there is none -- ``_MEMO`` is cleared as this
+    returns -- so leaving the deferred validation to the next borrow would end
+    the run without refusing at all. The outermost close therefore pays that
+    validation here, inside the same translation block, whenever the signature
+    moved or could not be taken: ``_validate`` re-reads the same roster and so
+    raises the same refusal the next borrow's miss would have raised, with no
+    code of this function's own. When it passes, nothing moved that the
+    complete validation can see, which is exactly the verdict a miss would have
+    reached, and the close continues.
+    """
+
+    for key, entry in list(_MEMO.items()):
+        owner = entry[0]()
+        if owner is None:
+            del _MEMO[key]
+            continue
+        before = _signature_or_none(entry[2])
+        try:
+            _validate(entry[2])
+            _EPOCH_RECORD["final_validations"] += 1
+            after = _signature_or_none(entry[2])
+            moved = before is None or after is None or after != before
+            if moved and not _EPOCHS:
+                # The outermost close: the borrow that would have paid for this
+                # never comes. Pay it here, so the run refuses on the way out
+                # instead of ending clean. Not counted as a final validation --
+                # that count is of the unconditional pass above.
+                _validate(entry[2])
+        except SurveyPopulationPreparationError:
+            raise
+        except Exception:
+            raise SurveyPopulationPreparationError(
+                "PREPARATION_VERIFICATION_REFUSED"
+            ) from None
+        _MEMO[key] = (entry[0], None if moved else after, entry[2])
+
+
+@contextmanager
+def verification_epoch():
+    """Validate each native capsule once per run, and again in full at the end.
+
+    The memo is opt-in and scoped: nothing outside this context manager changes
+    behaviour, which is why every existing borrow, refusal and trace-based
+    mutation test keeps its exact meaning. Leaving the epoch re-validates every
+    capsule it memoised in full; a capsule whose source or live storage moved
+    while a memo was warm therefore still makes the run refuse, before the
+    caller receives anything.
+
+    The record it yields is this epoch's own receipt: how many borrows were
+    answered from the memo, how many re-ran the complete validation, and how
+    many unconditional final re-validations closed it.
+    """
+
+    global _EPOCH_RECORD
+    record = {
+        "protocol": PROTOCOL + "/verification-epoch/1",
+        "hits": 0,
+        "misses": 0,
+        "final_validations": 0,
+        "capsules": 0,
+    }
+    outer = _EPOCH_RECORD
+    _EPOCH_RECORD = record
+    _EPOCHS.append(record)
+    asec_native._epoch_enter()
+    failed = False
+    try:
+        yield record
+    except BaseException:
+        failed = True
+        raise
+    finally:
+        _EPOCHS.pop()
+        # The nested capsule's epoch closes first. At the outermost close its
+        # depth reaches zero and its memo is cleared, so this owner's own final
+        # validation reaches the nested population's complete file check; at an
+        # inner nested close the depth stays above zero and `_epoch_exit`
+        # refreshes the nested memo's signature instead -- or records none at
+        # all, if that signature moved while it was validating -- so this
+        # owner's validation is a memo hit there, or a miss that re-runs the
+        # nested capsule's complete check. Nothing is skipped in net either way,
+        # because the nested capsule's own exit has just re-validated it in
+        # full. Both refusals are collected and this owner's is preferred,
+        # because this owner's error class is the one every borrow through it
+        # raises; the other is chained onto it, never dropped.
+        nested = None
+        try:
+            asec_native._epoch_exit(failed)
+        except BaseException as error:  # noqa: BLE001 - re-raised below
+            nested = error
+        own = None
+        try:
+            if not failed:
+                record["capsules"] = len(_MEMO)
+                _finalize_epoch()
+        except BaseException as error:  # noqa: BLE001 - re-raised below
+            own = error
+        finally:
+            if not _EPOCHS:
+                _MEMO.clear()
+            _EPOCH_RECORD = outer
+        if not failed and (own is not None or nested is not None):
+            if own is not None and nested is not None:
+                raise own from nested
+            raise own if own is not None else nested
+
+
+def epoch_record():
+    """The innermost open epoch's record, or None outside an epoch."""
+
+    return _EPOCH_RECORD if _EPOCHS else None
+
+
 @dataclass(frozen=True)
 class _State:
     root: Path
@@ -1146,7 +1479,7 @@ class AuthenticatedSurveyPopulationPreparation:
                 and self.payload == entry[1],
                 "UNISSUED_OR_CHANGED",
             )
-            _validate(entry[2])
+            _memoized_validate(self, entry[2])
             _require(
                 _ISSUED.get(id(self)) is entry
                 and type(self.payload) is bytes
@@ -1217,7 +1550,7 @@ def verify_materialized_survey_population(preparation, frame):
     )
     entry = preparation._checked()
     _require(_frame_identity(frame) == entry[2].identity, "MATERIALIZED_FRAME_CHANGED")
-    _validate(entry[2])
+    _memoized_validate(preparation, entry[2])
     _require(_frame_identity(frame) == entry[2].identity, "MATERIALIZED_FRAME_CHANGED")
     _require(preparation.payload == entry[1], "UNISSUED_OR_CHANGED")
 

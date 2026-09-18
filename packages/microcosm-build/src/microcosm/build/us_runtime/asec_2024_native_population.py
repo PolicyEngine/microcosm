@@ -440,6 +440,171 @@ def _validate_state(state):
     )
 
 
+# ---------------------------------------------------------------------------
+# Verification epoch support. The epoch itself is opened by
+# ``survey_population_preparation.verification_epoch``, which imports this
+# module; the state lives here so that this capsule's own borrows are memoised
+# even when they are reached directly rather than through the preparation.
+# Outside an epoch none of this is touched and every borrow re-authenticates in
+# full, exactly as before.
+# ---------------------------------------------------------------------------
+
+_EPOCH_DEPTH = [0]
+_MEMO: dict[int, tuple] = {}
+
+
+def _path_stat(path):
+    """One path's stat identity, or why it has none. Never raises."""
+    try:
+        info = Path(path).lstat()
+    except OSError as error:
+        return ("absent", error.errno)
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _verified_source_stats(value):
+    """Stat identities of the seven source files, and of their directories.
+
+    ``_file_identity`` opens ``O_NOFOLLOW`` on the final component only, so the
+    parent directories join the signature here: an added or removed sibling
+    moves a directory's own mtime and ctime, which is how a roster change
+    reaches a memo that never lists the roster.
+    """
+    entry = _ISSUED.get(id(value))
+    if entry is None or entry[0]() is not value:
+        return ("unissued",)
+    paths = [Path(row[0]) for row in entry[2].source_files]
+    directories = sorted({path.parent for path in paths})
+    return (
+        tuple(_path_stat(path) for path in paths),
+        tuple(_path_stat(directory) for directory in directories),
+    )
+
+
+def _parent_frame_witness(value):
+    """A read-free structural identity of this capsule's two live Frames."""
+    entry = _ISSUED.get(id(value))
+    if entry is None or entry[0]() is not value:
+        return ("unissued",)
+    state = entry[2]
+    return (
+        _preparation_witness(state.frame),
+        _preparation_witness(state.parent.frame),
+    )
+
+
+def _preparation_witness(frame):
+    """Deferred to the preparation owner, which defines the witness shape.
+
+    Imported lazily: the preparation module imports this one, so the dependency
+    can only run in this direction once both modules exist.
+    """
+    from . import survey_population_preparation as preparation
+
+    return preparation._frame_witness(frame)
+
+
+def _memo_signature(value, state):
+    borrowed = (state.parent, state.coverage, state.anchors, state.fields)
+    return (
+        _verified_source_stats(value),
+        tuple(row[1] for row in state.source_files),
+        tuple((id(item), id(getattr(item, "payload", None))) for item in borrowed),
+        _parent_frame_witness(value),
+    )
+
+
+def _memoized_validate(owner, state):
+    """Validate ``state`` unless this epoch already validated it unchanged."""
+    if not _EPOCH_DEPTH[0]:
+        _validate_state(state)
+        return
+    _require(_encode(_implementation()) == state.producer, "PRODUCER_CHANGED")
+    signature = _memo_signature(owner, state)
+    entry = _MEMO.get(id(owner))
+    if entry is not None and entry[0]() is owner and entry[1] == signature:
+        return
+    _validate_state(state)
+    _MEMO[id(owner)] = (weakref.ref(owner), signature, state)
+
+
+def _epoch_enter():
+    _EPOCH_DEPTH[0] += 1
+
+
+def _signature_or_none(value, state):
+    """This capsule's signature, or ``None`` when one cannot be taken.
+
+    ``None`` never equals a signature, so a close that cannot take one records
+    no memo answer and the borrow that follows re-runs ``_validate_state``,
+    which refuses with the code it raises today. At the outermost close no
+    borrow follows, so ``_epoch_exit`` re-runs it itself.
+    """
+    try:
+        return _memo_signature(value, state)
+    except Exception:  # noqa: BLE001 - an absent signature is a miss, not a verdict
+        return None
+
+
+def _epoch_exit(failed):
+    """Re-validate every memoised capsule in full, with the memo bypassed.
+
+    An inner nested close keeps its memo -- ``_MEMO`` is cleared only at depth
+    zero -- so the signature recorded here answers the outer epoch's next
+    borrows and must not absorb a source that moved while this close was
+    validating. ``_validate_state`` re-reads every source file and then runs
+    seal checks that perform no I/O; a file that moves in that window would
+    become the new normal. The signature is taken before validating and again
+    after, and when the two differ no memo answer is kept, so the next borrow
+    is a miss and pays the complete validation. The entry stays, because the
+    outermost close re-validates whatever the memo still holds.
+
+    At the **outermost** close no borrow follows -- ``_MEMO`` is cleared as this
+    returns -- so keeping no answer would end the run without refusing. There
+    the deferred validation is paid here instead, inside the same translation
+    block, so a source that moved while this close was validating refuses with
+    the code ``_validate_state`` raises rather than closing clean.
+    """
+    _EPOCH_DEPTH[0] -= 1
+    try:
+        if failed:
+            return
+        for key, entry in list(_MEMO.items()):
+            owner = entry[0]()
+            if owner is None:
+                del _MEMO[key]
+                continue
+            before = _signature_or_none(owner, entry[2])
+            try:
+                _validate_state(entry[2])
+                after = _signature_or_none(owner, entry[2])
+                moved = before is None or after is None or after != before
+                if moved and not _EPOCH_DEPTH[0]:
+                    # The outermost close: no borrow follows to pay for this.
+                    _validate_state(entry[2])
+            except AsecNativePopulationError:
+                raise
+            except (
+                OSError,
+                ValueError,
+                TypeError,
+                KeyError,
+                AttributeError,
+                OverflowError,
+            ):
+                raise AsecNativePopulationError("NATIVE_BINDING_REFUSAL") from None
+            _MEMO[key] = (entry[0], None if moved else after, entry[2])
+    finally:
+        if not _EPOCH_DEPTH[0]:
+            _MEMO.clear()
+
+
 @dataclass(frozen=True, slots=True, weakref_slot=True)
 class AuthenticatedAsec2024NativePopulation:
     """Process-issued population; every accessor verifies its full live binding."""
@@ -457,7 +622,7 @@ class AuthenticatedAsec2024NativePopulation:
                 and self.payload == entry[1],
                 "UNISSUED_OR_CHANGED",
             )
-            _validate_state(entry[2])
+            _memoized_validate(self, entry[2])
             _require(
                 _ISSUED.get(id(self)) is entry
                 and type(self.payload) is bytes

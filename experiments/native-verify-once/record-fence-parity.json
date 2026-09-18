@@ -1,0 +1,48 @@
+{
+  "protocol": "owned.us-native-record-fence-parity.v1",
+  "archive": "/Users/maxghenis/PolicyEngine/_recovered/pilot-runs/native45-v5/run/sources/acs/csv_pus.zip",
+  "archive_bytes": 602847146,
+  "archive_sha256_of_central_directory_names": "c1464ee3afd33e620773581b0feac04c2e87c00018ef2392795a723e658984d4",
+  "identical": true,
+  "members": [
+    {
+      "member": "psam_pusa.csv",
+      "member_bytes": 1226543489,
+      "byte_limit": 1226543489,
+      "identical": true,
+      "byte_loop": {
+        "records_sha256": "da955ca2c3d53ec608fc4c373ac584e38f50b14732b13420296bb136347fc827",
+        "records": 1743752,
+        "bytes": 1226543489,
+        "cpu_seconds": 116.717
+      },
+      "chunked_scan": {
+        "records_sha256": "da955ca2c3d53ec608fc4c373ac584e38f50b14732b13420296bb136347fc827",
+        "records": 1743752,
+        "bytes": 1226543489,
+        "cpu_seconds": 2.379
+      },
+      "speedup": 49.1
+    },
+    {
+      "member": "psam_pusb.csv",
+      "member_bytes": 1178924624,
+      "byte_limit": 1178924624,
+      "identical": true,
+      "byte_loop": {
+        "records_sha256": "9bbf6af890dd286c0d76171d72363888218a8bf0395a94eef75a15e490184bba",
+        "records": 1679138,
+        "bytes": 1178924624,
+        "cpu_seconds": 110.14
+      },
+      "chunked_scan": {
+        "records_sha256": "9bbf6af890dd286c0d76171d72363888218a8bf0395a94eef75a15e490184bba",
+        "records": 1679138,
+        "bytes": 1178924624,
+        "cpu_seconds": 2.252
+      },
+      "speedup": 48.9
+    }
+  ],
+  "note": "Descriptive parity measurement on a read-only staged archive. Not a build, not a certification, not release eligible."
+}

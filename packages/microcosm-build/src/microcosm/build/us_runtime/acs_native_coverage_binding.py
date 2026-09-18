@@ -35,7 +35,7 @@ _ACCEPTED = {
     "acs_pums.py": "6ecf79f0dfb0c0bc0ad0af6be5fa65bd8c2d1e1968009402e4c8dee347de70dc",
     "acs_inputs.py": "aa4a8aeaba63dfef2f3e04fb89de59766deb088ed7f4d290aeba0425739916da",
     "acs_housing_universe_source.py": "beb46a4a05a13580a868be423809a77946441dcafc3a0f57160561157e93e9a3",
-    "acs_person_coverage_authentication.py": "475aa795c8a5b49a0dd3405a0877866dddd03012a1f2b9743447fab1fe85bcff",
+    "acs_person_coverage_authentication.py": "9ec68721a4cf480ef412c51ab354db9000eb7a7989e35e6e09b1574d88e8e49f",
 }
 _TOKEN = object()
 _ISSUED = WeakKeyDictionary()
@@ -400,6 +400,31 @@ def _owned(issuance):
         "ISSUANCE_NOT_OWNED",
     )
     return owned
+
+
+def _verified_source_stats(issuance):
+    """Stat identities of every path ``_verify_sources`` re-reads, without reading."""
+    owned = _owned(issuance)
+    return tuple(
+        _path_stat(paths[role])
+        for paths in owned.snapshots
+        for role, _name, _digest, _size in owned.pins
+    )
+
+
+def _path_stat(path):
+    """One path's stat identity, or why it has none. Never raises."""
+    try:
+        info = Path(path).lstat()
+    except OSError as error:
+        return ("absent", error.errno)
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
 
 
 def _verify_sources(snapshots, pins):
