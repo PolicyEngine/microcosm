@@ -579,7 +579,29 @@ arbitrary Python objects that no digest reproduces.
 I shipped (a). (b) is the only one that makes the codes exact, and it is not
 free.
 
-**4. The completion path still retains everything, and that is where the
+**4. Who lifts the ACS serialno ceiling, and does the base branch's headline
+need amending?** §8 shows a 1 MiB canonical-JSON cap on the selected-ACS-
+`SERIALNO` list refusing above about 4.28% of source — **below** the 6.10%
+that branch lifted, and in no census. Two separate calls:
+
+- **The lift itself.** The brief told this lane to leave the four row-count
+  ceilings to the lane that owns them. This is a fifth, of a different kind — a
+  byte budget, not a row count — and this lane left it alone on the same
+  principle. **(a)** the ceiling lane takes it with the other four; **(b)** it
+  is its own change, because unlike the row counts it is a *transport* shape
+  and belongs with the transport work that lifted its siblings; **(c)** this
+  lane takes it now, which would make the 1/15 run possible but widens a lane
+  that is already carrying another branch's contract repair.
+- **The base branch's report.** Its §5 census and its §2e table read as "a 1/10
+  build meets no ceiling this lane did not lift". That is true of the ceilings
+  it enumerated and is not true of the path, which its own 1/10 run then
+  demonstrated. Do you want that historicized in place, as `CLAUDE.md`'s
+  journal rule asks, or left for the ceiling lane's own report to correct?
+
+My reading: **(b)** for the lift, and yes for the amendment — the sentence is
+the kind that gets quoted later.
+
+**5. The completion path still retains everything, and that is where the
 remaining wall is.** `graph_survey_completion_host` hands the base run's whole
 population roster to `_states`, which reads each frame. Should the next lane
 give the completion host the same treatment — which means finding a frame-free
