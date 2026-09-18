@@ -56,6 +56,35 @@ MAX_BYTES = 64 * 1024**2
 MAX_DECLARATION_BYTES = 1024**2
 _BINDING_KEYS = {"value_variable", "value_expression", "filters", "from_entity"}
 _LEVELS = {"national", "state", "congressional_district"}
+# The engine's SPM measurement selection for every model evaluation this kernel
+# runs, forwarded verbatim as ``Microsimulation(spm=...)``. It is the release
+# selection (``reform_validation.US_RELEASE_SPM_SELECTION``), and it is bound
+# into the model contract, so changing it moves the node declaration.
+SPM_SELECTION: dict[str, object] = {"geography_kind": "county"}
+# spm-calculator builds the measurement variables when the engine system
+# loads, outside the PolicyEngine-US variables tree, and
+# ``spm_unit_capped_housing_subsidy`` reaches the same provider through a
+# function call rather than a variable reference. The static source index
+# records no reference site for either, so their dependency closures carry no
+# input leaves although the provider reads inputs for every unit it evaluates.
+_SPM_MEASUREMENT_NODES = frozenset(
+    {
+        "spm_measurement_adults",
+        "spm_measurement_children",
+        "spm_unit_capped_housing_subsidy",
+        "spm_unit_geographic_adjustment",
+        "spm_unit_reference_spm_threshold",
+        "spm_unit_spm_threshold",
+        "spm_unit_spm_threshold_housing_portion",
+        "spm_unit_unadjusted_spm_threshold",
+    }
+)
+# What the provider reads under a county selection, beyond the static closure:
+# the household county, the unit's tenure, and each member's age. The
+# independence role is left to the engine, which derives it from household
+# head and spouse structure when no source role is delivered and refuses a
+# unit with no classified adult itself (``SPM_COMPOSITION_REQUIRED``).
+_SPM_MEASUREMENT_LEAVES = ("age", "county_fips", "spm_unit_tenure_type")
 
 
 def _require(condition, reason):
@@ -151,17 +180,28 @@ def _model_contract(roots):
     contracts = []
     for root in roots:
         closure = index.variable_dependency_closure(root)
+        leaves = set(closure.input_leaves)
+        if _SPM_MEASUREMENT_NODES.intersection(closure.formula_nodes):
+            # Declared here, these become ordinary leaves: an undeclared one
+            # refuses the node declaration and a missing value refuses the
+            # kernel, both before the engine is asked for anything.
+            leaves.update(_SPM_MEASUREMENT_LEAVES)
         contracts.append(
             {
                 "closure": asdict(closure),
                 "entity": index.variable_metadata(root).entity,
                 "leaves": {
                     leaf: index.variable_metadata(leaf).entity
-                    for leaf in closure.input_leaves
+                    for leaf in sorted(leaves)
                 },
             }
         )
-    return {"evaluation": "real_baseline", "runtime": identity, "roots": contracts}
+    return {
+        "evaluation": "real_baseline",
+        "runtime": identity,
+        "spm": dict(SPM_SELECTION),
+        "roots": contracts,
+    }
 
 
 def _resolved_model_contract(roots, leaf_policy=None):
@@ -676,9 +716,10 @@ class FiscalMeasurementKernel(KernelBase):
                             np.isfinite(values.to_numpy()).all(),
                             "NONFINITE_MODEL_INPUT",
                         )
-            outputs = policyengine_us.PolicyEngineUSEngine().materialize(
-                frame, self.model_outputs, params["period"]
-            )
+            _require(model.get("spm") == SPM_SELECTION, "MODEL_SPM_SELECTION")
+            outputs = policyengine_us.PolicyEngineUSEngine(
+                spm=model["spm"]
+            ).materialize(frame, self.model_outputs, params["period"])
             _require(set(outputs) == set(self.model_outputs), "MODEL_RESULT_ROSTER")
             for contract in model["roots"]:
                 output = np.asarray(outputs[contract["closure"]["root"]])

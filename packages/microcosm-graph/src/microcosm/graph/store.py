@@ -23,7 +23,8 @@ import re
 import shutil
 import struct
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
@@ -695,6 +696,7 @@ class ContentStore:
         ):
             raise TypeError("codecs must be a mapping, codec registry, or None.")
         self.codecs = codecs
+        self._write_ledgers: list[set[str]] = []
         self.objects.mkdir(parents=True, exist_ok=True)
         self.tmp.mkdir(parents=True, exist_ok=True)
 
@@ -714,6 +716,72 @@ class ContentStore:
         return self.object_path(key).exists()
 
     contains = has
+
+    @contextmanager
+    def recording_writes(self) -> Iterator[set[str]]:
+        """Collect the key of every object published while this block is open.
+
+        The set is one caller's record of what it, and nothing before it, put
+        in this store, so it is the set that caller may take back out. A key
+        an object already satisfied is absent from it: that object is not this
+        caller's to remove. A key published over an existing object -- the
+        write-only replacement path -- is present, because the object standing
+        there now is this caller's.
+
+        Blocks nest, and every open block sees every publication under it. The
+        ledger is the store instance's, not a thread's: two callers sharing one
+        instance share its publications, so a block held open across concurrent
+        work collects that work too.
+        """
+
+        written: set[str] = set()
+        self._write_ledgers.append(written)
+        try:
+            yield written
+        finally:
+            # By identity: two ledgers holding the same keys compare equal, and
+            # `list.remove` would take the wrong one.
+            for index in reversed(range(len(self._write_ledgers))):
+                if self._write_ledgers[index] is written:
+                    del self._write_ledgers[index]
+                    break
+
+    def _note_write(self, key: str) -> None:
+        for ledger in self._write_ledgers:
+            ledger.add(key)
+
+    def evict(self, key: str) -> bool:
+        """Remove one object, so this key is a miss again.
+
+        Returns whether an object was there to remove, and removing one that
+        is already gone is not an error: calling this twice on a key leaves
+        the same store as calling it once. The object is renamed out of the
+        tree before anything is deleted, so a reader sees the whole object or
+        no object, never a partial one. The store has no reader lock, so a
+        loader that already opened this object reads on against the renamed
+        directory and one that has not sees the miss.
+
+        This is for a writer taking its own writes back. Every object is
+        content-addressed and derivable, so an eviction costs recomputation
+        and never a wrong answer, but it is still removal: a key another run
+        also published is a miss for that run too.
+        """
+
+        key = _require_key(key)
+        destination = self.object_path(key)
+        if not destination.exists():
+            return False
+        self.tmp.mkdir(parents=True, exist_ok=True)
+        displaced = self.tmp / f"{uuid.uuid4().hex}-evicted"
+        try:
+            os.replace(destination, displaced)
+        except FileNotFoundError:
+            return False
+        _fsync_directory(destination.parent)
+        # The object is already invisible; a tree that will not delete is
+        # tmp-directory litter, not a failed eviction.
+        shutil.rmtree(displaced, ignore_errors=True)
+        return True
 
     def metadata(self, key: str, *, kind: str | None = None) -> Mapping[str, Any]:
         """Return validated object metadata."""
@@ -736,6 +804,7 @@ class ContentStore:
             if validate_existing is not None:
                 validate_existing(existing)
             return destination
+        published = True
         staging = self.tmp / uuid.uuid4().hex
         staging.mkdir(parents=False, exist_ok=False)
         try:
@@ -765,8 +834,12 @@ class ContentStore:
                     existing = _verified_meta(destination, expected_kind=kind)
                     if validate_existing is not None:
                         validate_existing(existing)
+                    # The object standing here is the incumbent's, not ours.
+                    published = False
                 else:
                     self._replace_write_only_collision(staging, destination)
+            if published:
+                self._note_write(key)
             _fsync_directory(destination.parent)
             return destination
         finally:

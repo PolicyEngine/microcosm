@@ -8,10 +8,17 @@ import pytest
 from microcosm.build.us_runtime import asec_engine_evaluation as evaluation
 from microcosm.build.us_runtime.graph_implementation import implementation_manifest
 
-# These are the exact bytes admitted in b0e7f54b28145ee920ad0f4c5d0e2090c8b0785a,
-# not newly observed identities of whatever engine a test environment installs.
+# These are the exact bytes re-admitted when the US engine lock moved to
+# policyengine-us 2.2.1 / policyengine-core 3.32.5 (#936, merged into this
+# integration branch on 17 September 2026), re-derived from the installed
+# distributions through `asec_engine_evaluation._runtime_package_identity` —
+# the same code `engine_runtime_identity()` asserts against. They are a pinned
+# admission record, not newly observed identities of whatever engine a test
+# environment happens to install; a different installed engine must fail this
+# assertion rather than silently redefine it. The superseded 1.819.0 / 3.31.0
+# record is b0e7f54b28145ee920ad0f4c5d0e2090c8b0785a.
 _RESTORED_RESOURCE_SHA256 = (
-    "090dd200ecdb837127dba1d1f22903d152cef8a434085e4ead4d379350ee5b82"
+    "448fe39eb6f8237a7b7da457ac76e7f81c666987a3dee0c37390861f60498626"
 )
 _RESTORED_RESOURCES = {
     "asec_current_money_engine_defaults_v1.json": _RESTORED_RESOURCE_SHA256,
@@ -38,8 +45,8 @@ def test_packaged_defaults_restore_the_admitted_evidence_without_new_claims():
     assert document["release_eligible"] is False
     assert tuple(document["admitted_roots"]) == evaluation.ADMITTED_ROOTS
     assert tuple(sorted(document["blocked_roots"])) == evaluation.BLOCKED_ENGINE_OUTPUTS
-    assert document["baseline_runtime"]["policyengine-us"]["version"] == "1.819.0"
-    assert document["baseline_runtime"]["policyengine-core"]["version"] == "3.31.0"
+    assert document["baseline_runtime"]["policyengine-us"]["version"] == "2.2.1"
+    assert document["baseline_runtime"]["policyengine-core"]["version"] == "3.32.5"
     assert all(
         not any(
             marker in leaf for marker in ("last_year", "previous_year", "prior_year")

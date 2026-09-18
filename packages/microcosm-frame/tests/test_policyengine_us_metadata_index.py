@@ -24,6 +24,18 @@ _EXPECTED_STATE_MFS = frozenset(
     "ms_taxable_income mt_standard_deduction mt_itemized_deductions "
     "mt_taxable_income".split()
 )
+# policyengine-us 2.x installs spm-calculator's measurement variables into the
+# default system through ``build_policyengine_variables``. Eight are
+# formula-owned; ``is_household_spouse`` is the one new input leaf, the
+# source-backed SPM independence role a stored dataset must supply.
+_EXPECTED_SPM_FORMULA_OWNED = frozenset(
+    "is_spm_independent_minor_role spm_measurement_adults "
+    "spm_measurement_children spm_unit_geographic_adjustment "
+    "spm_unit_reference_spm_threshold spm_unit_spm_threshold "
+    "spm_unit_spm_threshold_housing_portion "
+    "spm_unit_unadjusted_spm_threshold".split()
+)
+_EXPECTED_SPM_INPUTS = frozenset({"is_household_spouse"})
 
 
 def _write_variable_source(
@@ -41,13 +53,43 @@ def _installed_package() -> tuple[object, Path]:
     return package, Path(package.locate_file("policyengine_us"))
 
 
+def _installed_spm_package() -> tuple[object, Path]:
+    try:
+        package = module.distribution("spm-calculator")
+    except module.PackageNotFoundError:  # pragma: no cover - engine extra
+        pytest.skip("requires the policyengine-us [us] extra")
+    return package, Path(package.locate_file("spm_calculator"))
+
+
+def _generated_sources(root: Path) -> dict[str, object]:
+    """Keyword arguments naming both audited distributions at ``root``."""
+
+    package, _installed_root = _installed_package()
+    spm_package, _installed_spm_root = _installed_spm_package()
+    return {
+        "version": package.version,
+        "spm_package_root": root / "spm_calculator",
+        "spm_version": spm_package.version,
+    }
+
+
 def _copy_generated_sources(root: Path) -> tuple[object, Path]:
     package, installed_root = _installed_package()
-    for relative_path in module._GENERATED_SOURCE_SHA256:
-        source = installed_root / relative_path
-        target = root / relative_path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(source.read_bytes())
+    _spm_package, installed_spm_root = _installed_spm_package()
+    copies = [
+        (installed_root, root, module._GENERATED_SOURCE_SHA256),
+        (
+            installed_spm_root,
+            root / "spm_calculator",
+            module._GENERATED_SPM_SOURCE_SHA256,
+        ),
+    ]
+    for source_root, target_root, digests in copies:
+        for relative_path in digests:
+            source = source_root / relative_path
+            target = target_root / relative_path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(source.read_bytes())
     return package, root
 
 
@@ -119,19 +161,27 @@ class dynamic_metadata(Variable):
 
 def test_generated_snapshot_covers_the_pinned_default_system() -> None:
     package, package_root = _installed_package()
+    spm_package, spm_package_root = _installed_spm_package()
     generated = module._index_policyengine_us_generated_variable_sources(
         package_root,
         version=package.version,
+        spm_package_root=spm_package_root,
+        spm_version=spm_package.version,
     )
-    formula_owned = _EXPECTED_IN_STATE | _EXPECTED_STATE_MFS | {"mi_surtax"}
+    formula_owned = (
+        _EXPECTED_IN_STATE
+        | _EXPECTED_STATE_MFS
+        | {"mi_surtax"}
+        | _EXPECTED_SPM_FORMULA_OWNED
+    )
 
-    assert set(generated) == formula_owned | _EXPECTED_PUF
-    assert len(generated) == 110
+    assert set(generated) == formula_owned | _EXPECTED_PUF | _EXPECTED_SPM_INPUTS
+    assert len(generated) == 119
     assert {name for name, item in generated.items() if item.formula_owned} == (
         formula_owned
     )
     assert {name for name, item in generated.items() if not item.formula_owned} == (
-        _EXPECTED_PUF
+        _EXPECTED_PUF | _EXPECTED_SPM_INPUTS
     )
 
     expected_metadata = {
@@ -139,46 +189,68 @@ def test_generated_snapshot_covers_the_pinned_default_system() -> None:
         "e00700": ("person", "float", "year"),
         "ar_agi": ("tax_unit", "float", "year"),
         "mi_surtax": ("tax_unit", "float", "year"),
+        # ETERNITY roles are point-in-time state, not annual flows, and the
+        # measurement counts are integers; the snapshot carries the period and
+        # dtype per group rather than assuming year/float.
+        "is_household_spouse": ("person", "bool", "point"),
+        "is_spm_independent_minor_role": ("person", "bool", "point"),
+        "spm_measurement_adults": ("spm_unit", "int", "year"),
+        "spm_unit_spm_threshold": ("spm_unit", "float", "year"),
     }
     for name, expected in expected_metadata.items():
         metadata = generated[name].metadata
         assert (metadata.entity, metadata.dtype, metadata.period) == expected
 
     index = module.PolicyEngineUSVariableMetadataIndex()
-    assert len(index._definitions) == 6_146
-    assert len(index.variables()) == 924
-    assert len(index.formula_owned_outputs(index._definitions)) == 5_222
+    assert len(index._definitions) == 6_167
+    assert len(index.variables()) == 925
+    assert len(index.formula_owned_outputs(index._definitions)) == 5_242
     assert index.formula_owned_outputs(["AK", "e00700", "ar_agi", "mi_surtax"]) == {
         "AK",
         "ar_agi",
         "mi_surtax",
     }
+    # The SPM thresholds are formula-owned outputs: policyengine-us 2.0.0
+    # rejects them as stored dataset inputs, and the export contract must
+    # never carry them.
+    assert index.formula_owned_outputs(
+        ["spm_unit_spm_threshold", "is_household_spouse"]
+    ) == {"spm_unit_spm_threshold"}
 
 
-@pytest.mark.parametrize("relative_path", module._GENERATED_SOURCE_SHA256)
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        *((path, False) for path in module._GENERATED_SOURCE_SHA256),
+        *((path, True) for path in module._GENERATED_SPM_SOURCE_SHA256),
+    ],
+    ids=lambda item: ("spm:" if item[1] else "") + item[0],
+)
 def test_generated_snapshot_fails_closed_on_source_mutation(
     tmp_path: Path,
-    relative_path: str,
+    relative_path: tuple[str, bool],
 ) -> None:
-    package, package_root = _copy_generated_sources(tmp_path)
-    source = package_root / relative_path
+    path, is_spm = relative_path
+    _package, package_root = _copy_generated_sources(tmp_path)
+    root = package_root / "spm_calculator" if is_spm else package_root
+    source = root / path
     source.write_bytes(source.read_bytes() + b"\n# metadata audit mutation\n")
 
     with pytest.raises(RuntimeError, match="source changed without a metadata audit"):
         module._index_policyengine_us_generated_variable_sources(
             package_root,
-            version=package.version,
+            **_generated_sources(package_root),
         )
 
 
 def test_generated_snapshot_fails_closed_on_missing_source(tmp_path: Path) -> None:
-    package, package_root = _copy_generated_sources(tmp_path)
+    _package, package_root = _copy_generated_sources(tmp_path)
     (package_root / "system.py").unlink()
 
     with pytest.raises(RuntimeError, match="source is unavailable"):
         module._index_policyengine_us_generated_variable_sources(
             package_root,
-            version=package.version,
+            **_generated_sources(package_root),
         )
 
 
@@ -187,6 +259,23 @@ def test_generated_snapshot_fails_closed_on_unreviewed_version(tmp_path: Path) -
         module._index_policyengine_us_generated_variable_sources(
             tmp_path,
             version="1.764.7",
+            spm_package_root=tmp_path,
+            spm_version=module._GENERATED_SPM_SOURCE_VERSION,
+        )
+
+
+def test_generated_snapshot_fails_closed_on_unreviewed_spm_version(
+    tmp_path: Path,
+) -> None:
+    """A new spm-calculator alone can add a formula-owned SPM output."""
+
+    package, package_root = _installed_package()
+    with pytest.raises(RuntimeError, match="spm-calculator version"):
+        module._index_policyengine_us_generated_variable_sources(
+            package_root,
+            version=package.version,
+            spm_package_root=tmp_path,
+            spm_version="0.3.1",
         )
 
 

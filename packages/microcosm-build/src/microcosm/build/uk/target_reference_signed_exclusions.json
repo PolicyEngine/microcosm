@@ -56,6 +56,14 @@
       "tracking": "microcosm#890",
       "approved_by": "juaristi22",
       "approved_on": "2026-09-11"
+    },
+    {
+      "target_id": "ons.household_energy_expenditure",
+      "reason_id": "superseded_by_component_targets",
+      "rationale": "ONS Consumer Trends COICOP 04.5 (electricity, gas and other fuels) carries liquid and solid fuels the frame does not model; chronicle #271 (chronicle#270) published the 04.5.1 electricity and 04.5.2 gas sub-classes, which ons.household_electricity_expenditure and ons.household_gas_expenditure bind per fuel on the frame's own columns. The total row is retained in the contract for registry parity and signed out here (microcosm#890 F1).",
+      "tracking": "microcosm#890",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-16"
     }
   ]
 }

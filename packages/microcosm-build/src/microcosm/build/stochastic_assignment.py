@@ -58,25 +58,36 @@ def assign_binary_with_anchored_residual(
     draws: Sequence[float] | np.ndarray,
     rate: float,
     anchor: Sequence[bool] | np.ndarray | None = None,
+    population: Sequence[bool] | np.ndarray | None = None,
 ) -> np.ndarray:
     """Assign a flag while forcing reported-recipient anchors to true.
 
-    The target count is ``int(rate * n_units)`` over the full unweighted
-    population. Anchored overshoot is accepted; the residual fills only
-    non-anchored rows.
+    The target count is ``int(rate * n_units)`` over the unweighted
+    population; ``population`` restricts that population to the rows the
+    programme can reach (a benefit unit with no adult under State Pension age
+    cannot claim Universal Credit), so the rate is a share of the reachable
+    rows and rows outside it are never drawn. Anchored overshoot is accepted,
+    an anchor outside the population stays true (reported receipt is a fact),
+    and the residual fills only non-anchored rows inside the population.
     """
 
     draws = np.asarray(draws, dtype=np.float64)
     rate = _validate_rate(rate)
+    if population is None:
+        population = np.ones(draws.shape, dtype=bool)
+    else:
+        population = np.asarray(population, dtype=bool)
+        if population.shape != draws.shape:
+            raise ValueError("population and draws must align")
     if anchor is None:
-        return draws < rate
+        return population & (draws < rate)
     anchor = np.asarray(anchor, dtype=bool)
     if anchor.shape != draws.shape:
         raise ValueError("anchor and draws must align")
     result = anchor.copy()
-    target = int(rate * len(draws))
-    remaining_needed = max(0, target - int(anchor.sum()))
-    non_anchored = ~anchor
+    target = int(rate * int(population.sum()))
+    remaining_needed = max(0, target - int((anchor & population).sum()))
+    non_anchored = ~anchor & population
     if remaining_needed == 0 or not non_anchored.any():
         return result
     adjusted = remaining_needed / int(non_anchored.sum())

@@ -18,7 +18,9 @@ _UNRELATED_MODULES = (
     f"{_PACKAGE}.national_calibration",
     f"{_PACKAGE}.firm_generation",
 )
-# SHA256 of compact JSON for all 456 ordered entries from ec3b306f3f9742ff...
+# SHA256 of compact JSON for all 458 ordered entries (457 unique) from
+# ec3b306f3f9742ff..., recomputed unchanged against the merge of origin/main on
+# 17 September 2026: the UK runtime's exports moved on neither side.
 # This includes the existing duplicate ladder_vs_chronicle_household_dispersion.
 _ORDERED_ALL_SHA256 = "b1b27eaa0204f49402b2883b80c996ea460cbec388ebe64644a688aca430552d"
 

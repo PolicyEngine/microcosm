@@ -204,5 +204,5 @@ def test_adapter_preserves_generation_zero_identity_components(
         "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356"
     )
     assert legacy_payload["take_up_contract_identity"]["resource_sha256"] == (
-        "fa186daea0f8dd641cc470e41d1a2953f887d45282ec990201298f47bedf8d4d"
+        "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35"
     )
