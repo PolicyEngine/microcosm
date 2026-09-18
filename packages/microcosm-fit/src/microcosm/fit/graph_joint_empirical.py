@@ -46,7 +46,13 @@ DRAW_TYPE = ArtifactType("microcosm.fit.joint_empirical_draw", 1)
 # of 64 MiB (graph_child_property_income.MAX_ROSTER_BYTES); this decoder's
 # ceiling on the same bytes is that number.
 MAX_DRAW_BYTES = 64 * 64 * 1024**2
-MAX_RECIPIENTS = 1_048_576
+# The recipient support table the draw kernel bounds is built from every
+# stacked person of the selection (graph_child_property_income._projections),
+# 3,565,013 at full source, so 1,048,576 refused a full-source draw before any
+# byte did. Four times the measured full-source count, rounded up to the next
+# whole million (docs/us-native-row-ceilings.md); the same number its two
+# upstream siblings, MAX_ORIGINALS and MAX_RECIPIENT_ROWS, take.
+MAX_RECIPIENTS = 15_000_000
 
 
 def _require(condition, reason):

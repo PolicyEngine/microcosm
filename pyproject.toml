@@ -45,6 +45,14 @@ ignore = ["E501"]
 "experiments/native-row-ceilings/selected_body_budget.py" = ["E402"]
 "experiments/native-row-ceilings/consumer_gap.py" = ["E402"]
 "experiments/native-row-ceilings/roles_projection_size.py" = ["E402"]
+# The byte-transport lane: the same two shapes. Its census and sweep tools put
+# the worktree's packages on sys.path before importing them and assert each
+# module resolved here (E402); its 1/15 harness copies keep the measured
+# path's full import roster for the stray-module assertion (F401).
+"experiments/native-byte-transports/agreement_sweep.py" = ["E402"]
+"experiments/native-byte-transports/byte_census_measure.py" = ["E402"]
+"experiments/native-byte-transports/fifteenth/harness19_fifteenth.py" = ["F401"]
+"experiments/native-byte-transports/fifteenth/harness19_diag_fifteenth.py" = ["F401"]
 
 [tool.ruff.lint.isort]
 # microcosm is a PEP 420 namespace package (no top-level __init__.py), so

@@ -78,7 +78,8 @@ _ISSUED = {}
 class SurveyPopulationPreparationError(ValueError):
     """Static refusal; messages contain no source observations or paths.
 
-    The issuance catch-all chains the exception it caught.
+    Every catch-all chains the exception it caught, so a refused run names
+    what refused; the code itself stays static.
     """
 
 
@@ -495,8 +496,8 @@ def read_survey_population_request(source_dir):
         return fraction, seed
     except SurveyPopulationPreparationError:
         raise
-    except Exception:
-        raise SurveyPopulationPreparationError("REQUEST_REFUSED") from None
+    except Exception as error:
+        raise SurveyPopulationPreparationError("REQUEST_REFUSED") from error
 
 
 def _file_limits():
@@ -1583,10 +1584,10 @@ def _finalize_epoch():
                 _validate(entry[2])
         except SurveyPopulationPreparationError:
             raise
-        except Exception:
+        except Exception as error:
             raise SurveyPopulationPreparationError(
                 "PREPARATION_VERIFICATION_REFUSED"
-            ) from None
+            ) from error
         _MEMO[key] = (entry[0], None if moved else after, entry[2])
 
 
@@ -1823,10 +1824,10 @@ class AuthenticatedSurveyPopulationPreparation:
             return entry
         except SurveyPopulationPreparationError:
             raise
-        except Exception:
+        except Exception as error:
             raise SurveyPopulationPreparationError(
                 "PREPARATION_VERIFICATION_REFUSED"
-            ) from None
+            ) from error
 
     def validate(self):
         self._checked()

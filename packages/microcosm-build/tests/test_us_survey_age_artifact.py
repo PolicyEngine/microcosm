@@ -212,3 +212,35 @@ def test_actual_graph_cold_and_warm_keeps_counts_out_of_population(tmp_path):
     pd.testing.assert_frame_equal(
         frame.table("household"), fixture.fixture_frame().table("household")
     )
+
+
+def test_measurement_bound_admits_a_full_source_clone_without_allocating(
+    monkeypatch,
+):
+    """MAX_BYTES is a resource ceiling on a numpy body that exists whole.
+
+    One 152-byte row per clone household: a full-source clone of 3,174,752
+    rows is 482,562,866 bytes with this head's header, and 64 MiB admitted
+    441,074 rows. There is nothing to segment, so the ceiling is a fixed
+    multiple -- four times the measured full-source bytes, rounded up to the
+    next power of two. The shape check is arithmetic and allocates nothing;
+    LIMIT still fires one byte under what a full-source clone needs.
+    """
+    assert artifact.MAX_BYTES == 2 * 1024**3
+    assert artifact._WIDTH * 8 == 152
+    measured_full_source_bytes = 482_562_866
+    assert 4 * measured_full_source_bytes <= artifact.MAX_BYTES
+    assert artifact.MAX_BYTES < 8 * measured_full_source_bytes
+    clone_households, clone_persons = 3_174_752, 7_130_026
+    artifact._shape(clone_households, clone_persons)
+    needed = (
+        len(artifact.MAGIC)
+        + 4
+        + artifact.MAX_HEADER_BYTES
+        + clone_households * artifact._WIDTH * 8
+    )
+    monkeypatch.setattr(artifact, "MAX_BYTES", needed - 1)
+    with pytest.raises(ValueError, match="LIMIT"):
+        artifact._shape(clone_households, clone_persons)
+    monkeypatch.setattr(artifact, "MAX_BYTES", needed)
+    artifact._shape(clone_households, clone_persons)

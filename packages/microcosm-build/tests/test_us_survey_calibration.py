@@ -9,10 +9,13 @@ import pytest
 import test_us_national_age_counts as fixture
 import test_us_survey_age_artifact as age_fixture
 
+from microcosm.build.us_runtime import graph_survey_budget as budget_graph
 from microcosm.build.us_runtime import graph_survey_calibration as stage
+from microcosm.build.us_runtime import graph_survey_population as graph
 from microcosm.build.us_runtime import (
     survey_calibration_diagnostics as diagnostic_check,
 )
+from microcosm.build.us_runtime import survey_origin_budget as budgets
 from microcosm.graph import ArtifactValue, KernelContext
 from microcosm.graph.canonical import canonical_json
 from microcosm.graph.kernel import Numeric, NumericScope
@@ -251,7 +254,109 @@ def test_survey_diagnostics_recompute_closed_solver_option_values(field, changed
     document = json.loads(raw)
     assert document["options"][field] != changed
     document["options"][field] = changed
-    with pytest.raises(
-        ValueError, match="^SURVEY_DIAGNOSTICS_RECOMPUTED_VALUES$"
-    ):
+    with pytest.raises(ValueError, match="^SURVEY_DIAGNOSTICS_RECOMPUTED_VALUES$"):
         _validated_diagnostics(value, output, canonical_json(document))
+
+
+def budget_document():
+    """An invented sampling-origin budget the numeric projection can read."""
+    weight = np.float64(100.0).tobytes().hex()
+
+    def record(first, second):
+        return {
+            "members": [[first, 0], [second, 1]],
+            "incoming_clone_float64_bytes": [weight, weight],
+            "design_bound_float64_hex": float(1600).hex(),
+            "upper_float64_hex": float(800).hex(),
+        }
+
+    return {
+        "protocol": budgets.BUDGET_PROTOCOL,
+        "release_eligible": False,
+        "preparation_sha256": "a" * 64,
+        "allocation_sha256": "b" * 64,
+        "household_ids": [7, 15, 22, 40],
+        "group_indices": [0, 0, 1, 1],
+        "group_count": 2,
+        "origins": [record(7, 15), record(22, 40)],
+    }
+
+
+def _longest_token(document):
+    encoder = json.JSONEncoder(
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    )
+    return max(len(piece.encode("utf-8")) for piece in encoder.iterencode(document))
+
+
+def test_numeric_bounds_are_the_single_accumulation_at_every_segment_size(
+    monkeypatch,
+):
+    """The numeric-bounds document carries five lists over the clone rows.
+
+    At full source it is 241,233,530 bytes against the 64 MiB one accumulation
+    holds, so it is a whole-roster stream: the same canonical bytes, closed
+    into segments no larger than MAX_BYTES and joined once under
+    MAX_ROSTER_BYTES. The bytes are the single accumulation's at every segment
+    size down to the longest token; below that TRANSPORT_LIMIT still fires,
+    and one byte under the total TRANSPORT_ROSTER_LIMIT does.
+    """
+    payload = canonical_json(budget_document())
+    output = budget_graph.numeric_survey_budget_payload(payload)
+    document = json.loads(output)
+    whole = graph._bounded_json(document, 64 * 1024**2)
+    assert output == whole
+    longest = _longest_token(document)
+    for segment in (longest, longest + 1, len(whole) // 2, len(whole)):
+        monkeypatch.setattr(stage, "MAX_BYTES", segment)
+        assert budget_graph.numeric_survey_budget_payload(payload) == whole
+    monkeypatch.setattr(stage, "MAX_BYTES", longest - 1)
+    with pytest.raises(graph.SurveyPopulationGraphError, match="TRANSPORT_LIMIT"):
+        budget_graph.numeric_survey_budget_payload(payload)
+    monkeypatch.setattr(stage, "MAX_BYTES", 64 * 1024**2)
+    monkeypatch.setattr(stage, "MAX_ROSTER_BYTES", len(whole) - 1)
+    with pytest.raises(
+        graph.SurveyPopulationGraphError, match="TRANSPORT_ROSTER_LIMIT"
+    ):
+        budget_graph.numeric_survey_budget_payload(payload)
+
+
+def test_numeric_decoder_ceilings_refuse_at_patched_down_values(monkeypatch):
+    raw = canonical_json(numeric_document())
+    stage.decode_numeric_survey_bounds(raw)
+    monkeypatch.setattr(stage, "MAX_ROSTER_BYTES", len(raw) - 1)
+    with pytest.raises(ValueError, match="PAYLOAD"):
+        stage.decode_numeric_survey_bounds(raw)
+    monkeypatch.setattr(stage, "MAX_ROSTER_BYTES", len(raw))
+    stage.decode_numeric_survey_bounds(raw)
+    monkeypatch.setattr(stage, "MAX_ROWS", 4)
+    with pytest.raises(ValueError, match="ROW_COUNT"):
+        stage.decode_numeric_survey_bounds(raw)
+
+
+def test_numeric_ceilings_admit_a_full_source_clone_without_allocating():
+    """MAX_BYTES stays the accumulation; the total and the row bound follow it.
+
+    A full-source clone is 3,174,752 households, 241,233,530 bytes through this
+    module's own encoder; MAX_ROWS keeps the //128 form the allocation
+    pre-check uses, over the total rather than one accumulation.
+    """
+    assert stage.MAX_BYTES == 64 * 1024**2
+    assert stage.MAX_ROSTER_BYTES == 64 * stage.MAX_BYTES
+    assert stage.MAX_ROWS == stage.MAX_ROSTER_BYTES // 128 == 33_554_432
+    clone_households = 3_174_752
+    measured_full_source_bytes = 241_233_530
+    assert 4 * clone_households <= stage.MAX_ROWS
+    assert measured_full_source_bytes > stage.MAX_BYTES
+    assert 4 * measured_full_source_bytes <= stage.MAX_ROSTER_BYTES
+
+
+def test_budget_graph_document_ceiling_is_the_producers_total(monkeypatch):
+    """The budget graph reads the issued budget under its producer's total."""
+    payload = canonical_json(budget_document())
+    budget_graph._document(payload)
+    monkeypatch.setattr(budgets, "MAX_ROSTER_BYTES", len(payload) - 1)
+    with pytest.raises(ValueError, match="PAYLOAD"):
+        budget_graph._document(payload)
+    monkeypatch.setattr(budgets, "MAX_ROSTER_BYTES", len(payload))
+    budget_graph._document(payload)

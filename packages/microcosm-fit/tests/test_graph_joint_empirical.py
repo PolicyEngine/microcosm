@@ -728,3 +728,26 @@ def test_actual_compiler_keys_bind_each_model_and_draw_revision(change):
     )
     assert before["draw"] != after["draw"]
     assert (before["fit"] != after["fit"]) == (change in ("donor_source", "support"))
+
+
+def test_recipient_ceiling_refuses_at_a_patched_down_value_and_follows_the_rule(
+    monkeypatch,
+):
+    """MAX_RECIPIENTS bounds the recipient support table, one row per stacked person.
+
+    The US producer builds that table from every stacked person of the
+    selection (3,565,013 at full source), so the shipped value is four times
+    that count rounded up to the next whole million, the same number its two
+    upstream siblings take. The draw kernel checks it before reading the model,
+    so a table one row over a patched-down ceiling refuses with RECIPIENT_COUNT
+    and a table at the ceiling draws; no full-source table is allocated here.
+    """
+    assert graph.MAX_RECIPIENTS == 15_000_000
+    assert graph.MAX_RECIPIENTS == -(-4 * 3_565_013 // 1_000_000) * 1_000_000
+    table = recipient_table()
+    monkeypatch.setattr(graph, "MAX_RECIPIENTS", len(table) - 1)
+    with pytest.raises(ValueError, match="RECIPIENT_COUNT"):
+        graph.JointEmpiricalDrawKernel().run(draw_context(table))
+    monkeypatch.setattr(graph, "MAX_RECIPIENTS", len(table))
+    result = graph.JointEmpiricalDrawKernel().run(draw_context(table))
+    assert decoded(result.artifacts["draws"], table).values.shape[0] == len(table)

@@ -9,6 +9,35 @@ Design authority once written: `docs/us-native-byte-transports.md`. Lane report:
 `experiments/native-byte-transports/out.md` (root `out.md` is another lane's
 tracked report and is not touched).
 
+## State (fifth session, 2026-09-18, from 17:20)
+
+The fourth session (16:20-16:17+, ended on its limit) committed the remaining
+whole-roster transports, the budget view's streamed comparison, the agreement
+sweep and the 1/15 harness copy; its salvage ref held only the untracked raw
+census and pytest logs, both now in the tree. This session verified the two
+test files that failed before the fix commit (73 and 54 passed at
+`475c9ba9d`), found no pin moving, and then closed what the raw census and a
+coverage grep showed open: the child lane's `graph_joint_empirical.MAX_RECIPIENTS`
+(1,048,576, a row count over every stacked person, the first refusal on that
+lane above about 1/3 of source) takes the row-count rule's 15,000,000; the
+three `raise ... from None` sites still in `survey_population_preparation`
+(`REQUEST_REFUSED`, two `PREPARATION_VERIFICATION_REFUSED`) chain their cause
+like the seven already converted; and every moved bound now has a test that
+drives its refusal at a patched-down value and its acceptance at a
+full-source-sized count without allocating one (numeric bounds, budget
+consumer, age artifact, predictor projection, `MAX_ORIGINALS`,
+`MAX_RECIPIENT_ROWS`, `MAX_RECIPIENTS`), plus the byte family's rule table in
+`test_us_native_row_ceilings.py`. The 1/15 harness copy keeps the retention
+lane's file with three named edits: the venv is an argument (this tree's lock
+moved), and the two receipt fields that lane found stale (`sample.fraction`,
+`scope`) say 1/15. A 59-agent verification workflow (43 refuters, 13 batch
+checkers, 3 completeness critics) is running read-only over the raw census.
+
+Still open at this entry: the verified census table, the design note, the
+1/15 run (detached worktree `microcosm-byte-transports-fifteenth` and its
+venv are built), the dependent-file battery at the finished head, the report,
+the draft PR.
+
 ## State (third session, 2026-09-18)
 
 The moved base (`origin/native-row-ceilings` at `0319b1c73`, merged level with

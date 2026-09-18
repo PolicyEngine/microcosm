@@ -548,3 +548,42 @@ def test_current_predictor_source_fit_attachment_and_required_replay(
             graph.read_current_survey_draws(qualified.matrix, "f" * 64, raw, states)
         results.append(actual)
     graph.replay.same_replayed_population(*results)
+
+
+def test_predictor_projection_is_the_segmented_stream_of_the_owners_transport(
+    tmp_path, monkeypatch
+):
+    """The projection carries one origins row per stacked person.
+
+    That is a whole-roster document -- 85,702,912 bytes of origins rows at full
+    source, measured through this encoder, against the 64 MiB one accumulation
+    holds -- so it is issued as the owner's segmented stream. Its bytes are the
+    single-accumulation canonical encoding, unchanged at every segment size
+    down to the longest token, and the owner's total admits the full-source
+    document without any allocation here.
+    """
+    live = survey.run_authenticated_survey_population(
+        **authenticated_arguments(tmp_path, monkeypatch),
+        clones=True,
+        return_values=True,
+    )
+    qualified = values.qualify_current_survey_predictors(
+        live.preparation, live.allocated_population, live.clone_population
+    )
+    document = json.loads(qualified.projection)
+    whole = survey._bounded_json(document, 64 * 1024**2)
+    assert qualified.projection == whole
+    encoder = json.JSONEncoder(
+        sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    )
+    longest = max(len(piece.encode("utf-8")) for piece in encoder.iterencode(document))
+    for segment in (longest, len(whole) // 3, len(whole)):
+        assert (
+            survey._segmented_json(
+                document, segment=segment, maximum=preparation.MAX_ROSTER_BYTES
+            )
+            == whole
+        )
+    assert preparation.MAX_ROSTER_BYTES == 64 * preparation.MAX_PAYLOAD_BYTES
+    assert 85_702_912 > preparation.MAX_PAYLOAD_BYTES
+    assert 4 * 85_702_912 <= preparation.MAX_ROSTER_BYTES

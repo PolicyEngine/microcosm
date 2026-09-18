@@ -270,3 +270,23 @@ def test_complete_private_seal_checks_exact_tuple_coordinates():
     )
     altered = replace(value, donor_projection=replace(donor, donors=changed))
     assert child.child_property_sources_seal(altered) != before
+
+
+def test_recipient_axis_ceiling_refuses_at_a_patched_down_value(monkeypatch):
+    """MAX_RECIPIENT_ROWS bounds the stacked-person axis the projection classifies.
+
+    MAX_ROWS stays the ASEC source's own row bound. The recipient axis is the
+    selection's stacked persons, 3,565,013 at full source, so it takes the
+    row-count rule's 15,000,000. A patched-down value refuses RECIPIENT_AXIS
+    before any frame is joined, and the value one row higher admits.
+    """
+    assert child.MAX_RECIPIENT_ROWS == 15_000_000
+    assert child.MAX_RECIPIENT_ROWS == -(-4 * 3_565_013 // 1_000_000) * 1_000_000
+    origins, a, b, acs = recipient_inputs()
+    rows = len(origins["persons"]["rows"])
+    monkeypatch.setattr(child, "MAX_RECIPIENT_ROWS", rows - 1)
+    with pytest.raises(ValueError, match="RECIPIENT_AXIS"):
+        child.project_child_property_recipients(origins, a, b, acs)
+    monkeypatch.setattr(child, "MAX_RECIPIENT_ROWS", rows)
+    result = child.project_child_property_recipients(origins, a, b, acs)
+    assert len(result) == rows

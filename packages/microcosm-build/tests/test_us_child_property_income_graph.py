@@ -757,3 +757,21 @@ def test_graph_json_is_the_adapter_encoding_at_every_segment_size(
 def test_the_draw_decoder_ceiling_is_the_producers_total():
     assert graph.adapter.MAX_DRAW_BYTES == graph.MAX_ROSTER_BYTES
     assert graph.MAX_ROSTER_BYTES == 64 * graph.MAX_ARTIFACT_BYTES
+
+
+def test_original_recipient_roster_ceiling_refuses_at_a_patched_down_value(
+    monkeypatch,
+):
+    """MAX_ORIGINALS bounds the original recipients, one per stacked person.
+
+    It takes the row-count rule's 15,000,000 from the 3,565,013 stacked persons
+    a full-source selection carries, and the fit adapter's MAX_RECIPIENTS,
+    which bounds the same roster one node later, is the same number.
+    """
+    assert graph.MAX_ORIGINALS == 15_000_000 == graph.adapter.MAX_RECIPIENTS
+    q, origins = _qualified()
+    monkeypatch.setattr(graph, "MAX_ORIGINALS", len(origins) - 1)
+    with pytest.raises(ValueError, match="ORIGINAL_RECIPIENT_ROSTER"):
+        graph._projections(q, origins)
+    monkeypatch.setattr(graph, "MAX_ORIGINALS", len(origins))
+    assert len(graph._projections(q, origins)[0]) > 0

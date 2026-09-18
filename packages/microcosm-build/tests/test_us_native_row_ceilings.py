@@ -30,12 +30,17 @@ from microcosm.build.us_runtime import (
     acs_pums,
     asec_current_money,
     asec_demographic_source,
+    current_child_property_income_source,
     current_survey_geography,
+    graph_child_property_income,
+    graph_survey_age_artifact,
+    graph_survey_calibration,
     graph_survey_population,
     survey_observed_age,
     survey_origin_budget,
     survey_population_preparation,
 )
+from microcosm.fit import graph_joint_empirical
 
 # Measured full-source counts. See the module docstring for the derivation.
 ACS_HOUSEHOLDS = 1_531_614
@@ -44,6 +49,7 @@ ASEC_HOUSEHOLDS = 55_762
 ASEC_PERSONS = 142_125
 STACKED_HOUSEHOLDS = 1_587_376
 STACKED_PERSONS = 3_565_013
+COMBINED_CLONE_HOUSEHOLDS = 3_174_752
 COMBINED_CLONE_PERSONS = 7_130_026
 
 HEADROOM = 4
@@ -58,6 +64,16 @@ MOVED = (
     (survey_origin_budget, "MAX_GROUPS", STACKED_HOUSEHOLDS, 7_000_000),
     (current_survey_geography, "MAX_HOUSEHOLDS", STACKED_HOUSEHOLDS, 7_000_000),
     (asec_demographic_source, "_MAX_PERSONS", ACS_PERSONS, 14_000_000),
+    # The byte-transport lane's three row counts, on the child-property lane:
+    # each bounds a roster built from every stacked person of the selection.
+    (graph_child_property_income, "MAX_ORIGINALS", STACKED_PERSONS, 15_000_000),
+    (
+        current_child_property_income_source,
+        "MAX_RECIPIENT_ROWS",
+        STACKED_PERSONS,
+        15_000_000,
+    ),
+    (graph_joint_empirical, "MAX_RECIPIENTS", STACKED_PERSONS, 15_000_000),
 )
 
 
@@ -252,3 +268,176 @@ def test_the_acs_body_budget_is_the_tightest_ceiling_on_the_path():
         measured_full_source_body_bytes
         <= acs_person_coverage_authentication.MAX_ROSTER_BYTES
     )
+
+
+# ---------------------------------------------------------------------------
+# The byte-transport family (docs/us-native-byte-transports.md).
+#
+# A whole-roster canonical document keeps its 64 MiB accumulation ceiling and
+# becomes a segmented stream under one explicit total, 64 accumulations: the
+# transport lane's number, kept as one law across every transport this branch
+# moved. The measured full-source bytes below are through each module's own
+# encoder at full-source id widths (experiments/native-byte-transports/).
+SEGMENT = 64 * 1024**2
+ACCUMULATIONS = 64
+
+# (module, accumulation ceiling, total ceiling, measured full-source bytes of
+# the largest document under them, what it carries)
+SEGMENTED = (
+    (
+        survey_population_preparation,
+        "MAX_SEGMENT_BYTES",
+        "MAX_ROSTER_BYTES",
+        1_251_912_520,
+        "the preparation receipt",
+    ),
+    (
+        survey_population_preparation,
+        "MAX_PAYLOAD_BYTES",
+        "MAX_ROSTER_BYTES",
+        85_702_912,
+        "the predictor projection's origins rows",
+    ),
+    (
+        graph_survey_population,
+        "PREPARATION_MAX_BYTES",
+        "PREPARATION_ROSTER_BYTES",
+        1_251_912_520,
+        "the preparation receipt, checked by its consumer",
+    ),
+    (
+        graph_survey_population,
+        "ALLOCATION_MAX_BYTES",
+        "ALLOCATION_ROSTER_BYTES",
+        502_635_000,
+        "the allocation payload",
+    ),
+    (
+        acs_person_coverage_authentication,
+        "MAX_BODY_BYTES",
+        "MAX_ROSTER_BYTES",
+        386_523_011,
+        "the pre-allocation charge on the coverage body",
+    ),
+    (
+        survey_origin_budget,
+        "MAX_PAYLOAD_BYTES",
+        "MAX_ROSTER_BYTES",
+        1_177_832_992,
+        "the sampling-origin budget",
+    ),
+    (
+        graph_survey_calibration,
+        "MAX_BYTES",
+        "MAX_ROSTER_BYTES",
+        241_233_530,
+        "the numeric bounds",
+    ),
+    (
+        graph_child_property_income,
+        "MAX_ARTIFACT_BYTES",
+        "MAX_ROSTER_BYTES",
+        273 * STACKED_PERSONS,
+        "the child draw, bounded above by every stacked person at 273 B",
+    ),
+)
+
+
+@pytest.mark.parametrize(
+    "module, accumulation, total, measured, what",
+    SEGMENTED,
+    ids=[f"{m.__name__.rsplit('.', 1)[-1]}.{t}" for m, _, t, _, _ in SEGMENTED],
+)
+def test_every_segmented_transport_keeps_its_accumulation_and_takes_one_total(
+    module, accumulation, total, measured, what
+):
+    """The accumulation ceiling did not move; the total is 64 of them.
+
+    The document binds a single accumulation at full source, which is why it
+    is segmented at all, and the total admits it with headroom: the smallest
+    is the preparation receipt's 3.4x at maximal id widths.
+    """
+    assert getattr(module, accumulation) == SEGMENT
+    assert getattr(module, total) == ACCUMULATIONS * SEGMENT
+    assert measured > SEGMENT, what
+    assert 3 * measured <= getattr(module, total), what
+
+
+def test_every_consumer_ceiling_is_its_producers_total():
+    """A consumer that re-checks issued bytes takes the producer's own total."""
+    assert (
+        graph_survey_population.PREPARATION_ROSTER_BYTES
+        == survey_population_preparation.MAX_ROSTER_BYTES
+    )
+    assert graph_joint_empirical.MAX_DRAW_BYTES == (
+        graph_child_property_income.MAX_ROSTER_BYTES
+    )
+
+
+def test_the_one_resource_ceiling_is_four_times_full_source_at_a_power_of_two():
+    """The age artifact is a numpy body that exists whole: nothing to segment.
+
+    One 152-byte row per clone household, 482,562,866 bytes at full source,
+    against a 64 MiB ceiling that admitted 441,074 rows. Four times that,
+    rounded up to the next power of two, is 2 GiB.
+    """
+    measured = 482_562_866
+    ceiling = graph_survey_age_artifact.MAX_BYTES
+    assert ceiling == 2 * 1024**3
+    assert HEADROOM * measured <= ceiling < 2 * HEADROOM * measured
+    assert ceiling & (ceiling - 1) == 0
+    assert measured > 64 * 1024**2
+
+
+def test_the_numeric_row_bound_keeps_the_allocation_pre_checks_form():
+    """MAX_ROWS is MAX_ROSTER_BYTES // 128, over the total rather than one accumulation."""
+    assert graph_survey_calibration.MAX_ROWS == (
+        graph_survey_calibration.MAX_ROSTER_BYTES // 128
+    )
+    assert graph_survey_calibration.MAX_ROWS >= HEADROOM * COMBINED_CLONE_HOUSEHOLDS
+    assert graph_survey_population.ALLOCATION_ROSTER_BYTES // 128 == (
+        graph_survey_calibration.MAX_ROWS
+    )
+
+
+def test_the_encoder_width_does_not_move():
+    """_bounded_json's 64 MiB is the width of one accumulation, not a ceiling.
+
+    It refuses any single limit above 64 MiB before encoding a byte, and the
+    segmented sibling is bounded by it per segment, so a whole-roster document
+    goes through _segmented_json under an explicit total rather than through a
+    larger number here.
+    """
+    limit = 64 * 1024**2
+    assert graph_survey_population._bounded_json({}, limit) == b"{}"
+    with pytest.raises(
+        graph_survey_population.SurveyPopulationGraphError, match="TRANSPORT_LIMIT"
+    ):
+        graph_survey_population._bounded_json({}, limit + 1)
+    with pytest.raises(
+        graph_survey_population.SurveyPopulationGraphError, match="TRANSPORT_LIMIT"
+    ):
+        graph_survey_population._segmented_json({}, segment=limit + 1, maximum=limit)
+    assert (
+        graph_survey_population._segmented_json({}, segment=limit, maximum=limit)
+        == b"{}"
+    )
+
+
+def test_the_acs_serialno_list_and_receipt_take_the_coverage_owners_total():
+    """The two ACS streams that refused every run above about 1/24 of source.
+
+    The selected SERIALNO list was sized under min(MAX_EVIDENCE_BYTES,
+    ACS_HU_RECEIPT_MAX_BYTES) = 1 MiB, 65,535 households; the issuance receipt
+    that embeds it under 2 MiB. Both are now sized and issued under the
+    coverage owner's roster total. MAX_EVIDENCE_BYTES stays, for the one
+    fixed-shape document still encoded under it.
+    """
+    assert acs_native_coverage_binding.MAX_EVIDENCE_BYTES == 2 * 1024**2
+    serialno_list_bytes = 24_505_825
+    receipt_bytes = 24_508_342
+    total = acs_person_coverage_authentication.MAX_ROSTER_BYTES
+    # 16 canonical bytes per 13-character SERIALNO entry inside the list's brackets.
+    assert (1024**2 - 1) // 16 == 65_535
+    assert serialno_list_bytes > 2 * 1024**2
+    assert HEADROOM * max(serialno_list_bytes, receipt_bytes) <= total
