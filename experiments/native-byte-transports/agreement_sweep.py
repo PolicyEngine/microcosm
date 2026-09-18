@@ -56,38 +56,40 @@ SEED = 20260918
 ALPHABET = "abcXYZ019 _-./\\\"'\n\té中\U0001f600"
 
 
-def _scalar(rng, ascii_only):
+def _scalar(rng, floats):
+    # The coverage encoder admits str, int, bool, None, list and dict only
+    # (acs_person_coverage_authentication._json_size refuses CANONICAL_TYPE on
+    # anything else), so floats are drawn only for the encoders that take them.
     kind = rng.random()
     if kind < 0.25:
         return rng.randint(-(2**62), 2**62)
-    if kind < 0.45:
+    if kind < 0.45 and floats:
         return rng.choice(
             [0.0, -0.0, 1.5, 137.0 / 7, 5e-324, 1e300, rng.random() * 1e6, -rng.random()]
         )
     if kind < 0.75:
-        letters = ALPHABET if not ascii_only else ALPHABET[:20]
-        return "".join(rng.choice(letters) for _ in range(rng.randint(0, 24)))
+        return "".join(rng.choice(ALPHABET) for _ in range(rng.randint(0, 24)))
     if kind < 0.85:
         return None
     return rng.random() < 0.5
 
 
-def _document(rng, depth=0, ascii_only=False):
+def _document(rng, depth=0, floats=True):
     if depth >= 3 or rng.random() < 0.3:
-        return _scalar(rng, ascii_only)
+        return _scalar(rng, floats)
     if rng.random() < 0.5:
-        return [_document(rng, depth + 1, ascii_only) for _ in range(rng.randint(0, 12))]
+        return [_document(rng, depth + 1, floats) for _ in range(rng.randint(0, 12))]
     keys = ["".join(rng.choice(ALPHABET[:12]) for _ in range(rng.randint(1, 8))) for _ in range(rng.randint(0, 8))]
-    return {k: _document(rng, depth + 1, ascii_only) for k in keys}
+    return {k: _document(rng, depth + 1, floats) for k in keys}
 
 
-def _roster(rng, ascii_only=False):
+def _roster(rng, floats=True):
     # A document with a dict at the top and a long list somewhere, like every
     # whole-roster document on the path.
     return {
         "protocol": "invented/sweep",
-        "rows": [_document(rng, 1, ascii_only) for _ in range(rng.randint(1, 60))],
-        "header": _document(rng, 1, ascii_only),
+        "rows": [_document(rng, 1, floats) for _ in range(rng.randint(1, 60))],
+        "header": _document(rng, 1, floats),
     }
 
 
@@ -140,7 +142,7 @@ def sweep_graph(rng, receipt):
 
 
 def sweep_coverage(rng, receipt):
-    document = _roster(rng)
+    document = _roster(rng, floats=False)
     whole = auth._json(document, auth.MAX_ROSTER_BYTES)
     pieces = list(auth._json_chunks(document, auth.MAX_ROSTER_BYTES))
     longest = max(map(len, pieces))
