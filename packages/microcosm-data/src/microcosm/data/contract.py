@@ -774,10 +774,6 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
             "b9f630ded26728fb918c9686fd4718a2944e7320f1e49216e4e015b515feac10"
         ),
         "policy_sha256": (
-            "c59f645c51ec234e91bd582df2a1576116f2c67183c2cb015f51d3f1a2be9ea7"
-            "b96846d8587a0af0092d737baeeb2fac52f77ebcd748802c3b7dfe062ccf0aa5"
-        ),
-        "policy_sha256": (
             "d4388f8f301f354935e19bccc63a8fec64c38a6fcf2b7a0e61fc6fc206d9a9e0"
         ),
     },
@@ -792,10 +788,6 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "release_cut": {
         "gates_manifest_sha256": (
             "f8a54f01adc17986ef1d2caf60b56868caa3fe479fc0793dd5e6e7a8cbc543b3"
-        ),
-        "policy_sha256": (
-            "a7250c519e79e22d366316cd4943f5f4bd2cc86a0e76b919ee2ff2eacb2335f3"
-            "b87fa7eb0c1e0281b8a5ab5c7a33509758f1663e4fbbfb467fb970b54e21d84a"
         ),
         "policy_sha256": (
             "9298a9d68b1d719700ab18a2d97b474e6354558b16a5b902d5be25ce9f9f9077"
