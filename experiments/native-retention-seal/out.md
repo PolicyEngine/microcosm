@@ -1008,8 +1008,12 @@ $ uv run python -m pytest \
 
 $ uv run python experiments/native-retention-seal/battery_receipt.py \
     experiments/native-retention-seal/battery-receipt.json
-122 passed in 0.84s
-comparisons=116 agreements=116 disagreements=0 codes=21
+248 passed in 1.39s
+comparisons=564 agreements=564 disagreements=0 codes=21
+
+$ uv run python experiments/native-retention-seal/agreement_fuzz.py \
+    experiments/native-retention-seal/agreement-fuzz-receipt.json 4000
+pairs=3852 disagreements=0
 ```
 
 `packages/microcosm-graph/tests` is 783 against the base branch's 778: the five
@@ -1035,7 +1039,7 @@ defect, one is this lane's own measurement error, and one is neither.**
 | `test_us_graph_atomic_person_status.py` | 11 passed, **2 errors** — invalidated, see below |
 | `test_us_implementation_inventory_contracts.py` | 135 passed |
 | `test_us_graph_atomic_survey_financial.py` | 8 passed (13 at this head, with the new guard tests) |
-| `test_us_survey_population_replay.py` | 122 passed (246 at this head) |
+| `test_us_survey_population_replay.py` | 122 passed (**248** at this head, after the fix pass) |
 | `test_us_graph_atomic_property_financial.py` | 9 passed |
 | `test_us_graph_atomic_property_tax_financial.py` | 13 passed |
 | `test_us_graph_atomic_survey_population.py` | 7 passed |
