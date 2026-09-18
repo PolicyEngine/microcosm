@@ -6,11 +6,12 @@ import hashlib
 import json
 import pickle
 import socket
+import stat
 import struct
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from copy import deepcopy
-from dataclasses import fields, replace
+from dataclasses import dataclass, fields, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -449,6 +450,78 @@ def _update_array(digest: hashlib._Hash, values: object) -> None:
         digest.update(np.ascontiguousarray(array).tobytes())
 
 
+def _framed(payloads: np.ndarray) -> bytes:
+    """Frame equal-width payload rows exactly as ``_update_scalar`` frames one."""
+
+    rows, width = payloads.shape
+    prefix = np.frombuffer(
+        np.full(rows, width, dtype="<u8").tobytes(), dtype=np.uint8
+    ).reshape(rows, 8)
+    return np.concatenate([prefix, payloads], axis=1).tobytes()
+
+
+def _object_stream(series: pd.Series) -> bytes | None:
+    """The bytes ``_update_array`` writes for this column's object projection.
+
+    ``to_numpy(dtype=object)`` boxes a plain numpy column into one Python object
+    per value, and ``_update_scalar`` then frames each box.  For the three kinds
+    that dominate a survey frame the boxed value is always the same exact type,
+    so the whole framed stream is a pure function of the column's bytes and can
+    be built at C speed.  Byte-for-byte identical output is the contract; any
+    column this cannot reproduce exactly returns None and takes the loop.
+    """
+
+    dtype = series.dtype
+    if not isinstance(dtype, np.dtype) or dtype.kind not in "fiub":
+        return None
+    values = np.ascontiguousarray(series.to_numpy(copy=False))
+    if values.ndim != 1 or values.dtype != dtype:
+        return None
+    rows = values.shape[0]
+    if rows == 0:
+        return b""
+    if dtype.kind == "b":
+        # bool -> b"b1" / b"b0"; np.bool_ boxes to bool, checked before int.
+        payloads = np.empty((rows, 2), dtype=np.uint8)
+        payloads[:, 0] = ord("b")
+        payloads[:, 1] = np.where(values, ord("1"), ord("0"))
+        return _framed(payloads)
+    if dtype.kind == "f":
+        # Every float width boxes to an exact Python float, which packs to the
+        # same eight native-order IEEE-754 bytes as the float64 cast, NaN
+        # payload, signed zero and infinities included. The cast is to
+        # `np.float64`, whose byte order is the host's, because the loop this
+        # replaces packs `np.asarray([value], dtype=np.float64).tobytes()`: an
+        # explicit `<f8` would agree with it on every little-endian host and
+        # disagree on any other. The length prefixes stay explicitly
+        # little-endian, because the loop writes them with
+        # `int.to_bytes(8, "little")`.
+        wide = np.ascontiguousarray(values, dtype=np.float64)
+        payloads = np.empty((rows, 9), dtype=np.uint8)
+        payloads[:, 0] = ord("f")
+        payloads[:, 1:] = np.frombuffer(wide.tobytes(), dtype=np.uint8).reshape(rows, 8)
+        return _framed(payloads)
+    # Signed and unsigned integers box to Python ints, whose decimal rendering
+    # numpy reproduces exactly; payload width therefore varies per value.
+    text = values.astype("S")
+    width = text.dtype.itemsize
+    raw = np.frombuffer(text.tobytes(), dtype=np.uint8).reshape(rows, width)
+    filled = raw != 0  # 'S' pads the short renderings on the right with NUL
+    # The cast is the last step, not the first: a ufunc result carries the
+    # host's byte order whatever its operands carried, so casting the sum and
+    # then adding the type byte's length would emit big-endian prefixes on a
+    # big-endian host, while the loop this reproduces writes them with
+    # `int.to_bytes(8, "little")`. Casting the finished length pins the order.
+    lengths = (filled.sum(axis=1) + 1).astype("<u8")
+    block = np.empty((rows, 9 + width), dtype=np.uint8)
+    block[:, :8] = np.frombuffer(lengths.tobytes(), dtype=np.uint8).reshape(rows, 8)
+    block[:, 8] = ord("i")
+    block[:, 9:] = raw
+    keep = np.ones((rows, 9 + width), dtype=bool)
+    keep[:, 9:] = filled
+    return block[keep].tobytes()
+
+
 def _update_series(digest: hashlib._Hash, series: pd.Series) -> None:
     digest.update(str(series.dtype).encode("utf-8"))
     digest.update(b"\0")
@@ -459,7 +532,16 @@ def _update_series(digest: hashlib._Hash, series: pd.Series) -> None:
         _update_array(digest, data)
         _update_array(digest, mask)
     else:
-        _update_array(digest, series.to_numpy(dtype=object, copy=False))
+        stream = _object_stream(series)
+        if stream is None:
+            _update_array(digest, series.to_numpy(dtype=object, copy=False))
+        else:
+            # The header the object projection would have written: its dtype is
+            # "object" and its shape is the column's own one-dimensional shape.
+            digest.update(b"object\0")
+            digest.update(f"({len(series)},)".encode("ascii"))
+            digest.update(b"\0")
+            digest.update(stream)
     _update_array(digest, series.index.to_numpy(copy=False))
 
 
@@ -1986,6 +2068,8 @@ def _source_paths_and_keys(
     compiled: CompiledGraph,
     sources: Mapping[str, Path],
     store: ContentStore,
+    *,
+    identities: _SourceIdentities | None = None,
 ) -> tuple[dict[str, Path], dict[str, str]]:
     declared = {source.name: source for source in compiled.graph.sources}
     used = {name for node in compiled.graph.nodes for name in node.sources}
@@ -1996,7 +2080,7 @@ def _source_paths_and_keys(
     if unknown:
         raise ValueError(f"Source paths supplied for undeclared names {unknown!r}.")
     resolved: dict[str, Path] = {}
-    identities: dict[str, str] = {}
+    derived: dict[str, str] = {}
     for name in sorted(used):
         path = Path(sources[name]).resolve(strict=True)
         # Codec availability is verified before any kernel can execute.  The
@@ -2014,8 +2098,115 @@ def _source_paths_and_keys(
         else:  # defended by ContentStore.__init__
             raise StoreUnavailable("ContentStore has an invalid codec registry.")
         resolved[name] = path
-        identities[name] = source_content_key(name, path)
-    return resolved, identities
+        derived[name] = (
+            source_content_key(name, path)
+            if identities is None
+            else identities.key(name, path)
+        )
+    return resolved, derived
+
+
+def _stat_identity(info: object) -> tuple[int, int, int, int, int]:
+    """The five fields every source owner in this repository binds a file by."""
+
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _followed_identity(path: Path) -> tuple[object, ...]:
+    """The identity a member link resolves to, or why it resolves to nothing."""
+
+    try:
+        info = path.stat()
+    except OSError as error:
+        return ("absent", error.errno)
+    return (stat.S_IFMT(info.st_mode), _stat_identity(info))
+
+
+def _source_stat_signature(path: Path) -> tuple[object, ...]:
+    """A read-free signature of everything ``source_content_key`` would read.
+
+    A regular file contributes its own stat identity. A directory contributes
+    its own, plus the relative name, file type and stat identity of every entry
+    ``_directory_identity`` would walk -- the roster as well as the members,
+    because the directory identity hashes relative names and a file added or
+    removed moves it with no member's stat changing. Anything else contributes
+    its stat identity alone, so an unexpected node type is never cached past a
+    change.
+
+    A member that is a symlink contributes its target's identity as well.
+    ``_directory_identity`` selects members with ``is_file()`` and reads them
+    with ``read_bytes()``, and both follow the link, so the target's bytes are
+    inside the content key while the link's own five stat fields never move
+    when those bytes change. Following it here keeps the same member selection
+    on both sides, so such a change is a miss at the next node that declares
+    the source rather than a refusal deferred to run end. A link that resolves
+    to nothing contributes that fact and raises nothing, exactly as
+    ``_directory_identity`` skips it.
+    """
+
+    info = path.lstat()
+    if stat.S_ISREG(info.st_mode):
+        return ("file", _stat_identity(info))
+    if not stat.S_ISDIR(info.st_mode):
+        return ("other", stat.S_IFMT(info.st_mode), _stat_identity(info))
+    entries = []
+    for candidate in sorted(path.rglob("*")):
+        entry = candidate.lstat()
+        member = (
+            candidate.relative_to(path).as_posix(),
+            stat.S_IFMT(entry.st_mode),
+            _stat_identity(entry),
+        )
+        if stat.S_ISLNK(entry.st_mode):
+            member = (*member, _followed_identity(candidate))
+        entries.append(member)
+    return ("dir", _stat_identity(info), tuple(entries))
+
+
+class _SourceIdentities:
+    """One run's source content keys, re-derived only when a source may have moved.
+
+    ``source_content_key`` itself stays pure and uncached: it is the declared
+    path-independent identity of a source's *content*, and three key and codec
+    tests call it twice on one path with the bytes changed in between. This
+    cache is the caller's, lives in one ``run_graph`` call, and never outlives
+    it.
+
+    A cached key is reused only when the path's stat signature is identical to
+    the signature taken both immediately before and immediately after the read
+    that produced the key. A derivation whose two signatures disagree -- the
+    source moved while it was being read -- is not cached at all, so every
+    consumer re-derives it exactly as it does today.
+    """
+
+    __slots__ = ("_entries",)
+
+    def __init__(self) -> None:
+        self._entries: dict[str, tuple[tuple[object, ...], str]] = {}
+
+    def key(self, name: str, path: Path) -> str:
+        signature = _source_stat_signature(path)
+        entry = self._entries.get(name)
+        if entry is not None and entry[0] == signature:
+            return entry[1]
+        identity = source_content_key(name, path)
+        if _source_stat_signature(path) == signature:
+            self._entries[name] = (signature, identity)
+        else:
+            self._entries.pop(name, None)
+        return identity
+
+    def derive(self, name: str, path: Path) -> str:
+        """Re-derive one key with the cache bypassed, and refresh the cache."""
+
+        self._entries.pop(name, None)
+        return self.key(name, path)
 
 
 def _all_node_keys(
@@ -2246,6 +2437,105 @@ def _preflight_expand_declarations(compiled: CompiledGraph) -> None:
             ) from error
 
 
+def _evict_run_writes(store: ContentStore, written: Iterable[str]) -> list[str]:
+    """Take back every object a refusing run published, and report what stayed.
+
+    Idempotent, because :meth:`ContentStore.evict` is: a key already gone is
+    not an error and a second pass removes nothing. It never raises. The
+    refusal it runs under is the outcome of the run, so an object that will
+    not go is named in that refusal rather than replacing it with a second
+    failure, and the caller says so in the message it raises.
+    """
+
+    stranded: list[str] = []
+    for key in sorted(written):
+        try:
+            store.evict(key)
+        except Exception as error:  # every failure is reported, none replaces
+            stranded.append(f"{key} ({type(error).__name__}: {error})")
+    return stranded
+
+
+@dataclass
+class _RunSources:
+    """What a failing run needs in order to decide whether its writes stand.
+
+    ``_execute_graph`` binds the run-start paths, keys and identity cache here
+    as soon as they exist, and marks the record ``settled`` once its own
+    run-end pass has decided -- either way. ``run_graph`` reads it only when
+    the run is leaving by exception.
+    """
+
+    paths: Mapping[str, Path] | None = None
+    keys: Mapping[str, str] | None = None
+    identities: _SourceIdentities | None = None
+    settled: bool = False
+
+
+def _settle_failed_run(
+    store: ContentStore,
+    written: Iterable[str],
+    run_sources: _RunSources,
+    error: BaseException,
+) -> None:
+    """Decide, for a run leaving by exception, whether what it wrote may stay.
+
+    The run-end pass is the only check that sees a rewrite leaving every stat
+    field identical, and a run that raises never reaches it. Without this, a
+    node that persisted under the pre-rewrite identity would survive a later
+    node's failure, a store error or an interrupt, and the next
+    ``resume="auto"`` run would hit its record.
+
+    So the same cache-bypassing re-derivation runs here. Sources that still
+    match leave the store alone, which is what keeps an interrupted or failed
+    run resumable. A source that moved, a re-derivation that cannot finish --
+    a member removed mid-walk, a second interrupt -- or a failure before the
+    run had any source key to compare against evicts everything the run
+    wrote. The original error is never replaced: what happened here is added
+    to it as a note.
+    """
+
+    written = set(written)
+    if run_sources.settled or not written:
+        return
+    moved: list[str] = []
+    unverified = ""
+    if (
+        run_sources.paths is None
+        or run_sources.keys is None
+        or run_sources.identities is None
+    ):
+        unverified = "the run failed before its source identities were derived"
+    else:
+        try:
+            for name in sorted(run_sources.paths):
+                identity = run_sources.identities.derive(name, run_sources.paths[name])
+                if identity != run_sources.keys[name]:
+                    moved.append(name)
+        except BaseException as derivation_error:
+            unverified = (
+                "its sources could not be re-derived "
+                f"({type(derivation_error).__name__}: {derivation_error})"
+            )
+    if not moved and not unverified:
+        return
+    stranded = _evict_run_writes(store, written)
+    reason = (
+        "source " + ", ".join(repr(name) for name in moved) + " changed while it ran"
+        if moved
+        else unverified
+    )
+    note = f"Everything this run wrote was evicted, because {reason}."
+    if stranded:
+        note = (
+            f"Everything this run wrote was evicted, because {reason}, except "
+            + ", ".join(stranded)
+            + ", which could not be evicted and may hold work derived from a"
+            " changed source."
+        )
+    error.add_note(note)
+
+
 def run_graph(
     compiled: CompiledGraph,
     *,
@@ -2255,6 +2545,7 @@ def run_graph(
     resume: ResumePolicy = "auto",
     decisions: tuple[Decision, ...] = (),
     _population_observer: Callable[[str, Population], None] | None = None,
+    _verification_epoch: Mapping[str, object] | None = None,
 ) -> RunManifest:
     """Execute a compiled graph with content-addressed reuse and receipts.
 
@@ -2265,6 +2556,66 @@ def run_graph(
     persistence, and an exception it raises refuses the run. It is never a
     kernel capability, enters no key or receipt, and an unreached node has no
     population to observe.
+
+    The private verification-epoch record is a caller's own counts mapping --
+    a country runtime that scopes source verification around the whole run
+    hands in the record that scope yields. It is attached to the manifest
+    unchanged, as a live view rather than a copy, so counts the caller
+    finalises when its scope closes are present by the time the caller holds
+    the manifest. It enters no key, no receipt and no cache record.
+
+    The run executes inside a store write ledger. A run that refuses at the
+    run-end source re-derivation has already persisted whatever the per-node
+    check could not discriminate, and the ledger is what lets it take those
+    objects back out before the refusal reaches this caller. A run that leaves
+    by any other exception never reaches that pass, so the same re-derivation
+    runs on its way out (:func:`_settle_failed_run`): unchanged sources keep
+    the run's work for a later resume, anything else evicts it.
+
+    What no in-process check can cover is a process that stops without
+    unwinding -- SIGKILL, a power loss -- after a rewrite that left every stat
+    field identical and before either pass ran. The objects such a run
+    persisted stay in the store under the pre-rewrite identity.
+    """
+
+    run_sources = _RunSources()
+    with store.recording_writes() as written:
+        try:
+            return _execute_graph(
+                compiled,
+                sources=sources,
+                store=store,
+                kernels=kernels,
+                resume=resume,
+                decisions=decisions,
+                written=written,
+                run_sources=run_sources,
+                _population_observer=_population_observer,
+                _verification_epoch=_verification_epoch,
+            )
+        except BaseException as error:
+            _settle_failed_run(store, written, run_sources, error)
+            raise
+
+
+def _execute_graph(
+    compiled: CompiledGraph,
+    *,
+    sources: Mapping[str, Path],
+    store: ContentStore,
+    kernels: KernelRegistry,
+    resume: ResumePolicy,
+    decisions: tuple[Decision, ...],
+    written: set[str],
+    run_sources: _RunSources,
+    _population_observer: Callable[[str, Population], None] | None,
+    _verification_epoch: Mapping[str, object] | None,
+) -> RunManifest:
+    """One run, with ``written`` collecting every key it publishes.
+
+    ``run_graph`` owns that ledger's lifetime; this is where it is spent.
+    ``run_sources`` is how a run that raises tells ``run_graph`` what it
+    started from, and whether its own run-end pass already decided.
     """
 
     if resume not in ("auto", "require", "forbid"):
@@ -2281,7 +2632,16 @@ def run_graph(
 
     _preflight_expand_declarations(compiled)
     started_at = _now()
-    source_paths, source_keys = _source_paths_and_keys(compiled, sources, store)
+    # One run's source identities. The run-start pass populates the cache as it
+    # reads, so the per-node check below is a stat walk rather than a second
+    # full read; the run-end pass bypasses the cache entirely.
+    source_identities = _SourceIdentities()
+    source_paths, source_keys = _source_paths_and_keys(
+        compiled, sources, store, identities=source_identities
+    )
+    run_sources.paths = source_paths
+    run_sources.keys = source_keys
+    run_sources.identities = source_identities
     keys, implementations = _all_node_keys(compiled, kernels, source_keys)
     contracts = {
         node_id: typed_contracts(compiled, compiled.graph.node(node_id), keys, kernels)
@@ -2450,7 +2810,19 @@ def run_graph(
             if before != after:
                 raise NodeRejected(f"Node {node.id!r} mutated its input context.")
             for name in node.sources:
-                current = source_content_key(name, source_paths[name])
+                # A stat signature that still matches the one taken across this
+                # source's own read reuses that read's key; a rewrite that moves
+                # any field of that signature is re-derived in full here and
+                # refused before this node's _write_node, so nothing derived
+                # from it reaches the store. What this check cannot see is a
+                # rewrite that leaves every field identical: that is a cache
+                # hit, this node persists under the pre-rewrite identity, and
+                # the run-end re-derivation below is what catches it -- and
+                # evicts everything the run persisted. A run that raises
+                # before reaching that pass gets the same re-derivation from
+                # run_graph on its way out. Only a process that stops without
+                # unwinding leaves such a node's objects behind.
+                current = source_identities.key(name, source_paths[name])
                 if current != source_keys[name]:
                     raise NodeRejected(
                         f"Node {node.id!r} changed source {name!r} while running."
@@ -2620,9 +2992,69 @@ def run_graph(
         )
         receipt_payloads[node_id] = receipts[node_id].receipt
 
+    # Every source is re-derived in full, cache bypassed, before any caller
+    # receives a manifest. This closes the two cases a stat signature cannot
+    # decide -- a rewrite that leaves every field of that signature identical,
+    # and a change made during a node that declares no source at all, which the
+    # per-node check has never seen.
+    #
+    # The guarantee the two checks make together: a rewrite that moves any stat
+    # field refuses before the node that would have persisted work derived from
+    # it, so the store never sees that work; a rewrite that moves none of them
+    # is refused only here, after nodes have persisted artifacts and cache
+    # records under the pre-rewrite source identity, so everything this run
+    # published is evicted before the refusal propagates and no later
+    # resume="auto" run can reuse it. The eviction is idempotent and never
+    # replaces the refusal: an object that will not go is named in it.
+    #
+    # This pass covers a run that gets this far. One that raises earlier is
+    # settled by run_graph with the same re-derivation, and one whose process
+    # stops without unwinding is covered by neither: that residual is stated
+    # on run_graph.
+    #
+    # It is written inline rather than through _source_paths_and_keys because
+    # that helper answers from the per-run cache, which this pass exists to
+    # bypass, and re-resolves every path and re-checks codec availability,
+    # which this pass has no reason to repeat.
+    #
+    # Keeping it out of that helper also keeps the helper's call count where
+    # the US build shard on the branch stacked on this one expects it: a
+    # sys.setprofile hook there tracks _source_paths_and_keys by its exact
+    # code object id and times one source-key pass per call. Grep the stacked
+    # branch for "source_key" in
+    # packages/microcosm-build/tests/test_us_graph_survey_population.py.
+    # Nothing at this head references the helper outside this module.
+    final_identities = {}
+    moved = []
+    for name in sorted(source_paths):
+        identity = source_identities.derive(name, source_paths[name])
+        final_identities[name] = identity
+        if identity != source_keys[name]:
+            moved.append(name)
+    # Decided here, either way: run_graph must not re-derive a second time for
+    # the refusal below, nor for anything raised while the manifest is built.
+    run_sources.settled = True
+    if moved:
+        stranded = _evict_run_writes(store, written)
+        refusal = (
+            "Run changed source "
+            + ", ".join(repr(name) for name in moved)
+            + " while executing."
+        )
+        if stranded:
+            refusal += (
+                " Everything this run wrote was evicted except "
+                + ", ".join(stranded)
+                + ", which could not be evicted and may hold work derived from"
+                " the changed source."
+            )
+        raise NodeRejected(refusal)
+
     return RunManifest(
         country=compiled.graph.country,
         nodes=MappingProxyType(receipts),
+        source_identities=MappingProxyType(final_identities),
+        verification_epoch=({} if _verification_epoch is None else _verification_epoch),
         decisions=decisions,
         started_at=started_at,
         finished_at=_now(),
