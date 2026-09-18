@@ -167,6 +167,9 @@ def test_uk_spine_graph_contains_manifest_stages_and_named_exclusions() -> None:
     # #791 frs_relationships, #725 hmrc_cgt_asset_type_spine and #970
     # cgt_incidence_anchor stages; the two named exclusions are the
     # certified-pair alternatives, not steps of this pipeline.
+    # #791 frs_relationships, #725 hmrc_cgt_asset_type_spine and #930
+    # nts_bus_travel stages; the two named exclusions are the certified-pair
+    # alternatives, not steps of this pipeline.
     assert len(expected) == 31
     assert UK_SPINE_EXCLUSIONS == {
         "frs_hmrc_retained_leaves",
@@ -227,6 +230,9 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
     assert {source.name for source in graph.sources} == {
         "frs",
         "was",
+        "nts_household",
+        "nts_individual",
+        "nts_trip",
         "lcfs_household",
         "lcfs_person",
         "etb",
@@ -303,6 +309,7 @@ def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
         "frs_education_grant_split",
         "frs_brma",
         "was_wealth",
+        "nts_bus_travel",
         "lcfs_consumption",
         "etb_vat",
         "etb_services",

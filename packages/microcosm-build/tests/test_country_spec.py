@@ -1000,6 +1000,7 @@ class TestUKCountryPackage:
         # 31 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
         # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725, then
         # cgt_incidence_anchor #970 as the newest) plus the two certified-pair
+        # nts_bus_travel #930 as the newest) plus the two certified-pair
         # stages the June path still uses.
         assert len(spec.sources.stages) == 33
 
@@ -1348,11 +1349,15 @@ class TestUKGatesManifest:
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
             "uk_stage_was_wealth_support",
+            "uk_stage_nts_bus_travel_support",
+            "uk_stage_nts_bus_travel_facts",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
             "uk_stage_lcfs_consumption_energy_rake",
+            "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
+            "uk_stage_etb_services_support_rake",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
@@ -1444,11 +1449,15 @@ class TestUKGatesManifest:
         flagged = [g.id for g in manifest.gates if g.evidence_absent_blocks]
         assert flagged == [
             "uk_stage_was_wealth_support",
+            "uk_stage_nts_bus_travel_support",
+            "uk_stage_nts_bus_travel_facts",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
             "uk_stage_lcfs_consumption_energy_rake",
+            "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
+            "uk_stage_etb_services_support_rake",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",

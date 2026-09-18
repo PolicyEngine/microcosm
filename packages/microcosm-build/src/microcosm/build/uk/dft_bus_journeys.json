@@ -4,12 +4,13 @@
   "kind": "uk_vendored_ledger_facts",
   "resource": "dft_bus_journeys.json",
   "purpose": "DfT BUS01 local bus passenger journeys by area (England, London, England outside London, the metropolitan split and the nine English regions; year-ending-March labels 2023 to 2025), the BUS01c elderly and disabled and total concessionary journeys by the same areas, the BUS05i operating revenue and support components beyond fare receipts and net support (concessionary travel reimbursement, Bus Service Operators Grant, gross and net public transport support, total operating revenue, additional funding to operators, fare cap) for England, London and England outside London, and the ONS mid-year population of the four UK countries and the nine English regions (England is the regions' sum). Consumed by the bus fare pricing (receipts over fare-paying boardings, boardings per resident trip) and the support-per-journey diagnostic (microcosm#930).",
-  "consumers": [],
-  "planned_consumers": [
+  "consumers": [
     "uk_runtime.lcfs_consumption",
+    "uk_runtime.bus_fare_pricing",
     "uk_runtime.etb_services",
-    "uk_runtime.bus_fare_pricing"
+    "uk_runtime.bus_support_per_journey"
   ],
+  "planned_consumers": [],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
   "generator": {
     "tool": "tools/vendor_uk_ledger_facts.py",
