@@ -1,0 +1,70 @@
+{
+  "scope": "diagnostic; not a build, certification or release artifact",
+  "release_eligible": false,
+  "cap_bytes": 1048576,
+  "cap_name": "acs_housing_universe_source.ACS_HU_RECEIPT_MAX_BYTES",
+  "guard": "acs_native_coverage_binding.py:563-565",
+  "serialno_widths_observed": [
+    13
+  ],
+  "json_bytes_per_serialno": 16,
+  "serialnos_admitted": 65535,
+  "pilot_selection": {
+    "selected_households": 1584,
+    "acs": 1529,
+    "asec": 55,
+    "acs_share": 0.965278,
+    "supplied_households": 1587376
+  },
+  "binds_above_selected_households": 67892,
+  "binds_above_share_of_source": 0.04277,
+  "transport_lane_lifted_ceiling_1": {
+    "households": 96860,
+    "share_of_source": 0.061,
+    "note": "this bound is LOWER, so it refuses first"
+  },
+  "by_fraction": {
+    "1/1000": {
+      "selected_households": 1587,
+      "acs_serialnos": 1532,
+      "canonical_json_bytes": 24516,
+      "refuses": false
+    },
+    "1/30": {
+      "selected_households": 52913,
+      "acs_serialnos": 51075,
+      "canonical_json_bytes": 817205,
+      "refuses": false
+    },
+    "1/24": {
+      "selected_households": 66141,
+      "acs_serialnos": 63844,
+      "canonical_json_bytes": 1021506,
+      "refuses": false
+    },
+    "1/20": {
+      "selected_households": 79369,
+      "acs_serialnos": 76613,
+      "canonical_json_bytes": 1225807,
+      "refuses": true
+    },
+    "1/15": {
+      "selected_households": 105825,
+      "acs_serialnos": 102151,
+      "canonical_json_bytes": 1634409,
+      "refuses": true
+    },
+    "1/10": {
+      "selected_households": 158738,
+      "acs_serialnos": 153226,
+      "canonical_json_bytes": 2451614,
+      "refuses": true
+    },
+    "1/1": {
+      "selected_households": 1587376,
+      "acs_serialnos": 1532259,
+      "canonical_json_bytes": 24516140,
+      "refuses": true
+    }
+  }
+}

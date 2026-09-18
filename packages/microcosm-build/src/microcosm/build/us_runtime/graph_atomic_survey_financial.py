@@ -37,6 +37,7 @@ from microcosm.graph.artifact_edges import numeric_scope, typed_contracts
 from microcosm.graph.executor import (
     _all_node_keys,
     _apply_result,
+    _observer_snapshot,
     _project_context,
     _source_paths_and_keys,
 )
@@ -46,6 +47,11 @@ from microcosm.graph.serialize import graph_to_json
 
 from . import graph_atomic_survey_population as atomic
 from . import graph_current_survey_predictors as financial
+from .survey_population_replay import (
+    replayed_population_seal,
+    same_replayed_population_seals,
+    seal_identity,
+)
 
 values = financial.values
 codec = financial.codec
@@ -489,6 +495,17 @@ def require_complete_property_taxes(run):
 def _node_population_stamp(
     compiled, node_id, population, completion_boundary=None, *, manifest=False
 ):
+    if type(population) is tuple:
+        # A node the run sealed and dropped rather than retained. The stamp is
+        # re-derived from the retained seal record exactly as the Population
+        # arm re-derives it from the retained object, so
+        # FINANCIAL_NODE_POPULATION_CHANGED keeps a defined, non-vacuous
+        # meaning on both arms: something the run retained about this node's
+        # population is not what it was at issuance.
+        require(
+            completion_boundary is None and not manifest, "FINANCIAL_SEALED_NODE_SCOPE"
+        )
+        return seal_identity(population)
     if completion_boundary is None:
         return reconstruction._population_stamp(population)
     # Dispatch through the maintained module, never an arbitrary boundary method.
@@ -498,7 +515,12 @@ def _node_population_stamp(
 
 
 def _node_population_seals(compiled, node_populations, completion_boundary=None):
-    """Retain the existing pair format with an exact compiled-order binding."""
+    """Retain the existing pair format with an exact compiled-order binding.
+
+    A value is either a ``Population`` the run retained -- stamped as before --
+    or the content seal of one it sealed on arrival and dropped. The roster
+    still binds to ``compiled.order`` exactly, so a gap is still refused.
+    """
     if not node_populations and completion_boundary is None:
         return ()  # Preserve the existing optional path for non-completion runs.
     require(
@@ -1289,14 +1311,28 @@ def run_atomic_survey_financial(
     child_property=None,
     resume="auto",
     return_values=False,
+    _retain_every_node_population=False,
 ):
-    """Verify the base financial graph and its explicitly selected extension."""
+    """Verify the base financial graph and its explicitly selected extension.
+
+    The private retention flag names the one caller whose declared consumers
+    are every node rather than the three below: the completion host reads this
+    run's whole per-node population roster as its own expected populations
+    (``graph_survey_completion_host.py:814-816``) and hands them to
+    ``_states``, which needs the frames themselves. The recursive base call
+    below sets it; nothing else does. See docs/us-native-retention-seal.md.
+    """
     # One verification epoch for the whole run; the prefix run below opens
     # a nested one, and each closes with a full re-authentication. This run's
     # own record is carried into the manifest below; the prefix's record rides
     # its own manifest the same way.
     with survey._source_owner().verification_epoch() as verification:
         require(type(return_values) is bool, "RETURN_VALUES_FLAG")
+        require(
+            type(_retain_every_node_population) is bool
+            and not (_retain_every_node_population and child_property is not None),
+            "RETAIN_EVERY_NODE_POPULATION_FLAG",
+        )
         require(type(person_status) is bool, "PERSON_STATUS_FLAG")
         require(type(rebase_property_taxes) is bool, "PROPERTY_TAX_FLAG")
         require(
@@ -1331,6 +1367,7 @@ def run_atomic_survey_financial(
                 rebase_property_taxes=False,
                 resume=resume,
                 return_values=True,
+                _retain_every_node_population=True,
             )
             result = extension.extend(
                 base,
@@ -1637,12 +1674,49 @@ def run_atomic_survey_financial(
         )
         receipts[financial.PROJECTION_NODE] = qualified.evidence
         receipts[columns_node.id] = qualified.evidence
+        # Retention, declared rather than universal. Nineteen detached
+        # populations between the observation and the replay comparison below
+        # are ~290 GiB at full source; the comparison itself needs only what
+        # ``same_replayed_population`` compares, which the seal carries in
+        # space proportional to columns. What cannot be sealed is object
+        # IDENTITY: ``result.financial_population is observed[final_node]``
+        # further down is an identity check, and the extension host has its
+        # own. Those consumers are named here, before the run, and only they
+        # are retained -- detached with the executor's own snapshot function,
+        # so the object a caller receives is exactly what it is today.
+        # See docs/us-native-retention-seal.md.
+        declared_consumers = (
+            frozenset(compiled.order)
+            if _retain_every_node_population
+            else frozenset(
+                (
+                    financial.ATTACH_NODE,
+                    *(() if property_graph is None else (property_graph.ATTACH_NODE,)),
+                    *(() if not rebase_property_taxes else (_tax_module().GATE_NODE,)),
+                )
+            )
+        )
         observed, observed_stamps = {}, {}
+        observed_seals, observed_seal_ids = {}, {}
 
         def observe(node_id, population):
-            require(node_id not in observed, "ATOMIC_OBSERVER_DUPLICATE")
-            observed[node_id] = population
-            observed_stamps[node_id] = reconstruction._population_stamp(population)
+            require(node_id not in observed_seals, "ATOMIC_OBSERVER_DUPLICATE")
+            # Seal exactly the object this run goes on to hold. For a declared
+            # consumer that is the detached snapshot, which is what the
+            # comparison ran against before this change; for every other node
+            # there is no snapshot to take, and the live population seals to
+            # the same record because the detachment preserves content --
+            # pinned by test_an_observer_snapshot_preserves_the_replay_seal.
+            # The executor hands the live population (detach=False below) and
+            # sealing is read-only, so this allocates one copy per declared
+            # consumer and none at all for the rest.
+            if node_id in declared_consumers:
+                population = _observer_snapshot(population)
+                observed[node_id] = population
+                observed_stamps[node_id] = reconstruction._population_stamp(population)
+            seal = replayed_population_seal(population)
+            observed_seals[node_id] = seal
+            observed_seal_ids[node_id] = seal_identity(seal)
 
         manifest = run_graph(
             compiled,
@@ -1651,9 +1725,21 @@ def run_atomic_survey_financial(
             kernels=kernels,
             resume=resume,
             _population_observer=observe,
+            # This observer seals and drops; it retains only the declared
+            # consumers, and it detaches those itself, so the executor's own
+            # per-node pickle round trip is not needed.
+            _population_observer_detach=False,
             _verification_epoch=verification,
         )
-        require(tuple(observed) == compiled.order, "ATOMIC_OBSERVER_ROSTER")
+        require(tuple(observed_seals) == compiled.order, "ATOMIC_OBSERVER_ROSTER")
+        require(
+            set(observed) == declared_consumers
+            and all(
+                seal_identity(observed_seals[node_id]) == recorded
+                for node_id, recorded in observed_seal_ids.items()
+            ),
+            "ATOMIC_OBSERVER_RETENTION",
+        )
         loaded = _artifacts(manifest, compiled, store, kernels, keys, implementations)
         require(
             all(loaded[k] == v for k, v in prefix_artifacts.items()),
@@ -1793,7 +1879,9 @@ def run_atomic_survey_financial(
             else:
                 population = current[version]
             expected[node_id] = current[version] = population
-            atomic.same_replayed_population(population, observed[node_id])
+            same_replayed_population_seals(
+                replayed_population_seal(population), observed_seals[node_id]
+            )
         if property_graph is not None:
             from .graph_property_income_receipts import verify_property_model_receipts
 
@@ -1819,6 +1907,7 @@ def run_atomic_survey_financial(
         if rebase_property_taxes:
             final_node = _tax_module().GATE_NODE
         legacy_population = observed[financial.ATTACH_NODE]
+        require(final_node in observed, "ATOMIC_OBSERVER_RETENTION")
         result = AtomicSurveyFinancialRunValues(
             prefix,
             observed[final_node],
@@ -1941,11 +2030,18 @@ def run_atomic_survey_financial(
         for node_id, population in expected.items():
             require(
                 reconstruction._population_stamp(population) == expected_stamps[node_id]
-                and reconstruction._population_stamp(observed[node_id])
-                == observed_stamps[node_id],
+                and (
+                    node_id not in observed
+                    or reconstruction._population_stamp(observed[node_id])
+                    == observed_stamps[node_id]
+                )
+                and seal_identity(observed_seals[node_id])
+                == observed_seal_ids[node_id],
                 "ATOMIC_FINAL_POPULATION_MUTATION",
             )
-            atomic.same_replayed_population(population, observed[node_id])
+            same_replayed_population_seals(
+                replayed_population_seal(population), observed_seals[node_id]
+            )
         for version, population in current.items():
             survey._same_frame(population.frame, manifest.population(version))
             require(
@@ -1971,7 +2067,10 @@ def run_atomic_survey_financial(
             rebase_property_taxes=rebase_property_taxes,
             property_population=property_population,
             person_status_boundary=status_boundary,
-            node_populations=observed,
+            node_populations={
+                node_id: observed.get(node_id, seal)
+                for node_id, seal in observed_seals.items()
+            },
             node_states=states,
         )
         return result if return_values else manifest

@@ -13,8 +13,10 @@ from test_us_graph_atomic_survey_population import _support_payload
 
 from microcosm.build.us_runtime import graph_atomic_survey_financial as runner
 from microcosm.build.us_runtime import survey_population_preparation as preparation
+from microcosm.build.us_runtime import survey_population_replay as replay
 from microcosm.graph import ArtifactType, ArtifactValue, NumericScope
 from microcosm.graph.keys import opaque_artifact_key
+from microcosm.graph.population import Population
 
 financial = runner.financial
 values = financial.values
@@ -311,3 +313,118 @@ def test_financial_donor_requires_actual_geography_gate(
     kernel = run.kernels.get(financial.CurrentSurveyPredictorDonorFilterKernel.ref)
     with pytest.raises(ValueError, match=reason):
         kernel._qualified(context)
+
+
+def test_the_base_run_retains_its_declared_consumers_and_seals_the_rest(
+    known_financial_run,
+):
+    """The retention change, asserted on a real nineteen-node run.
+
+    ``result.financial_population is observed[final_node]`` is an identity
+    check, so the nodes a caller holds must stay objects. Every other node is
+    sealed on arrival and dropped, which is what removes the per-node retention
+    the cost attribution measured. See docs/us-native-retention-seal.md.
+    """
+    for run in (known_financial_run.cold, known_financial_run.warm):
+        state = runner._run_entry(run)[2]
+        order = run.compiled.order
+        original = state.node_populations
+        assert len(original) == len(order) == 19
+        retained = {
+            node_id: value
+            for node_id, (value, _) in zip(order, original, strict=True)
+            if type(value) is Population
+        }
+        # This run has one declared consumer: no property graph, no rebase.
+        assert set(retained) == {financial.ATTACH_NODE}
+        assert run.financial_population is retained[financial.ATTACH_NODE]
+        sealed = [value for value, _ in original if type(value) is not Population]
+        assert len(sealed) == 18
+        assert all(
+            type(seal) is tuple and seal[0] == replay.SEAL_PROTOCOL for seal in sealed
+        )
+        # A dropped node's stamp is re-derived from its own retained record, so
+        # FINANCIAL_NODE_POPULATION_CHANGED is not vacuous for it.
+        for node_id, (value, stamp) in zip(order, original, strict=True):
+            assert runner._node_population_stamp(run.compiled, node_id, value) == stamp
+        # And a swapped seal record refuses under that same code.
+        position = next(
+            i for i, (value, _) in enumerate(original) if type(value) is not Population
+        )
+        swapped = list(original)
+        swapped[position] = (
+            replay.replayed_population_seal(run.financial_population),
+            swapped[position][1],
+        )
+        object.__setattr__(state, "node_populations", tuple(swapped))
+        try:
+            with pytest.raises(ValueError, match="FINANCIAL_NODE_POPULATION_CHANGED"):
+                runner._pure_run(run, runner._run_entry(run))
+        finally:
+            object.__setattr__(state, "node_populations", original)
+        runner._pure_run(run, runner._run_entry(run))
+
+
+@pytest.mark.parametrize("flag", [None, 1, "yes"])
+def test_an_invalid_retention_flag_refuses_before_source_io(flag):
+    """``RETAIN_EVERY_NODE_POPULATION_FLAG``, one of the six codes this change
+    adds, and the first of them with a test.
+
+    The flag is private and has exactly one caller -- the recursive base call
+    the completion host's run makes -- so a typo at any other call site has to
+    refuse rather than silently retain nineteen populations.
+    """
+    with pytest.raises(ValueError, match="RETAIN_EVERY_NODE_POPULATION_FLAG"):
+        runner.run_atomic_survey_financial(
+            None,
+            snapshot_root=None,
+            store_root=None,
+            fraction=1.0,
+            seed=17,
+            geography_config=None,
+            _retain_every_node_population=flag,
+        )
+
+
+def test_retaining_every_node_together_with_a_child_property_refuses():
+    """The flag names the base run, so it cannot be set for an extension run.
+
+    ``child_property is not None`` is what makes a run the extension rather
+    than the base, and the retention flag is the base call's alone.
+    """
+    with pytest.raises(ValueError, match="RETAIN_EVERY_NODE_POPULATION_FLAG"):
+        runner.run_atomic_survey_financial(
+            None,
+            snapshot_root=None,
+            store_root=None,
+            fraction=1.0,
+            seed=17,
+            geography_config=None,
+            child_property=SimpleNamespace(),
+            _retain_every_node_population=True,
+        )
+
+
+def test_a_sealed_node_refuses_the_completion_and_manifest_stamp_arms(
+    known_financial_run,
+):
+    """``FINANCIAL_SEALED_NODE_SCOPE``, the third added code with no test.
+
+    ``_node_population_stamp``'s sealed arm re-derives a stamp from the
+    retained seal record, but it cannot serve the completion boundary or the
+    manifest arm: both read ``population.frame``, which a seal does not carry.
+    The retention flag is what makes those two arms unreachable for a sealed
+    node -- this pins the refusal that fires if that ever stops holding,
+    rather than leaving it to an AttributeError inside the boundary.
+    """
+    run = known_financial_run.cold
+    seal = replay.replayed_population_seal(run.financial_population)
+    node_id = run.compiled.order[0]
+    # The arm that is reachable: a sealed node, no boundary, not the manifest.
+    assert runner._node_population_stamp(
+        run.compiled, node_id, seal
+    ) == replay.seal_identity(seal)
+    with pytest.raises(ValueError, match="FINANCIAL_SEALED_NODE_SCOPE"):
+        runner._node_population_stamp(run.compiled, node_id, seal, SimpleNamespace())
+    with pytest.raises(ValueError, match="FINANCIAL_SEALED_NODE_SCOPE"):
+        runner._node_population_stamp(run.compiled, node_id, seal, manifest=True)

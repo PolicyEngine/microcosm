@@ -35,6 +35,13 @@ ignore = ["E501"]
 "experiments/native-scale-transport/harness19_base.py" = ["F401"]
 "experiments/native-scale-transport/harness19_tenth.py" = ["F401"]
 "experiments/native-scale-transport/harness19_after_with_required_replay.py" = ["F401"]
+# The retention lane's 1/15 harness is that lane's harness19_tenth.py with three
+# named changes and is committed byte-identical to what ran, for the same reason.
+"experiments/native-retention-seal/harness19_fifteenth.py" = ["F401"]
+# The 1/10 refusal diagnostic's harness, committed as it ran, for the same reason.
+"experiments/native-retention-seal/harness19_diag.py" = ["F401"]
+# The 1/15 refusal diagnostic's harness, likewise.
+"experiments/native-retention-seal/harness19_diag_fifteenth.py" = ["F401"]
 
 [tool.ruff.lint.isort]
 # microcosm is a PEP 420 namespace package (no top-level __init__.py), so
