@@ -27,6 +27,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.frame import Frame, MassChangeRecord, WeightKind
+from microcosm.frame.adapters import policyengine_uk as uk_engine_adapter
 from microcosm.graph import (
     Capabilities,
     Determinism,
@@ -43,6 +44,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
+from . import uc_relationships
 from .national_frame import UK_NATIONAL_SCHEMA
 from .rowwise_geography import id_multiplier_for_values
 
@@ -62,6 +64,7 @@ __all__ = [
 
 _STAGE_MODULES = {
     "frs_spine": "frs_spine",
+    "frs_relationships": "frs_relationships",
     "frs_employment": "frs_employment",
     "frs_council_tax": "frs_council_tax",
     "frs_disability": "frs_disability",
@@ -89,6 +92,21 @@ _STAGE_MODULES = {
     "salary_sacrifice": "salary_sacrifice",
     "student_loans": "student_loans",
     "age_tail": "age_tail",
+}
+
+# Imported modules are not traversed by ``source_hash``. Bind relationship
+# helpers and the adapter's input-retention checks into every consuming stage.
+_STAGE_HELPER_MODULES = {
+    "frs_spine": (uc_relationships,),
+    "frs_legacy_proxies": (uk_engine_adapter,),
+    "frs_education_grant_split": (uk_engine_adapter,),
+    "frs_brma": (uk_engine_adapter,),
+    "was_wealth": (uk_engine_adapter,),
+    "lcfs_consumption": (uk_engine_adapter,),
+    "etb_vat": (uk_engine_adapter,),
+    "etb_services": (uk_engine_adapter,),
+    "uc_reporter_redraw": (uc_relationships, uk_engine_adapter),
+    "uc_capital_coherence": (uc_relationships,),
 }
 
 _COMPUTE = Capabilities(
@@ -132,7 +150,9 @@ def _implementation_hash(kernel: object, stage: str, transform: object | None) -
     # hermetic registries unhashable and, more importantly, would fail to bind
     # production edits made elsewhere in that stage's module.
     del transform
-    return source_hash(type(kernel), _stage_module(stage))
+    return source_hash(
+        type(kernel), _stage_module(stage), *_STAGE_HELPER_MODULES.get(stage, ())
+    )
 
 
 def _mass_log_payload(before: Frame, after: Frame) -> list[dict[str, object]]:
@@ -300,7 +320,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 28-stage spine "
+            "UK parity fixture must describe the current 29-stage spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -328,6 +348,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .frs_household_draws import UKFRSHouseholdDrawsStageTransform
     from .frs_legacy_proxies import UKFRSLegacyProxiesStageTransform
     from .frs_person_draws import UKFRSPersonDrawsStageTransform
+    from .frs_relationships import UKFRSRelationshipsStageTransform
     from .frs_take_up import UKFRSTakeUpStageTransform
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
@@ -382,6 +403,9 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     calibration_year = int(config["student_loans_calibration_year"])
     return MappingProxyType(
         {
+            "frs_relationships": UKFRSRelationshipsStageTransform(
+                raw_dir, stage=stages["frs_relationships"]
+            ),
             "frs_employment": UKFRSEmploymentStageTransform(
                 raw_dir, stage=stages["frs_employment"]
             ),
@@ -425,7 +449,6 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 engine=engine,
                 lcfs_household=lcfs_household,
                 lcfs_person=lcfs_person,
-                was_donor=was,
             ),
             "etb_vat": UKETBVATStageTransform(
                 stage=stages["etb_vat"], engine=engine, donor=etb

@@ -4,6 +4,7 @@ import pytest
 
 from microcosm.build.gates import GateReport
 from microcosm.build.us_runtime.source_coverage import (
+    CHRONICLE_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
     LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT,
     hard_target_package_aliases,
     source_gap_family_ids,
@@ -14,8 +15,34 @@ from microcosm.build.us_runtime.source_coverage import (
 )
 
 
+def test_both_contract_commit_spellings_reach_the_us_runtime_barrel() -> None:
+    """The Chronicle-named alias is importable everywhere its sibling is.
+
+    The alias was added beside the ledger-era pin in ``source_coverage`` but
+    not re-exported, so ``from microcosm.build.us_runtime import
+    CHRONICLE_US_SOURCE_COVERAGE_CONTRACT_COMMIT`` failed while the ledger-era
+    name resolved — an alias only half of the callers could use. Both name the
+    same commit; neither is a second pin.
+    """
+    from microcosm.build import us_runtime
+
+    assert (
+        us_runtime.CHRONICLE_US_SOURCE_COVERAGE_CONTRACT_COMMIT
+        is us_runtime.LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT
+    )
+    for name in (
+        "CHRONICLE_US_SOURCE_COVERAGE_CONTRACT_COMMIT",
+        "LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT",
+    ):
+        assert name in us_runtime.__all__, name
+
+
 def test_us_source_coverage_snapshot_has_expected_roles() -> None:
     assert len(LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT) == 40
+    assert (
+        CHRONICLE_US_SOURCE_COVERAGE_CONTRACT_COMMIT
+        == LEDGER_US_SOURCE_COVERAGE_CONTRACT_COMMIT
+    )
     assert "soi-filing-season-week47-2024-eitc-total" in hard_target_package_aliases()
     assert "ssa-ssi-table-7b1-2024" in hard_target_package_aliases()
     assert "cms-aca-oep-state-level" in hard_target_package_aliases()

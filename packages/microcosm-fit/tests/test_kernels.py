@@ -244,6 +244,22 @@ def test_capabilities_protocol_and_wrapped_source_hash() -> None:
     )
 
 
+def test_the_graph_kernel_does_not_claim_the_new_keyed_seed_source() -> None:
+    """Amendment 20 adds ``SeedSource.KEYED``; ``fit.qrf@1`` still declares neither.
+
+    ``predict_from_uniforms`` is an additive method on the fitted model, not a
+    new binding of the wrapped kernel: the kernel keeps taking its seed from a
+    literal param or from the executor, so no ``fit.qrf@1`` node changes what it
+    declares. A widening here would be a silent contract change.
+    """
+    assert QRF_PARAM_KERNEL.capabilities.seed_source is SeedSource.PARAM
+    assert QRF_EXECUTOR_KERNEL.capabilities.seed_source is SeedSource.EXECUTOR
+    with pytest.raises(ValueError, match="must be SeedSource.PARAM or"):
+        QRFKernel(SeedSource.KEYED)
+    with pytest.raises(ValueError, match="must be SeedSource.PARAM or"):
+        QRFKernel(SeedSource.NONE)
+
+
 @pytest.mark.parametrize(
     ("kernel", "mutate_params", "match"),
     [

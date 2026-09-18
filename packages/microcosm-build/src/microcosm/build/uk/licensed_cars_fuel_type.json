@@ -1,0 +1,1708 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "licensed_cars_fuel_type.json",
+  "purpose": "DfT VEH1103a licensed cars by fuel type, Great Britain, end-year stock 2023 to 2025. Consumed by the LCFS stage's ICE share in place of the nts_ice_share anchor.",
+  "consumers": [
+    "uk_runtime.lcfs_consumption"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "ec200856c4e40e0d3fe97c4e17049cb48de02b85",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 275698,
+    "facts_sha256": "47612c481d9917c5f92ba50389c67e8d6a80b525ba06a8c64cbc0ce83ae81412",
+    "manifest_sha256": "c91fa9ff735ea83271e93de7a725fdcdfb65a664c4868412e374a795b8cc65c3"
+  },
+  "selections": [
+    {
+      "label": "veh1103_licensed_cars_by_fuel_type",
+      "selector": {
+        "source_name": "dft",
+        "source_concept": [
+          "dft.licensed_cars.all",
+          "dft.licensed_cars.petrol",
+          "dft.licensed_cars.diesel",
+          "dft.licensed_cars.battery_electric",
+          "dft.licensed_cars.plug_in_hybrid_petrol",
+          "dft.licensed_cars.plug_in_hybrid_diesel",
+          "dft.licensed_cars.hybrid_electric_petrol",
+          "dft.licensed_cars.hybrid_electric_diesel",
+          "dft.licensed_cars.range_extended_electric",
+          "dft.licensed_cars.fuel_cell_electric",
+          "dft.licensed_cars.gas",
+          "dft.licensed_cars.other"
+        ],
+        "period_type": "calendar_year"
+      },
+      "row_count": 36
+    }
+  ],
+  "row_count": 36,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d470b8bbf4b71fc28a4e1c8c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_306ee98e480cb3ee4f9a8004",
+      "source_record_id": "dft.veh1103a.cars.cy2023.cars.cars_all",
+      "concept": "dft.licensed_cars.all",
+      "measure_id": "cars_all",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-12-31",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2023",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "all"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 32546012
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_148977129bae08d76ff5bfb2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_523b30b4bac04ccaa1b3d6b3",
+      "source_record_id": "dft.veh1103a.cars.cy2024.cars.cars_all",
+      "concept": "dft.licensed_cars.all",
+      "measure_id": "cars_all",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-12-31",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2024",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "all"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 32914842
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_18b5bd64516ed6686bf31d6f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1baa51898408f311036e150a",
+      "source_record_id": "dft.veh1103a.cars.cy2025.cars.cars_all",
+      "concept": "dft.licensed_cars.all",
+      "measure_id": "cars_all",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-12-31",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2025",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "all"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 33408154
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c26f9b03791c6103fe3b99a8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b49fdbc84741f8d4738c7329",
+      "source_record_id": "dft.veh1103a.cars.cy2023.cars.cars_battery_electric",
+      "concept": "dft.licensed_cars.battery_electric",
+      "measure_id": "cars_battery_electric",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-12-31",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2023",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "battery_electric"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 916576
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c498927173349a5cc5c4fca3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7a1f8bd8278ca89fd715efe7",
+      "source_record_id": "dft.veh1103a.cars.cy2024.cars.cars_battery_electric",
+      "concept": "dft.licensed_cars.battery_electric",
+      "measure_id": "cars_battery_electric",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-12-31",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2024",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "battery_electric"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 1266421
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e5094dc1096be11b1c7a94cb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_005b11962ed7c67644d2c6b9",
+      "source_record_id": "dft.veh1103a.cars.cy2025.cars.cars_battery_electric",
+      "concept": "dft.licensed_cars.battery_electric",
+      "measure_id": "cars_battery_electric",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-12-31",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2025",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "battery_electric"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 1708499
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e896ca6cc701f2c3430d9a93",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f7aa1783e6dffad6f483c4e0",
+      "source_record_id": "dft.veh1103a.cars.cy2023.cars.cars_diesel",
+      "concept": "dft.licensed_cars.diesel",
+      "measure_id": "cars_diesel",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-12-31",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2023",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "diesel"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 10666726
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_89ef6383c6a4841252f84839",
+      "semantic_fact_key": "ledger_semantic_fact_v2_716eab336f3f7717f33ad74e",
+      "source_record_id": "dft.veh1103a.cars.cy2024.cars.cars_diesel",
+      "concept": "dft.licensed_cars.diesel",
+      "measure_id": "cars_diesel",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-12-31",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2024",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "diesel"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 10125153
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1e589ee56bb195b2a25eb740",
+      "semantic_fact_key": "ledger_semantic_fact_v2_46e63099048e9cec885258cd",
+      "source_record_id": "dft.veh1103a.cars.cy2025.cars.cars_diesel",
+      "concept": "dft.licensed_cars.diesel",
+      "measure_id": "cars_diesel",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-12-31",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2025",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "diesel"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 9593161
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b2c01537821f9b6381a8f1e1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ffaecbe8d47cde6936271f98",
+      "source_record_id": "dft.veh1103a.cars.cy2023.cars.cars_fuel_cell_electric",
+      "concept": "dft.licensed_cars.fuel_cell_electric",
+      "measure_id": "cars_fuel_cell_electric",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-12-31",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2023",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "fuel_cell_electric"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 136
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c7c3866f8ac922c6e3317a8e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e19290470ae0a7659d4b2a7a",
+      "source_record_id": "dft.veh1103a.cars.cy2024.cars.cars_fuel_cell_electric",
+      "concept": "dft.licensed_cars.fuel_cell_electric",
+      "measure_id": "cars_fuel_cell_electric",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-12-31",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2024",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "fuel_cell_electric"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 107
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1fbe176b6528e0e2ffa13502",
+      "semantic_fact_key": "ledger_semantic_fact_v2_50cbbe4ab3d1a26e539bbac0",
+      "source_record_id": "dft.veh1103a.cars.cy2025.cars.cars_fuel_cell_electric",
+      "concept": "dft.licensed_cars.fuel_cell_electric",
+      "measure_id": "cars_fuel_cell_electric",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-12-31",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2025",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "fuel_cell_electric"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 107
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1a06b837d4c0c2125834d280",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e15086e9521bb1efba5e215d",
+      "source_record_id": "dft.veh1103a.cars.cy2023.cars.cars_gas",
+      "concept": "dft.licensed_cars.gas",
+      "measure_id": "cars_gas",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-12-31",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2023",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "gas"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 26855
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_de686a780b8a00cfd6a9d768",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b906a8d89da0e5ace7a53b64",
+      "source_record_id": "dft.veh1103a.cars.cy2024.cars.cars_gas",
+      "concept": "dft.licensed_cars.gas",
+      "measure_id": "cars_gas",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-12-31",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2024",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "gas"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 25831
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1580ce5078c59e7d51140367",
+      "semantic_fact_key": "ledger_semantic_fact_v2_85c74c266d05f08ab412a7e0",
+      "source_record_id": "dft.veh1103a.cars.cy2025.cars.cars_gas",
+      "concept": "dft.licensed_cars.gas",
+      "measure_id": "cars_gas",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-12-31",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2025",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "gas"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 24628
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5b0736c3e52b3b5164a9bf96",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c5f4da4899f63dde02321693",
+      "source_record_id": "dft.veh1103a.cars.cy2023.cars.cars_hybrid_electric_diesel",
+      "concept": "dft.licensed_cars.hybrid_electric_diesel",
+      "measure_id": "cars_hybrid_electric_diesel",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-12-31",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2023",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "hybrid_electric_diesel"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 95632
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_175d62cf195adae747fd363c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0f3e1908d85b6daeecd16328",
+      "source_record_id": "dft.veh1103a.cars.cy2024.cars.cars_hybrid_electric_diesel",
+      "concept": "dft.licensed_cars.hybrid_electric_diesel",
+      "measure_id": "cars_hybrid_electric_diesel",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-12-31",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2024",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "hybrid_electric_diesel"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 108499
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d64863412385faafd1810abf",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bb952ac783ae96c2e667a788",
+      "source_record_id": "dft.veh1103a.cars.cy2025.cars.cars_hybrid_electric_diesel",
+      "concept": "dft.licensed_cars.hybrid_electric_diesel",
+      "measure_id": "cars_hybrid_electric_diesel",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-12-31",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2025",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "hybrid_electric_diesel"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 112540
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ea36b51193855becec5ca373",
+      "semantic_fact_key": "ledger_semantic_fact_v2_54b0a8c6382620ef0cca00ea",
+      "source_record_id": "dft.veh1103a.cars.cy2023.cars.cars_hybrid_electric_petrol",
+      "concept": "dft.licensed_cars.hybrid_electric_petrol",
+      "measure_id": "cars_hybrid_electric_petrol",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-12-31",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2023",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "hybrid_electric_petrol"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 1567457
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7ea01f5f6f2ab399a4d85fbc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1258c10b41eb634e20c3b55d",
+      "source_record_id": "dft.veh1103a.cars.cy2024.cars.cars_hybrid_electric_petrol",
+      "concept": "dft.licensed_cars.hybrid_electric_petrol",
+      "measure_id": "cars_hybrid_electric_petrol",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-12-31",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2024",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "hybrid_electric_petrol"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 2089339
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_eee70610925c771a20fd1470",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e2ee2b92747b49b2f06b934f",
+      "source_record_id": "dft.veh1103a.cars.cy2025.cars.cars_hybrid_electric_petrol",
+      "concept": "dft.licensed_cars.hybrid_electric_petrol",
+      "measure_id": "cars_hybrid_electric_petrol",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-12-31",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2025",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "hybrid_electric_petrol"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 2692169
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1a9fbf70ed30602a38d3b738",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fc0312a66fe8f0e84f11e5d0",
+      "source_record_id": "dft.veh1103a.cars.cy2023.cars.cars_other",
+      "concept": "dft.licensed_cars.other",
+      "measure_id": "cars_other",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-12-31",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2023",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "other"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 255
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5829ded1e529d1a8d566d69f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d168749aff4a55cefd1df940",
+      "source_record_id": "dft.veh1103a.cars.cy2024.cars.cars_other",
+      "concept": "dft.licensed_cars.other",
+      "measure_id": "cars_other",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-12-31",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2024",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "other"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 226
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7482a2d7875939ee1b65e290",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b7e2e8d05b2ca5d57adc982c",
+      "source_record_id": "dft.veh1103a.cars.cy2025.cars.cars_other",
+      "concept": "dft.licensed_cars.other",
+      "measure_id": "cars_other",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-12-31",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2025",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "other"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 205
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8b869b788abccafdc8227dcc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_46989c1d399a1a94ab55b94b",
+      "source_record_id": "dft.veh1103a.cars.cy2023.cars.cars_petrol",
+      "concept": "dft.licensed_cars.petrol",
+      "measure_id": "cars_petrol",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-12-31",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2023",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "petrol"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 18740091
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a995e2e9beac0126a2bba873",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1c8f7c9f10c9bc27cab4ecf1",
+      "source_record_id": "dft.veh1103a.cars.cy2024.cars.cars_petrol",
+      "concept": "dft.licensed_cars.petrol",
+      "measure_id": "cars_petrol",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-12-31",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2024",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "petrol"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 18623246
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_89cfb82295aa548d7d80872c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cd12f2314bec4f0eaa6a2783",
+      "source_record_id": "dft.veh1103a.cars.cy2025.cars.cars_petrol",
+      "concept": "dft.licensed_cars.petrol",
+      "measure_id": "cars_petrol",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-12-31",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2025",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "petrol"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 18403005
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_36ff6731646c429c43954247",
+      "semantic_fact_key": "ledger_semantic_fact_v2_05a6c1456b71d52a22f926c6",
+      "source_record_id": "dft.veh1103a.cars.cy2023.cars.cars_plug_in_hybrid_diesel",
+      "concept": "dft.licensed_cars.plug_in_hybrid_diesel",
+      "measure_id": "cars_plug_in_hybrid_diesel",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-12-31",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2023",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "plug_in_hybrid_diesel"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 10812
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_93f8aa426698bb75ec70a4b4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3289f4a8082b6e6a1797fa94",
+      "source_record_id": "dft.veh1103a.cars.cy2024.cars.cars_plug_in_hybrid_diesel",
+      "concept": "dft.licensed_cars.plug_in_hybrid_diesel",
+      "measure_id": "cars_plug_in_hybrid_diesel",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-12-31",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2024",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "plug_in_hybrid_diesel"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 10311
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b3533d4aa313fbd2c7bb4e1d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_96168df47fb4338cf6b1bd9a",
+      "source_record_id": "dft.veh1103a.cars.cy2025.cars.cars_plug_in_hybrid_diesel",
+      "concept": "dft.licensed_cars.plug_in_hybrid_diesel",
+      "measure_id": "cars_plug_in_hybrid_diesel",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-12-31",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2025",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "plug_in_hybrid_diesel"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 10097
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ed8eb95bac334679f03179e7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_da973e32317f5420c462cdaa",
+      "source_record_id": "dft.veh1103a.cars.cy2023.cars.cars_plug_in_hybrid_petrol",
+      "concept": "dft.licensed_cars.plug_in_hybrid_petrol",
+      "measure_id": "cars_plug_in_hybrid_petrol",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-12-31",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2023",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "plug_in_hybrid_petrol"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 511873
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e0d85f594b49ccf338565792",
+      "semantic_fact_key": "ledger_semantic_fact_v2_78d6d1136dfec35f78ccf011",
+      "source_record_id": "dft.veh1103a.cars.cy2024.cars.cars_plug_in_hybrid_petrol",
+      "concept": "dft.licensed_cars.plug_in_hybrid_petrol",
+      "measure_id": "cars_plug_in_hybrid_petrol",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-12-31",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2024",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "plug_in_hybrid_petrol"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 656230
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c983066a1d4db642c6f59f18",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a223d49048403d93d682765f",
+      "source_record_id": "dft.veh1103a.cars.cy2025.cars.cars_plug_in_hybrid_petrol",
+      "concept": "dft.licensed_cars.plug_in_hybrid_petrol",
+      "measure_id": "cars_plug_in_hybrid_petrol",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-12-31",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2025",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "plug_in_hybrid_petrol"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 854332
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bf147edc6fd68ad02f9fdc3e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_acc9c76fc17c6cd1a8ab79c1",
+      "source_record_id": "dft.veh1103a.cars.cy2023.cars.cars_range_extended_electric",
+      "concept": "dft.licensed_cars.range_extended_electric",
+      "measure_id": "cars_range_extended_electric",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-12-31",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2023",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "range_extended_electric"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 9599
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_706fd7a25c107b54de0c1a97",
+      "semantic_fact_key": "ledger_semantic_fact_v2_80b588a84a24ead0d29ec157",
+      "source_record_id": "dft.veh1103a.cars.cy2024.cars.cars_range_extended_electric",
+      "concept": "dft.licensed_cars.range_extended_electric",
+      "measure_id": "cars_range_extended_electric",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-12-31",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2024",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "range_extended_electric"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 9479
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_99b393892ed9da83d2af7e3c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_949ef6eebbe4e697ed689a43",
+      "source_record_id": "dft.veh1103a.cars.cy2025.cars.cars_range_extended_electric",
+      "concept": "dft.licensed_cars.range_extended_electric",
+      "measure_id": "cars_range_extended_electric",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "licensed_car_stock"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-12-31",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "dft.veh1103a.cars.cy2025",
+        "groupby_dimension": "dft.vehicle_body_type",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "body_type": "cars",
+        "fuel_type": "range_extended_electric"
+      },
+      "source": {
+        "source_name": "dft",
+        "source_table": "VEH1103a licensed vehicles by body type and fuel type",
+        "source_file": "veh1103.ods",
+        "source_sha256": "2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849",
+        "vintage": "vehicle_licensing_2025",
+        "raw_r2_key": "raw/dft/dft-veh1103-cars-fuel-type-2025/2025/2e1107fd9ea55f213ee8c207018cb445b8217932211c65136dd05a715e244849/veh1103.ods"
+      },
+      "value": 9411
+    }
+  ]
+}

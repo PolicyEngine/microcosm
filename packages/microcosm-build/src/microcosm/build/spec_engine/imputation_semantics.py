@@ -10,11 +10,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
-import sys
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from pathlib import Path
 
 from .seeds import LEGACY_V1_PROTOCOL
 from .typed_closure import compile_producer_outputs
@@ -265,59 +262,14 @@ def _worker_execution_template() -> dict[str, object]:
         "surface": "execution_profile",
         "resolve_as": "worker_execution",
         "template": {
-            "module": "microcosm.build.us_runtime.puf_qrf_worker",
-            "argv_template": [
-                {"resolver_op": "sys_executable"},
-                "-m",
-                "microcosm.build.us_runtime.puf_qrf_worker",
-                "--checkpoint-dir",
-                "{checkpoint_dir}",
-                "--target-index",
-                "{target_index}",
-            ],
-            "interpreter": {
-                "executable": {"resolver_op": "sys_executable"},
-                "resolved_executable": {"resolver_op": "resolved_sys_executable"},
-                "implementation": {"resolver_op": "python_implementation"},
-                "cache_tag": {"resolver_op": "python_cache_tag"},
-                "version": {"resolver_op": "python_version_triplet"},
+            "schema_version": 1,
+            "semantic_identity": {
+                "resolver_op": "primary_qrf_worker_semantic_identity"
             },
-            "environment": {
-                "policy": "inherit_parent_environment_with_bound_fit_controls",
-                "overrides": {},
-                "semantic_controls": {
-                    "POPULACE_FIT_N_JOBS": {
-                        "configured": {
-                            "resolver_op": "environment_value",
-                            "name": "POPULACE_FIT_N_JOBS",
-                        },
-                        "resolved": {
-                            "resolver_op": "env_canonical_positive_int_or_default",
-                            "name": "POPULACE_FIT_N_JOBS",
-                            "default": -1,
-                        },
-                    },
-                    "POPULACE_FIT_PREDICT_WORKERS": {
-                        "configured": {
-                            "resolver_op": "environment_value",
-                            "name": "POPULACE_FIT_PREDICT_WORKERS",
-                        },
-                        "resolved": {
-                            "resolver_op": "env_positive_int_or_cpu_count",
-                            "name": "POPULACE_FIT_PREDICT_WORKERS",
-                            "fallback_minimum": 1,
-                        },
-                        "resolution": {
-                            "resolver_op": "env_or_cpu_count_resolution_label",
-                            "name": "POPULACE_FIT_PREDICT_WORKERS",
-                        },
-                    },
-                },
-                "bound_names": [
-                    "POPULACE_FIT_N_JOBS",
-                    "POPULACE_FIT_PREDICT_WORKERS",
-                ],
+            "semantic_identity_sha256": {
+                "resolver_op": "primary_qrf_worker_semantic_identity_sha256"
             },
+            "audit_aliases": {"resolver_op": "primary_qrf_worker_audit_aliases"},
         },
     }
 
@@ -330,80 +282,21 @@ def _resolve_worker_execution(value: Mapping[str, object]) -> dict[str, object]:
         raise RuntimeError(
             "Primary-QRF worker template differs from the closed reviewed resolver."
         )
-    fit_jobs_raw = os.environ.get("POPULACE_FIT_N_JOBS")
-    if fit_jobs_raw is None:
-        fit_jobs = -1
-    else:
-        try:
-            fit_jobs = int(fit_jobs_raw)
-        except ValueError as error:
-            raise ValueError(
-                "POPULACE_FIT_N_JOBS must be a positive integer for the "
-                "primary-QRF worker binding."
-            ) from error
-        if fit_jobs < 1 or str(fit_jobs) != fit_jobs_raw:
-            raise ValueError(
-                "POPULACE_FIT_N_JOBS must be a canonical positive integer for "
-                "the primary-QRF worker binding."
-            )
-    predict_workers_raw = os.environ.get("POPULACE_FIT_PREDICT_WORKERS")
-    if predict_workers_raw is None or not predict_workers_raw.strip():
-        predict_workers = os.cpu_count() or 1
-        predict_workers_source = "os_cpu_count_fallback"
-    else:
-        try:
-            predict_workers = int(predict_workers_raw)
-        except ValueError as error:
-            raise ValueError(
-                "POPULACE_FIT_PREDICT_WORKERS must be a positive integer for the "
-                "primary-QRF worker binding."
-            ) from error
-        if predict_workers < 1:
-            raise ValueError(
-                "POPULACE_FIT_PREDICT_WORKERS must be positive for the "
-                "primary-QRF worker binding."
-            )
-        predict_workers_source = "environment_override"
-    executable = Path(sys.executable)
-    module = "microcosm.build.us_runtime.puf_qrf_worker"
-    return {
-        "module": module,
-        "argv_template": [
-            str(executable),
-            "-m",
-            module,
-            "--checkpoint-dir",
-            "{checkpoint_dir}",
-            "--target-index",
-            "{target_index}",
-        ],
-        "interpreter": {
-            "executable": str(executable),
-            "resolved_executable": str(executable.resolve()),
-            "implementation": sys.implementation.name,
-            "cache_tag": sys.implementation.cache_tag,
-            "version": list(sys.version_info[:3]),
-        },
-        "environment": {
-            "policy": "inherit_parent_environment_with_bound_fit_controls",
-            "overrides": {},
-            "semantic_controls": {
-                "POPULACE_FIT_N_JOBS": {
-                    "configured": fit_jobs_raw,
-                    "resolved": fit_jobs,
-                },
-                "POPULACE_FIT_PREDICT_WORKERS": {
-                    "configured": predict_workers_raw,
-                    "resolved": predict_workers,
-                    "resolution": predict_workers_source,
-                },
-            },
-            "bound_names": [
-                "POPULACE_FIT_N_JOBS",
-                "POPULACE_FIT_PREDICT_WORKERS",
-            ],
-        },
-    }
+    from microcosm.build.us_runtime.worker_identity import (
+        PRIMARY_QRF_WORKER_MODULE,
+        primary_qrf_worker_execution_binding,
+        primary_qrf_worker_semantic_projection,
+    )
+
+    resolved = primary_qrf_worker_semantic_projection(
+        primary_qrf_worker_execution_binding(),
+        boundary="typed primary-QRF worker resolution",
+    )
+    if resolved["semantic_identity"]["worker_module"]["name"] != (
+        PRIMARY_QRF_WORKER_MODULE
+    ):
+        raise RuntimeError("Primary-QRF worker module resolution drifted.")
+    return resolved
 
 
 def _compile_node_outputs(

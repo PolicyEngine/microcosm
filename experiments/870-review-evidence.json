@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "kind": "published_aggregate_transcription",
+  "source": "https://github.com/PolicyEngine/microcosm/blob/d5f04a80ffbb5cccb682be8bc780cfd24460ecd2/experiments/762-uk-rowwise-candidate-receipts.md",
+  "sections": [
+    "R17",
+    "R18"
+  ],
+  "limitations": [
+    "This is a transcription of published aggregate evidence, not the original retained evaluator JSON or a replay.",
+    "Original licensed R18 row artifacts were unavailable during this review.",
+    "Synthetic refusal regressions are separate from these historical values."
+  ],
+  "r17": {
+    "max_to_median_weight_ratio": 400,
+    "ess_fraction": 0.163,
+    "holdout_mean": 0.1895,
+    "incumbent_fitted_loss": 0.1815,
+    "holdout_comparable_to_fitted": false
+  },
+  "r18": {
+    "local_candidate_within_10_percent": 62.7,
+    "local_incumbent_within_10_percent": 77.3,
+    "national_rows": 637,
+    "local_rows": 23545
+  },
+  "current_release_status": "blocked; historical results are not re-signed under the new gate contract"
+}

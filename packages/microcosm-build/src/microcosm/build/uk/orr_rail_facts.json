@@ -1,0 +1,4478 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "orr_rail_facts.json",
+  "purpose": "ORR rail industry finance: total government support to the rail industry (table 7270), government support by funding source (7271), franchised operator fare income (7223) and the rail fares index (7180). Consumed by the rail support target diagnostics and the fare-index lockstep check.",
+  "consumers": [
+    "uk_runtime.etb_services"
+  ],
+  "planned_consumers": [
+    "uk_aggregate_admin"
+  ],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "ec200856c4e40e0d3fe97c4e17049cb48de02b85",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 275698,
+    "facts_sha256": "47612c481d9917c5f92ba50389c67e8d6a80b525ba06a8c64cbc0ce83ae81412",
+    "manifest_sha256": "c91fa9ff735ea83271e93de7a725fdcdfb65a664c4868412e374a795b8cc65c3"
+  },
+  "selections": [
+    {
+      "label": "orr_rail_industry_finance",
+      "selector": {
+        "source_name": "orr",
+        "source_concept": [
+          "orr.rail.total_government_support",
+          "orr.rail.government_support_by_source",
+          "orr.rail.franchised_operator_fare_income",
+          "orr.rail.fare_index"
+        ]
+      },
+      "row_count": 99
+    }
+  ],
+  "row_count": 99,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2993ef217f830b9d91295208",
+      "semantic_fact_key": "ledger_semantic_fact_v2_59a5b4dcc81e6c49fcd0fff5",
+      "source_record_id": "orr.rail_fares.table_7180.cy2020.all_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-01-01",
+        "end_date": "2020-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2020",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "all_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 231.934382678158
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_680d503c9bad95982fa4e5f8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_19003f862ba563440d3d0cc8",
+      "source_record_id": "orr.rail_fares.table_7180.cy2020.all_tickets.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-01-01",
+        "end_date": "2020-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2020",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_tickets",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "fare_category": "all_tickets"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 239.794590663395
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d8ffa8e5637968a5ee6a43fa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c524c607acb29dab5e921ef3",
+      "source_record_id": "orr.rail_fares.table_7180.cy2020.regulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-01-01",
+        "end_date": "2020-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2020",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "regulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "regulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 208.716987746566
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8f529f2815f9ee1863280b80",
+      "semantic_fact_key": "ledger_semantic_fact_v2_48e838ee51b5eba427bb4a2f",
+      "source_record_id": "orr.rail_fares.table_7180.cy2020.unregulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-01-01",
+        "end_date": "2020-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2020",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "unregulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "unregulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 254.495207508871
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e9d2990e59a6aa3efd02a98f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4fd4d99d05aa14f2d3a9de9b",
+      "source_record_id": "orr.rail_fares.table_7180.cy2021.all_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-01-01",
+        "end_date": "2021-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2021",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "all_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 234.953757877565
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b50c6325154618e8e693bff4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fc8a8a19427729e7554a23a2",
+      "source_record_id": "orr.rail_fares.table_7180.cy2021.all_tickets.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-01-01",
+        "end_date": "2021-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2021",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_tickets",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "fare_category": "all_tickets"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 242.654246915837
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b99fd82ced1aff337a79d4ef",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6d9a799950012c88cc459d34",
+      "source_record_id": "orr.rail_fares.table_7180.cy2021.regulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-01-01",
+        "end_date": "2021-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2021",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "regulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "regulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 213.860054161042
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_18c2ae0014259232043ab2f5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_853ece0206c912e58c44930b",
+      "source_record_id": "orr.rail_fares.table_7180.cy2021.unregulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-01-01",
+        "end_date": "2021-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2021",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "unregulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "unregulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 255.663061019469
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_674df3f90490596fdd8d7cdd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b930f1bc42ca1af1e05f0d3c",
+      "source_record_id": "orr.rail_fares.table_7180.cy2022.all_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2022",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "all_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 245.374861042741
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8c1b1468affc65fb14942306",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d7c5189e35390f79c4c084ed",
+      "source_record_id": "orr.rail_fares.table_7180.cy2022.all_tickets.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2022",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_tickets",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "fare_category": "all_tickets"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 254.358907375699
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8bcab53d8a97514884aa7952",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1da9d1c6e067b28f9e4172ae",
+      "source_record_id": "orr.rail_fares.table_7180.cy2022.regulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2022",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "regulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "regulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 221.746728010826
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_98adf3aab325523a72314486",
+      "semantic_fact_key": "ledger_semantic_fact_v2_89b4e5332df2a87534aa35cf",
+      "source_record_id": "orr.rail_fares.table_7180.cy2022.unregulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-01-01",
+        "end_date": "2022-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2022",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "unregulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "unregulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 267.907582698128
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b52779b4a7b60d3aa0f5986f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_667ce4d3705790df25eca2bf",
+      "source_record_id": "orr.rail_fares.table_7180.cy2023.all_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2023",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "all_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 259.0732128515841
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_744e64b3682297712d77436a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_29305c3345b20b23ab89acde",
+      "source_record_id": "orr.rail_fares.table_7180.cy2023.all_tickets.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2023",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_tickets",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "fare_category": "all_tickets"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 268.9272880821968
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a3ffade8842cfb9f24eab9c9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5fa7f030de07147bfe434dc8",
+      "source_record_id": "orr.rail_fares.table_7180.cy2023.regulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2023",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "regulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "regulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 234.19350492703276
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a8e48dd9ce5c1f6e47106d0d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1a88660f282750f01c441b2d",
+      "source_record_id": "orr.rail_fares.table_7180.cy2023.unregulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2023",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "unregulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "unregulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 282.82519055545424
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e0acb1914e8bcbc824359c2d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_31fc9390d1a4377130bc5bee",
+      "source_record_id": "orr.rail_fares.table_7180.cy2024.all_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2024",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "all_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 271.694781789929
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3fcedd7643a79ae9e0b14ba4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6112972239901ca329e31746",
+      "source_record_id": "orr.rail_fares.table_7180.cy2024.all_tickets.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2024",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_tickets",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "fare_category": "all_tickets"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 282.27725090470034
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1c6feb34cb52983329a9eb86",
+      "semantic_fact_key": "ledger_semantic_fact_v2_88398458a8155824aeef0d72",
+      "source_record_id": "orr.rail_fares.table_7180.cy2024.regulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2024",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "regulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "regulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 246.18874430985568
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_816e1ad70ca63846b5f9493f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c3eb4a792ce00f9ddacc967f",
+      "source_record_id": "orr.rail_fares.table_7180.cy2024.unregulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2024",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "unregulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "unregulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 296.2669338080966
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_93b87cda72e50312f01f06e2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f2297558da37bc540185e8e9",
+      "source_record_id": "orr.rail_fares.table_7180.cy2025.all_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2025",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "all_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 285.697564148428
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_37e28e0c04aa8282345f9d02",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a4a05289c05c94a4d1137b1a",
+      "source_record_id": "orr.rail_fares.table_7180.cy2025.all_tickets.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2025",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_tickets",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "fare_category": "all_tickets"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 296.6231795937428
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_58b458381d9d121b27a4e06a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_72ff112769b465588b6ec753",
+      "source_record_id": "orr.rail_fares.table_7180.cy2025.regulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2025",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "regulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "regulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 257.2889899721957
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e995cc003e64f99ec8095fa6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ec28f4d889c2e73b26bfd2bf",
+      "source_record_id": "orr.rail_fares.table_7180.cy2025.unregulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2025",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "unregulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "unregulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 312.4284957461622
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3c864c6f76bf22c9dbda50c6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a9b4436f3ab4085dabb26b13",
+      "source_record_id": "orr.rail_fares.table_7180.cy2026.all_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": "2026-01-01",
+        "end_date": "2026-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2026",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "all_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 285.12564544446496
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fed92c9d47bc10dfe8ca947f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f90ca19a64fa362a89164730",
+      "source_record_id": "orr.rail_fares.table_7180.cy2026.all_tickets.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": "2026-01-01",
+        "end_date": "2026-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2026",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "all_tickets",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "fare_category": "all_tickets"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 296.5499085022866
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0bdf46ccebb6cb5c9bb678d3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f6e22105209b2a0b61fb677c",
+      "source_record_id": "orr.rail_fares.table_7180.cy2026.regulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": "2026-01-01",
+        "end_date": "2026-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2026",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "regulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "regulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 256.9992897928504
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d1f65fc582a35e83ad8d8dbb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7be30eeebc00b49a7e0a2c2b",
+      "source_record_id": "orr.rail_fares.table_7180.cy2026.unregulated_standard.fare_index",
+      "concept": "orr.rail.fare_index",
+      "measure_id": "fare_index",
+      "unit": "index_1995_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "passenger_rail_market"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": "2026-01-01",
+        "end_date": "2026-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_fares.table_7180.cy2026",
+        "groupby_dimension": "orr.fare_category",
+        "groupby_value_id": "unregulated_standard",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "fare_category": "unregulated_standard"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7180 average change in fares by regulated and unregulated tickets",
+        "source_file": "table-7180.ods",
+        "source_sha256": "24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115",
+        "vintage": "2026",
+        "raw_r2_key": "raw/orr/orr-rail-fares-7180-2026/2026/24c815928171b952cc3554ce23ea0c717dfd18bd44ea964ea9efb580a92ce115/table-7180.ods"
+      },
+      "value": 311.67336659013114
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bfcc1b55e6b0feab266d658e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ed5a20370430e9b2d8b9cf03",
+      "source_record_id": "orr.rail_finance.table_7223.fy2024.fare_income.fare_income",
+      "concept": "orr.rail.franchised_operator_fare_income",
+      "measure_id": "fare_income",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "franchised_passenger_train_operators"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.rail_finance.table_7223.fy2024",
+        "groupby_dimension": "orr.finance_line",
+        "groupby_value_id": "fare_income",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7223 franchised passenger train operator finances",
+        "source_file": "table-7223.ods",
+        "source_sha256": "69d7382ab218927c08547818ee421fc2a928206b9f7105ae67e626fa3f22a5ec",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-rail-finance-7223-2024-25/2025/69d7382ab218927c08547818ee421fc2a928206b9f7105ae67e626fa3f22a5ec/table-7223.ods"
+      },
+      "value": 11251872733.02
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_56a0c9810fa9cb140024eb93",
+      "semantic_fact_key": "ledger_semantic_fact_v2_380be708fac4c5dd238f6561",
+      "source_record_id": "orr.government_support.table_7271.fy2015.all_sources.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2015
+      },
+      "period_coverage": {
+        "start_date": "2015-04-01",
+        "end_date": "2016-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2015",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "all_sources",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "funding_source": "all_sources"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 4553029127.862197
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_81330ce5cb6fc88fb59589d0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_399eb350e766d015703cf378",
+      "source_record_id": "orr.government_support.table_7271.fy2015.department_for_transport.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2015
+      },
+      "period_coverage": {
+        "start_date": "2015-04-01",
+        "end_date": "2016-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2015",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "department_for_transport",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "department_for_transport"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 2954792660.8302526
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ee7a06c680574b232dae2fdc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bd9b38fe44735babaae210d5",
+      "source_record_id": "orr.government_support.table_7271.fy2015.passenger_transport_executives.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2015
+      },
+      "period_coverage": {
+        "start_date": "2015-04-01",
+        "end_date": "2016-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2015",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "passenger_transport_executives",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "passenger_transport_executives"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 276208790.3982267
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_823ae5bc95c4c3e264037244",
+      "semantic_fact_key": "ledger_semantic_fact_v2_db9a3429ff4e289ad3c18ebf",
+      "source_record_id": "orr.government_support.table_7271.fy2015.transport_for_london.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2015
+      },
+      "period_coverage": {
+        "start_date": "2015-04-01",
+        "end_date": "2016-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2015",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_for_london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_for_london"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 134617982.32431522
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6cd4797c34baa8b60b4ec969",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2f1ab6780f33e11f44771090",
+      "source_record_id": "orr.government_support.table_7271.fy2015.transport_scotland.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2015
+      },
+      "period_coverage": {
+        "start_date": "2015-04-01",
+        "end_date": "2016-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2015",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_scotland"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 980351816.9050349
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6c5a9d1faffdee4606d3f43b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b6afef4598e707006d6fe91d",
+      "source_record_id": "orr.government_support.table_7271.fy2015.welsh_government.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2015
+      },
+      "period_coverage": {
+        "start_date": "2015-04-01",
+        "end_date": "2016-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2015",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "welsh_government",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "welsh_government"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 207057877.40436825
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_96a6bf7ea49d2b747c8588a9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a71064baa0e783c1438c6cf1",
+      "source_record_id": "orr.government_support.table_7271.fy2016.all_sources.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2016
+      },
+      "period_coverage": {
+        "start_date": "2016-04-01",
+        "end_date": "2017-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2016",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "all_sources",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "funding_source": "all_sources"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 4544584668.9147415
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2ef660f03b52d04818297300",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7173faef5edb6cff473cf378",
+      "source_record_id": "orr.government_support.table_7271.fy2016.department_for_transport.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2016
+      },
+      "period_coverage": {
+        "start_date": "2016-04-01",
+        "end_date": "2017-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2016",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "department_for_transport",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "department_for_transport"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 3147917074.132039
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_75c67ef805d16dbfcc8d8c46",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0c5ecbafd7861931261ded0a",
+      "source_record_id": "orr.government_support.table_7271.fy2016.passenger_transport_executives.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2016
+      },
+      "period_coverage": {
+        "start_date": "2016-04-01",
+        "end_date": "2017-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2016",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "passenger_transport_executives",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "passenger_transport_executives"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 113389408.64268304
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a7decc6a6488083b87f72548",
+      "semantic_fact_key": "ledger_semantic_fact_v2_be29e38fb68f83f17dc9cfc5",
+      "source_record_id": "orr.government_support.table_7271.fy2016.transport_for_london.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2016
+      },
+      "period_coverage": {
+        "start_date": "2016-04-01",
+        "end_date": "2017-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2016",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_for_london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_for_london"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 147606259.46616754
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b2a395d67be445f1c0fa5ad1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4126d26b73b87c351c09e351",
+      "source_record_id": "orr.government_support.table_7271.fy2016.transport_scotland.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2016
+      },
+      "period_coverage": {
+        "start_date": "2016-04-01",
+        "end_date": "2017-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2016",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_scotland"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 931893125.9175338
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_243d2455f21d58d80c2167bf",
+      "semantic_fact_key": "ledger_semantic_fact_v2_09ec0abf93b90f657a555bed",
+      "source_record_id": "orr.government_support.table_7271.fy2016.welsh_government.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2016
+      },
+      "period_coverage": {
+        "start_date": "2016-04-01",
+        "end_date": "2017-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2016",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "welsh_government",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "welsh_government"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 203778800.75631666
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a8ceb7f10e8de4055635d97a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f99ec24aab276d5f11935e48",
+      "source_record_id": "orr.government_support.table_7271.fy2017.all_sources.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2017
+      },
+      "period_coverage": {
+        "start_date": "2017-04-01",
+        "end_date": "2018-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2017",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "all_sources",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "funding_source": "all_sources"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 4954535915.804164
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b6c38ea6b8616836de6628fc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d74839497dcb55236fc9b16f",
+      "source_record_id": "orr.government_support.table_7271.fy2017.department_for_transport.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2017
+      },
+      "period_coverage": {
+        "start_date": "2017-04-01",
+        "end_date": "2018-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2017",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "department_for_transport",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "department_for_transport"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 3556350234.958335
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_993e1fc9a1577680d360f9cc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3f1bb1e0dc7056b99581c950",
+      "source_record_id": "orr.government_support.table_7271.fy2017.passenger_transport_executives.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2017
+      },
+      "period_coverage": {
+        "start_date": "2017-04-01",
+        "end_date": "2018-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2017",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "passenger_transport_executives",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "passenger_transport_executives"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 113519134.06547652
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_474e75ac6df2be9b57c6090b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a6c162ba809ab75cde4bdca8",
+      "source_record_id": "orr.government_support.table_7271.fy2017.transport_for_london.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2017
+      },
+      "period_coverage": {
+        "start_date": "2017-04-01",
+        "end_date": "2018-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2017",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_for_london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_for_london"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 127533551.48358072
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6513597a68044b6d7ee1227e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_eea8a06637f7faeca7517b75",
+      "source_record_id": "orr.government_support.table_7271.fy2017.transport_scotland.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2017
+      },
+      "period_coverage": {
+        "start_date": "2017-04-01",
+        "end_date": "2018-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2017",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_scotland"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 957002318.7847096
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4a774baa8656743540ed539c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e13090d990777ee7c8041388",
+      "source_record_id": "orr.government_support.table_7271.fy2017.welsh_government.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2017
+      },
+      "period_coverage": {
+        "start_date": "2017-04-01",
+        "end_date": "2018-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2017",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "welsh_government",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "welsh_government"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 200130676.512062
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_be5b808bf79f480107f86aad",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c83f6b35dd940392525cf77e",
+      "source_record_id": "orr.government_support.table_7271.fy2018.all_sources.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2018
+      },
+      "period_coverage": {
+        "start_date": "2018-04-01",
+        "end_date": "2019-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2018",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "all_sources",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "funding_source": "all_sources"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 5564096546.115158
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3f023bacf18c54fd8ec1bd4c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_87fffe725c3ab645a3331907",
+      "source_record_id": "orr.government_support.table_7271.fy2018.department_for_transport.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2018
+      },
+      "period_coverage": {
+        "start_date": "2018-04-01",
+        "end_date": "2019-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2018",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "department_for_transport",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "department_for_transport"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 4003171873.863882
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d3cfb97d454f4dd0bd10d2d7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_379ff1fbef538e80a9ca16dd",
+      "source_record_id": "orr.government_support.table_7271.fy2018.passenger_transport_executives.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2018
+      },
+      "period_coverage": {
+        "start_date": "2018-04-01",
+        "end_date": "2019-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2018",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "passenger_transport_executives",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "passenger_transport_executives"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 118939597.32456823
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a109e5d66bb38753acc632ae",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8e453a56974bc46ffa13a31b",
+      "source_record_id": "orr.government_support.table_7271.fy2018.transport_for_london.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2018
+      },
+      "period_coverage": {
+        "start_date": "2018-04-01",
+        "end_date": "2019-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2018",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_for_london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_for_london"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 264968481.02427283
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c31d0bc4452eb2c399860a13",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8a0e40b4996b7d59ced08cb1",
+      "source_record_id": "orr.government_support.table_7271.fy2018.transport_scotland.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2018
+      },
+      "period_coverage": {
+        "start_date": "2018-04-01",
+        "end_date": "2019-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2018",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_scotland"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 964966666.253919
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0fa76856dd4e6f03a02e9680",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4fc13eb56d2ae7fe98a71003",
+      "source_record_id": "orr.government_support.table_7271.fy2018.welsh_government.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2018
+      },
+      "period_coverage": {
+        "start_date": "2018-04-01",
+        "end_date": "2019-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2018",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "welsh_government",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "welsh_government"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 212049927.6485159
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8f04cced2baa71a034c2d7c7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8ce1efa907caf26ebb443d1f",
+      "source_record_id": "orr.government_support.table_7271.fy2019.all_sources.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2019
+      },
+      "period_coverage": {
+        "start_date": "2019-04-01",
+        "end_date": "2020-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2019",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "all_sources",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "funding_source": "all_sources"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 8050362417.901227
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b53b37fa8f860500263b2bd3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4f8880e118f6803be9f82180",
+      "source_record_id": "orr.government_support.table_7271.fy2019.department_for_transport.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2019
+      },
+      "period_coverage": {
+        "start_date": "2019-04-01",
+        "end_date": "2020-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2019",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "department_for_transport",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "department_for_transport"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 6109062183.253363
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f273f03d8a819e1200b8a8c0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cde638c494255ec385639c85",
+      "source_record_id": "orr.government_support.table_7271.fy2019.passenger_transport_executives.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2019
+      },
+      "period_coverage": {
+        "start_date": "2019-04-01",
+        "end_date": "2020-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2019",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "passenger_transport_executives",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "passenger_transport_executives"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 135541848.39484024
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3ee8f68fa8492d943cd8ff3c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b333172bf2086cdb32f72566",
+      "source_record_id": "orr.government_support.table_7271.fy2019.transport_for_london.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2019
+      },
+      "period_coverage": {
+        "start_date": "2019-04-01",
+        "end_date": "2020-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2019",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_for_london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_for_london"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 327956066.6038557
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_82caa2cc287859c34b327d48",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3c73d06a7bb9b861e254aee2",
+      "source_record_id": "orr.government_support.table_7271.fy2019.transport_scotland.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2019
+      },
+      "period_coverage": {
+        "start_date": "2019-04-01",
+        "end_date": "2020-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2019",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_scotland"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 1246749009.5719135
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b69627e8a5782d2b1b67a76c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_45f61802ef7d08be658f678f",
+      "source_record_id": "orr.government_support.table_7271.fy2019.welsh_government.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2019
+      },
+      "period_coverage": {
+        "start_date": "2019-04-01",
+        "end_date": "2020-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2019",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "welsh_government",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "welsh_government"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 231053310.077255
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f9b54612e93147c84fd6e9e0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8a6e6bf61d959b759ef4f059",
+      "source_record_id": "orr.government_support.table_7271.fy2020.all_sources.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2020",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "all_sources",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "funding_source": "all_sources"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 20944175819.682816
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_669611e0fa305af70118ea9d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e05fbc3adcaac243d31f42ad",
+      "source_record_id": "orr.government_support.table_7271.fy2020.department_for_transport.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2020",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "department_for_transport",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "department_for_transport"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 17822183316.392086
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8a237bd490f4025865db028b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2d775d3b11b031ff528968ec",
+      "source_record_id": "orr.government_support.table_7271.fy2020.passenger_transport_executives.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2020",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "passenger_transport_executives",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "passenger_transport_executives"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 128864819.62201071
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_516ff4fd698a1172a6fd774e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7463f5ad8495c9b8478b8cd2",
+      "source_record_id": "orr.government_support.table_7271.fy2020.transport_for_london.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2020",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_for_london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_for_london"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 651046252.8024231
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_592b08049f30f665164ed175",
+      "semantic_fact_key": "ledger_semantic_fact_v2_587b58c9e80830a8b0acd5bd",
+      "source_record_id": "orr.government_support.table_7271.fy2020.transport_scotland.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2020",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_scotland"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 1885287738.123118
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0933eb223062281ac012578c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_575f8b5bd8f130004d45e755",
+      "source_record_id": "orr.government_support.table_7271.fy2020.welsh_government.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2020",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "welsh_government",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "welsh_government"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 456793692.74318105
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c67f4a1d93fc42f2e3459027",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1c4e88526962545103a462c6",
+      "source_record_id": "orr.government_support.table_7271.fy2021.all_sources.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2021",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "all_sources",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "funding_source": "all_sources"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 15836341887.880861
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3284bd5c3d5871187c3aa9c6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_04280d09b5321ae5a3153c11",
+      "source_record_id": "orr.government_support.table_7271.fy2021.department_for_transport.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2021",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "department_for_transport",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "department_for_transport"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 13011918554.907656
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f9b343a1c795ddf9eb0a7e2e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bafa2f1690a0ad3bf627da14",
+      "source_record_id": "orr.government_support.table_7271.fy2021.passenger_transport_executives.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2021",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "passenger_transport_executives",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "passenger_transport_executives"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 129538189.80076073
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3f30da6c21178ab6c57d572a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_875c20ca04851a29e6eddc3e",
+      "source_record_id": "orr.government_support.table_7271.fy2021.transport_for_london.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2021",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_for_london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_for_london"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 581046473.5635189
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_592e33447b9a8d8eb7b3e9bd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7065297944d5b60816a84c82",
+      "source_record_id": "orr.government_support.table_7271.fy2021.transport_scotland.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2021",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_scotland"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 1728575463.9219332
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7c1605bb5c12edf1e67cbe63",
+      "semantic_fact_key": "ledger_semantic_fact_v2_53b2d2c068a0a1222a5f37d4",
+      "source_record_id": "orr.government_support.table_7271.fy2021.welsh_government.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2021",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "welsh_government",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "welsh_government"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 385263205.68699247
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_664ac18bbbfd61327d1c44cd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_20378dc5e44efc1257ded9a8",
+      "source_record_id": "orr.government_support.table_7271.fy2022.all_sources.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2022",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "all_sources",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "funding_source": "all_sources"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 12862313492.861868
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_300e76783e83914f61fad88a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_57574d61b282f08e0f6072fe",
+      "source_record_id": "orr.government_support.table_7271.fy2022.department_for_transport.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2022",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "department_for_transport",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "department_for_transport"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 10624726311.088799
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d04a2750df164f93728fed18",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6b7ff7bad415816b65170f62",
+      "source_record_id": "orr.government_support.table_7271.fy2022.passenger_transport_executives.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2022",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "passenger_transport_executives",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "passenger_transport_executives"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 132306986.83083043
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_667bbc7e3c917953f708f1d2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_37db80e587521007e030baee",
+      "source_record_id": "orr.government_support.table_7271.fy2022.transport_for_london.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2022",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_for_london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_for_london"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 332232625.2586308
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_23e1e99823c0339272bf4316",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4820a32946562a38ebd08924",
+      "source_record_id": "orr.government_support.table_7271.fy2022.transport_scotland.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2022",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_scotland"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 1437604212.1212854
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_37ded4603bdb66b4ef97873a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2e61b7fd0bea3790f7f357cd",
+      "source_record_id": "orr.government_support.table_7271.fy2022.welsh_government.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2022",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "welsh_government",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "welsh_government"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 335443357.56232476
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_38033a4619e7ac02c879329c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_39b13b4f4d2f87658e65295a",
+      "source_record_id": "orr.government_support.table_7271.fy2023.all_sources.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2023",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "all_sources",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "funding_source": "all_sources"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 12745267210.510828
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_105f64fec2fd9df625eb03d0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e03afc075a08420936c8ea6b",
+      "source_record_id": "orr.government_support.table_7271.fy2023.department_for_transport.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2023",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "department_for_transport",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "department_for_transport"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 10486348461.78895
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1b89163df91bd6f6b6ec2843",
+      "semantic_fact_key": "ledger_semantic_fact_v2_43f451c5947e4bb7e503b1ab",
+      "source_record_id": "orr.government_support.table_7271.fy2023.passenger_transport_executives.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2023",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "passenger_transport_executives",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "passenger_transport_executives"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 158096513.9464514
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_57d2ebd6592ca736212fa02b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_01b8a9570c14471f9e97ebf0",
+      "source_record_id": "orr.government_support.table_7271.fy2023.transport_for_london.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2023",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_for_london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_for_london"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 276891671.7835964
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_81ac6ba17245cd40f5948241",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9db8a4e5eb9f9aa319347a18",
+      "source_record_id": "orr.government_support.table_7271.fy2023.transport_scotland.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2023",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_scotland"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 1431311588.2386913
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_70be6e19a77c958313dcb2ef",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b2fed5e6484d821199485d28",
+      "source_record_id": "orr.government_support.table_7271.fy2023.welsh_government.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2023",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "welsh_government",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "welsh_government"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 392618974.75314087
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0ac74d318698ba723f200cb4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1a6608456972241687f7ce1f",
+      "source_record_id": "orr.government_support.table_7271.fy2024.all_sources.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2024",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "all_sources",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "funding_source": "all_sources"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 11857043948.140636
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_302d998b894d2af313ac54ad",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9d0f0aade77fa19ef0937b38",
+      "source_record_id": "orr.government_support.table_7271.fy2024.department_for_transport.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2024",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "department_for_transport",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "department_for_transport"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 9470703053.401789
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fdb874d201fd89413214d991",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c1c2e701cc98b9d3432db523",
+      "source_record_id": "orr.government_support.table_7271.fy2024.passenger_transport_executives.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2024",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "passenger_transport_executives",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "passenger_transport_executives"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 150388000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d878405e19c060c635cb5251",
+      "semantic_fact_key": "ledger_semantic_fact_v2_27b20498781ce33df10911fe",
+      "source_record_id": "orr.government_support.table_7271.fy2024.transport_for_london.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2024",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_for_london",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_for_london"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 321932460.08
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_98bcf1c3df0a44340419f232",
+      "semantic_fact_key": "ledger_semantic_fact_v2_64f26285d6816a9fb3e3c278",
+      "source_record_id": "orr.government_support.table_7271.fy2024.transport_scotland.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2024",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "transport_scotland",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "transport_scotland"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 1482938666.35
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_59801d4ea8ec684373d6934c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_198d95d29a9cb6b0a4a362a9",
+      "source_record_id": "orr.government_support.table_7271.fy2024.welsh_government.support",
+      "concept": "orr.rail.government_support_by_source",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7271.fy2024",
+        "groupby_dimension": "orr.funding_source",
+        "groupby_value_id": "welsh_government",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_source": "welsh_government"
+      },
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7271 government support to the rail industry by source and recipient",
+        "source_file": "table-7271.ods",
+        "source_sha256": "bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7271-2024-25/2025/bfaae956cbd3abbcbed7e79597d053b561660b46d497cbf10d9336b119b73b29/table-7271.ods"
+      },
+      "value": 431081768.3088487
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_33c415e6e90f7a9202567b7b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8a14f137bdb667cababffdef",
+      "source_record_id": "orr.government_support.table_7270.fy2015.great_britain.total_government_support",
+      "concept": "orr.rail.total_government_support",
+      "measure_id": "total_government_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2015
+      },
+      "period_coverage": {
+        "start_date": "2015-04-01",
+        "end_date": "2016-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7270.fy2015",
+        "groupby_dimension": "orr.rail_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7270 government support to the rail industry",
+        "source_file": "table-7270.ods",
+        "source_sha256": "cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7270-2024-25/2025/cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a/table-7270.ods"
+      },
+      "value": 10852252009.315622
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5a141479b56c8de37ca317e2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_23a31219fb68f9f7e246d8c4",
+      "source_record_id": "orr.government_support.table_7270.fy2016.great_britain.total_government_support",
+      "concept": "orr.rail.total_government_support",
+      "measure_id": "total_government_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2016
+      },
+      "period_coverage": {
+        "start_date": "2016-04-01",
+        "end_date": "2017-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7270.fy2016",
+        "groupby_dimension": "orr.rail_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7270 government support to the rail industry",
+        "source_file": "table-7270.ods",
+        "source_sha256": "cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7270-2024-25/2025/cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a/table-7270.ods"
+      },
+      "value": 10288532638.992266
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_116eb368db07ad0ab8e04f2f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_241ac6a72836701c5524943c",
+      "source_record_id": "orr.government_support.table_7270.fy2017.great_britain.total_government_support",
+      "concept": "orr.rail.total_government_support",
+      "measure_id": "total_government_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2017
+      },
+      "period_coverage": {
+        "start_date": "2017-04-01",
+        "end_date": "2018-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7270.fy2017",
+        "groupby_dimension": "orr.rail_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7270 government support to the rail industry",
+        "source_file": "table-7270.ods",
+        "source_sha256": "cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7270-2024-25/2025/cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a/table-7270.ods"
+      },
+      "value": 12323941483.966896
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6cbf960df5b451661281da7b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8f73b089dbe09b65c9966ebe",
+      "source_record_id": "orr.government_support.table_7270.fy2018.great_britain.total_government_support",
+      "concept": "orr.rail.total_government_support",
+      "measure_id": "total_government_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2018
+      },
+      "period_coverage": {
+        "start_date": "2018-04-01",
+        "end_date": "2019-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7270.fy2018",
+        "groupby_dimension": "orr.rail_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7270 government support to the rail industry",
+        "source_file": "table-7270.ods",
+        "source_sha256": "cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7270-2024-25/2025/cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a/table-7270.ods"
+      },
+      "value": 13129392289.11879
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_27610be68e68a68af7c6967d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cddb9999e71c343ab218f78f",
+      "source_record_id": "orr.government_support.table_7270.fy2019.great_britain.total_government_support",
+      "concept": "orr.rail.total_government_support",
+      "measure_id": "total_government_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2019
+      },
+      "period_coverage": {
+        "start_date": "2019-04-01",
+        "end_date": "2020-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7270.fy2019",
+        "groupby_dimension": "orr.rail_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7270 government support to the rail industry",
+        "source_file": "table-7270.ods",
+        "source_sha256": "cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7270-2024-25/2025/cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a/table-7270.ods"
+      },
+      "value": 13880153888.865978
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_14d51441f826e1489c00f6ee",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fe1c8d14a67773185a4ea479",
+      "source_record_id": "orr.government_support.table_7270.fy2020.great_britain.total_government_support",
+      "concept": "orr.rail.total_government_support",
+      "measure_id": "total_government_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7270.fy2020",
+        "groupby_dimension": "orr.rail_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7270 government support to the rail industry",
+        "source_file": "table-7270.ods",
+        "source_sha256": "cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7270-2024-25/2025/cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a/table-7270.ods"
+      },
+      "value": 27436435530.24268
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ba59f34a03a285ddced09a0e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bf92501cf4a409f9ba5f5865",
+      "source_record_id": "orr.government_support.table_7270.fy2021.great_britain.total_government_support",
+      "concept": "orr.rail.total_government_support",
+      "measure_id": "total_government_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7270.fy2021",
+        "groupby_dimension": "orr.rail_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7270 government support to the rail industry",
+        "source_file": "table-7270.ods",
+        "source_sha256": "cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7270-2024-25/2025/cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a/table-7270.ods"
+      },
+      "value": 24513364172.264744
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5a33b6e5ba6ea8609c877f76",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a810fb2695db82c830fa5978",
+      "source_record_id": "orr.government_support.table_7270.fy2022.great_britain.total_government_support",
+      "concept": "orr.rail.total_government_support",
+      "measure_id": "total_government_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7270.fy2022",
+        "groupby_dimension": "orr.rail_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7270 government support to the rail industry",
+        "source_file": "table-7270.ods",
+        "source_sha256": "cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7270-2024-25/2025/cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a/table-7270.ods"
+      },
+      "value": 23168716425.49699
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a3707a1802c9b532131cc1cd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ee3509d6f747fd84d44488ac",
+      "source_record_id": "orr.government_support.table_7270.fy2023.great_britain.total_government_support",
+      "concept": "orr.rail.total_government_support",
+      "measure_id": "total_government_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7270.fy2023",
+        "groupby_dimension": "orr.rail_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7270 government support to the rail industry",
+        "source_file": "table-7270.ods",
+        "source_sha256": "cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7270-2024-25/2025/cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a/table-7270.ods"
+      },
+      "value": 23120884840.50285
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b16b9b3f2329455f907f9ccc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0443db289a4c4941eb2b5282",
+      "source_record_id": "orr.government_support.table_7270.fy2024.great_britain.total_government_support",
+      "concept": "orr.rail.total_government_support",
+      "measure_id": "total_government_support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "rail_funding_authority"
+      },
+      "geography": {
+        "id": "K03000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "orr.government_support.table_7270.fy2024",
+        "groupby_dimension": "orr.rail_scope",
+        "groupby_value_id": "great_britain",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "orr",
+        "source_table": "Table 7270 government support to the rail industry",
+        "source_file": "table-7270.ods",
+        "source_sha256": "cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/orr/orr-government-support-7270-2024-25/2025/cbe77b02a79e195e7cfde8fc3aeafa2ea352d8589c634620a15b9b0131f1ab8a/table-7270.ods"
+      },
+      "value": 21621100549.34064
+    }
+  ]
+}

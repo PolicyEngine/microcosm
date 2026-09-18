@@ -346,6 +346,8 @@ _DIRECT_KERNEL_MODULES = (
     "microcosm.build.us_runtime.wic_claim",
     "microcosm.build.us_runtime.workers_compensation",
     "microcosm.calibrate.exact_k",
+    "microcosm.calibrate.gates",
+    "microcosm.calibrate.initialization",
     "microcosm.calibrate.solve",
 )
 _QRF_KERNEL_MODULES = (

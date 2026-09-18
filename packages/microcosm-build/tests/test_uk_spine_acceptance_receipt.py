@@ -64,6 +64,11 @@ def _apply_pending_roster_transformations(
     assert roster[-1] == "age_tail"
     roster.remove("age_tail")
     roster.insert(1, "age_tail")
+
+    # #791 re-mint pending: the relationship-grid stage runs right after the
+    # final age is fixed.
+    assert "frs_relationships" not in roster
+    roster.insert(roster.index("age_tail") + 1, "frs_relationships")
     return tuple(roster)
 
 

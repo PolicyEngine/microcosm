@@ -129,7 +129,7 @@ POST_REFERENCE_COLUMN_NOTES = {
         "self-care difficulty item PEDISDRS by the adult_care_inputs "
         "base-builder stage. Also read by SNAP/Medicaid work-requirement "
         "logic and multiple state dependent-care formulas in PolicyEngine-US "
-        "1.819.0. "
+        "2.2.1. "
         "Currently absent — the intended red gate until the next base "
         "rebuild carries the stage through."
     ),
@@ -168,7 +168,7 @@ WIC_CLAIM_INPUTS = ("takes_up_wic_if_eligible",)
 
 # The SHA-pinned incumbent reference predates PolicyEngine-US 1.777.0 and
 # therefore truthfully records the retired WIC column name. Project that
-# historical evidence onto the verified 1.819.0 successor without rewriting
+# historical evidence onto the verified 2.2.1 successor without rewriting
 # the reference artifact.
 REFERENCE_LAYER_RENAMES = {
     "would_claim_wic": "takes_up_wic_if_eligible",
@@ -318,7 +318,7 @@ REFORM_COVERAGE_PROBES = [
             "without the adjacent-year carry the neutralization is a "
             "structural zero. The distinct "
             "previous_year_income_available flag has no formula consumer in "
-            "PolicyEngine-US 1.819.0 and remains protected by the hard "
+            "PolicyEngine-US 2.2.1 and remains protected by the hard "
             "non-default column gate."
         ),
         "issue": "PolicyEngine/microcosm#38",
@@ -509,7 +509,15 @@ REFORM_COVERAGE_PROBES = [
             "benefits by its weighted source mass; without the restored "
             "SPM_ENGVAL carry, the effect is a structural zero. No OBBBA "
             "provision consumes this SPM resource, so the direct neutralization "
-            "is the uniquely isolating policy-engine probe."
+            "is the uniquely isolating policy-engine probe. Under PolicyEngine-US "
+            "2.x this measure reaches SPM geography: spm_unit_benefits adds "
+            "spm_unit_capped_housing_subsidy, which consults the calculator's "
+            "canonical housing portion for housing-assisted units only. Every SPM "
+            "unit with positive housing assistance must therefore carry a "
+            "five-digit string county_fips, and every SPM unit evaluated on that "
+            "path must classify at least one adult; an SPMInputError of "
+            "SPM_GEOGRAPHY_REQUIRED or SPM_COMPOSITION_REQUIRED here is an SPM "
+            "input defect, not a LIHEAP coverage failure."
         ),
         "issue": "PolicyEngine/microcosm#32",
     },
@@ -834,7 +842,7 @@ REFORM_COVERAGE_PROBES = [
         "binding_inputs": ["domestic_production_ald"],
         "min_abs_effect": 1_000_000.0,
         "reason": (
-            "PolicyEngine-US 1.819.0 excludes the former Section 199 deduction "
+            "PolicyEngine-US 2.2.1 excludes the former Section 199 deduction "
             "from current-law above-the-line deductions. This probe preserves "
             "the exact 2024 list and adds only domestic_production_ald, so "
             "baseline-minus-reform income tax must be positive. Without the "
@@ -875,7 +883,7 @@ REFORM_COVERAGE_PROBES = [
         "binding_inputs": ["salt_refund_income"],
         "min_abs_effect": 1_000_000.0,
         "reason": (
-            "PolicyEngine-US 1.819.0 includes salt_refund_income in the "
+            "PolicyEngine-US 2.2.1 includes salt_refund_income in the "
             "South Carolina, Idaho, and West Virginia subtraction lists. "
             "Neutralizing only that leaf removes the state subtraction and "
             "raises state income tax, so baseline-minus-reform state income "
@@ -1378,7 +1386,7 @@ REFORM_COVERAGE_PROBES = [
             "structural zero. The "
             "other source-mapped housing leaves are enforced by their exact "
             "ASEC mappings and signal gate; household tenure_type has no "
-            "standalone PolicyEngine-US 1.819.0 formula consumer."
+            "standalone PolicyEngine-US 2.2.1 formula consumer."
         ),
         "issue": "PolicyEngine/microcosm#32",
     },

@@ -793,6 +793,9 @@ def test__preflight_base__passes_explicit_terminal_gate_policy_to_release_loader
         size_bytes=base_h5.stat().st_size,
         publication_run_id="fixture-publication",
         manifest_sha256="a" * 64,
+        # The release receipt re-derives this from the manifest it is handed;
+        # a fake identity has to bind the same payload.
+        manifest_payload_sha256=h5_io._canonical_json_sha256(manifest),
     )
     frame = _frame(_POOL)
     monkeypatch.setattr(

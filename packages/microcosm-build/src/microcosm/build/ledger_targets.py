@@ -12,24 +12,113 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import (
+    CalibrationHierarchy,
+    CalibrationHierarchySeed,
+    HierarchyCategory,
+    HierarchyDimension,
+    HierarchyGeography,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+)
+from microcosm.calibrate.geography_constants import UK_GEOGRAPHY_ID_TO_LABEL
 
 SUPPORTED_LEDGER_AGGREGATIONS = frozenset(("sum",))
 ALLOWED_ASSERTION_POLICIES = frozenset(("observed_only", "allow_source_projection"))
-ALLOWED_PERIOD_MATCH_POLICIES = frozenset(("latest_not_after", "exact"))
+ALLOWED_PERIOD_MATCH_POLICIES = frozenset(
+    ("latest_not_after", "exact", "source_window")
+)
+MONTHLY_WINDOW_OPERATIONS = frozenset(
+    ("monthly_window_average", "monthly_window_sum_average")
+)
 ALLOWED_VALUE_OPERATIONS = frozenset(
-    ("identity", "sum", "calendar_year_average", "latest_plateau", "count_x_mean")
+    (
+        "identity",
+        "sum",
+        "difference",
+        "linear_combination",
+        "calendar_year_average",
+        "latest_plateau",
+        "count_x_mean",
+        *MONTHLY_WINDOW_OPERATIONS,
+    )
 )
 MULTI_FACT_VALUE_OPERATIONS = frozenset(
-    ("sum", "calendar_year_average", "latest_plateau", "count_x_mean")
+    (
+        "sum",
+        "difference",
+        "linear_combination",
+        "calendar_year_average",
+        "latest_plateau",
+        "count_x_mean",
+        *MONTHLY_WINDOW_OPERATIONS,
+    )
 )
-EXACT_PERIOD_VALUE_OPERATIONS = frozenset(("identity", "sum", "count_x_mean"))
+EXACT_PERIOD_VALUE_OPERATIONS = frozenset(
+    ("identity", "sum", "difference", "linear_combination", "count_x_mean")
+)
+#: Keys of a ``linear_combination`` operand that are not selector overlays.
+LINEAR_COMBINATION_OPERAND_KEYS = frozenset(
+    ("weight", "expected_member_count", "label", "dimension_values")
+)
 DEFAULT_HIERARCHY_MATCH_SPEC_FIELDS = ("entity", "period", "family", "filter")
+
+
+class LedgerHierarchyMetadataError(ValueError):
+    """A selected Chronicle fact cannot populate the required hierarchy."""
+
+
+def hierarchy_seed_from_catalog(
+    hierarchy: Mapping[str, object],
+    category_id: str,
+    *,
+    target_id: str | None = None,
+) -> CalibrationHierarchySeed:
+    """Resolve one category reference from normalized provider/category catalogs."""
+
+    providers = hierarchy.get("providers")
+    categories = hierarchy.get("categories")
+    if not isinstance(providers, Mapping) or not isinstance(categories, Mapping):
+        raise ValueError("Hierarchy providers and categories must be mappings.")
+    category = categories.get(category_id)
+    if not isinstance(category, Mapping):
+        raise ValueError(f"Unknown hierarchy category {category_id!r}.")
+    provider_id = str(category.get("provider_id") or "")
+    provider = providers.get(provider_id)
+    if not isinstance(provider, Mapping):
+        raise ValueError(
+            f"Hierarchy category {category_id!r} references unknown provider "
+            f"{provider_id!r}."
+        )
+    target_labels = hierarchy.get("target_labels")
+    if target_labels is not None and not isinstance(target_labels, Mapping):
+        raise ValueError("Hierarchy target_labels must be a mapping when present.")
+    target_label = ""
+    if isinstance(target_labels, Mapping) and target_id in target_labels:
+        target_label = str(target_labels[target_id] or "").strip()
+        if not target_label:
+            raise ValueError(
+                f"Hierarchy target {target_id!r} has an empty target label."
+            )
+    return CalibrationHierarchySeed(
+        provider=HierarchyNode(
+            id=provider_id,
+            label=str(provider.get("label") or ""),
+        ),
+        category=HierarchyCategory(
+            id=category_id,
+            label=str(category.get("label") or ""),
+            provider_id=provider_id,
+        ),
+        target_label=target_label or None,
+    )
 
 
 @dataclass(frozen=True)
@@ -71,6 +160,8 @@ class LedgerTargetReference:
     ledger_source_record_id: str = ""
     ledger_selector: Mapping[str, object] = field(default_factory=dict)
     value_operation: str = "identity"
+    value_operands: tuple[Mapping[str, object], ...] = ()
+    expected_member_count: int | None = None
     entity: str = ""
     measure: str | None = None
     filter: str | None = None
@@ -82,6 +173,7 @@ class LedgerTargetReference:
     tolerance: float | None = None
     notes: str = ""
     metadata: Mapping[str, str] = field(default_factory=dict)
+    hierarchy: CalibrationHierarchySeed | None = None
     assertion_policy: str = "observed_only"
     period_match_policy: str = "latest_not_after"
     uprating_index: str | None = None
@@ -111,6 +203,24 @@ class LedgerTargetReference:
                 f"LedgerTargetReference {self.name!r}: ledger_selector must be a "
                 f"mapping, got {type(self.ledger_selector).__name__}."
             )
+        if self.expected_member_count is not None and (
+            isinstance(self.expected_member_count, bool)
+            or not isinstance(self.expected_member_count, int)
+            or self.expected_member_count <= 0
+        ):
+            raise ValueError(
+                f"LedgerTargetReference {self.name!r}: expected_member_count "
+                "must be a positive integer."
+            )
+        if self.value_operation == "difference":
+            roles = [str(operand.get("role")) for operand in self.value_operands]
+            if roles != ["minuend", "subtrahend"]:
+                raise ValueError(
+                    f"LedgerTargetReference {self.name!r}: difference requires "
+                    "exactly ordered minuend/subtrahend operands."
+                )
+        if self.value_operation == "linear_combination":
+            _validate_linear_combination_operands(self.name, self.value_operands)
         if self.assertion_policy not in ALLOWED_ASSERTION_POLICIES:
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: unsupported "
@@ -122,6 +232,18 @@ class LedgerTargetReference:
                 f"period_match_policy {self.period_match_policy!r}; expected "
                 f"one of {sorted(ALLOWED_PERIOD_MATCH_POLICIES)!r}."
             )
+        is_window = self.value_operation in MONTHLY_WINDOW_OPERATIONS
+        if is_window != (self.period_match_policy == "source_window"):
+            raise ValueError(
+                "A monthly window operation requires the paired source_window period policy."
+            )
+        if is_window:
+            if self.period is None:
+                raise ValueError(
+                    "A monthly window requires an explicit model target period."
+                )
+            _declared_source_months(self)
+            _monthly_window_operands(self)
         if self.period_match_policy == "exact" and self.period is None:
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: period_match_policy="
@@ -162,6 +284,19 @@ class LedgerTargetReference:
                 f"must be non-empty strings; bad keys {bad_metadata}."
             )
         object.__setattr__(self, "metadata", metadata)
+        if isinstance(self.hierarchy, Mapping):
+            object.__setattr__(
+                self,
+                "hierarchy",
+                CalibrationHierarchySeed.from_dict(dict(self.hierarchy)),
+            )
+        elif self.hierarchy is not None and not isinstance(
+            self.hierarchy, CalibrationHierarchySeed
+        ):
+            raise TypeError(
+                f"LedgerTargetReference {self.name!r}: hierarchy must be a "
+                "CalibrationHierarchySeed, mapping, or None."
+            )
 
 
 @dataclass(frozen=True)
@@ -570,6 +705,8 @@ def target_spec_from_ledger_reference(
     facts = fact if isinstance(fact, tuple) else (fact,)
     if not facts:
         raise ValueError(f"Ledger target reference {reference.name!r} has no facts.")
+    if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
+        facts = _resolve_monthly_window_reference_facts(reference, list(facts))
     if len(facts) > 1 and reference.value_operation not in MULTI_FACT_VALUE_OPERATIONS:
         raise ValueError(
             f"Ledger target reference {reference.name!r}: multiple Ledger facts "
@@ -582,7 +719,9 @@ def target_spec_from_ledger_reference(
         numeric_values.append(_numeric_fact_value(member, reference))
         _validate_fact_aggregation(member, reference)
 
-    if reference.value_operation == "calendar_year_average":
+    if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
+        numeric_value = sum(numeric_values) / len(_declared_source_months(reference))
+    elif reference.value_operation == "calendar_year_average":
         numeric_value = sum(numeric_values) / len(numeric_values)
     elif reference.value_operation == "latest_plateau":
         numeric_value = numeric_values[-1]
@@ -590,12 +729,45 @@ def target_spec_from_ledger_reference(
         numeric_value = numeric_values[0] * numeric_values[1]
     elif reference.value_operation == "sum":
         numeric_value = sum(numeric_values)
+    elif reference.value_operation == "difference":
+        numeric_value = numeric_values[0] - numeric_values[1]
+        if not math.isfinite(numeric_value) or numeric_value < 0:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: difference "
+                f"produced invalid value {numeric_value!r}."
+            )
+    elif reference.value_operation == "linear_combination":
+        weights = _linear_combination_weights(reference, facts)
+        numeric_value = sum(
+            weight * value
+            for weight, value in zip(weights, numeric_values, strict=True)
+        )
+        if not math.isfinite(numeric_value) or numeric_value < 0:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: linear_combination "
+                f"produced invalid value {numeric_value!r}."
+            )
     else:
         numeric_value = numeric_values[0]
     representative_fact = _value_representative_fact(
         facts,
         operation=reference.value_operation,
     )
+    publication_metadata = {}
+    if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
+        # The window guard has proved these identities common to every member.
+        publication_metadata = {
+            key: value
+            for key, value in {
+                "ledger_source_release_key": _str_at(
+                    representative_fact, "source_release_key"
+                ),
+                "ledger_source_sha256": _str_at(
+                    representative_fact, "source", "source_sha256"
+                ),
+            }.items()
+            if value
+        }
 
     if not reference.measure:
         raise ValueError(
@@ -630,9 +802,16 @@ def target_spec_from_ledger_reference(
                 fact_key=_fact_key(representative_fact),
             ),
             **_multi_fact_reference_metadata(facts),
+            **publication_metadata,
+            **_diagnostic_target_label_metadata(facts, target_period=period),
             "ledger_resolved_assertion": _fact_assertion(representative_fact),
             **_reference_metadata(reference),
         },
+        hierarchy=_calibration_hierarchy(
+            facts,
+            reference=reference,
+            target_period=period,
+        ),
     )
 
 
@@ -698,6 +877,7 @@ def _multi_fact_reference_metadata(facts: tuple[object, ...]) -> dict[str, str]:
         return {}
     member_keys = tuple(_fact_key(fact) or _source_record_id(fact) for fact in facts)
     payload = json.dumps(member_keys, separators=(",", ":"))
+    varying_dimensions = _varying_dimension_ids(facts)
     return {
         "ledger_member_fact_count": str(len(facts)),
         "ledger_member_aggregate_fact_keys": payload,
@@ -705,7 +885,479 @@ def _multi_fact_reference_metadata(facts: tuple[object, ...]) -> dict[str, str]:
         "ledger_member_fact_digest": hashlib.sha256(
             payload.encode("utf-8")
         ).hexdigest(),
+        **(
+            {
+                "ledger_aggregation_varying_dimensions": json.dumps(
+                    varying_dimensions,
+                    separators=(",", ":"),
+                )
+            }
+            if varying_dimensions
+            else {}
+        ),
     }
+
+
+def _calibration_hierarchy(
+    facts: tuple[object, ...],
+    *,
+    reference: LedgerTargetReference,
+    target_period: object,
+) -> CalibrationHierarchy | None:
+    """Complete the Microcosm hierarchy seed with Chronicle-owned fact data."""
+
+    seed = reference.hierarchy
+    if seed is None:
+        return None
+    _validate_chronicle_hierarchy_labels(facts, reference_name=reference.name)
+    composed = _composed_row_geography(facts, reference=reference)
+    if composed is None:
+        composed = _aliased_row_geography(facts, reference=reference)
+    if composed is not None:
+        geography_level, geography_id, geography_label = composed
+        return CalibrationHierarchy(
+            provider=seed.provider,
+            category=seed.category,
+            geography=HierarchyGeography(
+                id=geography_id,
+                label=geography_label,
+                level=geography_level,
+            ),
+            dimensions=_inherited_dimensions(facts),
+            target=HierarchyNode(
+                id=reference.name,
+                label=_target_label(
+                    facts, reference=reference, target_period=target_period
+                ),
+            ),
+        )
+    geography_pairs = {
+        (
+            _str_at(fact, "geography", "level"),
+            _str_at(fact, "geography", "id"),
+        )
+        for fact in facts
+    }
+    if len(geography_pairs) != 1:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: hierarchy geography "
+            f"must be constant across aggregate member facts, got "
+            f"{sorted(geography_pairs)!r}."
+        )
+    geography_level, geography_id = next(iter(geography_pairs))
+    if not geography_level or not geography_id:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: Chronicle geography "
+            "level and id are required for the calibration hierarchy."
+        )
+    geography_names = {_str_at(fact, "geography", "name").strip() for fact in facts} - {
+        ""
+    }
+    if len(geography_names) > 1:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: Chronicle geography "
+            f"name conflicts across aggregate member facts: "
+            f"{sorted(geography_names)!r}."
+        )
+    geography_label = (
+        next(iter(geography_names))
+        if geography_names
+        else _geography_fallback_label(geography_id)
+    )
+    if not geography_label:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: Chronicle geography "
+            f"{geography_level!r}/{geography_id!r} has no display label and is "
+            "not present in Microcosm's authoritative geography catalog."
+        )
+    target_label = _target_label(
+        facts,
+        reference=reference,
+        target_period=target_period,
+    )
+    return CalibrationHierarchy(
+        provider=seed.provider,
+        category=seed.category,
+        geography=HierarchyGeography(
+            id=geography_id,
+            label=geography_label,
+            level=geography_level,
+        ),
+        dimensions=_inherited_dimensions(facts),
+        target=HierarchyNode(
+            id=reference.name,
+            label=target_label,
+        ),
+    )
+
+
+def _target_label(
+    facts: tuple[object, ...],
+    *,
+    reference: LedgerTargetReference,
+    target_period: object,
+) -> str:
+    """Resolve the label from the owner of the resulting target semantics."""
+
+    if _requires_microcosm_target_label(
+        facts,
+        reference=reference,
+        target_period=target_period,
+    ):
+        if reference.hierarchy is None or not reference.hierarchy.target_label:
+            raise LedgerHierarchyMetadataError(
+                f"Ledger target reference {reference.name!r}: multi-fact, "
+                "transformed, or restamped targets require an explicit "
+                "Microcosm target label."
+            )
+        return reference.hierarchy.target_label
+
+    fact = facts[0]
+    label = _str_at(fact, "label").strip()
+    if not label:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: the selected Chronicle "
+            "fact requires a non-empty label."
+        )
+    return label
+
+
+def _validate_chronicle_hierarchy_labels(
+    facts: tuple[object, ...],
+    *,
+    reference_name: str,
+) -> None:
+    """Require Chronicle-owned labels without identifier-derived substitutes."""
+
+    dimension_labels: dict[str, set[str]] = {}
+    dimension_value_labels: dict[tuple[str, str], set[str]] = {}
+    for index, fact in enumerate(facts):
+        fact_id = _fact_key(fact) or _source_record_id(fact) or f"member[{index}]"
+        if not _str_at(fact, "label").strip():
+            raise LedgerHierarchyMetadataError(
+                f"Ledger target reference {reference_name!r}: every selected "
+                f"Chronicle fact requires a non-empty label; missing for {fact_id!r}."
+            )
+
+        raw_dimensions = _dimensions(fact)
+        dimensions = {str(key): value for key, value in raw_dimensions.items()}
+        groupby_id = _str_at(fact, "layout", "groupby_dimension").strip()
+        groupby_value_id = _str_at(fact, "layout", "groupby_value_id").strip()
+        if groupby_id and groupby_value_id:
+            dimensions.setdefault(groupby_id, groupby_value_id)
+
+        for dimension_id, value in dimensions.items():
+            labels = {
+                str(label).strip()
+                for label in (
+                    _mapping_value(fact, "dimension_labels", dimension_id),
+                    (
+                        _at(fact, "layout", "groupby_dimension_label")
+                        if dimension_id == groupby_id
+                        else None
+                    ),
+                )
+                if label is not None and str(label).strip()
+            }
+            if len(labels) != 1:
+                raise LedgerHierarchyMetadataError(
+                    f"Ledger target reference {reference_name!r}: Chronicle fact "
+                    f"{fact_id!r} dimension {dimension_id!r} requires exactly one "
+                    f"non-empty label, got {sorted(labels)!r}."
+                )
+            dimension_labels.setdefault(dimension_id, set()).update(labels)
+
+            value_id = _dimension_value_id(value)
+            value_labels = {
+                str(label).strip()
+                for label in (
+                    _nested_mapping_value(
+                        fact,
+                        "dimension_value_labels",
+                        dimension_id,
+                        value_id,
+                    ),
+                    (
+                        _at(fact, "layout", "groupby_value_label")
+                        if dimension_id == groupby_id and value_id == groupby_value_id
+                        else None
+                    ),
+                )
+                if label is not None and str(label).strip()
+            }
+            if len(value_labels) != 1:
+                raise LedgerHierarchyMetadataError(
+                    f"Ledger target reference {reference_name!r}: Chronicle fact "
+                    f"{fact_id!r} dimension {dimension_id!r} value {value_id!r} "
+                    "requires exactly one non-empty label, got "
+                    f"{sorted(value_labels)!r}."
+                )
+            dimension_value_labels.setdefault((dimension_id, value_id), set()).update(
+                value_labels
+            )
+
+    for dimension_id, labels in dimension_labels.items():
+        if len(labels) != 1:
+            raise LedgerHierarchyMetadataError(
+                f"Ledger target reference {reference_name!r}: Chronicle dimension "
+                f"{dimension_id!r} has conflicting labels {sorted(labels)!r}."
+            )
+    for (dimension_id, value_id), labels in dimension_value_labels.items():
+        if len(labels) != 1:
+            raise LedgerHierarchyMetadataError(
+                f"Ledger target reference {reference_name!r}: Chronicle dimension "
+                f"{dimension_id!r} value {value_id!r} has conflicting labels "
+                f"{sorted(labels)!r}."
+            )
+
+
+def _requires_microcosm_target_label(
+    facts: tuple[object, ...],
+    *,
+    reference: LedgerTargetReference,
+    target_period: object,
+) -> bool:
+    if len(facts) != 1 or reference.value_operation != "identity":
+        return True
+    fact = facts[0]
+    if _fact_key(fact).startswith("microcosm.derived_fact."):
+        return True
+    fact_period = _at(fact, "period", "value")
+    if fact_period is None:
+        return True
+    return not period_values_semantically_equal(
+        target_period,
+        fact_period,
+        declared_type=_str_at(fact, "period", "type"),
+    )
+
+
+def _inherited_dimensions(facts: tuple[object, ...]) -> tuple[HierarchyDimension, ...]:
+    """Return dimensions constant across all facts in deterministic order."""
+
+    common = _common_dimensions(facts)
+    dimensions: list[HierarchyDimension] = []
+    groupby_id = _constant_text(facts, "layout", "groupby_dimension")
+    groupby_value_id = _constant_text(facts, "layout", "groupby_value_id")
+    if groupby_id and groupby_value_id:
+        raw_value = common.pop(groupby_id, groupby_value_id)
+        dimensions.append(
+            HierarchyDimension(
+                id=groupby_id,
+                label=(
+                    _constant_text(facts, "layout", "groupby_dimension_label")
+                    or _dimension_label(facts, groupby_id)
+                ),
+                value_id=_dimension_value_id(groupby_value_id),
+                value_label=(
+                    _constant_text(facts, "layout", "groupby_value_label")
+                    or _dimension_value_label(facts, groupby_id, raw_value)
+                ),
+            )
+        )
+    for dimension_id in sorted(common):
+        value = common[dimension_id]
+        dimensions.append(
+            HierarchyDimension(
+                id=dimension_id,
+                label=_dimension_label(facts, dimension_id),
+                value_id=_dimension_value_id(value),
+                value_label=_dimension_value_label(facts, dimension_id, value),
+            )
+        )
+    return tuple(dimensions)
+
+
+def _common_dimensions(facts: tuple[object, ...]) -> dict[str, object]:
+    first = {str(key): value for key, value in _dimensions(facts[0]).items()}
+    return {
+        key: value
+        for key, value in first.items()
+        if all(
+            key in _dimensions(fact) and _dimensions(fact)[key] == value
+            for fact in facts[1:]
+        )
+    }
+
+
+def _varying_dimension_ids(facts: tuple[object, ...]) -> list[str]:
+    if len(facts) < 2:
+        return []
+    dimension_ids = sorted(
+        {str(key) for fact in facts for key in _dimensions(fact).keys()}
+    )
+    return [
+        dimension_id
+        for dimension_id in dimension_ids
+        if len(
+            {
+                json.dumps(
+                    _dimensions(fact).get(dimension_id),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                for fact in facts
+            }
+        )
+        > 1
+    ]
+
+
+def _constant_text(facts: tuple[object, ...], *path: str) -> str:
+    values = {_str_at(fact, *path).strip() for fact in facts}
+    return next(iter(values)) if len(values) == 1 else ""
+
+
+def _dimension_label(facts: tuple[object, ...], dimension_id: str) -> str:
+    labels = {
+        str(label).strip()
+        for fact in facts
+        for label in (_mapping_value(fact, "dimension_labels", dimension_id),)
+        if label is not None and str(label).strip()
+    }
+    if len(labels) != 1:
+        raise LedgerHierarchyMetadataError(
+            f"Chronicle dimension {dimension_id!r} requires exactly one "
+            f"non-empty label across selected facts, got {sorted(labels)!r}."
+        )
+    return next(iter(labels))
+
+
+def _dimension_value_label(
+    facts: tuple[object, ...], dimension_id: str, value: object
+) -> str:
+    labels = {
+        str(label).strip()
+        for fact in facts
+        for label in (
+            _nested_mapping_value(
+                fact,
+                "dimension_value_labels",
+                dimension_id,
+                _dimension_value_id(value),
+            ),
+        )
+        if label is not None and str(label).strip()
+    }
+    if len(labels) != 1:
+        value_id = _dimension_value_id(value)
+        raise LedgerHierarchyMetadataError(
+            f"Chronicle dimension {dimension_id!r} value {value_id!r} requires "
+            "exactly one non-empty label across selected facts, got "
+            f"{sorted(labels)!r}."
+        )
+    return next(iter(labels))
+
+
+def _mapping_value(fact: object, mapping_name: str, key: str) -> object | None:
+    mapping = _at(fact, mapping_name)
+    return mapping.get(key) if isinstance(mapping, Mapping) else None
+
+
+def _nested_mapping_value(
+    fact: object, mapping_name: str, outer_key: str, inner_key: str
+) -> object | None:
+    outer = _mapping_value(fact, mapping_name, outer_key)
+    return outer.get(inner_key) if isinstance(outer, Mapping) else None
+
+
+def _dimension_value_id(value: object) -> str:
+    if isinstance(value, bool):
+        return str(value).lower()
+    if isinstance(value, (dict, list, tuple)):
+        return json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return str(value)
+
+
+def _composed_row_geography(
+    facts: tuple[object, ...],
+    *,
+    reference: LedgerTargetReference,
+) -> tuple[str, str, str] | None:
+    """The declared geography of a row composed from lower-grain member facts.
+
+    A reference whose metadata carries ``composed_from_level`` sums (or
+    signs) member facts that sit one grain below the row it declares in its
+    own ``geography_level``/``geography_id`` (a region row built from its
+    authorities' rows, microcosm#929). Chronicle names each member area, not
+    the composed one, so the row's label comes from Microcosm's authoritative
+    geography catalog; a code the catalog does not carry refuses, the same
+    way an unnamed sub-national fact does.
+    """
+
+    composed_from = str(reference.metadata.get("composed_from_level") or "").strip()
+    if not composed_from:
+        return None
+    level = str(reference.metadata.get("geography_level") or "").strip()
+    geography_id = str(reference.metadata.get("geography_id") or "").strip()
+    if not level or not geography_id:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: a composed row must "
+            "declare its own geography_level and geography_id."
+        )
+    member_levels = {_str_at(fact, "geography", "level") for fact in facts}
+    if member_levels != {composed_from}:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: composed row members "
+            f"must all sit at {composed_from!r}, got {sorted(member_levels)!r}."
+        )
+    label = _geography_fallback_label(geography_id)
+    if not label:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: composed geography "
+            f"{level!r}/{geography_id!r} is not present in Microcosm's "
+            "authoritative geography catalog."
+        )
+    return level, geography_id, label
+
+
+def _aliased_row_geography(
+    facts: tuple[object, ...],
+    *,
+    reference: LedgerTargetReference,
+) -> tuple[str, str, str] | None:
+    """The roster geography of a row whose facts carry a publisher's alias code.
+
+    A reference whose metadata lists ``geography_id_aliases`` may resolve facts
+    stamped with an alias code (an authority the publisher recoded after the
+    roster's boundary vintage); the row keeps the roster code as its identity
+    and the publisher's name for the area as its label.
+    """
+
+    aliases = {
+        code.strip()
+        for code in str(reference.metadata.get("geography_id_aliases") or "").split(",")
+        if code.strip()
+    }
+    if not aliases:
+        return None
+    fact_ids = {_str_at(fact, "geography", "id") for fact in facts}
+    if not fact_ids & aliases:
+        return None
+    level = str(reference.metadata.get("geography_level") or "").strip()
+    geography_id = str(reference.metadata.get("geography_id") or "").strip()
+    if not level or not geography_id:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: an aliased row must "
+            "declare its own geography_level and geography_id."
+        )
+    if fact_ids - aliases - {geography_id}:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: aliased row members "
+            f"must sit at the roster code or a declared alias, got "
+            f"{sorted(fact_ids)!r}."
+        )
+    names = {_str_at(fact, "geography", "name").strip() for fact in facts} - {""}
+    if len(names) != 1:
+        raise LedgerHierarchyMetadataError(
+            f"Ledger target reference {reference.name!r}: aliased row needs one "
+            f"publisher name for the area, got {sorted(names)!r}."
+        )
+    return level, geography_id, next(iter(names))
+
+
+def _geography_fallback_label(geography_id: str) -> str:
+    return UK_GEOGRAPHY_ID_TO_LABEL.get(geography_id, "")
 
 
 def ledger_target_registry_parity_report(
@@ -851,7 +1503,12 @@ def target_spec_from_ledger_fact(
             source=_source_citation(fact),
             family=family,
             signed=numeric_value < 0,
-            metadata=_ledger_metadata(fact, fact_key=fact_key),
+            metadata={
+                **_ledger_metadata(fact, fact_key=fact_key),
+                **_diagnostic_target_label_metadata(
+                    (fact,), target_period=target_period
+                ),
+            },
         )
     except (TypeError, ValueError) as exc:
         raise _unsupported(f"invalid_target_spec:{type(exc).__name__}", fact) from exc
@@ -946,8 +1603,16 @@ def _resolve_reference_fact(
             if _fact_matches_selector(fact, reference.ledger_selector)
         ]
         eligible_matches = _eligible_selector_matches(reference, matches)
+        if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
+            return _resolve_monthly_window_reference_facts(reference, eligible_matches)
         if reference.value_operation == "sum" and eligible_matches:
             return _resolve_sum_reference_facts(reference, eligible_matches)
+        if reference.value_operation == "difference" and eligible_matches:
+            return _resolve_difference_reference_facts(reference, eligible_matches)
+        if reference.value_operation == "linear_combination" and eligible_matches:
+            return _resolve_linear_combination_reference_facts(
+                reference, eligible_matches
+            )
         if reference.value_operation == "calendar_year_average" and eligible_matches:
             return _resolve_calendar_year_average_reference_facts(
                 reference, eligible_matches
@@ -1020,12 +1685,464 @@ def _resolve_sum_reference_facts(
         if period_key == latest_period
         for fact in facts
     ]
+    if (
+        reference.expected_member_count is not None
+        and len(latest_matches) != reference.expected_member_count
+    ):
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: value_operation=sum "
+            f"expected {reference.expected_member_count} members at the latest "
+            f"period but resolved {len(latest_matches)}; a declared member is missing."
+        )
     return tuple(
         sorted(
             latest_matches,
             key=lambda fact: _fact_key(fact) or _source_record_id(fact),
         )
     )
+
+
+def _resolve_difference_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+) -> tuple[object, ...]:
+    resolved: list[object] = []
+    for operand in reference.value_operands:
+        dimensions = operand.get("dimension_values")
+        if not isinstance(dimensions, Mapping):
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: difference operand "
+                "requires dimension_values."
+            )
+        shared_dimensions = reference.ledger_selector.get("dimension_values")
+        selector = {
+            **dict(reference.ledger_selector),
+            **{
+                str(key): value
+                for key, value in operand.items()
+                if key not in {"role", "dimension_values"}
+            },
+            "dimension_values": {
+                **(
+                    dict(shared_dimensions)
+                    if isinstance(shared_dimensions, Mapping)
+                    else {}
+                ),
+                **dict(dimensions),
+            },
+        }
+        matches = [
+            fact for fact in eligible_matches if _fact_matches_selector(fact, selector)
+        ]
+        match = _latest_period_selector_match(reference, matches)
+        if match is None:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: difference operand "
+                f"{operand.get('role')!r} did not resolve exactly once."
+            )
+        resolved.append(match)
+    periods = {_period_key(fact) for fact in resolved}
+    if len(periods) != 1:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: difference operands "
+            "must resolve at the same latest period."
+        )
+    return tuple(resolved)
+
+
+def _validate_linear_combination_operands(
+    name: str, operands: tuple[Mapping[str, object], ...]
+) -> None:
+    """A signed combination needs at least one weighted, selector-bearing operand."""
+
+    if not operands:
+        raise ValueError(
+            f"LedgerTargetReference {name!r}: linear_combination requires at "
+            "least one weighted operand."
+        )
+    for index, operand in enumerate(operands):
+        if not isinstance(operand, Mapping):
+            raise ValueError(
+                f"LedgerTargetReference {name!r}: linear_combination operand "
+                f"{index} must be a mapping."
+            )
+        weight = operand.get("weight")
+        if (
+            isinstance(weight, bool)
+            or not isinstance(weight, (int, float))
+            or not math.isfinite(weight)
+            or weight == 0
+        ):
+            raise ValueError(
+                f"LedgerTargetReference {name!r}: linear_combination operand "
+                f"{index} needs a finite nonzero numeric weight."
+            )
+        count = operand.get("expected_member_count")
+        if count is not None and (
+            isinstance(count, bool) or not isinstance(count, int) or count <= 0
+        ):
+            raise ValueError(
+                f"LedgerTargetReference {name!r}: linear_combination operand "
+                f"{index} expected_member_count must be a positive integer."
+            )
+        dimensions = operand.get("dimension_values")
+        if dimensions is not None and not isinstance(dimensions, Mapping):
+            raise ValueError(
+                f"LedgerTargetReference {name!r}: linear_combination operand "
+                f"{index} dimension_values must be a mapping."
+            )
+        if not any(key not in LINEAR_COMBINATION_OPERAND_KEYS for key in operand) and (
+            dimensions is None
+        ):
+            raise ValueError(
+                f"LedgerTargetReference {name!r}: linear_combination operand "
+                f"{index} declares no selector overlay; every operand must "
+                "narrow the shared selector."
+            )
+
+
+def _linear_combination_operand_selector(
+    reference: LedgerTargetReference,
+    operand: Mapping[str, object],
+) -> dict[str, object]:
+    """The shared selector overlaid by one operand's own keys."""
+
+    shared = reference.ledger_selector
+    selector: dict[str, object] = {
+        **dict(shared),
+        **{
+            str(key): value
+            for key, value in operand.items()
+            if key not in LINEAR_COMBINATION_OPERAND_KEYS
+        },
+    }
+    shared_dimensions = shared.get("dimension_values")
+    dimensions = operand.get("dimension_values")
+    if isinstance(dimensions, Mapping) or isinstance(shared_dimensions, Mapping):
+        selector["dimension_values"] = {
+            **(
+                dict(shared_dimensions)
+                if isinstance(shared_dimensions, Mapping)
+                else {}
+            ),
+            **(dict(dimensions) if isinstance(dimensions, Mapping) else {}),
+        }
+    return selector
+
+
+def _linear_combination_operand_label(operand: Mapping[str, object], index: int) -> str:
+    label = operand.get("label")
+    if isinstance(label, str) and label.strip():
+        return label.strip()
+    parts = [
+        str(operand[key])
+        for key in ("source_measure_id", "source_concept")
+        if isinstance(operand.get(key), str) and operand.get(key)
+    ]
+    dimensions = operand.get("dimension_values")
+    if isinstance(dimensions, Mapping) and dimensions:
+        parts.append(
+            "["
+            + ",".join(f"{key}={value}" for key, value in sorted(dimensions.items()))
+            + "]"
+        )
+    return "".join(parts) or f"operand_{index}"
+
+
+def _linear_combination_formula(reference: LedgerTargetReference) -> str:
+    terms = []
+    for index, operand in enumerate(reference.value_operands):
+        weight = float(operand["weight"])
+        sign = "+" if weight > 0 else "-"
+        magnitude = abs(weight)
+        scale = "" if magnitude == 1 else f"{magnitude:g}*"
+        terms.append(
+            f"{sign}{scale}{_linear_combination_operand_label(operand, index)}"
+        )
+    return " ".join(terms)
+
+
+def _resolve_linear_combination_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+) -> tuple[object, ...]:
+    """Resolve every weighted operand at one shared latest period.
+
+    Each operand narrows the shared selector; its members are the facts of
+    the latest period partition, and a multi-member operand must declare
+    ``expected_member_count`` (the sum over those members is what the weight
+    scales).  No fact may belong to two operands, and every operand must land
+    on the same period, so the combination is a statement about one
+    publication vintage.
+    """
+
+    resolved: list[object] = []
+    claimed: dict[int, int] = {}
+    operand_periods: list[tuple[int, int, str]] = []
+    for index, operand in enumerate(reference.value_operands):
+        label = _linear_combination_operand_label(operand, index)
+        selector = _linear_combination_operand_selector(reference, operand)
+        matches = [
+            fact for fact in eligible_matches if _fact_matches_selector(fact, selector)
+        ]
+        if not matches:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: linear_combination "
+                f"operand {label!r} matched no eligible Ledger fact."
+            )
+        partitions: dict[tuple[int, int, str], list[object]] = {}
+        for fact in matches:
+            partitions.setdefault(
+                _reference_period_partition_key(fact, reference), []
+            ).append(fact)
+        latest_period = max(partitions)
+        members = partitions[latest_period]
+        expected = operand.get("expected_member_count")
+        if expected is None and len(members) != 1:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: linear_combination "
+                f"operand {label!r} resolved {len(members)} facts at the latest "
+                "period; declare expected_member_count to sum a member set."
+            )
+        if expected is not None and len(members) != expected:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: linear_combination "
+                f"operand {label!r} expected {expected} members at the latest "
+                f"period but resolved {len(members)}; a declared member is missing."
+            )
+        for fact in members:
+            if id(fact) in claimed:
+                raise ValueError(
+                    f"Ledger target reference {reference.name!r}: linear_combination "
+                    f"operand {label!r} claims a fact operand "
+                    f"{claimed[id(fact)]} already resolved; operand selectors "
+                    "must be disjoint."
+                )
+            claimed[id(fact)] = index
+        operand_periods.append(latest_period)
+        resolved.extend(
+            sorted(members, key=lambda fact: _fact_key(fact) or _source_record_id(fact))
+        )
+    if len(set(operand_periods)) != 1:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: linear_combination "
+            "operands must resolve at the same latest period."
+        )
+    if (
+        reference.expected_member_count is not None
+        and len(resolved) != reference.expected_member_count
+    ):
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: linear_combination "
+            f"expected {reference.expected_member_count} member facts in total "
+            f"but resolved {len(resolved)}."
+        )
+    return tuple(resolved)
+
+
+def _linear_combination_weights(
+    reference: LedgerTargetReference,
+    facts: tuple[object, ...],
+) -> tuple[float, ...]:
+    """The weight of the one operand each resolved fact belongs to."""
+
+    selectors = [
+        (
+            float(operand["weight"]),
+            _linear_combination_operand_selector(reference, operand),
+        )
+        for operand in reference.value_operands
+    ]
+    weights: list[float] = []
+    for fact in facts:
+        owners = [
+            weight
+            for weight, selector in selectors
+            if _fact_matches_selector(fact, selector)
+        ]
+        if len(owners) != 1:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: a resolved fact "
+                f"belongs to {len(owners)} linear_combination operands; expected "
+                "exactly one."
+            )
+        weights.append(owners[0])
+    return tuple(weights)
+
+
+def _declared_source_months(reference: LedgerTargetReference) -> tuple[str, ...]:
+    months = reference.ledger_selector.get("period_value")
+    if (
+        reference.ledger_selector.get("period_type") != "month"
+        or not isinstance(months, list)
+        or not months
+        or not all(
+            isinstance(month, str)
+            and re.fullmatch(r"[0-9]{4}-(?:0[1-9]|1[0-2])", month)
+            for month in months
+        )
+        or months != sorted(set(months))
+    ):
+        raise ValueError(
+            "A monthly window requires period_type=month and explicit unique ordered YYYY-MM period_value months."
+        )
+    return tuple(months)
+
+
+def _monthly_window_operands(
+    reference: LedgerTargetReference,
+) -> tuple[Mapping[str, object], ...]:
+    if reference.value_operation == "monthly_window_average":
+        if reference.value_operands:
+            raise ValueError(
+                "A single-series monthly window does not accept value_operands."
+            )
+        return ()
+    dimensions = []
+    for operand in reference.value_operands:
+        if not isinstance(operand, Mapping) or set(operand) != {"dimension_values"}:
+            raise ValueError(
+                "A monthly window sum operand requires only dimension_values."
+            )
+        values = operand["dimension_values"]
+        if (
+            not isinstance(values, Mapping)
+            or not values
+            or any(
+                not isinstance(key, str)
+                or not key
+                or value is None
+                or isinstance(value, (Mapping, list, tuple, set))
+                for key, value in values.items()
+            )
+        ):
+            raise ValueError(
+                "A monthly window sum operand requires complete scalar dimension_values."
+            )
+        dimensions.append(values)
+    if not dimensions or any(set(value) != set(dimensions[0]) for value in dimensions):
+        raise ValueError(
+            "A monthly window sum requires operands with the same complete dimension keys."
+        )
+    encodings = [
+        json.dumps(value, sort_keys=True, separators=(",", ":")) for value in dimensions
+    ]
+    if len(set(encodings)) != len(encodings):
+        raise ValueError("A monthly window sum requires disjoint operand tuples.")
+    return tuple(dimensions)
+
+
+def _monthly_window_source_key(
+    fact: object, dimensions: Mapping[str, object]
+) -> tuple[str, ...]:
+    """All window members must share a publication and statistical measure."""
+    return (
+        _source_name(fact),
+        _str_at(fact, "source_release_key"),
+        _str_at(fact, "source", "source_sha256"),
+        _str_at(fact, "source", "vintage"),
+        _str_at(fact, "source", "source_file"),
+        _str_at(fact, "source", "source_table")
+        or _str_at(fact, "observed_measure", "source_table"),
+        _str_at(fact, "observed_measure", "source_measure_id")
+        or _str_at(fact, "layout", "measure_id"),
+        _source_measure_concept(fact),
+        _str_at(fact, "observed_measure", "unit"),
+        json.dumps(_at(fact, "entity"), sort_keys=True),
+        json.dumps(_at(fact, "geography"), sort_keys=True),
+        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id")),
+        _normalized_record_set_id(_str_at(fact, "layout", "record_set_spec_id")),
+        _str_at(fact, "layout", "groupby_dimension"),
+        _str_at(fact, "aggregation", "method"),
+        _domain(fact),
+        json.dumps(
+            [
+                constraint
+                for constraint in _constraint_rows(fact)
+                if _str_at(constraint, "variable") not in dimensions
+            ],
+            sort_keys=True,
+        ),
+    )
+
+
+def _resolve_monthly_window_reference_facts(
+    reference: LedgerTargetReference,
+    matches: list[object],
+) -> tuple[object, ...]:
+    """Require a complete month-by-cell grid before averaging monthly totals.
+
+    The same guard runs after direct-key resolution, so identifiers cannot
+    bypass the explicit window, selector, or operand coverage contract.
+    """
+    months = _declared_source_months(reference)
+    operands = _monthly_window_operands(reference)
+    cell_count = len(operands) or 1
+    expected_count = len(months) * cell_count
+    prefix = f"Ledger target reference {reference.name!r}: monthly window"
+    if reference.expected_member_count not in (None, expected_count):
+        raise ValueError(
+            f"{prefix} expected_member_count disagrees with its declared month-by-cell grid."
+        )
+    if len(matches) != expected_count or any(
+        not _fact_matches_selector(fact, reference.ledger_selector) for fact in matches
+    ):
+        raise ValueError(
+            f"{prefix} requires exactly {expected_count} selected facts, one per declared month and cell; resolved {len(matches)}."
+        )
+    grid: dict[tuple[str, int], object] = {}
+    partitions: dict[int, set[tuple[str, ...]]] = {}
+    for fact in matches:
+        publication = _at(fact, "source_release_key")
+        raw_hash = _at(fact, "source", "source_sha256")
+        if any(
+            not isinstance(value, str) or not value.strip()
+            for value in (publication, raw_hash)
+        ):
+            raise ValueError(
+                f"{prefix} requires nonempty source_release_key and "
+                "source.source_sha256 on every member."
+            )
+        if operands:
+            cells = [
+                index
+                for index, values in enumerate(operands)
+                if set(_dimensions(fact)) == set(values)
+                and _dimension_values_match(fact, values)
+            ]
+        else:
+            cells = [0]
+        if len(cells) != 1:
+            raise ValueError(
+                f"{prefix} requires every fact to match exactly one complete operand tuple."
+            )
+        cell = cells[0]
+        key = (_str_at(fact, "period", "value"), cell)
+        if key in grid:
+            raise ValueError(f"{prefix} contains a duplicate month/cell observation.")
+        grid[key] = fact
+        partitions.setdefault(cell, set()).add(_selector_period_invariant_key(fact))
+    if any(len(series) != 1 for series in partitions.values()):
+        raise ValueError(
+            f"{prefix} matched multiple semantic series for a declared cell."
+        )
+    dimension_cells = operands[0] if operands else {}
+    if (
+        len({_monthly_window_source_key(fact, dimension_cells) for fact in matches})
+        != 1
+    ):
+        raise ValueError(
+            f"{prefix} cells must share source publication, measure, entity and geography."
+        )
+    expected_grid = [(month, cell) for month in months for cell in range(cell_count)]
+    if set(grid) != set(expected_grid):
+        raise ValueError(f"{prefix} is missing a declared month/cell observation.")
+    member_keys = [_fact_key(fact) or _source_record_id(fact) for fact in matches]
+    if not all(member_keys) or len(set(member_keys)) != len(member_keys):
+        raise ValueError(
+            f"{prefix} requires distinct non-empty member fact identities."
+        )
+    return tuple(grid[key] for key in expected_grid)
 
 
 def _resolve_calendar_year_average_reference_facts(
@@ -1239,6 +2356,13 @@ def _eligible_selector_matches(
     matches: list[object],
 ) -> list[object]:
     target_period_key = _period_key_from_value(reference.period)
+    if reference.period_match_policy == "source_window":
+        return [
+            fact
+            for fact in matches
+            if _fact_matches_selector(fact, reference.ledger_selector)
+            and _assertion_allowed(reference, fact)
+        ]
     if reference.period_match_policy == "exact":
         return [
             fact
@@ -1292,6 +2416,13 @@ def _validate_resolved_reference_fact(
                 f"vintage {vintage_pin!r}, but resolved fact has vintage "
                 f"{_at(fact, 'geography', 'vintage')!r}."
             )
+    entity_pin = reference.ledger_selector.get("entity_name")
+    if entity_pin is not None and _str_at(fact, "entity", "name") != entity_pin:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r} requires entity_name "
+            f"{entity_pin!r}, but resolved fact has entity "
+            f"{_at(fact, 'entity', 'name')!r}."
+        )
 
 
 def _validate_reference_period(fact: object, reference: LedgerTargetReference) -> None:
@@ -1304,6 +2435,12 @@ def _validate_reference_period(fact: object, reference: LedgerTargetReference) -
     binds the projected fact to the period it estimates.
     """
 
+    if reference.period_match_policy == "source_window":
+        if _str_at(fact, "period", "type") != "month" or _str_at(
+            fact, "period", "value"
+        ) not in _declared_source_months(reference):
+            raise ValueError("Resolved fact lies outside the declared monthly window.")
+        return
     if reference.period_match_policy != "exact":
         if not _not_after_target_period(
             _period_key(fact), _period_key_from_value(reference.period)
@@ -1333,7 +2470,9 @@ def _latest_period_selector_match(
     reference: LedgerTargetReference,
     matches: list[object],
 ) -> object | None:
-    if len(matches) < 2:
+    if len(matches) == 1:
+        return matches[0]
+    if not matches:
         return None
     semantic_keys = {_selector_period_invariant_key(fact) for fact in matches}
     if len(semantic_keys) != 1:
@@ -1392,11 +2531,40 @@ def _normalized_record_set_part(value: str) -> str:
         return ""
     normalized = value.lower().replace("-", "_")
     pieces = [
-        piece
+        _strip_trailing_vintage_year(piece)
         for piece in normalized.split("_")
         if piece and not _is_period_fragment(piece)
     ]
     return "_".join(pieces)
+
+
+_TRAILING_VINTAGE_YEAR = re.compile(r"^([a-z]{2,})((?:19|20)[0-9]{2})$")
+#: Word-plus-year tokens that name a classification revision, not a publication
+#: vintage: they must keep their year, or two classifications would read as one
+#: series. Grow this set when a new one enters a record-set id.
+_CLASSIFICATION_REVISION_TOKENS = frozenset({"sic2007"})
+
+
+def _strip_trailing_vintage_year(piece: str) -> str:
+    """``ctaxbase2025`` -> ``ctaxbase``: a vintage year glued to a word.
+
+    The strip is generic: it also folds ``ons.mid2023…`` and ``ons.mid2024…``
+    (the road-fuel anchors' mid-year estimate vintages) into one series, which
+    is intended, since successive MYE vintages are one publication series. A
+    classification revision (``sic2007``) is not a vintage and is kept.
+
+    Chronicle names one package per publication year and spells the year
+    into the record-set id without a separator (``scotgov.ctaxbase2025.…``,
+    ``mhclg.ctb2025.…``). The series-invariant key must read those the way it
+    already reads ``fy2025`` and ``september2025``, or every vintage of one
+    series looks like a different series and the latest-not-after resolution
+    refuses the reference as ambiguous.
+    """
+
+    if piece in _CLASSIFICATION_REVISION_TOKENS:
+        return piece
+    match = _TRAILING_VINTAGE_YEAR.match(piece)
+    return match.group(1) if match else piece
 
 
 def _normalized_period_bearing_id(value: str) -> str:
@@ -1408,6 +2576,8 @@ def _normalized_period_bearing_id(value: str) -> str:
 def _is_period_fragment(value: str) -> bool:
     normalized = value.lower().replace("-", "_")
     if _is_period_token(normalized):
+        return True
+    if normalized.startswith("year") and _is_period_token(normalized[4:]):
         return True
     month_names = (
         "jan",
@@ -1449,15 +2619,39 @@ def _is_period_token(value: str) -> bool:
     return bool(period_key[0]) and 1000 <= period_key[1] // 100 <= 9999
 
 
+def _comparable_period_value(fact: object) -> object:
+    """The period value the surface compares a fact on.
+
+    Every fiscal-year label on the surface is read as the opening year
+    (OBR's and HMRC's ``2025`` is FY2025-26). DfT labels its reporting year
+    by the March end year (``2025`` is YE March 2025, FY2024-25) and says so
+    in the fact's own coverage dates, so a fiscal-year fact that carries
+    ``period_coverage.start_date`` is keyed on that start year. Facts without
+    coverage keep their label; the publisher's label is recorded beside the
+    comparable value (``ledger_fact_period_label``) whenever they differ.
+    """
+
+    value = _at(fact, "period", "value")
+    if _str_at(fact, "period", "type") != "fiscal_year":
+        return value
+    start = _str_at(fact, "period_coverage", "start_date")
+    if len(start) < 4 or not start[:4].isdigit():
+        return value
+    label = str(value).strip()
+    if not label.isdigit():
+        return value
+    return int(start[:4])
+
+
 def _period_key(fact: object) -> tuple[int, int, str]:
-    return _period_key_from_value(_at(fact, "period", "value"))
+    return _period_key_from_value(_comparable_period_value(fact))
 
 
 def _exact_period_matches(fact: object, reference: LedgerTargetReference) -> bool:
     """Match exact periods by semantic value while retaining period-kind pins."""
 
     expected_value = reference.period
-    actual_value = _at(fact, "period", "value")
+    actual_value = _comparable_period_value(fact)
     actual_type = _str_at(fact, "period", "type")
     selector_type = str(reference.ledger_selector.get("period_type", ""))
     expected_type_hint = period_type_hint(expected_value)
@@ -1482,7 +2676,7 @@ def _reference_period_partition_key(
 ) -> tuple[int, int, str]:
     period_key = (
         _normalize_period_value(
-            _at(fact, "period", "value"),
+            _comparable_period_value(fact),
             declared_type=_str_at(fact, "period", "type"),
         )[0]
         if reference.period_match_policy == "exact"
@@ -1641,6 +2835,29 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
     metadata["ledger_value_operation"] = reference.value_operation
     metadata["ledger_assertion_policy"] = reference.assertion_policy
     metadata["ledger_period_match_policy"] = reference.period_match_policy
+    if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
+        months = _declared_source_months(reference)
+        metadata["ledger_source_months"] = json.dumps(months, separators=(",", ":"))
+        metadata["ledger_source_month_count"] = str(len(months))
+        metadata["ledger_source_cell_count_per_month"] = str(
+            len(reference.value_operands) or 1
+        )
+        metadata["ledger_value_formula"] = (
+            "sum_of_declared_cells / declared_month_count"
+        )
+    if reference.value_operation == "difference":
+        metadata["ledger_value_formula"] = "minuend - subtrahend"
+    if reference.value_operation == "linear_combination":
+        metadata["ledger_value_formula"] = _linear_combination_formula(reference)
+    if reference.metadata.get("composed_from_level"):
+        # A composed row's Ledger geography is the row's own, not the
+        # representative member fact's (which sits one grain below).
+        geography_id = str(reference.metadata.get("geography_id") or "")
+        metadata["ledger_geography_level"] = str(
+            reference.metadata.get("geography_level") or ""
+        )
+        metadata["ledger_geography_id"] = geography_id
+        metadata["ledger_geography_name"] = _geography_fallback_label(geography_id)
     for key, value in sorted(reference.ledger_selector.items()):
         if isinstance(value, Mapping):
             continue
@@ -1735,6 +2952,24 @@ def _fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool
             continue
         if str(expected) not in candidates:
             return False
+    return True
+
+
+def fact_matches_selector(fact: object, selector: Mapping[str, object]) -> bool:
+    """Public name for :func:`_fact_matches_selector` (used by fact vendoring)."""
+
+    return _fact_matches_selector(fact, selector)
+
+
+def selector_field_is_supported(key: str) -> bool:
+    """Whether ``key`` is in the closed selector vocabulary."""
+
+    if key in {"dimensions", "dimension_values"}:
+        return True
+    try:
+        _selector_candidates({}, key)
+    except ValueError:
+        return False
     return True
 
 
@@ -1982,7 +3217,14 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         "ledger_legal_vintage": _str_at(fact, "measure", "legal_vintage")
         or _str_at(fact, "concept_alignment", "legal_vintage"),
         "ledger_period_type": _str_at(fact, "period", "type"),
-        "ledger_fact_period": _str_at(fact, "period", "value"),
+        "ledger_fact_period": str(_comparable_period_value(fact)),
+        # Stamped only when the publisher's label differs from the comparable
+        # period (DfT's March-end fiscal labels); absent otherwise.
+        "ledger_fact_period_label": (
+            _str_at(fact, "period", "value")
+            if str(_comparable_period_value(fact)) != _str_at(fact, "period", "value")
+            else ""
+        ),
         # Recorded only when the fact asserts it; legacy rows that omit the
         # field are not stamped (readers treat absence as
         # observation-by-default, same as the artifact loader).
@@ -1991,6 +3233,7 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         "ledger_geography_id": _str_at(fact, "geography", "id"),
         "ledger_geography_name": _str_at(fact, "geography", "name"),
         "ledger_geography_vintage": _str_at(fact, "geography", "vintage"),
+        "ledger_fact_label": _str_at(fact, "label"),
         "ledger_entity_name": _str_at(fact, "entity", "name"),
         "ledger_entity_role": _str_at(fact, "entity", "role"),
         "ledger_domain": _domain(fact),
@@ -2000,6 +3243,9 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         ),
         "ledger_layout_groupby_dimension": _str_at(fact, "layout", "groupby_dimension"),
         "ledger_layout_groupby_value_id": _str_at(fact, "layout", "groupby_value_id"),
+        "ledger_layout_groupby_value_label": _str_at(
+            fact, "layout", "groupby_value_label"
+        ),
         "ledger_layout_measure_id": _str_at(fact, "layout", "measure_id"),
         "ledger_aggregation_method": _str_at(fact, "aggregation", "method"),
     }
@@ -2010,6 +3256,29 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
         if value is not None:
             metadata[f"ledger_filter_{key}"] = str(value)
     return {key: value for key, value in metadata.items() if value}
+
+
+def _diagnostic_target_label_metadata(
+    facts: tuple[object, ...],
+    *,
+    target_period: object,
+) -> dict[str, str]:
+    """Use a Chronicle fact label only when it still describes the target."""
+
+    if len(facts) != 1:
+        return {}
+    fact = facts[0]
+    label = _str_at(fact, "label").strip()
+    fact_period = _at(fact, "period", "value")
+    if not label or fact_period is None:
+        return {}
+    if not period_values_semantically_equal(
+        target_period,
+        fact_period,
+        declared_type=_str_at(fact, "period", "type"),
+    ):
+        return {}
+    return {"diagnostic_target_label": label}
 
 
 def _hierarchy_rule_enabled(

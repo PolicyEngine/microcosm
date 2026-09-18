@@ -15,6 +15,7 @@ import json
 import pytest
 
 from microcosm.build.uk_runtime import metric_names
+from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
 from microcosm.build.uk_runtime.hmrc_income import HMRC_SPI_TARGET_RECORD_COUNT
 from microcosm.build.uk_runtime.hmrc_replay import FULL_FRS_TI_BAND_FENCE_ID
 from microcosm.build.uk_runtime.local_target_census import (
@@ -22,7 +23,6 @@ from microcosm.build.uk_runtime.local_target_census import (
     CENSUS_SCHEMA_VERSION,
     METRIC_STATUS_BOUND_IN_CODE,
     SOURCE_STATUS_DOCUMENTED_UNPINNED,
-    SOURCE_STATUS_PINNED_IN_LADDER,
     SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
     SOURCE_STATUS_SIGNED_DEFERRED,
     assert_uk_local_target_census_current,
@@ -98,20 +98,51 @@ def test_census_source_rows_are_reviewed_pointers() -> None:
         assert source["status"] in {
             SOURCE_STATUS_DOCUMENTED_UNPINNED,
             SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
-            SOURCE_STATUS_PINNED_IN_LADDER,
             SOURCE_STATUS_SIGNED_DEFERRED,
         }
         if source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS:
+            # One UK Chronicle pin governs both grains (uk/chronicle_feed.json);
+            # the census restates it rather than carrying its own digest.
             pin = source["ledger_fact_pin"]
-            assert pin["facts_sha256"] == (
-                "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48"
-            )
-            assert pin["source_commit"] == "33ca98a"
+            shared = load_uk_chronicle_feed()
+            assert pin["facts_sha256"] == shared.facts_sha256
+            assert pin["manifest_sha256"] == shared.manifest_sha256
+            assert pin["fact_row_count"] == shared.fact_row_count
+            assert pin["source_commit"] == shared.source_commit
+            assert pin["source_repo"] == "PolicyEngine/chronicle"
         if source["status"] == SOURCE_STATUS_SIGNED_DEFERRED:
             assert source["signed_reason_id"], source["source_id"]
             assert source["signed_rationale"], source["source_id"]
         assert source["geographies"], source["source_id"]
         assert set(source["geographies"]) <= {"constituency", "la", "msoa"}
+
+    household_family = next(
+        family
+        for family in census["families"]
+        if family["family"] == "census_households"
+    )
+    household_sources = {
+        source["source_id"]: source
+        for source in census["sources"]
+        if source["source_id"] in household_family["sources"]
+    }
+    assert set(household_sources) == set(household_family["sources"])
+    for source in household_sources.values():
+        assert source["status"] in {
+            SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+            SOURCE_STATUS_SIGNED_DEFERRED,
+        }
+        if source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS:
+            assert source["ledger_fact_pin"]
+    assert "NM_2059_1" in household_sources["ons_census2021_ts041_households"]["url"]
+    assert "TYPE424" in household_sources["ons_census2021_ts041_households"]["product"]
+    assert "UV404" in household_sources["nrs_census2022_uv404_households"]["url"]
+    assert (
+        "Local_authority"
+        in household_sources["nrs_census2022_uv404_households"]["product"]
+    )
+    assert "v=PARLCON24" in household_sources["nisra_census2021_households"]["url"]
+    assert "LGD14" in household_sources["nisra_census2021_households"]["product"]
 
 
 def test_banded_fence_carries_the_national_authority() -> None:
@@ -158,17 +189,50 @@ def test_fences_declare_enforcement_and_gate_reviewed_families() -> None:
 def test_council_tax_source_and_fence_pin_measured_coverage() -> None:
     census = build_uk_local_target_census()
     sources = {row["source_id"]: row for row in census["sources"]}
-    source = sources["voa_council_tax_stock_la"]
-    assert source["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS
-    assert "2,541 active band cells" in source["notes"]
-    assert "E09000001" in source["notes"]
-    assert "W06000019 and W06000024" in source["notes"]
-    assert "council_tax/net is not declared" in source["notes"]
-
+    assert "voa_council_tax_stock_la" not in sources
+    england = sources["mhclg_council_taxbase_la"]
+    assert england["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS
+    assert "line 7 minus line 11 minus line 15" in england["notes"]
+    assert "Bands A-G bind 294 authorities" in england["notes"]
+    assert "296-cell band H family" in england["notes"]
+    assert "Barnsley and Sheffield bind through the crosswalk" in england["notes"]
+    wales = sources["welshgov_council_tax_dwellings_la"]
+    assert wales["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS
+    assert "a1 minus h7 minus h8 on the 2025-26 row" in wales["notes"]
+    assert "all 198 cells bind, band I included" in wales["notes"]
+    scotland = sources["scotgov_ctaxbase_chargeable_dwellings_la"]
+    assert scotland["status"] == SOURCE_STATUS_PINNED_IN_LEDGER_FACTS
+    assert "255 cells bind and Shetland band H is signed deferred" in scotland["notes"]
+    families = {row["family"]: row for row in census["families"]}
+    assert families["council_tax"]["sources"] == [
+        "mhclg_council_taxbase_la",
+        "welshgov_council_tax_dwellings_la",
+        "scotgov_ctaxbase_chargeable_dwellings_la",
+    ]
+    # The composed region controls keep the two support-floor-deferred
+    # authorities in their sums (review round 1 of microcosm#934).
+    assert (
+        "rescales those regions' bound cells" in families["council_tax"]["description"]
+    )
+    retired = families["council_tax"]["retired_deferrals"]
+    assert [row["reason_id"] for row in retired] == [
+        "council_tax_voa_scotland_absent",
+        "council_tax_wales_country_control_absent",
+        "council_tax_ni_domestic_rates",
+        "council_tax_city_of_london_band_a_suppressed",
+    ]
+    assert all(
+        row["retired_on"] == "2026-09-15"
+        and row["approved_by"] == "juaristi22"
+        and "microcosm#929" in row["adjudication"]
+        and row["rationale"]
+        for row in retired
+    )
     fences = {row["fence_id"]: row for row in census["binding_fences"]}
     fence = fences["voa_dwellings_vs_household_frame"]
-    assert "chargeable dwellings" in fence["rule"]
-    assert "occupied private households" in fence["rule"]
+    assert "councils' taxbase returns" in fence["rule"]
+    assert "6 % over the household frame and is not bound" in fence["rule"]
+    assert "microcosm#929" in fence["authority"]
 
 
 def test_census_disclosure_fence_names_country_as_winning_grain() -> None:

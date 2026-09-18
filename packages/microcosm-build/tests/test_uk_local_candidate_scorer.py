@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+from dataclasses import asdict
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +13,11 @@ import pytest
 from microcosm.build.holdout import summarize_rotations
 from microcosm.build.uk_runtime.local_doctrine import UK_LOCAL_TARGET_LOSS_CAP
 from microcosm.calibrate import (
+    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyGeography,
+    HierarchyNode,
     TargetRegistry,
     TargetSpec,
     default_target_loss_scales,
@@ -28,6 +34,34 @@ def _load_scorer():
     return module
 
 
+def _hierarchy(
+    *,
+    name: str,
+    label: str,
+    provider_id: str,
+    provider_label: str,
+    category_id: str,
+    category_label: str,
+    geography_id: str,
+    geography_level: str,
+) -> CalibrationHierarchy:
+    return CalibrationHierarchy(
+        provider=HierarchyNode(id=provider_id, label=provider_label),
+        category=HierarchyCategory(
+            id=category_id,
+            label=category_label,
+            provider_id=provider_id,
+        ),
+        geography=HierarchyGeography(
+            id=geography_id,
+            label=geography_id,
+            level=geography_level,
+        ),
+        dimensions=(),
+        target=HierarchyNode(id=name, label=label),
+    )
+
+
 def _case():
     specs = (
         TargetSpec(
@@ -38,7 +72,20 @@ def _case():
             period=2025,
             source="fixture",
             family="census_households",
-            metadata={"ledger_geography_id": "E1"},
+            metadata={
+                "ledger_geography_id": "E1",
+                "ledger_geography_level": "constituency",
+            },
+            hierarchy=_hierarchy(
+                name="households@E1",
+                label="Occupied households",
+                provider_id="ons",
+                provider_label="Office for National Statistics",
+                category_id="ons.household_composition",
+                category_label="Household composition",
+                geography_id="E1",
+                geography_level="constituency",
+            ),
         ),
         TargetSpec(
             name="income@W1",
@@ -48,20 +95,51 @@ def _case():
             period=2025,
             source="fixture",
             family="hmrc_income",
-            metadata={"ledger_geography_id": "W1"},
+            metadata={
+                "ledger_geography_id": "W1",
+                "ledger_geography_level": "local_authority",
+            },
+            hierarchy=_hierarchy(
+                name="income@W1",
+                label="Employment income",
+                provider_id="hmrc",
+                provider_label="HM Revenue and Customs",
+                category_id="hmrc.employment_income",
+                category_label="Employment income",
+                geography_id="W1",
+                geography_level="local_authority",
+            ),
         ),
     )
     registry = TargetRegistry(specs, country="uk")
     candidate = {
-        "schema_version": 6,
+        "schema_version": CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
         "targets": [
-            {"name": specs[0].to_target().row_name, "final_estimate": 10.0},
-            {"name": specs[1].to_target().row_name, "final_estimate": 110.0},
+            {
+                "name": specs[0].to_target().row_name,
+                "final_estimate": 10.0,
+                "hierarchy": {
+                    **asdict(specs[0].hierarchy),
+                    "dimensions": [],
+                },
+            },
+            {
+                "name": specs[1].to_target().row_name,
+                "final_estimate": 110.0,
+                "hierarchy": {
+                    **asdict(specs[1].hierarchy),
+                    "dimensions": [],
+                },
+            },
         ],
         "uk_diagnostics": {
             "rotated_holdout": {
                 "report_only": True,
                 "method": "rotated_folds",
+                "target_weight_rule": "grain_equal",
+                "loss_weight_scale": "held_local_grains_only",
+                "population": "held_out_local_targets",
+                "grains": ["constituency", "local_authority"],
                 "n_folds": 5,
                 "seed": 20260529,
                 "target_loss_cap": UK_LOCAL_TARGET_LOSS_CAP,
@@ -131,13 +209,18 @@ def test_local_scorer_reports_per_family_wins_and_the_measured_holdout() -> None
             "candidate_target_wins": 0,
             "incumbent_target_wins": 0,
             "ties": 1,
+            "incumbent_absent": 0,
         },
         "hmrc_income": {
             "candidate_target_wins": 1,
             "incumbent_target_wins": 0,
             "ties": 0,
+            "incumbent_absent": 0,
         },
     }
+    assert result["rows_compared"] == 2
+    assert result["rows_candidate_only"] == 0
+    assert result["incumbent_missing_areas"] == {}
 
 
 def test_local_scorer_refuses_a_non_frozen_surface() -> None:
@@ -151,6 +234,27 @@ def test_local_scorer_refuses_a_non_frozen_surface() -> None:
             incumbent_metrics=metrics,
             target_registry=registry,
         )
+
+
+def test_local_scorer_accepts_candidate_superset_with_receipt() -> None:
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    candidate["targets"].append(
+        {"name": "national/extra@2025", "final_estimate": 123.0}
+    )
+
+    result = scorer.score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=2,
+    )
+
+    assert result["rows_outside_register"] == {
+        "count": 1,
+        "rows": ["national/extra@2025"],
+    }
 
 
 def test_local_scorer_joins_the_incumbent_on_household_id() -> None:
@@ -180,7 +284,8 @@ def test_local_scorer_joins_the_incumbent_on_household_id() -> None:
     )
     # Pin the joined values themselves, so a silent revert to positional
     # pairing (which would give 8.0 and 50.0 here) fails rather than drifts.
-    incumbent = scorer._incumbent_estimates(registry, weights, metrics)
+    incumbent, missing_areas = scorer._incumbent_estimates(registry, weights, metrics)
+    assert missing_areas == {}
     assert incumbent["households@E1@2025"] == pytest.approx(10.0)
     assert incumbent["income@W1@2025"] == pytest.approx(70.0)
 
@@ -405,3 +510,75 @@ def test_local_scorer_accepts_a_summary_its_folds_actually_produce() -> None:
     )
 
     assert result["candidate_holdout_loss"] == pytest.approx(summary.mean_holdout_loss)
+
+
+def test_local_scorer_receipts_areas_the_incumbent_lacks() -> None:
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    weights = weights.drop(columns=["W1"])
+
+    result = scorer.score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=2,
+    )
+
+    assert result["incumbent_missing_areas"] == {"W1": 1}
+    assert result["rows_compared"] == 1
+    assert result["rows_candidate_only"] == 1
+    assert result["candidate_target_wins"] + result["incumbent_target_wins"] <= 1
+    absent = [
+        row for row in result["target_drift"] if row["winner"] == "incumbent_absent"
+    ]
+    assert [row["target"] for row in absent] == [registry.specs[1].to_target().row_name]
+    assert absent[0]["incumbent_relative_error"] is None
+    assert result["target_wins_by_family"]["hmrc_income"]["incumbent_absent"] == 1
+    # The full-surface candidate loss still covers both rows; the compared
+    # aggregates cover one.
+    assert result["candidate_fitted_surface_loss"] != pytest.approx(
+        result["candidate_fitted_surface_loss_on_compared_rows"]
+    )
+
+    with pytest.raises(ValueError, match="cover none of the registry"):
+        scorer.score_uk_local_candidate(
+            candidate_diagnostics=candidate,
+            incumbent_weights=weights.drop(columns=["E1"]),
+            incumbent_metrics=metrics,
+            target_registry=registry,
+            expected_reference_count=2,
+        )
+
+
+@pytest.mark.parametrize(
+    "key", ["target_weight_rule", "loss_weight_scale", "population", "grains"]
+)
+def test_scorer_requires_holdout_weighting_and_surface_basis(key):
+    scorer = _load_scorer()
+    registry, candidate, weights, metrics = _case()
+    candidate["uk_diagnostics"]["rotated_holdout"].pop(key, None)
+    with pytest.raises(ValueError, match=key):
+        scorer.score_uk_local_candidate(
+            candidate_diagnostics=candidate,
+            incumbent_weights=weights,
+            incumbent_metrics=metrics,
+            target_registry=registry,
+            expected_reference_count=2,
+        )
+
+
+def test_scorer_keeps_fitted_and_holdout_bases_separate():
+    registry, candidate, weights, metrics = _case()
+    result = _load_scorer().score_uk_local_candidate(
+        candidate_diagnostics=candidate,
+        incumbent_weights=weights,
+        incumbent_metrics=metrics,
+        target_registry=registry,
+        expected_reference_count=2,
+    )
+    assert result["fitted_basis"]["target_weight_rule"] == "uniform"
+    assert result["candidate_holdout"]["target_weight_rule"] == "grain_equal"
+    assert result["candidate_holdout"]["population"] == "held_out_local_targets"
+    assert result["candidate_holdout"]["loss_weight_scale"] == "held_local_grains_only"
+    assert result["holdout_directly_comparable_to_fitted"] is False

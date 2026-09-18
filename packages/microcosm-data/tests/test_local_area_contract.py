@@ -209,16 +209,29 @@ def test_tampered_diagnostics_artifact_hash_is_rejected(tmp_path: Path) -> None:
         validate_release_dir(release_dir)
 
 
-def test_publish_refuses_pointer_update_for_local_area_role(tmp_path: Path) -> None:
-    release_dir = _write_local_bundle(tmp_path)
+def test_publish_refuses_pointer_update_for_local_area_role(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from microcosm.data import release as release_module
+    from microcosm.data.publish_cli import main
 
-    with pytest.raises(ValueError, match="never update latest.json"):
+    release_dir = _write_local_bundle(tmp_path)
+    validate_release_dir(release_dir)
+    monkeypatch.setattr(
+        release_module, "_hf_api", lambda: pytest.fail("unexpected Hub construction")
+    )
+
+    with pytest.raises(ValueError, match="never update latest.json") as publication:
         publish_release(
             release_dir,
             "policyengine/populace-us",
             api=object(),
             update_latest=True,
         )
+
+    with pytest.raises(type(publication.value)) as preflight:
+        main([str(release_dir), "--preflight-only"])
+    assert str(preflight.value) == str(publication.value)
 
 
 def test_publish_without_pointer_passes_the_role_guard(tmp_path: Path) -> None:

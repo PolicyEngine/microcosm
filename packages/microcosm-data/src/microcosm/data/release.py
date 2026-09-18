@@ -57,6 +57,8 @@ __all__ = [
     "RELEASE_TIER_CERTIFIED",
     "RELEASE_TIER_EVIDENCE",
     "LatestPointer",
+    "PreparedRelease",
+    "prepare_release",
     "latest_evidence_pointer_payload",
     "latest_pointer_payload",
     "publish_release",
@@ -158,90 +160,63 @@ def _hf_api():
     return HfApi()
 
 
-def publish_release(
+@dataclass(frozen=True)
+class PreparedRelease:
+    """Validated local paths and upload destinations, prepared without Hub activity."""
+
+    release_dir: Path
+    artifact_root: Path | None
+    release_id: str
+    tag: str
+    filenames: list[str]
+    root_artifacts: dict[str, str]
+
+
+def prepare_release(
     release_dir: Path | str,
-    repo_id: str,
     *,
-    api=None,
     artifact_root: Path | str | None = None,
+    parent_h5: Path | str | None = None,
+    compatibility_wheels: tuple[Path | str, ...] = (),
     create_tag: bool = True,
     tag_name: str | None = None,
     extra_files: tuple[str, ...] = (),
-    updated_at: str | None = None,
     update_latest: bool = True,
     tag_only: bool = False,
-    notify: bool = True,
     evidence: bool = False,
-) -> dict:
-    """Publish a release directory and optionally point ``latest.json`` at it.
+) -> PreparedRelease:
+    """Run every local publisher guard and collect the files to upload.
 
-    The order is the guarantee: the release contract is validated first (an
-    invalid release never reaches the Hub), then an immutable branch commit is
-    created with every release file and artifact and tagged. A tag-only publish
-    stops there. Otherwise, only after that certificate exists does one atomic
-    main-branch commit update the release copies, mutable root conveniences,
-    and, for standard publication, ``latest.json`` (the final operation).
-    Backends without the branch and atomic-commit surface are refused before
-    any remote mutation.
-
-    Args:
-        release_dir: Local ``releases/<build_id>`` directory.
-        repo_id: Hub dataset repo, e.g. ``"policyengine/populace-us"``.
-        api: A ``huggingface_hub.HfApi``-shaped object with branch, atomic
-            commit, tag, and branch-deletion methods; constructed lazily when
-            omitted. Non-atomic upload-only backends are refused.
-        artifact_root: Directory holding root dataset artifacts declared in
-            ``release_manifest.json`` (for example ``populace_us_2024.h5``).
-            Contract files are always read from ``release_dir`` and uploaded
-            under ``releases/<build_id>/``; artifact paths are uploaded to their
-            manifest-declared repo paths.
-        create_tag: Create an immutable Hub tag for the release snapshot before
-            updating main. The tag defaults to the release id. This is required
-            when artifact revisions in ``release_manifest.json`` are pinned to
-            the release id.
-        tag_name: Optional tag name override when ``create_tag=True``.
-        extra_files: Additional filenames in ``release_dir`` to upload
-            beyond the contract files (e.g. a diagnostics artifact).
-        updated_at: Pointer timestamp; defaults to now (UTC).
-        update_latest: Update the production ``latest.json`` pointer after the
-            immutable release tag is created. ``False`` preserves the legacy
-            non-default publication behavior: release copies and root artifacts
-            are still committed to main, but the pointer is not.
-        tag_only: Publish only the immutable tagged revision, with no main-branch
-            commit. Requires ``update_latest=False`` and ``create_tag=True``.
-            This is the exact-k candidate lane; it is separate from legacy
-            ``update_latest=False`` publication so existing non-default releases
-            retain their main-branch copies.
-        notify: Post a best-effort Slack release alert once ``latest.json`` is
-            live (no-op unless the country ``SLACK_WEBHOOK_MICROCOSM_*`` env var
-            is set; never fatal). Coupling the alert to the promotion here means
-            every publish path announces the release, not just the CLI. Only
-            fires when ``update_latest`` is set — a non-default publish moves no
-            pointer, so there is no "new latest release" to announce. Set
-            ``False`` to suppress it (tests, dry-runs, re-publishes).
-        evidence: Publish at the EVIDENCE tier (microcosm#506). The release
-            is validated against
-            :func:`~microcosm.data.contract.validate_evidence_release_dir`
-            instead of the certified contract, and the pointer that moves is
-            ``latest-evidence.json`` — this path is structurally incapable of
-            writing ``latest.json``, so an evidence artifact can never become
-            the certified default or feed pe.py certification. Tag and upload
-            mechanics are otherwise identical. ``update_latest`` then governs
-            the evidence pointer.
-
-    Returns:
-        The release's pointer payload (``latest.json`` shape, plus a ``tier``
-        field at the evidence tier). It is uploaded only when
-        ``update_latest=True``.
-
-    Raises:
-        ReleaseContractError: If the release directory violates its tier's
-            contract. Nothing is uploaded in that case.
-        FileNotFoundError: If an ``extra_files`` entry does not exist.
+    Shared by CLI preflight and publication. Arguments have the same meaning
+    as in :func:`publish_release`; validation only reads the local bundle and
+    replays any required source-enrichment compatibility checks. No Hub client
+    is constructed, no Hub activity occurs, and no release alert is sent.
+    Publication must prepare again so preflight cannot authorize stale inputs.
     """
     release_dir = Path(release_dir)
+    if parent_h5 is not None or compatibility_wheels:
+        from microcosm.data.source_enrichment import SOURCE_ENRICHMENT_RELEASE_TYPE
+
+        manifest_path = release_dir / "release_manifest.json"
+        manifest = (
+            json.loads(manifest_path.read_text()) if manifest_path.is_file() else {}
+        )
+        if (
+            not isinstance(manifest, Mapping)
+            or manifest.get("release_type") != SOURCE_ENRICHMENT_RELEASE_TYPE
+        ):
+            raise ValueError(
+                "parent_h5 and compatibility_wheels require a source_enrichment release."
+            )
     if evidence:
         validate_evidence_release_dir(release_dir)
+    elif parent_h5 is not None or compatibility_wheels:
+        validate_release_dir(
+            release_dir,
+            parent_h5=parent_h5,
+            artifact_root=artifact_root,
+            compatibility_wheels=compatibility_wheels,
+        )
     else:
         validate_release_dir(release_dir)
     release_id = release_dir.name
@@ -382,6 +357,120 @@ def publish_release(
                 f"but release_manifest.json declares {expected_sha}."
             )
 
+    return PreparedRelease(
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        release_id=release_id,
+        tag=tag,
+        filenames=filenames,
+        root_artifacts=root_artifacts,
+    )
+
+
+def publish_release(
+    release_dir: Path | str,
+    repo_id: str,
+    *,
+    api=None,
+    artifact_root: Path | str | None = None,
+    parent_h5: Path | str | None = None,
+    compatibility_wheels: tuple[Path | str, ...] = (),
+    create_tag: bool = True,
+    tag_name: str | None = None,
+    extra_files: tuple[str, ...] = (),
+    updated_at: str | None = None,
+    update_latest: bool = True,
+    tag_only: bool = False,
+    notify: bool = True,
+    evidence: bool = False,
+) -> dict:
+    """Publish a release directory and optionally point ``latest.json`` at it.
+
+    The order is the guarantee: the release contract is validated first (an
+    invalid release never reaches the Hub), then an immutable branch commit is
+    created with every release file and artifact and tagged. A tag-only publish
+    stops there. Otherwise, only after that certificate exists does one atomic
+    main-branch commit update the release copies, mutable root conveniences,
+    and, for standard publication, ``latest.json`` (the final operation).
+    Backends without the branch and atomic-commit surface are refused before
+    any remote mutation.
+
+    Args:
+        release_dir: Local ``releases/<build_id>`` directory.
+        repo_id: Hub dataset repo, e.g. ``"policyengine/populace-us"``.
+        api: A ``huggingface_hub.HfApi``-shaped object with branch, atomic
+            commit, tag, and branch-deletion methods; constructed lazily when
+            omitted. Non-atomic upload-only backends are refused.
+        artifact_root: Directory holding root dataset artifacts declared in
+            ``release_manifest.json`` (for example ``populace_us_2024.h5``).
+            Contract files are always read from ``release_dir`` and uploaded
+            under ``releases/<build_id>/``; artifact paths are uploaded to their
+            manifest-declared repo paths.
+        parent_h5: Exact certified parent H5 for source-enrichment releases.
+            The publication gate rereads it and the candidate to prove that
+            every pre-existing logical variable and metadata field is preserved.
+        compatibility_wheels: Exact installed country, Core, wrapper, and calculator wheels
+            used to replay source-enrichment native-loader compatibility checks.
+            External package publication and numerical model acceptance remain
+            the release operator's gates.
+        create_tag: Create an immutable Hub tag for the release snapshot before
+            updating main. The tag defaults to the release id. This is required
+            when artifact revisions in ``release_manifest.json`` are pinned to
+            the release id.
+        tag_name: Optional tag name override when ``create_tag=True``.
+        extra_files: Additional filenames in ``release_dir`` to upload
+            beyond the contract files (e.g. a diagnostics artifact).
+        updated_at: Pointer timestamp; defaults to now (UTC).
+        update_latest: Update the production ``latest.json`` pointer after the
+            immutable release tag is created. ``False`` preserves the legacy
+            non-default publication behavior: release copies and root artifacts
+            are still committed to main, but the pointer is not.
+        tag_only: Publish only the immutable tagged revision, with no main-branch
+            commit. Requires ``update_latest=False`` and ``create_tag=True``.
+            This is the exact-k candidate lane; it is separate from legacy
+            ``update_latest=False`` publication so existing non-default releases
+            retain their main-branch copies.
+        notify: Post a best-effort Slack release alert once ``latest.json`` is
+            live (no-op unless the country ``SLACK_WEBHOOK_MICROCOSM_*`` env var
+            is set; never fatal). Coupling the alert to the promotion here means
+            every publish path announces the release, not just the CLI. Only
+            fires when ``update_latest`` is set — a non-default publish moves no
+            pointer, so there is no "new latest release" to announce. Set
+            ``False`` to suppress it (tests, dry-runs, re-publishes).
+        evidence: Publish at the EVIDENCE tier (microcosm#506). The release
+            is validated against
+            :func:`~microcosm.data.contract.validate_evidence_release_dir`
+            instead of the certified contract, and the pointer that moves is
+            ``latest-evidence.json`` — this path is structurally incapable of
+            writing ``latest.json``, so an evidence artifact can never become
+            the certified default or feed pe.py certification. Tag and upload
+            mechanics are otherwise identical. ``update_latest`` then governs
+            the evidence pointer.
+
+    Returns:
+        The release's pointer payload (``latest.json`` shape, plus a ``tier``
+        field at the evidence tier). It is uploaded only when
+        ``update_latest=True``.
+
+    Raises:
+        ReleaseContractError: If the release directory violates its tier's
+            contract. Nothing is uploaded in that case.
+        FileNotFoundError: If an ``extra_files`` entry does not exist.
+    """
+    prepared = prepare_release(
+        release_dir,
+        artifact_root=artifact_root,
+        parent_h5=parent_h5,
+        compatibility_wheels=compatibility_wheels,
+        create_tag=create_tag,
+        tag_name=tag_name,
+        extra_files=extra_files,
+        update_latest=update_latest,
+        tag_only=tag_only,
+        evidence=evidence,
+    )
+    release_id = prepared.release_id
+
     if api is None:
         api = _hf_api()
     if evidence:
@@ -401,13 +490,13 @@ def publish_release(
         )
     _publish_atomic(
         api,
-        release_dir=release_dir,
-        artifact_root=artifact_root,
+        release_dir=prepared.release_dir,
+        artifact_root=prepared.artifact_root,
         repo_id=repo_id,
         release_id=release_id,
-        tag=tag,
-        filenames=filenames,
-        root_artifacts=root_artifacts,
+        tag=prepared.tag,
+        filenames=prepared.filenames,
+        root_artifacts=prepared.root_artifacts,
         payload=payload,
         create_tag=create_tag,
         update_latest=update_latest,

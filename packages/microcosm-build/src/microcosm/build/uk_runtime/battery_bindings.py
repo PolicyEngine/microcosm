@@ -63,6 +63,7 @@ from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
+    align_uk_national_registry_parity_fixture,
 )
 from microcosm.build.uk_runtime.local_targets import (
     load_uk_local_geography_contract,
@@ -81,6 +82,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     _household_weights,
     _missing_fit_weight_evidence_gate,
     uk_default_degenerate_reviewed_exclusions,
+    uk_default_target_fit_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
     uk_export_surface_gate,
     uk_target_fit_gate,
@@ -94,12 +96,14 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UK_INPUT_MASS_EXCLUSION_REGISTER_RESOURCE,
     UK_INPUT_MASS_REFERENCE_REGISTRY,
     UK_QRF_TAIL_EXCLUSION_REGISTER_RESOURCE,
+    UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE,
     UKInputMassParityPolicy,
     UKQRFTailConcentrationPolicy,
     UKReviewedExclusion,
     _input_mass_reference_evidence_sha256,
     coerce_input_mass_reference_registry,
     coerce_reviewed_exclusions,
+    load_uk_local_area_support_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
     uk_default_qrf_tail_reviewed_exclusions,
     uk_input_mass_parity_gate,
@@ -396,9 +400,7 @@ def _evaluate_column_implication(
     # is exact (#833): every producer writes the -1.0 literal or a
     # nonnegative amount, and a tolerance band would silently reclassify a
     # corrupted near-sentinel value as a declared absence.
-    out_of_domain = np.isfinite(capital) & ~(
-        (capital == sentinel) | (capital >= 0.0)
-    )
+    out_of_domain = np.isfinite(capital) & ~((capital == sentinel) | (capital >= 0.0))
     carrier_out_of_domain = np.isfinite(carrier) & ~(
         (carrier == sentinel) | (carrier >= 0.0)
     )
@@ -811,10 +813,34 @@ def _evaluate_area_support(
 ) -> GateResult:
     kwargs = dict(parameters)
     resource = str(kwargs.pop("crosswalk_resource"))
+    exclusions_resource = str(kwargs.pop("exclusions_resource"))
+    register = load_uk_local_area_support_exclusion_register(
+        None,
+        resource=exclusions_resource,
+    )
+    records = register["exclusions"]
+    clock = _exclusion_clock(context)
+    invalid = {}
+    for block, entries in register.items():
+        for key, record in entries.items():
+            if record.expired(clock) or record.premature(clock):
+                invalid[f"{block}/{key}"] = record
+    if invalid:
+        return GateResult(
+            name="area_support",
+            passed=False,
+            failures=tuple(
+                f"{key}: reviewed exclusion is outside its approval window "
+                f"{record.approved_on}..{record.expires_on} at {clock.isoformat()}."
+                for key, record in sorted(invalid.items())
+            ),
+            details={"invalid_reviewed_exclusions": sorted(invalid)},
+        )
     levels = tuple(str(level) for level in kwargs["geography_levels"])
     return area_support_gate(
         context.artifacts["uk_area_support_summary"],
         area_roster=_local_area_roster(resource, levels),
+        reviewed_exclusions=_exclusion_payload(records),
         **kwargs,
     )
 
@@ -921,7 +947,6 @@ def _evaluate_local_default_target_surface(
     crosswalk_resource = str(parameters["crosswalk_resource"])
     membership_resource = str(parameters["membership_resource"])
     reviewed = dict(_local_default_reviewed_exclusions(membership_resource))
-    reviewed.update(_ladder_derived_households_exclusions(crosswalk_resource))
     return target_surface_gate(
         _local_default_candidate_surface(registry),
         _local_default_expected_surface(crosswalk_resource),
@@ -929,32 +954,6 @@ def _evaluate_local_default_target_surface(
         reference_name="UK local default metric surface",
         reviewed_exclusions=reviewed,
     )
-
-
-_LADDER_DERIVED_HOUSEHOLDS_RATIONALE = (
-    "census_households is ladder-derived: the households column binds from the "
-    "OA-ladder artifact's census household counts (the ladder sha is its "
-    "provenance), never from Chronicle facts, so no ledger reference exists by "
-    "design. See uk_local_target_census.json (source status pinned_in_ladder) "
-    "and microcosm#542, which bound the family from the ladder."
-)
-
-
-def _ladder_derived_households_exclusions(crosswalk_resource: str) -> dict[str, str]:
-    crosswalk = json.loads(
-        files("microcosm.build.uk").joinpath(crosswalk_resource).read_text()
-    )
-    levels = crosswalk.get("levels")
-    if not isinstance(levels, Mapping):
-        raise ValueError(f"{crosswalk_resource} must expose levels.")
-    reviewed: dict[str, str] = {}
-    for geography_level in ("constituency", "local_authority"):
-        level = levels.get(geography_level)
-        if not isinstance(level, Mapping):
-            raise ValueError(f"{crosswalk_resource} must expose {geography_level!r}.")
-        for area_id in level.get("area_ids", ()):
-            reviewed[f"households@{area_id}"] = _LADDER_DERIVED_HOUSEHOLDS_RATIONALE
-    return reviewed
 
 
 def _target_surface_required_artifacts(
@@ -1044,8 +1043,38 @@ def _local_default_expected_surface(crosswalk_resource: str) -> frozenset[str]:
                 f"{crosswalk_resource} level {geography_level!r} must expose area_ids."
             )
         for metric_name in metric_names(area_type):
-            expected.update(f"{metric_name}@{area_id}" for area_id in area_ids)
+            scoped = _metric_area_scope(metric_name, geography_level)
+            expected.update(
+                f"{metric_name}@{area_id}"
+                for area_id in area_ids
+                if scoped is None or str(area_id).startswith(scoped)
+            )
     return frozenset(expected)
+
+
+def _metric_area_scope(
+    metric_name: str, geography_level: str
+) -> tuple[str, ...] | None:
+    """GSS prefixes the metric's contract targets cover at this level, or None.
+
+    A metric that nation-scoped targets share (the council-tax stock by_area
+    rows, microcosm#929) has cells only where one of its targets declares an
+    ``area_scope``; the default surface expects nothing elsewhere. A metric
+    with an unscoped target expects every roster area.
+    """
+
+    from microcosm.build.uk_runtime.ledger_targets import _uk_local_metric_targets
+
+    sharers = _uk_local_metric_targets().get(metric_name)
+    if not sharers:
+        return None
+    prefixes: list[str] = []
+    for _, target_prefixes in sharers:
+        if not target_prefixes:
+            return None
+        prefixes.extend(target_prefixes)
+    del geography_level
+    return tuple(dict.fromkeys(prefixes))
 
 
 def _local_default_reviewed_exclusions(
@@ -1088,6 +1117,21 @@ def _local_metric_by_target_id() -> dict[str, str]:
     return mapping
 
 
+def _resolve_target_fit_exclusions(
+    context: EvidenceContext,
+) -> tuple[Mapping[str, UKReviewedExclusion], str]:
+    """Target-fit deferral exclusions and their content source."""
+
+    committed = uk_default_target_fit_reviewed_exclusions()
+    override = context.artifacts.get("reviewed_target_fit_exclusions")
+    if override is None:
+        return committed, "committed"
+    resolved = coerce_reviewed_exclusions(override, label="UK target-fit policy")
+    if _exclusion_payload(resolved) == _exclusion_payload(committed):
+        return committed, "committed"
+    return MappingProxyType(resolved), "override"
+
+
 def _evaluate_target_fit(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -1097,8 +1141,20 @@ def _evaluate_target_fit(
             _local_target_error_items(context.artifacts["local_target_diagnostics"])
         )
         return uk_target_fit_gate(errors, **kwargs)
+    register = kwargs.pop("reviewed_exclusions_resource", None)
+    if register != UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE:
+        raise ValueError(
+            f"uk/gates.json names exclusion register {register!r} but the "
+            f"runtime loads {UK_TARGET_FIT_EXCLUSION_REGISTER_RESOURCE!r}."
+        )
+    exclusions, _source = _resolve_target_fit_exclusions(context)
     parity = context.artifacts["parity_evidence"]
-    return uk_target_fit_gate(parity.target_relative_errors, **kwargs)
+    return uk_target_fit_gate(
+        parity.target_relative_errors,
+        reviewed_exclusions=exclusions,
+        now=_exclusion_clock(context),
+        **kwargs,
+    )
 
 
 def _target_fit_required_artifacts(
@@ -1106,7 +1162,7 @@ def _target_fit_required_artifacts(
 ) -> frozenset[str]:
     if parameters.get("surface") == "local_candidate":
         return frozenset({"local_target_diagnostics"})
-    return frozenset({"parity_evidence"})
+    return frozenset({"parity_evidence", "exclusions_evaluated_on"})
 
 
 def _evaluate_input_mass_parity(
@@ -1231,7 +1287,9 @@ def _load_ledger_compile_parity_fixture(fixture_resource: str) -> dict[str, Any]
     )
     if fixture_resource == LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE:
         return align_uk_local_registry_parity_fixture(fixture)
-    return fixture
+    # The national fixtures spell the incumbent's regional rows their own way;
+    # the receipts are signed against the region-tier names (microcosm#905).
+    return align_uk_national_registry_parity_fixture(fixture)
 
 
 def _ledger_compile_parity_evidence(
@@ -1374,8 +1432,16 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_signal_rows",
                 "structural_zero_columns",
                 "maximum_relative_deviation",
+                # #791 household_composition stage-health check.
+                "max_grid_reciprocity_mismatches",
+                "require_partition_closure",
                 "support_bounds_resource",
                 "minimum_band_rows",
+                # #890 energy_rake check: NEED shape at the DESNZ level at
+                # design weights, with the published gas-connected share.
+                "margins",
+                "margins_period_value",
+                "maximum_connected_share_deviation",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
@@ -1467,9 +1533,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "minimum_rows",
                 "minimum_effective_sample_size",
                 "minimum_distinct_sources",
+                "exclusions_resource",
             }
         ),
-        artifact_keys=frozenset({"uk_area_support_summary"}),
+        artifact_keys=frozenset({"uk_area_support_summary", "exclusions_evaluated_on"}),
         needs_frame=False,
     ),
     "per_family_fit": UKGateBinding(
@@ -1514,7 +1581,7 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         name="target_fit",
         evaluator=_evaluate_target_fit,
         parameter_keys=frozenset(
-            {"max_abs_relative_error", "reviewed_exclusions", "surface"}
+            {"max_abs_relative_error", "reviewed_exclusions_resource", "surface"}
         ),
         artifact_selector=_target_fit_required_artifacts,
         needs_frame=False,

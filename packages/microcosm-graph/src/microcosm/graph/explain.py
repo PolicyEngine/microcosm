@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
+from .availability import execution_state
 from .decl import GATE_OUTCOMES, CompiledGraph, StructuralDelta
 from .manifest import NodeReceipt, RunManifest
 from .population import mass_record_receipt
@@ -194,6 +195,10 @@ details.metadata[open] { background: var(--surface); border: 1px solid var(--bor
 .graph-node.gate-unreached .node-box { stroke: var(--color-red-600); stroke-width: 3; }
 .graph-node.gate-pass .node-box, .graph-node.gate-not_applicable .node-box {
   stroke: var(--color-green-600); stroke-width: 3; }
+.graph-node.execution-unreached .node-box { fill: var(--surface-muted);
+  stroke: var(--color-red-600); stroke-dasharray: 5 3; }
+.graph-node.execution-gate_exception .node-box { fill: var(--color-red-100);
+  stroke: var(--color-red-600); }
 .graph-node:focus .node-box, .graph-node.selected .node-box { stroke-width: 4.5; }
 .node-title { fill: var(--text); font-size: 13px; font-weight: 760; }
 .node-line { fill: var(--muted); font-size: 10.5px; }
@@ -308,11 +313,19 @@ def _role(receipt: NodeReceipt) -> str:
 def _node_status(receipt: NodeReceipt) -> tuple[str, str]:
     store = "hit" if receipt.hit else "miss"
     role = _role(receipt)
-    if role != "gate":
-        return f"status-{store}", store
-    outcome = str(receipt.receipt.get("outcome", "unrecorded"))
-    outcome_class = outcome if outcome in GATE_OUTCOMES else "unknown"
-    return f"status-{store} gate-{outcome_class}", f"{store} · gate {outcome}"
+    classes, label = f"status-{store}", store
+    if role == "gate":
+        outcome = str(receipt.receipt.get("outcome", "unrecorded"))
+        outcome_class = outcome if outcome in GATE_OUTCOMES else "unknown"
+        classes += f" gate-{outcome_class}"
+        label += f" · gate {outcome}"
+    # Cache reuse and execution are independent: a cached refusal did not run
+    # the downstream computation. Interpret only executor-owned state.
+    state = execution_state(receipt.receipt)
+    if state in {"unreached", "gate_exception"}:
+        classes += f" execution-{state}"
+        label += " · unreached" if state == "unreached" else " · exception"
+    return classes, label
 
 
 def _depths(compiled: CompiledGraph) -> dict[str, int]:
@@ -506,6 +519,11 @@ def _receipt_payload(receipt: NodeReceipt) -> dict[str, object]:
         "frame_key": receipt.frame_key,
         "weight_key": receipt.weight_key,
         "opaque_artifacts": receipt.opaque_artifacts,
+        **(
+            {"typed_artifacts": receipt.typed_artifacts}
+            if receipt.typed_artifacts
+            else {}
+        ),
         "wall_time": receipt.wall_time,
     }
     if receipt.legacy_capabilities:

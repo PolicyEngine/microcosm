@@ -164,16 +164,20 @@ def test_sha_locked_artifact_schemas_match_the_recorded_absence() -> None:
 
 
 @requires_us
-def test_policyengine_1_819_0_requires_a_person_year_input() -> None:
+def test_policyengine_2_2_1_requires_a_person_year_input() -> None:
     from policyengine_us import CountryTaxBenefitSystem
 
-    assert version("policyengine-us") == "1.819.0"
+    assert version("policyengine-us") == "2.2.1"
     variable = CountryTaxBenefitSystem().variables["financial_assistance"]
     assert variable.is_input_variable()
     assert variable.entity.key == "person"
     assert str(variable.definition_period).lower() == "year"
+    # policyengine-us narrowed this documentation between 1.819.0 and 2.2.1
+    # ("from outside the household" -> "from friends or relatives outside the
+    # household"); the variable's entity, period and input status are unchanged,
+    # so the evidenced exclusion still rests on the same engine fact.
     assert variable.documentation == (
-        "Cash financial assistance from outside the household."
+        "Cash financial assistance from friends or relatives outside the household."
     )
 
 

@@ -13,6 +13,7 @@ from microcosm.build.source_runtime import (
     SourceRuntimeContext,
     SourceRuntimeError,
 )
+from microcosm.build.uk_runtime.frs_release import resolve_uk_year_rule
 from microcosm.frame import Frame
 from microcosm.frame.rules import materialize_rules_engine_predictors
 
@@ -51,6 +52,7 @@ def uk_stage_implementations(
     retained_leaves_transform: Callable[[Frame], Frame],
     hmrc_income_transform: Callable[[Frame], Frame],
     frs_spine_transform: Callable[[Frame], Frame] | None = None,
+    frs_relationships_transform: Callable[[Frame], Frame] | None = None,
     frs_employment_transform: Callable[[Frame], Frame] | None = None,
     frs_council_tax_transform: Callable[[Frame], Frame] | None = None,
     frs_disability_transform: Callable[[Frame], Frame] | None = None,
@@ -84,6 +86,7 @@ def uk_stage_implementations(
     }
     optional = {
         "frs_spine": frs_spine_transform,
+        "frs_relationships": frs_relationships_transform,
         "frs_employment": frs_employment_transform,
         "frs_council_tax": frs_council_tax_transform,
         "frs_disability": frs_disability_transform,
@@ -144,7 +147,16 @@ def materialize_uk_rules_engine_predictors_from_manifest(
     frame = _extra(context, "frame", Frame)
     engine = _extra(context, "rules_engine", object)
     country = _require_uk_country(context)
-    period = context.config.extra.get("period", context.config.target_year)
+    year_rule = operation.parameters.get("year_rule")
+    if year_rule is not None:
+        # A declared rule names the release year the predictors are evaluated
+        # at and wins over the runtime period (#862).
+        try:
+            period = resolve_uk_year_rule(year_rule)
+        except ValueError as error:
+            raise SourceRuntimeError(str(error)) from error
+    else:
+        period = context.config.extra.get("period", context.config.target_year)
     if period is None:
         raise SourceRuntimeError(
             "materialize_rules_engine_predictors requires a period in the "

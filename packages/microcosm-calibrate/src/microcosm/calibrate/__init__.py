@@ -93,7 +93,16 @@ from microcosm.calibrate.diagnostics import (  # noqa: E402 - after the compat g
 )
 from microcosm.calibrate.exact_k import (  # noqa: E402 - after the compat gate
     assert_exact_k_support,
+    exact_k_design_feasibility,
     select_exact_k,
+)
+from microcosm.calibrate.hierarchy import (  # noqa: E402 - after compat gate
+    CalibrationHierarchy,
+    CalibrationHierarchySeed,
+    HierarchyCategory,
+    HierarchyDimension,
+    HierarchyGeography,
+    HierarchyNode,
 )
 from microcosm.calibrate.matrix import (  # noqa: E402 - after the compat gate
     CalibrationProblem,
@@ -102,6 +111,11 @@ from microcosm.calibrate.matrix import (  # noqa: E402 - after the compat gate
 )
 from microcosm.calibrate.monetary_binding import (  # noqa: E402 - after compat gate
     MonetaryBindingIntegrityError,
+)
+from microcosm.calibrate.provider_labels import (  # noqa: E402 - after compat gate
+    CALIBRATION_PROVIDER_LABELS_BY_COUNTRY,
+    US_CALIBRATION_PROVIDER_LABELS,
+    calibration_provider_label,
 )
 from microcosm.calibrate.registry import (  # noqa: E402 - after the compat gate
     TargetRegistry,
@@ -121,6 +135,7 @@ from microcosm.calibrate.solve import (  # noqa: E402 - after the compat gate
     calibrate_l0_refit,
     default_target_loss_scales,
     effective_sample_size,
+    rebuild_calibration_result,
     refit_l0_selection,
     relative_error_loss,
 )
@@ -128,11 +143,18 @@ from microcosm.calibrate.target import (  # noqa: E402 - after the compat gate
     Target,
     TargetSet,
 )
+from microcosm.calibrate.variable_labels import (  # noqa: E402 - after compat gate
+    CALIBRATION_VARIABLE_LABELS_BY_COUNTRY,
+    US_CALIBRATION_VARIABLE_LABELS,
+    calibration_variable_label,
+)
 
 __version__ = "0.1.0"
 
 __all__ = [
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
+    "CALIBRATION_PROVIDER_LABELS_BY_COUNTRY",
+    "CALIBRATION_VARIABLE_LABELS_BY_COUNTRY",
     "CONSERVE_MASS",
     "FREE_MASS",
     "TARGET_LOSS_ATTRIBUTION_ABS_TOLERANCE",
@@ -140,21 +162,33 @@ __all__ = [
     "TARGET_LOSS_ATTRIBUTION_WARNING_CODES",
     "TARGET_LOSS_BASIS_HASH_ALGORITHM",
     "CalibrationProblem",
+    "CalibrationHierarchy",
+    "CalibrationHierarchySeed",
     "CalibrationResult",
     "L0RefitResult",
     "MonetaryBindingIntegrityError",
+    "HierarchyCategory",
+    "HierarchyDimension",
+    "HierarchyGeography",
+    "HierarchyNode",
     "SkippedTarget",
     "Target",
     "TargetDiagnostic",
     "TargetRegistry",
     "TargetSet",
     "TargetSpec",
+    "US_CALIBRATION_PROVIDER_LABELS",
+    "US_CALIBRATION_VARIABLE_LABELS",
     "build_constraint_matrix",
     "calibrate",
     "calibrate_l0_refit",
+    "calibration_provider_label",
+    "calibration_variable_label",
     "assert_exact_k_support",
+    "exact_k_design_feasibility",
     "default_target_loss_scales",
     "effective_sample_size",
+    "rebuild_calibration_result",
     "refit_l0_selection",
     "diagnostics_payload",
     "past_cap_census",

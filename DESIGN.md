@@ -133,6 +133,9 @@ assembled/transferred/simulated stage boundaries bind the stack manifest,
 fraction, seed, realized counts, and clone controls, so a smaller rung or a
 different draw cannot reuse another build's evidence.
 
+Every bound UK local calibration family compiles from the sha-pinned Chronicle
+consumer feed; geography ladders assign rows and provide diagnostics only.
+
 After gap-fill, one PUF QRF pass and the clone-2 capital-gains-tail operator
 run over both survey origins. Publication is terminally gated by complete
 declared-input coverage and a live-digested, explicit per-column by-origin

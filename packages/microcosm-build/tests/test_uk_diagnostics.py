@@ -13,6 +13,7 @@ from microcosm.build.uk_runtime.diagnostics import (
     UK_DIAGNOSTICS_SCHEMA_VERSION,
     UK_TARGET_GEOGRAPHY_LEVELS,
     uk_calibration_diagnostics_payload,
+    uk_support_limited_misses,
     uk_weakest_areas_by_fit,
     uk_weakest_families,
     uk_weight_summary,
@@ -21,6 +22,10 @@ from microcosm.build.uk_runtime.diagnostics import (
 )
 from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyGeography,
+    HierarchyNode,
     TargetRegistry,
     TargetSpec,
     diagnostics_payload,
@@ -30,6 +35,31 @@ from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 _SPI_COLUMN = "household_is_spi_synthetic"
 _CG_COLUMN = "household_is_capital_gains_clone"
+
+
+def _fixture_hierarchy(name: str, geography_level: str) -> CalibrationHierarchy:
+    geography_ids = {
+        "national": "K02000001",
+        "region": "E12000001",
+        "country": "E92000001",
+        "local_authority": "E09000001",
+        "constituency": "E14000001",
+    }
+    return CalibrationHierarchy(
+        provider=HierarchyNode("fixture", "Fixture provider"),
+        category=HierarchyCategory(
+            "fixture.diagnostics",
+            "Diagnostic fixtures",
+            "fixture",
+        ),
+        geography=HierarchyGeography(
+            geography_ids[geography_level],
+            geography_level.replace("_", " ").title(),
+            geography_level,
+        ),
+        dimensions=(),
+        target=HierarchyNode(name, name.replace("_", " ").title()),
+    )
 
 
 def _local_target_row(
@@ -143,6 +173,89 @@ def test_local_weakest_rollups_pin_family_area_and_country_shapes() -> None:
     assert [row["area_code"] for row in trimmed["bottom_by_fit"]] == ["W07000041"]
 
 
+def test_local_fit_diagnostics_filter_national_rows_and_pin_support_shape() -> None:
+    diagnostics = pd.DataFrame(
+        {
+            "area_type": ["constituency", "constituency", "la", None],
+            "area_code": ["E14000001", "E14000002", "E06000001", None],
+            "abs_relative_error": [0.30, 0.05, 0.40, 0.90],
+        }
+    )
+    support = {
+        "constituency": pd.DataFrame(
+            {
+                "area_code": ["E14000001", "E14000002"],
+                "assigned_households": [2, 20],
+                "effective_sample_size": [1.0, 20.0],
+                "nonzero_source_households": [1, 20],
+            }
+        ),
+        "la": pd.DataFrame(
+            {
+                "area_code": ["E06000001"],
+                "assigned_households": [3],
+                "effective_sample_size": [2.0],
+                "nonzero_source_households": [2],
+            }
+        ),
+    }
+
+    result = uk_support_limited_misses(
+        diagnostics,
+        support,
+        max_abs_relative_error=0.25,
+    )
+    assert set(result) == {"constituency", "la"}
+    assert result["constituency"] == {
+        "n_failing_cells": 1,
+        "share_failing_cells_in_bottom_ess_decile": 1.0,
+        "spearman_worst_abs_relative_error_vs_ess": -1.0,
+        "worst_areas": [
+            {
+                "area_code": "E14000001",
+                "worst_abs_relative_error": 0.3,
+                "rows": 2,
+                "ess": 1.0,
+                "sources": 1,
+            },
+            {
+                "area_code": "E14000002",
+                "worst_abs_relative_error": 0.05,
+                "rows": 20,
+                "ess": 20.0,
+                "sources": 20,
+            },
+        ],
+    }
+    assert result["la"]["n_failing_cells"] == 1
+    assert result["la"]["spearman_worst_abs_relative_error_vs_ess"] is None
+
+    rows = [
+        _local_target_row(
+            "local",
+            family="income",
+            area_type="constituency",
+            area_code="E14000001",
+            relative_error=0.30,
+            loss_contribution=0.20,
+        ),
+        {
+            "name": "national",
+            "relative_error": 0.90,
+            "final_loss_contribution": 0.80,
+            "registry": {"family": "national_income"},
+            "metadata": {"geography_level": "national"},
+        },
+    ]
+    long_support = support["constituency"].assign(
+        geography_level="constituency",
+        nonzero_households=lambda frame: frame["assigned_households"],
+    )
+    areas = uk_weakest_areas_by_fit(rows, long_support)
+    assert areas["n_areas_scored"] == 1
+    assert areas["bottom_by_fit"][0]["area_code"] == "E14000001"
+
+
 def _diagnostics_case(*, with_skipped: bool = False):
     levels_and_weights = (
         ("national", 11.0),
@@ -175,6 +288,10 @@ def _diagnostics_case(*, with_skipped: bool = False):
                 period=2023,
                 source="Synthetic UK diagnostics fixture",
                 family="fixture",
+                metadata=(
+                    {"observation_basis": "annual_flow"} if row_index == 0 else {}
+                ),
+                hierarchy=_fixture_hierarchy(name, level),
             )
         )
         geography[f"{name}@2023"] = "la" if level == "local_authority" else level
@@ -188,6 +305,10 @@ def _diagnostics_case(*, with_skipped: bool = False):
                 period=2023,
                 source="Synthetic UK diagnostics fixture",
                 family="fixture",
+                hierarchy=_fixture_hierarchy(
+                    "skipped_national_target",
+                    "national",
+                ),
             )
         )
         geography["skipped_national_target@2023"] = "national"
@@ -393,6 +514,7 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
         "weights",
         "zero_weight_rows_by_stratum",
         "target_pass_rates_by_geography_level",
+        "target_observation_basis",
     }
     assert uk["schema_version"] == UK_DIAGNOSTICS_SCHEMA_VERSION
     assert set(uk["weights"]) == {
@@ -413,6 +535,7 @@ def test_payload_preserves_common_schema_and_adds_versioned_uk_evidence() -> Non
     assert uk["weights"]["ess_fraction"] == pytest.approx(
         payload["effective_sample_size"] / frame.n("household")
     )
+    assert uk["target_observation_basis"] == {"national_target@2023": "annual_flow"}
     assert uk["target_pass_rates_by_geography_level"] == [
         {
             "geography_level": "national",
@@ -481,6 +604,7 @@ def test_uk_payload_shared_layer_matches_shared_diagnostics_format() -> None:
         "weights",
         "zero_weight_rows_by_stratum",
         "target_pass_rates_by_geography_level",
+        "target_observation_basis",
     }
 
 
@@ -577,7 +701,7 @@ def test_payload_requires_a_valid_matching_uk_registry() -> None:
             target_geography_levels=geography,
             target_registry=TargetRegistry((), country="uk"),
         )
-    with pytest.raises(ValueError, match="exactly partition"):
+    with pytest.raises(ValueError, match="does not contain compiled target row"):
         uk_calibration_diagnostics_payload(
             result,
             frame,

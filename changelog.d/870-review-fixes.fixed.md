@@ -1,0 +1,1 @@
+Make UK dense candidate quality gates release-blocking, authenticate and validate the complete incumbent target-surface evaluation, require measured clean code and current measure-exclusion approvals, and distinguish holdout weighting from fitted scores. Record tenure hold attempts and skipped vintages.

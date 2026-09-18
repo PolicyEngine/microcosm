@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
-from microcosm.build.us_runtime.puf_qrf_chain import run_primary_puf_qrf_target
+_TORCH_BACKEND_AUTOLOAD_ENVIRONMENT = "TORCH_DEVICE_BACKEND_AUTOLOAD"
+# The authenticated launcher sets this before interpreter startup because
+# parent-package imports can load Torch before this module. Keep the bootstrap
+# override as defense in depth for subsequent imports.
+os.environ[_TORCH_BACKEND_AUTOLOAD_ENVIRONMENT] = "0"
+
+from microcosm.build.us_runtime.puf_qrf_chain import (  # noqa: E402
+    run_primary_puf_qrf_target,
+)
 
 
 def main(argv: list[str] | None = None) -> None:

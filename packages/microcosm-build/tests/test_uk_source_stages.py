@@ -30,6 +30,8 @@ E3_STAGE_NAMES = [
 ]
 POST_FRS_SPINE_STAGE_NAMES = [
     "age_tail",
+    # #791: the relationship grid runs right after the final age is fixed.
+    "frs_relationships",
 ]
 E4_STAGE_NAMES = [
     "frs_take_up",
@@ -323,6 +325,7 @@ class TestUKSourceStagesManifest:
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "age_tail": _identity,
+                    "frs_relationships": _identity,
                     "frs_hmrc_retained_leaves": _identity,
                     "hmrc_spi_income": _identity,
                     "hmrc_spi_income_fallback": _identity,
@@ -585,9 +588,11 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["frs_education_grant_split"].operations] == [
             "materialize_rules_engine_predictors",
+            "materialize_rules_engine_predictors",
             "derive",
         ]
         assert [op.kind for op in stages["frs_take_up"].operations] == [
+            "aggregate_person_to_benunit",
             "aggregate_person_to_benunit",
             "assign_binary_with_anchored_residual",
             "assign_binary_from_rate",
@@ -597,12 +602,14 @@ class TestE3ManifestLockstep:
             "assign_binary_from_rate",
             "assign_binary_from_rate",
             "assign_binary_from_rate",
+            "assign_binary_from_banded_rates",
             "assign_clipped_normal",
         ]
         assert [op.kind for op in stages["frs_person_draws"].operations] == [
             "assign_binary_from_rate",
             "assign_binary_from_banded_rates",
             "assign_uniform_draw",
+            "assign_period_constant",
         ]
         assert [op.kind for op in stages["frs_household_draws"].operations] == [
             "assign_binary_from_rate",
@@ -627,13 +634,16 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["lcfs_consumption"].operations] == [
             "derive",
+            "uprate_donor_columns",
             "iterative_proportional_fit",
-            "bridge_donor_column_via_qrf",
             "assign_binary_from_rate",
+            "assign_bus_use_incidence",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
             "iterative_proportional_fit",
+            "price_domestic_energy",
+            "rake_to_vendored_facts",
             "fold_into",
             "zero_when_false",
         ]
@@ -645,9 +655,11 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["etb_services"].operations] == [
             "derive",
+            "uprate_donor_columns",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
+            "rake_to_vendored_facts",
             "compute_ratio",
             "allocate_per_capita_from_cell_table",
         ]
@@ -720,6 +732,7 @@ class TestE3ManifestLockstep:
         from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_PREDICTORS
         from microcosm.build.uk_runtime.frs_brma import UK_BRMA_PREDICTORS
         from microcosm.build.uk_runtime.frs_education_grants import (
+            DISABLED_STUDENTS_ALLOWANCE_ELIGIBILITY_VARIABLES,
             FRS_EDUCATION_GRANT_REWRITES,
             UK_EDUCATION_GRANT_CAPACITY_PREDICTORS,
         )
@@ -733,7 +746,6 @@ class TestE3ManifestLockstep:
             UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
             UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
             UK_LCFS_CONSUMPTION_PREDICTORS,
-            UK_LCFS_HAS_FUEL_PREDICTORS,
         )
         from microcosm.build.uk_runtime.uc_reporter_redraw import (
             UC_REPORTER_AGGREGATES,
@@ -754,8 +766,14 @@ class TestE3ManifestLockstep:
         grant_predictors = (
             stages["frs_education_grant_split"].operations[0].parameters["predictors"]
         )
+        dsa_predictors = (
+            stages["frs_education_grant_split"].operations[1].parameters["predictors"]
+        )
         assert tuple(legacy_predictors) == UK_LEGACY_PROXY_PREDICTORS
         assert tuple(grant_predictors) == UK_EDUCATION_GRANT_CAPACITY_PREDICTORS
+        assert tuple(dsa_predictors) == (
+            DISABLED_STUDENTS_ALLOWANCE_ELIGIBILITY_VARIABLES
+        )
         assert (
             stages["frs_education_grant_split"].rewrites == FRS_EDUCATION_GRANT_REWRITES
         )
@@ -787,10 +805,7 @@ class TestE3ManifestLockstep:
         )
         lcfs = stages["lcfs_consumption"]
         lcfs_ops = {op.kind: op for op in lcfs.operations}
-        assert (
-            tuple(lcfs_ops["bridge_donor_column_via_qrf"].parameters["predictors"])
-            == UK_LCFS_HAS_FUEL_PREDICTORS
-        )
+        assert "bridge_donor_column_via_qrf" not in lcfs_ops
         assert (
             tuple(
                 lcfs_ops["materialize_rules_engine_predictors"].parameters["predictors"]
@@ -815,14 +830,14 @@ class TestE3ManifestLockstep:
         )
 
         assert (
-            tuple(stages["etb_services"].operations[1].parameters["predictors"])
+            tuple(stages["etb_services"].operations[2].parameters["predictors"])
             == UK_ETB_SERVICES_ENGINE_VARIABLES
         )
         assert set(
-            stages["etb_services"].operations[1].parameters["derived_predictors"]
+            stages["etb_services"].operations[2].parameters["derived_predictors"]
         ) == set(UK_ETB_SERVICES_EDUCATION_COUNTS)
         assert (
-            tuple(stages["etb_services"].operations[2].parameters["targets"])
+            tuple(stages["etb_services"].operations[3].parameters["targets"])
             == UK_ETB_SERVICES_OUTPUT_COLUMNS[:3]
         )
         rate_keys = [
@@ -911,12 +926,12 @@ class TestE3ManifestLockstep:
             if "seed" in op.parameters
         }
         assert lcfs_seeded == {
-            "bridge_donor_column_via_qrf": 0,
             "assign_binary_from_rate": 0,
+            "assign_bus_use_incidence": 0,
             "fit_weighted_qrf_chain": 0,
         }
         assert stages["etb_vat"].operations[2].parameters["seed"] == 0
-        assert stages["etb_services"].operations[2].parameters["seed"] == 0
+        assert stages["etb_services"].operations[3].parameters["seed"] == 0
 
     def test_e7_declared_seed_lockstep(self) -> None:
         spec = load_country_spec("uk")
@@ -926,9 +941,7 @@ class TestE3ManifestLockstep:
         assert stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 43
         assert stages["uc_reporter_redraw"].operations[3].parameters["seed"] == 44
-        assert (
-            stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
-        )
+        assert stages["uc_capital_coherence"].operations[1].parameters["seed"] == 0
 
     def test_e8_declared_seed_lockstep(self) -> None:
         stages = load_country_spec("uk").sources.stage_map()

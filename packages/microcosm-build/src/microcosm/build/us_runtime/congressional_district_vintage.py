@@ -13,6 +13,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
+
 SOURCE_CONGRESSIONAL_DISTRICT_PREFIX = "5001700US"
 CURRENT_CONGRESSIONAL_DISTRICT_PREFIX = "5001900US"
 CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE = "119th_congress"
@@ -614,16 +616,31 @@ def _translated_fact_shell(
     target_geoid = target_geography_id.removeprefix(
         CURRENT_CONGRESSIONAL_DISTRICT_PREFIX
     )
+    target_geography_label = _congressional_district_label(target_geography_id)
     geography = dict(_mapping_at(translated, "geography"))
     geography["id"] = target_geography_id
     geography["level"] = "congressional_district"
+    geography["name"] = target_geography_label
     geography["vintage"] = target_vintage
     translated["geography"] = geography
 
     layout = dict(_mapping_at(translated, "layout"))
     layout["groupby_value_id"] = target_geoid
+    layout["groupby_dimension_label"] = "Congressional district"
+    layout["groupby_value_label"] = target_geography_label
     layout["source_row_id"] = target_geoid
     translated["layout"] = layout
+
+    groupby_dimension = str(layout.get("groupby_dimension") or "")
+    if groupby_dimension:
+        dimension_labels = dict(_mapping_at(translated, "dimension_labels"))
+        dimension_labels[groupby_dimension] = "Congressional district"
+        translated["dimension_labels"] = dimension_labels
+        dimension_value_labels = dict(_mapping_at(translated, "dimension_value_labels"))
+        dimension_value_labels[groupby_dimension] = {
+            target_geoid: target_geography_label
+        }
+        translated["dimension_value_labels"] = dimension_value_labels
 
     digest = hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()[:16]
     source_record_id = _derived_source_record_id(
@@ -652,6 +669,25 @@ def _translated_fact_shell(
     translated["lineage"] = lineage
     translated["value"] = 0.0
     return translated
+
+
+def _congressional_district_label(geography_id: str) -> str:
+    """Return a reviewed display label for a Census congressional-district ID."""
+
+    geoid = geography_id.removeprefix(CURRENT_CONGRESSIONAL_DISTRICT_PREFIX)
+    if len(geoid) != 4 or not geoid.isdigit():
+        raise ValueError(
+            f"Invalid current congressional-district geography id {geography_id!r}."
+        )
+    state_fips, district = geoid[:2], geoid[2:]
+    postal = US_STATE_FIPS_TO_POSTAL.get(state_fips)
+    if postal is None:
+        raise ValueError(
+            f"Unknown state FIPS code in congressional-district id {geography_id!r}."
+        )
+    if district == "00":
+        return f"{postal} at-large congressional district"
+    return f"{postal} congressional district {int(district)}"
 
 
 def _append_lineage_contribution(

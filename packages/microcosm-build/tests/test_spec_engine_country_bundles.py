@@ -25,15 +25,14 @@ EXPECTED_RESOURCES = {
     "spine",
     "vintages",
 }
-AM_SPEC_SHA256 = "4699b27f6604c7ab3f9e2f82a6e74dd4ea89094dc84829d90af91473572cc07a"
 
 
 @pytest.mark.parametrize(
-    ("country", "expected_spec_sha256", "expected_columns", "expected_entities"),
+    ("country", "expected_period", "expected_columns", "expected_entities"),
     [
         (
             "am",
-            AM_SPEC_SHA256,
+            2024,
             {
                 "household.household_id",
                 "person.age",
@@ -45,7 +44,7 @@ AM_SPEC_SHA256 = "4699b27f6604c7ab3f9e2f82a6e74dd4ea89094dc84829d90af91473572cc0
         ),
         (
             "be",
-            "6bb0cff6a0ac9d077573126f8f4c13868534e5135dec328917e253dd58f1e089",
+            2023,
             {
                 "household.household_id",
                 "person.person_id",
@@ -55,7 +54,7 @@ AM_SPEC_SHA256 = "4699b27f6604c7ab3f9e2f82a6e74dd4ea89094dc84829d90af91473572cc0
         ),
         (
             "uk",
-            "ecfaa9088326d08db364fca3c76c5016706a8b7ca418098a65a1e32b5b896a48",
+            2023,
             {
                 "benunit.benunit_id",
                 "household.household_id",
@@ -68,7 +67,7 @@ AM_SPEC_SHA256 = "4699b27f6604c7ab3f9e2f82a6e74dd4ea89094dc84829d90af91473572cc0
 )
 def test_country_bundle_loads_once_and_compiles_through_the_shared_core(
     country: str,
-    expected_spec_sha256: str,
+    expected_period: int,
     expected_columns: set[str],
     expected_entities: set[str],
 ) -> None:
@@ -83,7 +82,6 @@ def test_country_bundle_loads_once_and_compiles_through_the_shared_core(
 
     assert country_spec.resolved_spec is not None
     assert country_spec.resolved_spec.spec_sha256 == direct.spec_sha256
-    assert direct.spec_sha256 == expected_spec_sha256
 
     compiled = compile_spec(direct)
     assert set(compiled.resources_wire()) == EXPECTED_RESOURCES
@@ -91,6 +89,14 @@ def test_country_bundle_loads_once_and_compiles_through_the_shared_core(
     assert compiled.nodes == ()
     assert {column.key for column in direct.columns} == expected_columns
     assert {column.entity.id for column in direct.columns} == expected_entities
+    bundle = compiled.resource("bundle")
+    assert {key: bundle[key] for key in bundle if key != "status"} == {
+        "country": country,
+        "dataset_run": {"target_period": expected_period},
+        "identity_generation": 1,
+        "seed_protocol": "legacy-v1",
+    }
+    assert isinstance(bundle["status"], str) and bundle["status"].strip()
 
 
 def test_country_bundles_exercise_distinct_support_and_geography_kinds() -> None:

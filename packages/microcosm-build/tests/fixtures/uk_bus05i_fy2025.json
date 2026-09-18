@@ -1,0 +1,12 @@
+{
+  "source_package": "dft-bus05i-revenue-support-2025",
+  "source_sha256": "a65ad97d70982bc572a8ff7415182c1b350166fc2e485e37f5678f3dbaa12fa5",
+  "rows": [
+    {"aggregate_fact_key": "ledger.aggregate_fact.v2:2ece7c3d283b6de43b30389f", "source_concept": "dft.local_bus_passenger_fare_receipts", "groupby_value_id": "england", "period": {"type": "fiscal_year", "value": 2025}, "unit": "gbp", "value": 3417388656.43538},
+    {"aggregate_fact_key": "ledger.aggregate_fact.v2:33611c64d2048fe660501802", "source_concept": "dft.local_bus_passenger_fare_receipts", "groupby_value_id": "london", "period": {"type": "fiscal_year", "value": 2025}, "unit": "gbp", "value": 1347434943.01459},
+    {"aggregate_fact_key": "ledger.aggregate_fact.v2:465d300355c85e7c498397dd", "source_concept": "dft.local_bus_passenger_fare_receipts", "groupby_value_id": "england_outside_london", "period": {"type": "fiscal_year", "value": 2025}, "unit": "gbp", "value": 2069953713.42079},
+    {"aggregate_fact_key": "ledger.aggregate_fact.v2:a12dfcdc0662c8a5e48bf003", "source_concept": "dft.local_bus_total_estimated_net_support", "groupby_value_id": "england", "period": {"type": "fiscal_year", "value": 2025}, "unit": "gbp", "value": 3024904320.8399997},
+    {"aggregate_fact_key": "ledger.aggregate_fact.v2:d8e40cee2fc723b719ff4680", "source_concept": "dft.local_bus_total_estimated_net_support", "groupby_value_id": "london", "period": {"type": "fiscal_year", "value": 2025}, "unit": "gbp", "value": 1130214000},
+    {"aggregate_fact_key": "ledger.aggregate_fact.v2:7ab0c5007c9a6ad38aaa1468", "source_concept": "dft.local_bus_total_estimated_net_support", "groupby_value_id": "england_outside_london", "period": {"type": "fiscal_year", "value": 2025}, "unit": "gbp", "value": 1894690320.84}
+  ]
+}

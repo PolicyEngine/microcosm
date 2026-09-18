@@ -1,0 +1,5 @@
+{
+  "schema_version": 2,
+  "description": "Reviewed target-fit exclusions for the UK terminal battery (schema 2 per #610). Each entry defers one calibration target whose |relative error| breaches the 25% release bound, with the defect diagnosed, tracked, and owned elsewhere; the receipt records the reasoning, approver, adjudication reference, approval date, and expiry. The gate keeps the target BOUND in calibration (exclusion applies to the release fence only, never the solve), reports dormant entries, FAILS stale ones (targets back inside the bound), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
+  "exclusions": {}
+}

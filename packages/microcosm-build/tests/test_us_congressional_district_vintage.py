@@ -1,5 +1,7 @@
 """US congressional-district geography-vintage translation tests."""
 
+import json
+
 import pytest
 
 from microcosm.build.us_runtime import (
@@ -55,6 +57,12 @@ def test_translate_cd_facts_conserves_values_and_records_lineage() -> None:
     assert set(by_geography) == {"5001900US0601", "5001900US0602"}
     assert by_geography["5001900US0601"]["value"] == pytest.approx(75.0)
     assert by_geography["5001900US0602"]["value"] == pytest.approx(85.0)
+    assert by_geography["5001900US0601"]["geography"]["name"] == (
+        "CA congressional district 1"
+    )
+    assert by_geography["5001900US0602"]["layout"]["groupby_value_label"] == (
+        "CA congressional district 2"
+    )
     merged_lineage = by_geography["5001900US0602"]["lineage"]
     assert merged_lineage["target_geography_vintage"] == "119th_congress"
     assert (
@@ -586,6 +594,7 @@ def _soi_cd_fact(
         f"{SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID}.{source_row_id}.{measure_id}"
     )
     return {
+        "label": f"Test label for {source_record_id}",
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:{source_row_id}.{measure_id}",
         "semantic_fact_key": f"ledger.semantic_fact.v2:{source_row_id}.{measure_id}",
         "legacy_fact_key": f"ledger.fact.v1:{source_row_id}.{measure_id}",
@@ -595,15 +604,30 @@ def _soi_cd_fact(
         "geography": {
             "level": geography_level,
             "id": geography_id,
+            "name": f"Test geography {geography_id}",
             "vintage": "117th_congress",
         },
         "entity": {"name": "tax_unit"},
         "aggregation": {"method": "sum"},
         "dimensions": {"income_range": "all", "filing_status": "all"},
+        "dimension_labels": {
+            "filing_status": "Filing status",
+            "income_range": "Income range",
+            "irs_soi.congressional_district": "Congressional district",
+        },
+        "dimension_value_labels": {
+            "filing_status": {"all": "All filing statuses"},
+            "income_range": {"all": "All income ranges"},
+            "irs_soi.congressional_district": {
+                source_row_id: f"Test district {source_row_id}"
+            },
+        },
         "layout": {
             "record_set_id": SOI_CONGRESSIONAL_DISTRICT_RECORD_SET_ID,
             "groupby_dimension": "irs_soi.congressional_district",
+            "groupby_dimension_label": "Congressional district",
             "groupby_value_id": source_row_id,
+            "groupby_value_label": f"Test district {source_row_id}",
             "measure_id": measure_id,
             "source_row_id": source_row_id,
         },
@@ -657,6 +681,7 @@ def _soi_state_fact(
 ) -> dict[str, object]:
     source_record_id = f"irs_soi.ty2023.state_agi.{source_row_id}.{measure_id}"
     return {
+        "label": f"Test label for {source_record_id}",
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:{source_row_id}.{measure_id}",
         "semantic_fact_key": f"ledger.semantic_fact.v2:{source_row_id}.{measure_id}",
         "legacy_fact_key": f"ledger.fact.v1:{source_row_id}.{measure_id}",
@@ -666,15 +691,28 @@ def _soi_state_fact(
         "geography": {
             "level": "state",
             "id": geography_id,
+            "name": f"Test geography {geography_id}",
             "vintage": "state_fips",
         },
         "entity": {"name": "tax_unit"},
         "aggregation": {"method": "sum"},
         "dimensions": {"income_range": "all", "filing_status": "all"},
+        "dimension_labels": {
+            "filing_status": "Filing status",
+            "income_range": "Income range",
+            "irs_soi.state": "State",
+        },
+        "dimension_value_labels": {
+            "filing_status": {"all": "All filing statuses"},
+            "income_range": {"all": "All income ranges"},
+            "irs_soi.state": {source_row_id: f"Test state {source_row_id}"},
+        },
         "layout": {
             "record_set_id": "irs_soi.ty2023.state_agi",
             "groupby_dimension": "irs_soi.state",
+            "groupby_dimension_label": "State",
             "groupby_value_id": source_row_id,
+            "groupby_value_label": f"Test state {source_row_id}",
             "measure_id": measure_id,
             "source_row_id": source_row_id,
         },
@@ -705,12 +743,17 @@ def _packaged_reference_facts() -> list[dict[str, object]]:
 def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
     source_record_id = reference.ledger_source_record_id or reference.name
     return {
+        "label": f"Test label for {source_record_id}",
         "lineage": {"source_record_id": source_record_id},
         "value": value,
         "period": {"type": "tax_year", "value": reference.period},
         "entity": {"name": reference.entity},
         "aggregation": {"method": "sum"},
-        "geography": {"level": "country", "id": "0100000US"},
+        "geography": {
+            "level": "country",
+            "id": "0100000US",
+            "name": "United States",
+        },
         "dimensions": {},
         "layout": {
             "record_set_id": f"{reference.family}.record_set",
@@ -732,3 +775,161 @@ def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
             "url": "https://example.org/reference",
         },
     }
+
+
+def _re_epoch_to_chronicle(fact: dict[str, object]) -> dict[str, object]:
+    """The same source fact as Chronicle emits it after the rename cutover.
+
+    Identical canonical payload; ``ledger.<family>.v2`` domains replaced by
+    their ``chronicle.<family>.v3`` siblings (PolicyEngine/chronicle#143).
+    """
+    chronicle = dict(fact)
+    for field, domain in (
+        ("aggregate_fact_key", "chronicle.aggregate_fact.v3"),
+        ("semantic_fact_key", "chronicle.semantic_fact.v3"),
+    ):
+        value = chronicle.get(field)
+        if isinstance(value, str):
+            chronicle[field] = f"{domain}:{value.split(':', 1)[1]}"
+    chronicle.pop("legacy_fact_key", None)
+    return chronicle
+
+
+def test__given_chronicle_era_source_rows__then_derived_cd_keys_are_unchanged() -> None:
+    """The Chronicle rename must not re-identify Microcosm-derived facts.
+
+    Translated and proxy facts are minted into Microcosm's own
+    ``microcosm.derived_fact.*`` / ``microcosm.semantic_fact.*`` namespaces,
+    which sit outside both Chronicle eras and are frozen at v1
+    (microcosm#639). Their digests are computed from the source row's
+    *semantic* identity, never from its key, so a feed that crosses the
+    cutover must mint byte-identical derived keys — otherwise every target
+    pinned to one would silently stop resolving on cutover day.
+    """
+    ledger_era_facts = [
+        _soi_cd_fact(
+            "adjusted_gross_income",
+            100.0,
+            geography_id="5001700US0601",
+            source_row_id="ca_01",
+        ),
+        _soi_cd_fact(
+            "adjusted_gross_income",
+            60.0,
+            geography_id="5001700US0653",
+            source_row_id="ca_53",
+        ),
+    ]
+    chronicle_era_facts = [_re_epoch_to_chronicle(fact) for fact in ledger_era_facts]
+    crosswalk = [
+        {
+            "source_geography_id": "5001700US0601",
+            "target_geography_id": "5001900US0601",
+            "weight": 1.0,
+        },
+        {
+            "source_geography_id": "5001700US0653",
+            "target_geography_id": "5001900US0602",
+            "weight": 1.0,
+        },
+    ]
+
+    def _translate(facts):
+        return translate_congressional_district_facts_to_current_vintage(
+            facts, crosswalk, crosswalk_basis="block_population"
+        )
+
+    from_ledger = _translate(ledger_era_facts)
+    from_chronicle = _translate(chronicle_era_facts)
+
+    def _keys(translated):
+        return sorted(
+            (
+                fact["geography"]["id"],
+                fact["aggregate_fact_key"],
+                fact["semantic_fact_key"],
+            )
+            for fact in translated
+        )
+
+    assert _keys(from_chronicle) == _keys(from_ledger)
+    for fact in from_chronicle:
+        assert fact["aggregate_fact_key"].startswith(
+            "microcosm.derived_fact.congressional_district_vintage.v1:"
+        )
+        assert fact["semantic_fact_key"].startswith(
+            "microcosm.semantic_fact.congressional_district_vintage.v1:"
+        )
+        # The derived row carries neither epoch: it is Microcosm's fact now.
+        assert "legacy_fact_key" not in fact
+
+
+def test__given_chronicle_era_state_rows__then_proxy_cd_keys_are_unchanged() -> None:
+    """The state-total-proxy mint is epoch-independent for the same reason.
+
+    Its digest covers the source record id, the proxy district, and the
+    value — never the source row's Chronicle key — so a chronicle-era state
+    fact produces the same proxy identity a ledger-era one does.
+    """
+    ledger_era_facts = [
+        _soi_cd_fact(
+            "adjusted_gross_income",
+            10.0,
+            geography_id="5001700US0601",
+            source_row_id="ca_01",
+        ),
+        _soi_state_fact(
+            "adjusted_gross_income",
+            100.0,
+            geography_id="0400000US30",
+            source_row_id="mt_total",
+        ),
+    ]
+    chronicle_era_facts = [_re_epoch_to_chronicle(fact) for fact in ledger_era_facts]
+    crosswalk = [
+        {
+            "source_geography_id": "5001700US0601",
+            "target_geography_id": "5001900US0601",
+            "weight": 1.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3001",
+            "weight": 2.0,
+        },
+        {
+            "source_geography_id": "5001700US3000",
+            "target_geography_id": "5001900US3002",
+            "weight": 3.0,
+        },
+    ]
+
+    def _translate(facts):
+        return translate_congressional_district_facts_to_current_vintage(
+            facts, crosswalk, crosswalk_basis="block_population"
+        )
+
+    def _derived_identity(translated):
+        # Passthrough rows keep their own Chronicle keys verbatim — that is the
+        # opaque-carriage rule. Only the Microcosm-minted rows are compared.
+        return sorted(
+            (
+                fact["geography"]["id"],
+                fact["aggregate_fact_key"],
+                fact["semantic_fact_key"],
+                json.dumps(fact["lineage"], sort_keys=True),
+            )
+            for fact in translated
+            if str(fact.get("aggregate_fact_key", "")).startswith("microcosm.")
+        )
+
+    from_chronicle = _derived_identity(_translate(chronicle_era_facts))
+
+    assert from_chronicle == _derived_identity(_translate(ledger_era_facts))
+    # The proxy digest reaches the compared identity through the lineage: the
+    # proxy fact is minted, then translated, so its source_record_id (digest
+    # included) is what the derived row records.
+    assert any(
+        "congressional_district_state_total_proxy_source_record_id" in lineage
+        for _, _, _, lineage in from_chronicle
+    )

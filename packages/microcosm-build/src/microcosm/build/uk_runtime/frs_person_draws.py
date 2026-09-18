@@ -25,9 +25,17 @@ FRS_PERSON_DRAW_OUTPUT_COLUMNS = (
     "would_claim_marriage_allowance",
     "would_claim_scp",
     "attends_private_school_random_draw",
+    "tax_free_childcare_spend_routed_share",
 )
-FRS_PERSON_DRAW_NONNEGATIVE_OUTPUT_COLUMNS = ("attends_private_school_random_draw",)
-UK_PERSON_DRAW_DECLARED_SEEDS = {output: 0 for output in FRS_PERSON_DRAW_OUTPUT_COLUMNS}
+FRS_PERSON_DRAW_NONNEGATIVE_OUTPUT_COLUMNS = (
+    "attends_private_school_random_draw",
+    "tax_free_childcare_spend_routed_share",
+)
+UK_PERSON_DRAW_DECLARED_SEEDS = {
+    output: 0
+    for output in FRS_PERSON_DRAW_OUTPUT_COLUMNS
+    if output != "tax_free_childcare_spend_routed_share"
+}
 
 
 @dataclass(frozen=True)
@@ -46,6 +54,13 @@ class UKFRSPersonDrawsStageTransform:
 
 
 def add_frs_person_draws(frame: Frame, *, contract: UKTakeUpContract) -> Frame:
+    period = uk_time_period(frame)
+    if int(str(period).split("-", maxsplit=1)[0]) != contract.build_year:
+        raise ValueError(
+            "frs_person_draws assign_period_constant requires the frame time "
+            f"period {period!r} to equal contract build_year {contract.build_year}."
+        )
+    _require_tax_free_childcare_routed_share_variable()
     person = frame.table("person").copy()
     derived = derive_frs_person_draws(person, contract=contract)
     for column in FRS_PERSON_DRAW_OUTPUT_COLUMNS:
@@ -54,7 +69,7 @@ def add_frs_person_draws(frame: Frame, *, contract: UKTakeUpContract) -> Frame:
         person=person,
         benunit=frame.table("benunit").copy(),
         household=frame.table("household").copy(),
-        time_period=uk_time_period(frame),
+        time_period=period,
         weight_kind=uk_household_weight_kind(frame),
         household_weights=frame.weights_for("household").values,
         mass_log=frame.mass_log,
@@ -81,7 +96,30 @@ def derive_frs_person_draws(
     values["attends_private_school_random_draw"] = _draws(
         ids, "attends_private_school_random_draw"
     )
+    entry = contract.entry("tax_free_childcare_spend_routed_share")
+    if entry.raw.get("entity") != "person":
+        raise ValueError(
+            "tax_free_childcare_spend_routed_share contract entry must declare "
+            "entity='person'."
+        )
+    values["tax_free_childcare_spend_routed_share"] = contract.rate(
+        "tax_free_childcare_spend_routed_share", contract.build_year
+    )
     return values
+
+
+def _require_tax_free_childcare_routed_share_variable() -> None:
+    """Fail before export when an installed UK engine cannot consume the input."""
+
+    try:
+        import policyengine_uk
+    except ImportError:
+        return
+    variable = "tax_free_childcare_spend_routed_share"
+    if variable not in policyengine_uk.CountryTaxBenefitSystem().variables:
+        raise ValueError(
+            f"Required variable {variable!r} is not defined in policyengine-uk."
+        )
 
 
 def _draws(ids: np.ndarray, output: str) -> np.ndarray:

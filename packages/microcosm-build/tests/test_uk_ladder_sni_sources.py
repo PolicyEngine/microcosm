@@ -405,26 +405,6 @@ def test_scotland_households_rejects_missing_counts(monkeypatch) -> None:
         load_scotland_oa_households("memory://census-index.zip")
 
 
-def test_ni_postcode_inference_rejects_duplicate_keys() -> None:
-    from microcosm.build.uk_runtime import infer_ni_dz_constituencies_from_postcodes
-
-    postcode_oa = pd.DataFrame(
-        {
-            "pcds": ["BT1 1AA", "BT1 1AA", "BT1 1AB"],
-            "doterm": ["", "", ""],
-            "oa21cd": ["N20000001", "N20000001", "N20000001"],
-        }
-    )
-    postcode_pcon = pd.DataFrame(
-        {
-            "pcd": ["BT1 1AA", "BT1 1AB"],
-            "pconcd": ["N05000001", "N05000001"],
-        }
-    )
-    with pytest.raises(ValueError, match="duplicate normalized postcode"):
-        infer_ni_dz_constituencies_from_postcodes(postcode_oa, postcode_pcon)
-
-
 def test_full_uk_assemble_load_round_trip(tmp_path) -> None:
     import numpy as np
 

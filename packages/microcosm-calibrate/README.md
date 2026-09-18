@@ -76,6 +76,24 @@ frontier can be read off any run's artifact. The standalone
 `effective_sample_size(weights)` scores any weight vector, e.g. a published
 artifact's.
 
+Registry-backed diagnostics use schema 8. Every target publishes one ordered
+`hierarchy` object containing provider, category, geography, zero or more
+dimensions, and target. Provider/category ownership comes from the normalized
+country declaration; Chronicle supplies geography, fact labels, dimension ids,
+and categorical value labels where present. Microcosm supplies a deterministic
+label only when Chronicle has no label for that field. The dashboard consumes
+these identifiers and labels verbatim and does not infer schema-8 display text.
+Generic calibrations whose targets carry no hierarchy retain schema 6; a payload
+cannot mix hierarchy-bearing and hierarchy-free targets.
+
+Dimensions are not manually enumerated in the target declaration. A single
+fact or fan-out target inherits all Chronicle dimensions, with
+`layout.groupby_dimension` first and all remaining ids sorted. A target that
+combines multiple facts inherits only dimensions whose values are constant
+across every member fact; varying ids remain in aggregation provenance. Only
+exactly equal ids are merged. See `docs/calibration-target-hierarchy.md` for
+the authoring and propagation contract.
+
 ## Example
 
 ```python

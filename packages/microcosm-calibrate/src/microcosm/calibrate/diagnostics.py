@@ -22,6 +22,7 @@ import json
 import logging
 import math
 from collections.abc import Mapping
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -49,7 +50,15 @@ __all__ = [
 #: v6 added authoritative final per-target loss attribution and an explicit
 #: warning-only degradation state when that supplementary attribution cannot
 #: be validated.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 6
+#: v7 added producer-defined source, variable, and dimension identity for
+#: registry-backed release diagnostics. Sources include country-owned display
+#: labels when registered. Geography is represented as a typed dimension with
+#: stable identifiers and display labels.
+#: v8 replaces those parallel inferred fields with one complete, ordered
+#: hierarchy carried by each registry target: provider, category, geography,
+#: zero or more dimensions, and target.
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 8
+_HIERARCHY_FREE_DIAGNOSTICS_SCHEMA_VERSION = 6
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -118,6 +127,31 @@ def _registry_spec_lookup(target_registry: object | None) -> dict[str, object]:
         if name is not None and period is not None:
             lookup[f"{name}@{period}"] = spec
     return lookup
+
+
+def _target_hierarchy(target: object, spec: object | None) -> object | None:
+    """Return one hierarchy after checking runtime and registry agreement."""
+
+    target_hierarchy = getattr(target, "hierarchy", None)
+    spec_hierarchy = getattr(spec, "hierarchy", None) if spec is not None else None
+    if (
+        target_hierarchy is not None
+        and spec_hierarchy is not None
+        and target_hierarchy != spec_hierarchy
+    ):
+        raise ValueError(
+            f"Compiled target {getattr(target, 'name', '')!r} and its registry "
+            "spec declare different calibration hierarchies."
+        )
+    return target_hierarchy or spec_hierarchy
+
+
+def _hierarchy_target_field(hierarchy: object) -> dict[str, object]:
+    """Serialize a complete producer-supplied target hierarchy."""
+
+    serialized = asdict(hierarchy)
+    serialized["dimensions"] = list(serialized["dimensions"])
+    return {"hierarchy": serialized}
 
 
 def _target_identity_rows(result: CalibrationResult) -> list[dict[str, object]]:
@@ -322,25 +356,60 @@ def diagnostics_payload(
 
     Args:
         result: The :func:`~microcosm.calibrate.solve.calibrate` output.
+        target_registry: Optional registry identity and hierarchy source. Supplying
+            a registry requires every compiled row to carry a complete hierarchy.
+            Without a registry, a result whose targets all carry hierarchies uses
+            schema 8; a hierarchy-free generic result retains schema 6.
+        build: Optional build-specific evidence block.
 
     Returns:
         A dict that round-trips through ``json`` unchanged (non-finite
         floats become ``null``).
     """
     registry_specs = _registry_spec_lookup(target_registry)
-    target_rows = [
-        _target_row(
+    target_rows: list[dict[str, object]] = []
+    hierarchy_count = 0
+    missing_hierarchy_names: list[str] = []
+    for index, (diagnostic, target) in enumerate(
+        zip(result.diagnostics, result.problem.targets, strict=True)
+    ):
+        spec = registry_specs.get(diagnostic.name)
+        if target_registry is not None and spec is None:
+            raise ValueError(
+                "The supplied target registry does not contain compiled target "
+                f"row {diagnostic.name!r}."
+            )
+        row = _target_row(
             diagnostic,
             target,
             compiled_target=result.problem.target_vector[index],
-            spec=registry_specs.get(diagnostic.name),
+            spec=spec,
         )
-        for index, (diagnostic, target) in enumerate(
-            zip(result.diagnostics, result.problem.targets, strict=True)
+        hierarchy = _target_hierarchy(target, spec)
+        if hierarchy is not None:
+            row.update(_hierarchy_target_field(hierarchy))
+            hierarchy_count += 1
+        else:
+            missing_hierarchy_names.append(diagnostic.name)
+        target_rows.append(row)
+    if target_registry is not None and missing_hierarchy_names:
+        raise ValueError(
+            "Diagnostics schema 8 requires a calibration hierarchy for every "
+            "registry-backed target; missing "
+            f"{missing_hierarchy_names[:5]!r}."
         )
-    ]
+    if hierarchy_count and missing_hierarchy_names:
+        raise ValueError(
+            "A diagnostics payload cannot mix targets with and without calibration "
+            f"hierarchies; missing {missing_hierarchy_names[:5]!r}."
+        )
+    schema_version = (
+        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+        if target_registry is not None or hierarchy_count
+        else _HIERARCHY_FREE_DIAGNOSTICS_SCHEMA_VERSION
+    )
     payload = {
-        "schema_version": CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+        "schema_version": schema_version,
         "weight_entity": result.weight_entity,
         "options": {key: _jsonable(value) for key, value in result.options.items()},
         "target_surface": _target_surface_payload(result),

@@ -1,15 +1,14 @@
-"""Local target values derived from the sha-pinned UK OA ladder (#495).
+"""Diagnostic household sums from the sha-pinned UK OA ladder.
 
-The ladder artifact already carries census occupied-household counts per
-output area with per-layer, per-country sha-pinned provenance — so household
-count targets at any ladder grain need no new external pinning: they are the
-artifact's own sums. This is the first bound local target family, and it is
-universe-compatible with the FRS instrument (census occupied households vs
-the survey's own household frame), unlike person-grain families that carry
-the population_universe_private_households adjudication.
+The ladder remains the geography-assignment artifact and stage-one sampling
+weight. Its household sums are diagnostics only: calibration targets compile
+from the pinned Chronicle feed.
 """
 
 from __future__ import annotations
+
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -18,9 +17,17 @@ from microcosm.build.uk_runtime.geography_ladder import UkOaLadder
 
 __all__ = [
     "constituency_household_targets",
+    "ladder_vs_chronicle_household_dispersion",
     "ladder_target_provenance",
     "local_authority_household_targets",
 ]
+
+_COUNTRY_BY_CODE_PREFIX = {
+    "E": "England",
+    "N": "Northern Ireland",
+    "S": "Scotland",
+    "W": "Wales",
+}
 
 
 def constituency_household_targets(ladder: UkOaLadder) -> pd.DataFrame:
@@ -43,6 +50,112 @@ def local_authority_household_targets(ladder: UkOaLadder) -> pd.DataFrame:
     """
 
     return _household_targets(ladder.local_authority_code, ladder)
+
+
+def ladder_vs_chronicle_household_dispersion(
+    ladder: UkOaLadder,
+    compiled_specs: Iterable[Any],
+) -> dict[str, object]:
+    """Compare diagnostic ladder sums with compiled Chronicle household cells."""
+
+    targets_by_level = {
+        "constituency": constituency_household_targets(ladder).set_index("code")[
+            "households"
+        ],
+        "local_authority": local_authority_household_targets(ladder).set_index("code")[
+            "households"
+        ],
+    }
+    cells: list[dict[str, object]] = []
+    for spec in compiled_specs:
+        name = str(_spec_field(spec, "name", ""))
+        if not name.startswith("ons.census.households@"):
+            continue
+        metadata = _spec_field(spec, "metadata", {})
+        if not isinstance(metadata, Mapping):
+            raise ValueError(f"{name} must carry mapping metadata.")
+        level = str(
+            metadata.get("ledger_geography_level", metadata.get("geography_level", ""))
+        )
+        area_code = str(
+            metadata.get("ledger_geography_id", metadata.get("geography_id", ""))
+        )
+        if level not in targets_by_level or not area_code:
+            raise ValueError(
+                f"{name} must identify a supported Ledger geography level and id."
+            )
+        ladder_targets = targets_by_level[level]
+        if area_code not in ladder_targets.index:
+            raise ValueError(
+                f"{name} area {area_code!r} is absent from the OA ladder {level}."
+            )
+        country = _COUNTRY_BY_CODE_PREFIX.get(area_code[:1])
+        if country is None:
+            raise ValueError(f"{name} has an unrecognised UK area code {area_code!r}.")
+        ladder_value = float(ladder_targets.loc[area_code])
+        chronicle_value = float(_spec_field(spec, "value", np.nan))
+        if not np.isfinite(chronicle_value):
+            raise ValueError(f"{name} has a non-finite Ledger household value.")
+        cells.append(
+            {
+                "name": name,
+                "geography_level": level,
+                "area_code": area_code,
+                "country": country,
+                "ladder_households": ladder_value,
+                "chronicle_households": chronicle_value,
+                "delta": ladder_value - chronicle_value,
+            }
+        )
+    if not cells:
+        raise ValueError("compiled specs contain no ons.census.households cells.")
+
+    countries: dict[str, dict[str, float | int]] = {}
+    for country in sorted({str(cell["country"]) for cell in cells}):
+        deltas = np.asarray(
+            [cell["delta"] for cell in cells if cell["country"] == country],
+            dtype=np.float64,
+        )
+        countries[country] = _dispersion_summary(deltas)
+
+    ni_constituency_deltas = np.asarray(
+        [
+            cell["delta"]
+            for cell in cells
+            if cell["country"] == "Northern Ireland"
+            and cell["geography_level"] == "constituency"
+        ],
+        dtype=np.float64,
+    )
+    if ni_constituency_deltas.size:
+        ni_summary = _dispersion_summary(ni_constituency_deltas)
+        if (
+            ni_summary["max_absolute_delta"] > 50
+            or ni_summary["mean_absolute_delta"] > 15
+        ):
+            raise ValueError(
+                "NI DZ-to-PARLCON24 household dispersion exceeds the publisher "
+                "oracle: "
+                f"mean absolute delta {ni_summary['mean_absolute_delta']:.3f}, "
+                f"max absolute delta {ni_summary['max_absolute_delta']:.3f}."
+            )
+
+    return {"countries": countries, "cells": cells}
+
+
+def _spec_field(spec: Any, name: str, default: Any) -> Any:
+    if isinstance(spec, Mapping):
+        return spec.get(name, default)
+    return getattr(spec, name, default)
+
+
+def _dispersion_summary(deltas: np.ndarray) -> dict[str, float | int]:
+    return {
+        "cells": int(deltas.size),
+        "mean_absolute_delta": float(np.abs(deltas).mean()),
+        "max_absolute_delta": float(np.abs(deltas).max()),
+        "net_delta": float(deltas.sum()),
+    }
 
 
 def ladder_target_provenance(ladder: UkOaLadder) -> dict[str, object]:

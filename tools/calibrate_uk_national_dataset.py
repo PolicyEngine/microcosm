@@ -16,14 +16,27 @@ import argparse
 import hashlib
 import json
 import re
+from importlib import metadata
 from itertools import combinations
 from pathlib import Path
 from typing import Any
 
 from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+from microcosm.build.staging_cli import (
+    add_staging_arguments,
+    validate_staging_arguments,
+)
+from microcosm.build.staging_v2 import (
+    StagingTelemetryV2,
+    disabled_staging_delivery,
+)
 from microcosm.build.uk_runtime.calibration_run import (
     UKCalibrationRunPaths,
     run_uk_calibration,
+)
+from microcosm.build.uk_runtime.chronicle_feed import (
+    UKChronicleFeed,
+    load_uk_chronicle_feed,
 )
 from microcosm.build.uk_runtime.frs_release import load_uk_frs_release
 from microcosm.build.uk_runtime.ledger_targets import compile_uk_target_registry
@@ -34,96 +47,156 @@ from microcosm.build.uk_runtime.measure_simulation import (
 )
 from microcosm.build.uk_runtime.national_doctrine import uk_doctrine_with_overrides
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
+from microcosm.build.uk_runtime.staging import UK_STAGING_REPOSITORY
 from microcosm.calibrate import TargetRegistry
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
-_CANONICAL_UK_RELEASE_ID = re.compile(r"populace-uk-[1-9][0-9]*-[a-z0-9_]+-k[1-9][0-9]*")
+_CANONICAL_UK_RELEASE_ID = re.compile(
+    r"populace-uk-[1-9][0-9]*-[a-z0-9_]+-k[1-9][0-9]*"
+)
 _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    artifact = load_ledger_consumer_artifact(
-        args.ledger_facts,
-        expected_facts_sha256=args.ledger_facts_sha256,
-        expected_manifest_sha256=args.ledger_manifest_sha256,
-    )
-    calibration_year = load_uk_frs_release().calibration_year
-    compilation = compile_uk_target_registry(
-        artifact.facts, target_period=calibration_year
-    )
-    if compilation.unsupported:
-        raise SystemExit(
-            f"{len(compilation.unsupported)} target references failed to compile"
+    _validate_input_paths(args)
+    national_feed = load_uk_chronicle_feed()
+    telemetry = _create_staging_telemetry(args)
+    try:
+        if telemetry is not None:
+            telemetry.set_sample(_full_sample())
+            telemetry.stage("target_compilation", event_status="started")
+        artifact = load_ledger_consumer_artifact(
+            args.ledger_facts,
+            expected_facts_sha256=args.ledger_facts_sha256,
+            expected_manifest_sha256=args.ledger_manifest_sha256,
         )
-    _compare_frozen_register(args.register_json, compilation.registry)
-    exclusions = load_uk_calibration_measure_exclusions(args.measure_exclusions)
-    registry, exclusion_receipt = apply_uk_calibration_measure_exclusions(
-        compilation.registry, exclusions
-    )
-    overrides = {
-        key: value
-        for key, value in {
-            "epochs": args.epochs,
-            "target_weight_rule": args.target_weight_rule,
-            "learning_rate": args.learning_rate,
-            "target_loss_cap": args.target_loss_cap,
-        }.items()
-        if value is not None
-    }
-    doctrine, doctrine_overrides = uk_doctrine_with_overrides(**overrides)
-    paths = UKCalibrationRunPaths(
-        input_h5=args.input_h5,
-        staging_h5=args.staging_h5,
-        diagnostics_json=args.diagnostics_json,
-        build_record_json=args.build_record_json,
-        terminal_gate_json=args.terminal_gate_json,
-    )
-    # The resolver reads the input H5 to build its simulation, so the pin is
-    # verified here first — no bytes are consumed before they match the CLI sha.
-    measured_input_sha = _sha256_file(args.input_h5)
-    if measured_input_sha != args.input_sha256:
-        raise SystemExit(
-            "error: --input-h5 sha mismatch: "
-            f"measured {measured_input_sha}, pinned {args.input_sha256}"
+        _check_committed_ledger_feed_pin(
+            artifact.facts_sha256,
+            manifest_sha256=artifact.manifest_sha256,
+            pin=national_feed,
+            allow_unpinned_feed=args.allow_unpinned_feed,
         )
-    resolver = UKMeasureResolver(
-        simulation_source=args.input_h5,
-        scratch_dir=args.staging_h5.parent,
-        year=calibration_year,
-        frame=None,
-    )
-    result = run_uk_calibration(
-        paths=paths,
-        input_sha256=args.input_sha256,
-        ledger_artifact=artifact,
-        register_registry=registry,
-        band_edge_registry=compilation.registry,
-        calibration_year=calibration_year,
-        exclusion_receipt=exclusion_receipt,
-        doctrine=doctrine,
-        doctrine_overrides=doctrine_overrides,
-        measure_resolver=resolver,
-        source_pins={
-            "input_h5": {
-                "sha256": args.input_sha256,
-                "size_bytes": args.input_h5.stat().st_size,
+        calibration_year = load_uk_frs_release().calibration_year
+        compilation = compile_uk_target_registry(
+            artifact.facts, target_period=calibration_year
+        )
+        if compilation.unsupported:
+            raise SystemExit(
+                f"{len(compilation.unsupported)} target references failed to compile"
+            )
+        _compare_frozen_register(args.register_json, compilation.registry)
+        exclusions = load_uk_calibration_measure_exclusions(args.measure_exclusions)
+        registry, exclusion_receipt = apply_uk_calibration_measure_exclusions(
+            compilation.registry, exclusions
+        )
+        if telemetry is not None:
+            telemetry.stage(
+                "target_compilation",
+                event_status="completed",
+                compiled_target_count=len(compilation.registry.specs),
+                active_target_count=len(registry.specs),
+            )
+        overrides = {
+            key: value
+            for key, value in {
+                "epochs": args.epochs,
+                "target_weight_rule": args.target_weight_rule,
+                "learning_rate": args.learning_rate,
+                "target_loss_cap": args.target_loss_cap,
+            }.items()
+            if value is not None
+        }
+        doctrine, doctrine_overrides = uk_doctrine_with_overrides(**overrides)
+        paths = UKCalibrationRunPaths(
+            input_h5=args.input_h5,
+            staging_h5=args.staging_h5,
+            diagnostics_json=args.diagnostics_json,
+            build_record_json=args.build_record_json,
+            terminal_gate_json=args.terminal_gate_json,
+        )
+        # The resolver reads the input H5 to build its simulation, so the pin is
+        # verified here first — no bytes are consumed before they match the CLI sha.
+        measured_input_sha = _sha256_file(args.input_h5)
+        if measured_input_sha != args.input_sha256:
+            raise SystemExit(
+                "error: --input-h5 sha mismatch: "
+                f"measured {measured_input_sha}, pinned {args.input_sha256}"
+            )
+        resolver = UKMeasureResolver(
+            simulation_source=args.input_h5,
+            scratch_dir=args.staging_h5.parent,
+            year=calibration_year,
+            frame=None,
+        )
+
+        def event_callback(stage_id: str, status: str, details) -> None:
+            if telemetry is not None:
+                telemetry.stage(stage_id, event_status=status, **dict(details))
+
+        def finalize_staging() -> None:
+            assert telemetry is not None
+            telemetry.complete(message="UK calibration staging run completed.")
+            try:
+                if args.staging_read_back:
+                    telemetry.verify_remote()
+            finally:
+                telemetry.validate_local_bundle()
+
+        result = run_uk_calibration(
+            paths=paths,
+            input_sha256=args.input_sha256,
+            ledger_artifact=artifact,
+            register_registry=registry,
+            band_edge_registry=compilation.registry,
+            calibration_year=calibration_year,
+            exclusion_receipt=exclusion_receipt,
+            doctrine=doctrine,
+            doctrine_overrides=doctrine_overrides,
+            measure_resolver=resolver,
+            source_pins={
+                "input_h5": {
+                    "sha256": args.input_sha256,
+                    "size_bytes": args.input_h5.stat().st_size,
+                },
+                "ledger_facts": _ledger_facts_pin(artifact),
             },
-            "ledger_facts": _ledger_facts_pin(artifact),
-        },
-        run_config_extra={"calibration_year": calibration_year},
-        release_id=args.release_id,
-        logbook_prev_row_digest=args.logbook_prev_row_digest,
-    )
-    summary = {
-        "staging_h5_sha256": result.staging_sha256,
-        "diagnostics_sha256": result.diagnostics_sha256,
-        "terminal_gate_sha256": result.terminal_gate_sha256,
-        "build_record_sha256": result.build_record_sha256,
-        "gate_verdicts": result.build_record["gate_summary"],
-    }
-    print(json.dumps(summary, indent=2, sort_keys=True))
-    return 0
+            run_config_extra={
+                "calibration_year": calibration_year,
+                "allow_unpinned_feed": args.allow_unpinned_feed,
+                "chronicle_feed_pin": national_feed.to_dict(),
+            },
+            release_id=args.release_id,
+            logbook_prev_row_digest=args.logbook_prev_row_digest,
+            progress_callback=(
+                telemetry.calibration_progress if telemetry is not None else None
+            ),
+            event_callback=event_callback if telemetry is not None else None,
+            staging_delivery=_staging_delivery(args, telemetry),
+            staging_finalizer=finalize_staging if telemetry is not None else None,
+            staging_delivery_provider=(
+                (lambda: telemetry.delivery_summary) if telemetry is not None else None
+            ),
+        )
+        build_record_sha256 = result.build_record_sha256
+        build_record = dict(result.build_record)
+        summary = {
+            "staging_h5_sha256": result.staging_sha256,
+            "diagnostics_sha256": result.diagnostics_sha256,
+            "terminal_gate_sha256": result.terminal_gate_sha256,
+            "build_record_sha256": build_record_sha256,
+            "gate_verdicts": build_record["gate_summary"],
+        }
+        print(json.dumps(summary, indent=2, sort_keys=True))
+        return 0
+    except BaseException as error:
+        if telemetry is not None and telemetry.status == "running":
+            try:
+                telemetry.fail(error)
+                telemetry.validate_local_bundle()
+            except Exception:
+                pass
+        raise
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -133,6 +206,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--ledger-facts", required=True, type=Path)
     parser.add_argument("--ledger-facts-sha256", required=True, type=_sha256)
     parser.add_argument("--ledger-manifest-sha256", required=True, type=_sha256)
+    parser.add_argument(
+        "--allow-unpinned-feed",
+        action="store_true",
+        help=(
+            "Allow Chronicle facts or manifest hashes outside the committed UK "
+            "national feed pin; the override is recorded in the run manifest."
+        ),
+    )
     parser.add_argument("--staging-h5", required=True, type=Path)
     parser.add_argument("--diagnostics-json", required=True, type=Path)
     parser.add_argument("--build-record-json", required=True, type=Path)
@@ -146,6 +227,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--target-weight-rule")
     parser.add_argument("--learning-rate", type=float)
     parser.add_argument("--target-loss-cap", type=float)
+    add_staging_arguments(parser, repository=UK_STAGING_REPOSITORY)
     args = parser.parse_args(argv)
     args.terminal_gate_json = args.terminal_gate_json or args.staging_h5.with_suffix(
         ".terminal_gates.json"
@@ -188,7 +270,56 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
             ),
         }
     )
+    validate_staging_arguments(parser, args)
     return args
+
+
+def _validate_input_paths(args: argparse.Namespace) -> None:
+    if not args.input_h5.is_file():
+        raise SystemExit(f"error: --input-h5 does not exist: {args.input_h5}")
+    if not args.ledger_facts.exists():
+        raise SystemExit(f"error: --ledger-facts does not exist: {args.ledger_facts}")
+
+
+def _create_staging_telemetry(args: argparse.Namespace) -> StagingTelemetryV2 | None:
+    if args.no_staging:
+        return None
+    local_only = args.staging_local_only
+    return StagingTelemetryV2(
+        run_id=args.staging_run_id or f"{args.release_id}-calibration",
+        country_code="GB",
+        operation_id="uk_national_calibration",
+        pipeline_id="uk-frs-calibration",
+        pipeline_version=metadata.version("microcosm-build"),
+        candidate_id=args.staging_candidate_id or args.release_id,
+        local_dir=args.staging_dir or args.staging_h5.parent / "staging",
+        run_kind="calibration",
+        delivery_mode="local_only" if local_only else "local_and_remote",
+        repo_id=None if local_only else args.staging_repo_id,
+        upload_interval_seconds=args.staging_upload_interval_seconds,
+    )
+
+
+def _full_sample() -> dict[str, object]:
+    return {"mode": "full"}
+
+
+def _staging_delivery(
+    args: argparse.Namespace, telemetry: StagingTelemetryV2 | None
+) -> dict[str, object]:
+    if telemetry is None:
+        return disabled_staging_delivery("--no-staging")
+    return telemetry.delivery_summary
+
+
+def _write_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
 
 
 def _sha256(value: str) -> str:
@@ -203,6 +334,30 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _check_committed_ledger_feed_pin(
+    facts_sha256: str,
+    *,
+    manifest_sha256: str | None,
+    allow_unpinned_feed: bool,
+    pin: UKChronicleFeed | None = None,
+) -> None:
+    pin = pin or load_uk_chronicle_feed()
+    mismatches = []
+    for label, loaded, committed in (
+        ("facts", facts_sha256, pin.facts_sha256),
+        ("manifest", manifest_sha256, pin.manifest_sha256),
+    ):
+        if loaded != committed:
+            mismatches.append(f"{label}: loaded {loaded}, committed {committed}")
+    if mismatches and not allow_unpinned_feed:
+        raise SystemExit(
+            "error: Chronicle artifact differs from the committed UK national feed pin: "
+            + "; ".join(mismatches)
+            + "; pass "
+            "--allow-unpinned-feed only for an explicitly reviewed diagnostic run"
+        )
 
 
 def _validate_distinct_paths(paths: dict[str, Path]) -> None:
@@ -223,7 +378,10 @@ def _paths_alias(left: Path, right: Path) -> bool:
         right_stat = right.stat()
     except FileNotFoundError:
         return False
-    return (left_stat.st_dev, left_stat.st_ino) == (right_stat.st_dev, right_stat.st_ino)
+    return (left_stat.st_dev, left_stat.st_ino) == (
+        right_stat.st_dev,
+        right_stat.st_ino,
+    )
 
 
 def _compare_frozen_register(path: Path | None, registry: Any) -> None:
@@ -252,7 +410,9 @@ def _compare_frozen_register(path: Path | None, registry: Any) -> None:
 
 def _ledger_facts_pin(artifact: Any) -> dict[str, object]:
     facts_path = (
-        artifact.path / "consumer_facts.jsonl" if artifact.path.is_dir() else artifact.path
+        artifact.path / "consumer_facts.jsonl"
+        if artifact.path.is_dir()
+        else artifact.path
     )
     return {"sha256": artifact.facts_sha256, "size_bytes": facts_path.stat().st_size}
 

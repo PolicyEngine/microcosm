@@ -425,6 +425,28 @@ def test_manifest_only_page_omits_optional_sections(tmp_path: Path) -> None:
     assert "Incident replays" not in rendered
 
 
+@pytest.mark.parametrize(
+    "diagnostic",
+    ({"state": "unreached"}, {"schema": "custom/v1", "state": "unreached"}),
+)
+def test_free_form_diagnostics_do_not_claim_executor_state(
+    tmp_path: Path, diagnostic: dict[str, str]
+) -> None:
+    run = toy.run_toy(toy.full_graph(), tmp_path / "run")
+    original = run.manifest.nodes["calibrated"]
+    changed = replace(
+        original, receipt={**dict(original.receipt), "execution": diagnostic}
+    )
+    manifest = replace(
+        run.manifest, nodes={**dict(run.manifest.nodes), "calibrated": changed}
+    )
+
+    rendered = explain_html(run.compiled, manifest)
+
+    assert 'execution-unreached" data-node-detail=' not in rendered
+    assert 'execution-gate_exception" data-node-detail=' not in rendered
+
+
 def test_saved_run_cli_validates_store_and_reattaches_frames(tmp_path: Path) -> None:
     run = toy.run_toy(toy.full_graph(), tmp_path / "run")
     manifest_path = tmp_path / "run" / "manifest.json"

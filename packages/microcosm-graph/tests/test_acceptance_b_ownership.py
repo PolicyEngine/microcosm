@@ -116,6 +116,7 @@ def test_b2_executor_enforces_ownership(tmp_path: Path) -> None:
         "params",
         "rng",
         "sources",
+        "artifacts",  # amendment 19: declared typed opaque artifact inputs
         "tolerances",  # amendment 13: declared tolerances of the inputs' owners
         "numerics",  # amendment 17: per-coordinate numeric class, bound, platform
     }

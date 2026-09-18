@@ -42,12 +42,17 @@ BINDING_KINDS = {
 }
 PROJECTION_FAMILIES = {"obr", "slc_borrowers", "scotgov_social_security"}
 NATIONAL_SELECTOR_KEYS = {
+    "aggregate_fact_key",
     "source_name",
     "source_concept",
     "source_measure_id",
     "groupby_dimension",
     "dimensions",
     "dimension_values",
+    "entity_name",
+    "period_type",
+    "period_value",
+    "layout_groupby_value_id",
 }
 LOCAL_SELECTOR_KEYS = {"source_name", "source_measure_id", "record_set_spec_id"}
 POLICYENGINE_BINDING_KEYS = {
@@ -55,6 +60,8 @@ POLICYENGINE_BINDING_KEYS = {
     "band",
     "band_filter_dimension",
     "band_period_factor",
+    "band_upper_bound",
+    "band_upper_bound_inclusive",
     "count_of",
     "filters",
     "folded_into",
@@ -68,6 +75,8 @@ POLICYENGINE_BINDING_KEYS = {
     "value_reduction",
     "map_to",
     "metric_name",
+    "measurement_period",
+    "require_matching_fact_period",
     "notes",
     "output_delta",
     "output_variable",
@@ -157,22 +166,40 @@ def test_uk_population_targets_is_registered_in_the_country_package() -> None:
 def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     resource = _load()
 
+    assert resource["schema_version"] == 2
     assert resource["country"] == "uk"
-    assert resource["allowed_value_operations"] == ["identity", "sum"]
+    assert resource["allowed_value_operations"] == [
+        "identity",
+        "sum",
+        "difference",
+        "calendar_year_average",
+        "monthly_window_average",
+        "monthly_window_sum_average",
+        "linear_combination",
+    ]
     assert resource["resolution_defaults"] == {
         "base_period_policy": "latest_not_after_build_base_period",
         "operation": "sum",
         "assertion_policy": "observed_only",
     }
-    assert len(resource["targets"]) == 222
+    assert len(resource["targets"]) == 298
+
+    providers = resource["hierarchy"]["providers"]
+    categories = resource["hierarchy"]["categories"]
+    assert providers and categories
+    assert all(provider["label"].strip() for provider in providers.values())
+    assert all(category["label"].strip() for category in categories.values())
+    assert all(category["provider_id"] in providers for category in categories.values())
+    assert all(target["label"].strip() for target in resource["targets"])
+    assert all(target["category_id"] in categories for target in resource["targets"])
 
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 189
-    assert len(profile_scope) == 33
-    assert target_ids[:189] == registry_scope
-    assert target_ids[189:] == profile_scope
+    assert len(registry_scope) == 247
+    assert len(profile_scope) == 51
+    assert target_ids[:247] == registry_scope
+    assert target_ids[247:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -185,8 +212,8 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert set(mapped_target_ids).isdisjoint(unmapped_declarations)
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
-    assert len(mapped_target_ids) == 184
-    assert len(unmapped_declarations) == 5
+    assert len(mapped_target_ids) == 192
+    assert len(unmapped_declarations) == 55
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -205,9 +232,9 @@ def test_uk_population_targets_profile_accounting_and_local_renames() -> None:
     parity = resource["profile_parity"]
     assert parity["source_profile_id"] == "uk_local_geography"
     assert parity["source_target_count"] == 25
-    assert parity["contract_target_count"] == 33
+    assert parity["contract_target_count"] == 51
     assert parity["corrected_rows"] == len(parity["corrected"]) == 25
-    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 8
+    assert parity["activation_added_rows"] == len(parity["activation_additions"]) == 26
 
     targets = {target["target_id"]: target for target in resource["targets"]}
     corrected_ids = {entry["target_id"] for entry in parity["corrected"]}
@@ -305,7 +332,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 222
+    assert len(target_ids) == 298
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -327,13 +354,15 @@ def test_uk_population_targets_declare_selector_vocabularies_and_bindings() -> N
     registry_scope = set(resource["registry_parity"]["scope_target_ids"])
     profile_scope = set(resource["profile_parity"]["scope_target_ids"])
 
-    metric_names_seen: list[str] = []
+    metric_scopes_seen: dict[str, list[frozenset[str] | None]] = {}
     for target in resource["targets"]:
         target_id = target["target_id"]
         selector = target["ledger_selector"]
         assert selector, target_id
         binding = target["bindings"]["policyengine"]
-        metric_names_seen.append(binding["metric_name"])
+        metric_scopes_seen.setdefault(binding["metric_name"], []).append(
+            _local_authority_scope(target)
+        )
 
         if target_id in registry_scope:
             assert set(selector) <= NATIONAL_SELECTOR_KEYS, target_id
@@ -356,7 +385,71 @@ def test_uk_population_targets_declare_selector_vocabularies_and_bindings() -> N
         else:
             assert "assertion_policy" not in target, target_id
 
-    assert len(metric_names_seen) == len(set(metric_names_seen))
+    # A metric name is bound once, except by nation-scoped local families
+    # whose GSS prefixes are disjoint (microcosm#929: the council-tax bands
+    # from MHCLG, StatsWales and CTAXBASE share one metric column).
+    for metric_name, scopes in metric_scopes_seen.items():
+        if len(scopes) == 1:
+            continue
+        assert all(scopes), metric_name
+        claimed: set[str] = set()
+        for scope in scopes:
+            assert scope.isdisjoint(claimed), metric_name
+            claimed |= scope
+        assert metric_name.startswith("council_tax/band_"), metric_name
+
+
+def _local_authority_scope(target: Mapping[str, object]) -> frozenset[str] | None:
+    area_scope = target.get("area_scope")
+    if not isinstance(area_scope, Mapping):
+        return None
+    level = area_scope.get("local_authority")
+    if not isinstance(level, Mapping):
+        return None
+    return frozenset(str(prefix) for prefix in level.get("gss_prefixes", ())) or None
+
+
+def test_childcare_bus_observation_basis_and_entity_pins_are_closed_world() -> None:
+    resource = _load()
+    registry_scope = set(resource["registry_parity"]["scope_target_ids"])
+    allowed_basis = {
+        "annual_flow",
+        "annual_unique_count",
+        "january_stock",
+        "fiscal_year_flow",
+        "individuals_observed_disposal_year_2024_liability",
+        "individuals_observed_disposal_year_2024_net_gains_and_aea",
+    }
+    allowed_operations = set(resource["allowed_value_operations"])
+    for target in resource["targets"]:
+        operation = target.get("value_operation", "identity")
+        assert operation in allowed_operations, target["target_id"]
+        basis = target["measurement"].get("observation_basis")
+        if basis is not None:
+            assert basis in allowed_basis, target["target_id"]
+        if target["target_id"] in registry_scope and target["measurement"][
+            "concept"
+        ].endswith(".amount"):
+            assert "entity_name" in target["ledger_selector"], target["target_id"]
+
+    childcare = [
+        target
+        for target in resource["targets"]
+        if target["family"] == "dfe_funded_childcare"
+    ]
+    assert len(childcare) == 3
+    assert all(
+        not target["measurement"]["concept"].endswith(".amount") for target in childcare
+    )
+
+
+def test_diagnostic_only_cma_comparator_is_not_a_target() -> None:
+    resource = _load()
+
+    assert all(
+        "cma" not in target["target_id"].lower() for target in resource["targets"]
+    )
+    assert all("role" not in target for target in resource["targets"])
 
 
 def test_uk_population_targets_declare_chronicle_loader_guarantees() -> None:
@@ -425,6 +518,13 @@ def test_uk_population_targets_declare_chronicle_loader_guarantees() -> None:
                         target["target_id"],
                         predicate,
                     )
+                if "map_to" in predicate:
+                    assert field == "household_conditions", target["target_id"]
+                    assert predicate["map_to"] in PREDICATE_ENTITIES
+                    assert predicate["map_to"] == binding.get(
+                        "from_entity", "household"
+                    )
+                    assert "reduce" in predicate
 
         assertion_policy = target.get("assertion_policy")
         if assertion_policy is not None:
@@ -484,15 +584,12 @@ def test_uk_population_targets_use_corrected_local_selector_vocabulary() -> None
 def test_uk_population_targets_preserve_local_metric_ordering_contract() -> None:
     resource = load_uk_local_geography_contract()
 
-    assert (
-        metric_names_from_target_profile(resource, "constituency")
-        == metric_names("constituency")[:-1]
+    assert metric_names_from_target_profile(resource, "constituency") == metric_names(
+        "constituency"
     )
-    assert metric_names_from_target_profile(resource, "la") == tuple(
-        name for name in metric_names("la") if name != "households"
-    )
-    assert len(metric_names_from_target_profile(resource, "constituency")) == 17
-    assert len(metric_names_from_target_profile(resource, "la")) == 29
+    assert metric_names_from_target_profile(resource, "la") == metric_names("la")
+    assert len(metric_names_from_target_profile(resource, "constituency")) == 18
+    assert len(metric_names_from_target_profile(resource, "la")) == 31
 
 
 def test_uk_population_uc_households_target_counts_benunits() -> None:
@@ -502,6 +599,7 @@ def test_uk_population_uc_households_target_counts_benunits() -> None:
     assert target["measurement"] == {
         "entity": "benunit",
         "concept": "uk.benefit_unit.count",
+        "source_months": [f"2025-{month:02}" for month in range(1, 13)],
         "filters": [
             {
                 "concept": "uk.benefits.universal_credit.amount",
@@ -521,7 +619,39 @@ def test_uk_population_uc_households_target_counts_benunits() -> None:
     ]
     assert target["ledger_selector"] == {
         "source_name": "dwp",
-        "source_concept": "dwp.uc_benefit_units",
+        "source_concept": "dwp.uc_households",
+        "source_measure_id": "benefit_units",
+        "groupby_dimension": "dwp.uc_family_type",
+        "dimensions": ["family_type", "payment_indicator", "child_entitlement"],
+        "dimension_values": {
+            "payment_indicator": "Yes",
+            "child_entitlement": ["No", "Yes"],
+            "family_type": [
+                "Single, no children",
+                "Single, with children",
+                "Couple, no children",
+                "Couple, with children",
+                "Unknown or missing family type",
+            ],
+        },
+        "period_type": "month",
+        "period_value": [f"2025-{month:02}" for month in range(1, 13)],
+    }
+    assert target["value_operation"] == "monthly_window_sum_average"
+    assert target["period_match_policy"] == "source_window"
+    assert len(target["value_operands"]) == 10
+    assert "derived" in target["bindings"]["policyengine"]["notes"]
+    assert "publisher grand Total" in target["bindings"]["policyengine"]["notes"]
+
+
+def test_uk_census_households_measurement_is_occupied_households() -> None:
+    target = _target_by_id(_load(), "ons.census.households")
+    assert target["label"] == "Occupied households"
+    assert target["category_id"] == "ons.household_composition"
+    assert target["measurement"] == {
+        "entity": "household",
+        "concept": "uk.household.count",
+        "filters": [{"concept": "uk.household.occupancy", "equals": "occupied"}],
     }
 
 
@@ -540,30 +670,193 @@ def test_uk_uc_composition_and_disability_children_targets_are_rebound() -> None
     }
     allowed_filter_variables = {
         "universal_credit",
-        "num_children",
-        "family_type",
+        "uc_calibration_child_count",
+        "uc_calibration_administrative_family_type",
     }
 
     for target_id in composition_target_ids:
         binding = _target_by_id(resource, target_id)["bindings"]["policyengine"]
         assert binding["from_entity"] == "benunit"
         assert binding["value_variable"] == "benunit_count"
-        assert "household_conditions" not in binding
+        assert all(
+            condition["variable"] == "region" and condition["map_to"] == "benunit"
+            for condition in binding.get("household_conditions", ())
+        )
         assert "reduce" not in binding
         assert all(
             predicate["variable"] in allowed_filter_variables
             for predicate in binding["filters"]
         )
 
-    for target_id in {
-        "dwp.uc.two_child_limit.children_claimant_pip",
-        "dwp.uc.two_child_limit.children_disabled_child_element",
-    }:
+    for target_id, flag in {
+        "dwp.uc.two_child_limit.children_claimant_pip": "uc_tcl_claimant_receives_pip",
+        "dwp.uc.two_child_limit.children_disabled_child_element": (
+            "uc_tcl_receives_disabled_child_element"
+        ),
+    }.items():
         binding = _target_by_id(resource, target_id)["bindings"]["policyengine"]
-        assert binding["value_variable"] == "is_child"
-        assert binding["value_reduction"]["variable"] == "is_child"
+        assert binding["from_entity"] == "benunit"
+        assert binding["value_variable"] == "uc_tcl_qualifying_child_count"
+        assert "value_reduction" not in binding
         assert binding["kind"] == "baseline_flag_crosstab"
-        assert binding["affected_flag_variable"] == "uc_is_child_limit_affected"
+        assert binding["affected_flag_variable"] == "uc_tcl_affected_benunit_proxy"
+        assert binding["filters"] == [{"variable": flag, "operator": ">", "value": 0}]
+
+
+def test_paid_uc_targets_preserve_entitlement_margins_and_exact_calendar_months() -> (
+    None
+):
+    """#252's paid margin is broader than its paid/child-entitled joint.
+
+    No target may silently replace either entitlement status with Yes, or
+    reconstruct the independently published child-count Total from detail cells.
+    """
+    targets = _load()["targets"]
+    months = [f"2025-{month:02}" for month in range(1, 13)]
+    paid_targets = [
+        t
+        for t in targets
+        if t["target_id"] == "dwp.uc.households"
+        or t["target_id"].startswith("dwp.uc.households_children_")
+        or t["target_id"]
+        in {
+            "dwp.uc.households_single_no_children",
+            "dwp.uc.households_single_with_children",
+            "dwp.uc.households_couple_no_children",
+            "dwp.uc.households_couple_with_children",
+        }
+    ]
+    assert len(paid_targets) == 10
+    for target in paid_targets:
+        selector = target["ledger_selector"]
+        assert target["measurement"]["source_months"] == months
+        assert selector["period_type"] == "month"
+        assert selector["period_value"] == months
+        assert selector["dimension_values"]["payment_indicator"] == "Yes"
+        assert not any(
+            f["variable"] == "uc_calibration_child_entitlement"
+            for f in target["bindings"]["policyengine"]["filters"]
+        )
+        if target["target_id"].startswith("dwp.uc.households_children_"):
+            assert selector["source_measure_id"] == "total_benefit_units"
+            assert selector["dimension_values"]["child_entitlement"] == "all"
+            assert target["value_operation"] == "monthly_window_average"
+            assert target["period_match_policy"] == "source_window"
+            assert "value_operands" not in target
+        else:
+            assert selector["source_measure_id"] == "benefit_units"
+            assert target["value_operation"] == "monthly_window_sum_average"
+            assert target["period_match_policy"] == "source_window"
+            terms = [o["dimension_values"] for o in target["value_operands"]]
+            assert all(
+                set(term) == {"family_type", "payment_indicator", "child_entitlement"}
+                for term in terms
+            )
+            assert {term["child_entitlement"] for term in terms} == {"No", "Yes"}
+            assert len(terms) == (
+                10 if target["target_id"] == "dwp.uc.households" else 2
+            )
+            families = selector["dimension_values"]["family_type"]
+            if isinstance(families, str):
+                families = [families]
+            assert {
+                (
+                    term["family_type"],
+                    term["payment_indicator"],
+                    term["child_entitlement"],
+                )
+                for term in terms
+            } == {
+                (family, "Yes", entitlement)
+                for family in families
+                for entitlement in ("No", "Yes")
+            }
+
+
+def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -> None:
+    targets = [
+        t
+        for t in _load()["targets"]
+        if t["target_id"].startswith("dwp.uc.payment_distribution_")
+    ]
+    assert len(targets) == 4
+    for target in targets:
+        assert target["measurement"]["source_months"] == [
+            f"2025-{month:02}" for month in range(4, 13)
+        ]
+        assert (
+            target["bindings"]["policyengine"]["filters"][0]["variable"]
+            == "uc_calibration_administrative_family_type"
+        )
+        assert target["bindings"]["policyengine"]["band_upper_bound"] == 2500
+
+
+def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
+    targets = _load()["targets"]
+    assert len(targets) == 298
+    assert not any(
+        f.get("variable") == "uc_calibration_child_entitlement"
+        for target in targets
+        for f in target["bindings"]["policyengine"].get("filters", [])
+    )
+
+
+def test_uc_gb_bindings_match_the_committed_source_geography_and_finite_bands():
+    """Source K03000001 is GB; DWP £2400.01–2500 is not its £2500.01+ row."""
+    resource = _load()
+    references = json.loads(
+        importlib_resources.files("microcosm.build.uk")
+        .joinpath("target_references.json")
+        .read_text()
+    )["target_references"]
+    gb_ids = {
+        row["metadata"]["contract_target_id"]
+        for row in references
+        if row["metadata"]["contract_target_id"].startswith("dwp.uc.")
+        and row["ledger_selector"]["geography_id"] == "K03000001"
+    }
+    assert len(gb_ids) == 36
+    for target_id in gb_ids:
+        binding = _target_by_id(resource, target_id)["bindings"]["policyengine"]
+        geographic = [
+            condition
+            for condition in binding["household_conditions"]
+            if condition["variable"] == "region"
+        ]
+        assert len(geographic) == 1
+        assert geographic[0]["entity"] == "household"
+        assert geographic[0]["operator"] == "in"
+        assert set(geographic[0]["value"]) == {
+            "NORTH_EAST",
+            "NORTH_WEST",
+            "YORKSHIRE",
+            "EAST_MIDLANDS",
+            "WEST_MIDLANDS",
+            "EAST_OF_ENGLAND",
+            "LONDON",
+            "SOUTH_EAST",
+            "SOUTH_WEST",
+            "WALES",
+            "SCOTLAND",
+        }
+        assert geographic[0].get("map_to", "household") == binding.get(
+            "from_entity", "household"
+        )
+        if target_id.startswith("dwp.uc.payment_distribution_"):
+            assert binding["band_upper_bound"] == 2500
+            assert binding["band_upper_bound_inclusive"] is True
+            assert binding["band_period_factor"] == 12
+    # The omitted source top-coded row is not introduced or merged into a
+    # finite reference by these measurement-only changes.
+    payment = [
+        row for row in references if row["name"].startswith("dwp/uc_payment_dist/")
+    ]
+    assert len(payment) == 100
+    assert all(
+        "or over"
+        not in row["ledger_selector"]["dimension_values"]["monthly_award_amount_bands"]
+        for row in payment
+    )
 
 
 def test_uk_population_cgt_contract_names_match_runtime_specs() -> None:
@@ -579,6 +872,7 @@ def test_uk_population_cgt_contract_names_match_runtime_specs() -> None:
     assert UK_CGT_TARGET_SPECS == ()
     assert cgt_metric_names == [
         "hmrc/capital_gains_total",
+        "hmrc/cgt_liability",
         "hmrc/cgt_taxpayers",
     ]
     assert mapped["hmrc/capital_gains_total"] == "hmrc.cgt.gains_total"
@@ -614,3 +908,91 @@ def _valid_dimension_values(value: object) -> bool:
 
 def _is_dimension_scalar(value: object) -> bool:
     return isinstance(value, str | int | float | bool)
+
+
+def test_household_composition_rows_bind_on_the_frs_relationships_column() -> None:
+    # microcosm#791: the ten ONS Table 7 cells bind on one frame column whose
+    # values are Chronicle's ons.household_type value ids, so each row's
+    # condition value is its own selector dimension value and the ten cover
+    # the declared domain exactly once.
+    from microcosm.build.uk_runtime.frs_relationships import (
+        CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS,
+    )
+
+    resource = _load()
+    rows = [
+        target
+        for target in resource["targets"]
+        if target["family"] == "ons_household_composition"
+    ]
+    assert len(rows) == 10
+    seen = []
+    for target in rows:
+        binding = target["bindings"]["policyengine"]
+        conditions = binding["household_conditions"]
+        assert len(conditions) == 1, target["target_id"]
+        (condition,) = conditions
+        assert condition == {
+            "variable": "ons_household_type",
+            "operator": "==",
+            "value": target["ledger_selector"]["dimension_values"]["household_type"],
+        }, target["target_id"]
+        assert "reduce" not in condition and "entity" not in condition
+        assert binding["value_variable"] == "household_count"
+        assert "microcosm#791" in binding["notes"], target["target_id"]
+        # The partition is declared on the measurement too (microcosm#929):
+        # the cross-grain operator groups contract rows by their exact
+        # measurement signature, and an unfiltered household count would put
+        # these ten cells in the same group as every other household total.
+        assert target["measurement"] == {
+            "entity": "household",
+            "concept": "uk.household.count",
+            "filters": [
+                {
+                    "concept": "uk.household.composition_type",
+                    "equals": condition["value"],
+                }
+            ],
+        }, target["target_id"]
+        seen.append(condition["value"])
+    assert seen == list(CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS)
+
+
+def test_household_composition_cells_do_not_share_the_household_total_signature() -> (
+    None
+):
+    # microcosm#929: with `control_grains = (country, region)` (microcosm#906)
+    # every K02000001 row whose exact signature matches a lower-grain total is
+    # a control for it. The ten composition cells used to carry the bare
+    # `uk.household.count` signature and collided with the council-tax stock
+    # totals ("two different control values at grain 'country'").
+    from microcosm.build.cross_grain import _measurement_signature
+    from microcosm.build.uk_runtime.ledger_targets import UK_CROSS_GRAIN_RULE
+
+    resource = _load()
+    by_id = {target["target_id"]: target for target in resource["targets"]}
+    fields = UK_CROSS_GRAIN_RULE.signature_fields
+    composition = {
+        _measurement_signature(target, fields)
+        for target in resource["targets"]
+        if target["family"] == "ons_household_composition"
+    }
+    assert len(composition) == 10
+    other_household_counts = [
+        _measurement_signature(target, fields)
+        for target in resource["targets"]
+        if target["measurement"].get("concept") == "uk.household.count"
+        and target["family"] != "ons_household_composition"
+    ]
+    assert other_household_counts, "the contract still carries household counts"
+    assert composition.isdisjoint(other_household_counts)
+    # The stock totals leave the group from their side too (#906 round 2):
+    # each carries its nation's band list as a filter.
+    for target_id, bands in (
+        ("scotgov.council_tax_stock.total", list("ABCDEFGH")),
+        ("mhclg.council_tax_stock.total", list("ABCDEFGH")),
+        ("welshgov.council_tax_stock.total", list("ABCDEFGHI")),
+    ):
+        assert by_id[target_id]["measurement"]["filters"] == [
+            {"concept": "uk.housing.council_tax_band", "operator": "in", "value": bands}
+        ], target_id

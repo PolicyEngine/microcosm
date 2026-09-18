@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from collections.abc import Callable, Mapping, Sequence
@@ -25,11 +26,9 @@ Provider = Callable[[Any, Mapping[str, Any], int | str], np.ndarray]
 # sibling's lower edge within the same compiled contract target. Edges must
 # never derive from an exclusion-pruned roster, or excluding a band silently
 # widens its lower neighbour; only the compiled register's top band runs to
-# infinity.
+# infinity unless the binding declares a source-unit ``band_upper_bound``.
 # Entity-count indicators: a value of one per record of the owning entity.
-_COUNT_VALUE_VARIABLES = frozenset(
-    {"household_count", "person_count", "benunit_count"}
-)
+_COUNT_VALUE_VARIABLES = frozenset({"household_count", "person_count", "benunit_count"})
 
 _BAND_LOWER_BOUND_SUFFIX = "_lower_bound"
 _LEDGER_FILTER_PREFIX = "ledger_filter_"
@@ -154,6 +153,9 @@ def resolve_target_measures(
     source frame rather than on the restored output.
     """
 
+    validate_period = getattr(provider, "validate_period", None)
+    if callable(validate_period):
+        validate_period(period)
     contract = _measure_resolution_contract(
         registry, provider, contract_targets=contract_targets
     )
@@ -182,9 +184,7 @@ def resolve_target_measures(
             "skipped": [skip.__dict__ for skip in skipped],
         }
         receipt["rounds"].append(round_receipt)
-        all_skips.extend(
-            {**skip.__dict__, "round": round_index} for skip in skipped
-        )
+        all_skips.extend({**skip.__dict__, "round": round_index} for skip in skipped)
         if not skipped:
             return MeasureResolution(
                 measure_inputs=MappingProxyType(dict(measure_inputs)),
@@ -242,6 +242,10 @@ def resolve_target_measures(
                     all_skips,
                 )
             measure_inputs[key] = np.asarray(values)
+            # Providers can learn the comparison contract while resolving
+            # inputs (for example, UC claim-state/date proxies). Preserve the
+            # post-computation receipt, not only the pre-resolution snapshot.
+            receipt["provider"] = _measure_provider_receipt(provider)
             provided_this_round.add(key)
             receipt["attached"][f"{entity}.{variable}"] = route
             progressed = True
@@ -308,9 +312,7 @@ def _raise_measure_resolution(
     raise MeasureResolutionError(message, receipt=receipt)
 
 
-def _band_lower_edge(
-    spec: Any, binding: Mapping[str, Any]
-) -> float | None:
+def _band_lower_edge(spec: Any, binding: Mapping[str, Any]) -> float | None:
     """This spec's band lower edge in model units, or None if unbanded.
 
     Reads the compiled spec's Ledger filter metadata: a ``*_lower_bound``
@@ -441,6 +443,30 @@ def _band_bounds(
         if edge > lower:
             upper = edge
             break
+    # A consumer may bind only the finite portion of a published histogram.
+    # Declare its source-unit ceiling instead of allowing the last included
+    # row to absorb a separately published, unbound top-coded category.
+    if "band_upper_bound" in binding:
+        inclusive = binding.get("band_upper_bound_inclusive")
+        factor = float(binding.get("band_period_factor", 1))
+        declared_upper = float(binding["band_upper_bound"]) * factor
+        if (
+            not isinstance(inclusive, bool)
+            or not math.isfinite(factor)
+            or factor <= 0
+            or not math.isfinite(declared_upper)
+            or declared_upper <= lower
+        ):
+            raise ValueError(
+                "band_upper_bound requires a finite bound above the lower "
+                "edge, a positive period factor and an explicit boolean "
+                "band_upper_bound_inclusive"
+            )
+        if inclusive:
+            declared_upper = np.nextafter(declared_upper, math.inf)
+        upper = min(upper, declared_upper)
+    elif "band_upper_bound_inclusive" in binding:
+        raise ValueError("band_upper_bound_inclusive requires band_upper_bound")
     return lower, upper
 
 
@@ -462,12 +488,17 @@ def materialize_target_bindings(
     )
     skipped: list[MaterializationSkip] = []
     for spec in registry.specs:
-        if hasattr(adapter, "has_column") and adapter.has_column(
-            spec.entity, spec.measure
-        ):
-            continue
         contract_target_id = spec.metadata.get("contract_target_id")
         target = contract_targets.get(str(contract_target_id))
+        binding = target["bindings"]["policyengine"] if target is not None else {}
+        binding = _with_geography_predicate(binding, spec)
+        if (
+            hasattr(adapter, "has_column")
+            and adapter.has_column(spec.entity, spec.measure)
+            and "measurement_period" not in binding
+            and not binding.get("require_matching_fact_period")
+        ):
+            continue
         if target is None:
             skipped.append(
                 MaterializationSkip(
@@ -477,14 +508,23 @@ def materialize_target_bindings(
                 )
             )
             continue
-        binding = target["bindings"]["policyengine"]
+        # A period-constrained binding must validate its fact and prepare again.
+        # A pre-existing column has no period provenance and may be stale.
         kind = binding.get("kind")
         try:
+            measurement_period = binding.get("measurement_period", period)
+            if binding.get("require_matching_fact_period") and str(
+                spec.metadata.get("ledger_fact_period")
+            ) != str(measurement_period):
+                raise ValueError(
+                    f"observation period {spec.metadata.get('ledger_fact_period')!r} "
+                    f"does not match declared measurement period {measurement_period}"
+                )
             if kind:
                 provider = provider_registry.get(str(kind))
                 if provider is None:
                     raise ValueError(f"unsupported binding kind {kind!r}")
-                values = provider(adapter, binding, period)
+                values = provider(adapter, binding, measurement_period)
             else:
                 band = None
                 if binding.get("groupby_variable"):
@@ -589,6 +629,54 @@ def input_substitution_counterfactual(
     if hasattr(adapter, "counterfactual_delta"):
         return np.asarray(adapter.counterfactual_delta(binding, period), dtype=float)
     raise ValueError("adapter does not provide counterfactual_delta")
+
+
+def _with_geography_predicate(
+    binding: Mapping[str, Any],
+    spec: Any,
+) -> Mapping[str, Any]:
+    """Scope a contract binding to one reference's declared geography.
+
+    A reference authored by a geography fan-out shares its contract binding
+    with every sibling cell; what distinguishes the cells is the predicate the
+    authoring stamped into ``metadata.geography_predicate`` (a JSON object in
+    the ordinary predicate vocabulary). It is appended to the binding's
+    ``filters`` verbatim. References without the key are untouched, so no
+    existing country-level reference is re-scoped by its geography stamp.
+    """
+
+    metadata = getattr(spec, "metadata", None) or {}
+    raw = metadata.get("geography_predicate")
+    if not raw:
+        return binding
+    name = getattr(spec, "name", "<unnamed>")
+    try:
+        predicate = json.loads(str(raw))
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"{name!r}: metadata.geography_predicate is not valid JSON: {error}"
+        ) from None
+    if not isinstance(predicate, Mapping) or not predicate.get("variable"):
+        raise ValueError(
+            f"{name!r}: metadata.geography_predicate must be a predicate object "
+            "naming a variable."
+        )
+    if binding.get("kind"):
+        raise ValueError(
+            f"{name!r}: a geography predicate cannot scope a provider binding "
+            f"of kind {binding['kind']!r}; providers do not read filters."
+        )
+    map_to = predicate.get("map_to")
+    entity = getattr(spec, "entity", None)
+    if map_to is not None and entity and str(map_to) != str(entity):
+        raise ValueError(
+            f"{name!r}: metadata.geography_predicate projects to {map_to!r} but "
+            f"the reference measures {entity!r}; the mask would misalign."
+        )
+    return {
+        **binding,
+        "filters": [*binding.get("filters", ()), dict(predicate)],
+    }
 
 
 def _prepared_column_values(

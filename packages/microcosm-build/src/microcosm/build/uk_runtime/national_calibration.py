@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 import numpy as np
 
+from microcosm.build.observation import StageEventObserver, StageEventRun
 from microcosm.build.plan import Stage
 from microcosm.build.target_materialization import (
     MeasureResolution,
@@ -32,7 +33,10 @@ from microcosm.calibrate import (
 from microcosm.frame import Frame, WeightKind, Weights
 
 __all__ = [
+    "CalibrationFrameAdapter",
     "UKNationalCalibrationStage",
+    "drop_injected_measure_inputs",
+    "inject_measure_inputs",
     "national_calibration_mass_reason",
     "uk_national_calibration_stage",
 ]
@@ -49,6 +53,8 @@ class UKNationalCalibrationStage:
         doctrine: UKNationalSolveDoctrine = UK_NATIONAL_SOLVE_DOCTRINE,
         measure_resolver: object | None = None,
         band_edge_registry: TargetRegistry,
+        progress_callback: Callable[[dict[str, object]], None] | None = None,
+        stage_callback: StageEventObserver | None = None,
     ) -> None:
         self.compilation = (
             registry
@@ -64,6 +70,8 @@ class UKNationalCalibrationStage:
         # The materialization period is the declared calibration year the
         # registry was compiled at — never the input frame's base-year
         # time_period, which lags it (survey 2024, calibration 2025).
+        # A binding can separately declare its observed measurement period,
+        # as the three individual CGT rows do for FY2024-25.
         if not isinstance(period, int) or isinstance(period, bool) or period <= 0:
             raise ValueError(
                 f"period must be the declared calibration year, got {period!r}."
@@ -71,141 +79,188 @@ class UKNationalCalibrationStage:
         self.period = period
         self.doctrine = doctrine
         self.measure_resolver = measure_resolver
+        self.progress_callback = progress_callback
+        self.stage_callback = stage_callback
         self.manifest: dict[str, object] | None = None
         self.diagnostics: tuple[dict[str, object], ...] = ()
         self.solve_result: CalibrationResult | None = None
         self.output_content_identity: str | None = None
 
     def __call__(self, frame: Frame) -> Frame:
-        declared = len(self.registry.specs) + len(self.compilation.unsupported)
-        resolved = len(self.registry.specs)
-        if self.compilation.unsupported:
-            raise RuntimeError(
-                "UK national calibration resolved "
-                f"{resolved} of {declared} activated target references; "
-                f"unsupported={self.compilation.unsupported!r}."
-            )
-        adapter = _CalibrationFrameAdapter(frame)
-        original_columns = {
-            entity: set(table.columns) for entity, table in adapter.tables.items()
-        }
-        measure_resolution = self._resolve_measures(frame)
-        if measure_resolution is not None:
-            _inject_measure_inputs(adapter, measure_resolution.measure_inputs)
-        materialized = materialize_uk_ledger_targets(
-            adapter,
-            self.registry,
-            period=self.period,
-            band_edge_registry=self.band_edge_registry,
-        )
-        if materialized.skipped:
-            skipped = [skip.__dict__ for skip in materialized.skipped]
-            raise RuntimeError(
-                "UK national calibration could not materialize every activated "
-                f"target reference: skipped={skipped}."
-            )
-        if measure_resolution is not None:
-            _drop_injected_measure_inputs(
-                adapter,
-                measure_resolution.measure_inputs,
-                original_columns,
-            )
-        prepared = adapter.prepared_frame()
-        mass_reason = national_calibration_mass_reason(
-            spec.family for spec in self.registry.specs
-        )
-        mass_log_records_before_calibration = len(frame.mass_log)
-        # Target-set rows follow registry spec order, so the doctrine weight
-        # vector aligns positionally; under the default "uniform" rule this
-        # is None — the kernel's own equal weighting.
-        target_loss_weights = uk_national_target_loss_weights(
-            [spec.family for spec in self.registry.specs],
-            rule=self.doctrine.target_weight_rule,
-        )
-        result = calibrate(
-            prepared,
-            self.registry.to_target_set(),
-            weight_entity="household",
-            epochs=self.doctrine.epochs,
-            learning_rate=self.doctrine.learning_rate,
-            mass=self.doctrine.mass_rule,
-            mass_reason=mass_reason,
-            max_weight_ratio=self.doctrine.max_weight_ratio,
-            seed=self.doctrine.seed,
-            l0_lambda=self.doctrine.l0_lambda,
-            target_loss_cap=self.doctrine.target_loss_cap,
-            target_loss_weights=target_loss_weights,
-        )
-        if result.skipped or len(result.problem.names) != declared:
-            skipped = [item.name for item in result.skipped]
-            raise RuntimeError(
-                "UK national calibration matrix did not contain every activated "
-                f"reference: declared={declared}, rows={len(result.problem.names)}, "
-                f"skipped={skipped}."
-            )
-        clean_frame = adapter.restore(result.frame)
-        self.solve_result = result
-        calibration_record = _post_solve_calibration_record(
-            frame,
-            clean_frame,
-            before_count=mass_log_records_before_calibration,
-        )
-        self.diagnostics = tuple(
-            {
-                "name": row.name,
-                "estimate": row.final_estimate,
-                "target": row.target,
-                "relative_error": row.relative_error,
+        with self._observe("calibration_input_validation") as operation:
+            declared = len(self.registry.specs) + len(self.compilation.unsupported)
+            resolved = len(self.registry.specs)
+            if self.compilation.unsupported:
+                raise RuntimeError(
+                    "UK national calibration resolved "
+                    f"{resolved} of {declared} activated target references; "
+                    f"unsupported={self.compilation.unsupported!r}."
+                )
+            adapter = _CalibrationFrameAdapter(frame)
+            original_columns = {
+                entity: set(table.columns) for entity, table in adapter.tables.items()
             }
-            for row in result.diagnostics
-        )
-        ratios = result.weights / result.initial_weights
-        old_total = float(calibration_record.old_total)
-        new_total = float(calibration_record.new_total)
-        before_kind = frame.weights_for("household").kind
-        after_kind = clean_frame.weights_for("household").kind
-        manifest = {
-            "activated_reference_count": declared,
-            "resolved_reference_count": resolved,
-            "matrix_target_count": len(result.problem.names),
-            "loss": result.final_loss,
-            "effective_sample_size": effective_sample_size(result.weights),
-            "max_weight_ratio": float(ratios.max()),
-            "max_weight_ratio_bound": self.doctrine.max_weight_ratio,
-            "target_materialization": materialized.report(),
-            "weights": {
-                "household_weight_kind": after_kind.value,
-                "household_weight_kind_chain": [
-                    {"stage": "staging", "kind": before_kind.value},
-                    {"stage": "national_calibration", "kind": after_kind.value},
-                ],
-                "mass_log_records_before_calibration": (
-                    mass_log_records_before_calibration
-                ),
-                "mass_log_records": len(clean_frame.mass_log),
-                "calibration_mass_change": {
-                    "entity": str(calibration_record.entity),
-                    "old_total": old_total,
-                    "new_total": new_total,
-                    "relative_shift": (new_total - old_total) / old_total,
-                    "declared_factor": calibration_record.declared_factor,
-                    "reason": str(calibration_record.reason),
+            operation.complete(
+                activated_reference_count=declared,
+                resolved_reference_count=resolved,
+            )
+
+        with self._observe("measure_resolution") as operation:
+            measure_resolution = self._resolve_measures(frame)
+            operation.complete(
+                resolved_measure_count=(
+                    0
+                    if measure_resolution is None
+                    else len(measure_resolution.measure_inputs)
+                )
+            )
+
+        with self._observe("target_materialization") as operation:
+            if measure_resolution is not None:
+                _inject_measure_inputs(adapter, measure_resolution.measure_inputs)
+            materialized = materialize_uk_ledger_targets(
+                adapter,
+                self.registry,
+                period=self.period,
+                band_edge_registry=self.band_edge_registry,
+            )
+            if materialized.skipped:
+                skipped = [skip.__dict__ for skip in materialized.skipped]
+                raise RuntimeError(
+                    "UK national calibration could not materialize every activated "
+                    f"target reference: skipped={skipped}."
+                )
+            if measure_resolution is not None:
+                _drop_injected_measure_inputs(
+                    adapter,
+                    measure_resolution.measure_inputs,
+                    original_columns,
+                )
+            operation.complete(materialized_target_count=len(self.registry.specs))
+
+        with self._observe("solver_preparation") as operation:
+            prepared = adapter.prepared_frame()
+            mass_reason = national_calibration_mass_reason(
+                spec.family for spec in self.registry.specs
+            )
+            mass_log_records_before_calibration = len(frame.mass_log)
+            # Target-set rows follow registry spec order, so the doctrine weight
+            # vector aligns positionally; under the default "uniform" rule this
+            # is None — the kernel's own equal weighting.
+            target_loss_weights = uk_national_target_loss_weights(
+                [spec.family for spec in self.registry.specs],
+                rule=self.doctrine.target_weight_rule,
+            )
+            target_set = self.registry.to_target_set()
+            operation.complete(
+                target_count=len(self.registry.specs),
+                household_count=len(prepared.table("household")),
+            )
+
+        with self._observe("solver_execution") as operation:
+            result = calibrate(
+                prepared,
+                target_set,
+                weight_entity="household",
+                epochs=self.doctrine.epochs,
+                learning_rate=self.doctrine.learning_rate,
+                mass=self.doctrine.mass_rule,
+                mass_reason=mass_reason,
+                max_weight_ratio=self.doctrine.max_weight_ratio,
+                seed=self.doctrine.seed,
+                l0_lambda=self.doctrine.l0_lambda,
+                target_loss_cap=self.doctrine.target_loss_cap,
+                target_loss_weights=target_loss_weights,
+                progress_callback=self.progress_callback,
+            )
+            operation.complete(
+                matrix_target_count=len(result.problem.names),
+                final_loss=float(result.final_loss),
+            )
+
+        with self._observe("calibration_result_validation") as operation:
+            if result.skipped or len(result.problem.names) != declared:
+                skipped = [item.name for item in result.skipped]
+                raise RuntimeError(
+                    "UK national calibration matrix did not contain every activated "
+                    f"reference: declared={declared}, rows={len(result.problem.names)}, "
+                    f"skipped={skipped}."
+                )
+            clean_frame = adapter.restore(result.frame)
+            self.solve_result = result
+            calibration_record = _post_solve_calibration_record(
+                frame,
+                clean_frame,
+                before_count=mass_log_records_before_calibration,
+            )
+            operation.complete(
+                entity_row_counts={
+                    entity: int(len(clean_frame.table(entity)))
+                    for entity in clean_frame.entities
+                }
+            )
+
+        with self._observe("calibration_evidence_construction") as operation:
+            self.diagnostics = tuple(
+                {
+                    "name": row.name,
+                    "estimate": row.final_estimate,
+                    "target": row.target,
+                    "relative_error": row.relative_error,
+                }
+                for row in result.diagnostics
+            )
+            ratios = result.weights / result.initial_weights
+            old_total = float(calibration_record.old_total)
+            new_total = float(calibration_record.new_total)
+            before_kind = frame.weights_for("household").kind
+            after_kind = clean_frame.weights_for("household").kind
+            manifest = {
+                "activated_reference_count": declared,
+                "resolved_reference_count": resolved,
+                "matrix_target_count": len(result.problem.names),
+                "loss": result.final_loss,
+                "effective_sample_size": effective_sample_size(result.weights),
+                "max_weight_ratio": float(ratios.max()),
+                "max_weight_ratio_bound": self.doctrine.max_weight_ratio,
+                "target_materialization": materialized.report(),
+                "weights": {
+                    "household_weight_kind": after_kind.value,
+                    "household_weight_kind_chain": [
+                        {"stage": "staging", "kind": before_kind.value},
+                        {"stage": "national_calibration", "kind": after_kind.value},
+                    ],
+                    "mass_log_records_before_calibration": (
+                        mass_log_records_before_calibration
+                    ),
+                    "mass_log_records": len(clean_frame.mass_log),
+                    "calibration_mass_change": {
+                        "entity": str(calibration_record.entity),
+                        "old_total": old_total,
+                        "new_total": new_total,
+                        "relative_shift": (new_total - old_total) / old_total,
+                        "declared_factor": calibration_record.declared_factor,
+                        "reason": str(calibration_record.reason),
+                    },
                 },
-            },
-            "solve": {
-                "n_targets": len(result.problem.names),
-                "n_households": len(clean_frame.table("household")),
-                "initial_loss": float(result.initial_loss),
-                "final_loss": float(result.final_loss),
-                "n_nonzero": int(np.count_nonzero(result.weights)),
-            },
-            "parameters": {"doctrine": _doctrine_bounds(self.doctrine)},
-        }
-        if measure_resolution is not None:
-            manifest["measure_resolution"] = dict(measure_resolution.receipt)
-        self.manifest = manifest
-        self.output_content_identity = uk_frame_content_identity(clean_frame)
+                "solve": {
+                    "n_targets": len(result.problem.names),
+                    "n_households": len(clean_frame.table("household")),
+                    "initial_loss": float(result.initial_loss),
+                    "final_loss": float(result.final_loss),
+                    "n_nonzero": int(np.count_nonzero(result.weights)),
+                },
+                "parameters": {"doctrine": _doctrine_bounds(self.doctrine)},
+            }
+            if measure_resolution is not None:
+                manifest["measure_resolution"] = dict(measure_resolution.receipt)
+            self.manifest = manifest
+            self.output_content_identity = uk_frame_content_identity(clean_frame)
+            operation.complete(diagnostic_count=len(self.diagnostics))
         return clean_frame
+
+    def _observe(self, stage_id: str) -> StageEventRun:
+        return StageEventRun(stage_id=stage_id, observer=self.stage_callback)
 
     def _resolve_measures(self, frame: Frame) -> MeasureResolution | None:
         if self.measure_resolver is None:
@@ -339,7 +394,7 @@ def _doctrine_bounds(doctrine: UKNationalSolveDoctrine) -> dict[str, object]:
     }
 
 
-def _inject_measure_inputs(
+def inject_measure_inputs(
     adapter: UKFrameTargetAdapter,
     measure_inputs: Mapping[tuple[str, str], np.ndarray],
 ) -> None:
@@ -347,7 +402,7 @@ def _inject_measure_inputs(
         adapter.tables[entity][variable] = values
 
 
-def _drop_injected_measure_inputs(
+def drop_injected_measure_inputs(
     adapter: UKFrameTargetAdapter,
     measure_inputs: Mapping[tuple[str, str], np.ndarray],
     original_columns: Mapping[str, set[str]],
@@ -357,7 +412,7 @@ def _drop_injected_measure_inputs(
             adapter.tables[entity].drop(columns=[variable], inplace=True)
 
 
-class _CalibrationFrameAdapter(UKFrameTargetAdapter):
+class CalibrationFrameAdapter(UKFrameTargetAdapter):
     """The shared UK adapter plus the prepared-frame/restore lifecycle.
 
     Prepared measure columns are scratch state: they exist for constraint
@@ -425,14 +480,14 @@ def prepare_uk_target_frame(
     resolution = None
     if measure_resolver is not None:
         resolution = resolve_target_measures(
-            lambda: _CalibrationFrameAdapter(frame),
+            lambda: CalibrationFrameAdapter(frame),
             registry,
             measure_resolver,
             period=period,
         )
-    adapter = _CalibrationFrameAdapter(frame)
+    adapter = CalibrationFrameAdapter(frame)
     if resolution is not None:
-        _inject_measure_inputs(adapter, resolution.measure_inputs)
+        inject_measure_inputs(adapter, resolution.measure_inputs)
     materialized = materialize_uk_ledger_targets(adapter, registry, period=period)
     if materialized.skipped:
         raise RuntimeError(
@@ -442,3 +497,9 @@ def prepare_uk_target_frame(
     return adapter.prepared_frame(), (
         None if resolution is None else dict(resolution.receipt)
     )
+
+
+# Compatibility aliases for the established internal call sites.
+_CalibrationFrameAdapter = CalibrationFrameAdapter
+_inject_measure_inputs = inject_measure_inputs
+_drop_injected_measure_inputs = drop_injected_measure_inputs

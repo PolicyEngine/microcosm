@@ -2429,6 +2429,7 @@ def area_support_gate(
     minimum_rows: int,
     minimum_effective_sample_size: float,
     minimum_distinct_sources: int,
+    reviewed_exclusions: Mapping[str, Mapping[str, object]] | None = None,
 ) -> GateResult:
     """Require adequate positive-weight support in every declared local area.
 
@@ -2521,10 +2522,14 @@ def area_support_gate(
     if not np.isfinite(values).all() or (values < 0).any():
         raise ValueError("area_support contains invalid support values.")
 
+    exclusions = {} if reviewed_exclusions is None else dict(reviewed_exclusions)
     failures: list[str] = []
+    used_exclusions: dict[str, dict[str, object]] = {}
+    stale_exclusions: list[str] = []
     for row in rows.sort_values(["geography_level", "area_code"]).itertuples(
         index=False
     ):
+        key = f"{row.geography_level}/{row.area_code}"
         shortfalls = []
         if row.nonzero_households < minimum_rows:
             shortfalls.append(f"rows {int(row.nonzero_households)} < {minimum_rows}")
@@ -2540,10 +2545,30 @@ def area_support_gate(
                 f"{int(row.nonzero_source_households)} < "
                 f"{minimum_distinct_sources}"
             )
-        if shortfalls:
+        record = exclusions.get(key)
+        if record is not None and shortfalls:
+            used_exclusions[key] = {
+                "shortfalls": shortfalls,
+                "rows": int(row.nonzero_households),
+                "ess": float(row.effective_sample_size),
+                "sources": int(row.nonzero_source_households),
+                "record": dict(record),
+            }
+        elif record is not None:
+            stale_exclusions.append(key)
             failures.append(
-                f"{row.geography_level}/{row.area_code}: " + ", ".join(shortfalls)
+                f"{key}: reviewed exclusion is stale; every support floor is met, "
+                "so retire the exclusion."
             )
+        elif shortfalls:
+            failures.append(f"{key}: " + ", ".join(shortfalls))
+
+    known_keys = {f"{level}/{code}" for level, code in expected_pairs}
+    unknown_exclusions = sorted(set(exclusions) - known_keys)
+    failures.extend(
+        f"{key}: reviewed exclusion is unknown to the area roster."
+        for key in unknown_exclusions
+    )
 
     by_level: dict[str, dict[str, object]] = {}
     for level in levels:
@@ -2571,6 +2596,10 @@ def area_support_gate(
             "by_geography_level": by_level,
             "areas_checked": len(expected_pairs),
             "areas_failed": len(failures),
+            "reviewed_exclusions": used_exclusions,
+            "excluded_area_count": len(used_exclusions),
+            "stale_exclusions": stale_exclusions,
+            "unknown_exclusions": unknown_exclusions,
         },
     )
 

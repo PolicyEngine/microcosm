@@ -21,6 +21,11 @@ from pathlib import Path
 
 import numpy as np
 
+from microcosm.build.staging_v2 import (
+    StagingContractError,
+    validate_staging_delivery,
+)
+from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
 from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
 from microcosm.data.contract import validate_release_dir
@@ -39,6 +44,46 @@ _RUNTIME_PACKAGES = (
 )
 
 
+def _uk_publisher_labels() -> dict[str, str]:
+    """Read the UK provider labels from the normalized target contract."""
+
+    contract = load_uk_population_contract()
+    providers = contract.get("hierarchy", {}).get("providers", {})
+    return {
+        str(provider_id): str(provider["label"])
+        for provider_id, provider in providers.items()
+    }
+
+
+def _refuse_non_release_smoke_spine(spine_h5: Path) -> None:
+    """Reject bounded smoke output before any release files are created."""
+
+    sidecar_path = spine_h5.with_suffix(".build.json")
+    if sidecar_path.is_file():
+        sidecar = _load_json(sidecar_path, label="spine build sidecar")
+        if (
+            sidecar.get("non_release") is True
+            or sidecar.get("release_posture") == "non_release_smoke"
+        ):
+            raise SystemExit(
+                "error: release assembly refuses a non-release smoke spine sidecar"
+            )
+    if not spine_h5.is_file():
+        return
+    try:
+        import h5py
+
+        with h5py.File(spine_h5, mode="r") as file:
+            non_release = bool(file.attrs.get("populace_non_release", False))
+            posture = file.attrs.get("populace_release_posture", "")
+            if isinstance(posture, bytes):
+                posture = posture.decode("utf-8")
+    except OSError:
+        return
+    if non_release or posture == "smoke":
+        raise SystemExit("error: release assembly refuses a non-release smoke H5")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     summary = _assemble(args)
@@ -47,11 +92,21 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _assemble(args: argparse.Namespace) -> dict[str, object]:
+    _refuse_non_release_smoke_spine(args.spine_h5)
     certification_bytes = args.certification_json.read_bytes()
-    certification = _load_json_bytes(
-        certification_bytes, label="--certification-json"
-    )
+    certification = _load_json_bytes(certification_bytes, label="--certification-json")
     build_record = _load_json(args.build_record_json, label="--build-record-json")
+    raw_staging_delivery = build_record.get("staging_delivery")
+    if not isinstance(raw_staging_delivery, Mapping):
+        raise SystemExit(
+            "error: build record is missing valid staging-delivery evidence"
+        )
+    try:
+        staging_delivery = validate_staging_delivery(raw_staging_delivery)
+    except StagingContractError as error:
+        raise SystemExit(
+            f"error: invalid staging-delivery evidence: {error}"
+        ) from error
     diagnostics_bytes = args.diagnostics_json.read_bytes()
     diagnostics = _load_json_bytes(diagnostics_bytes, label="--diagnostics-json")
 
@@ -163,9 +218,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     build_block = _mapping(diagnostics.get("build"), "diagnostics.build")
     attempt_id = build_block.get("build_id")
     if not isinstance(attempt_id, str) or not attempt_id:
-        raise SystemExit(
-            "error: diagnostics.build.build_id must be a non-empty string"
-        )
+        raise SystemExit("error: diagnostics.build.build_id must be a non-empty string")
     _require_equal(
         "build_record.build_id vs signed diagnostics.build.build_id",
         build_record.get("build_id"),
@@ -200,8 +253,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     npz_destination = args.candidate_h5.parent / calibration_filename
     if npz_destination.exists() or npz_destination.is_symlink():
         raise SystemExit(
-            f"error: {npz_destination} already exists; remove it before "
-            "re-assembling"
+            f"error: {npz_destination} already exists; remove it before re-assembling"
         )
     staging_parent = args.out_dir / f".assemble-{uuid.uuid4().hex}"
     # The NPZ stages beside its own destination, not under staging_parent:
@@ -219,9 +271,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     target_registry = _mapping(
         diagnostics.get("target_registry"), "diagnostics.target_registry"
     )
-    candidate_frame, _candidate_provenance = load_uk_national_frame(
-        args.candidate_h5
-    )
+    candidate_frame, _candidate_provenance = load_uk_national_frame(args.candidate_h5)
     spine_frame, _spine_provenance = load_uk_national_frame(args.spine_h5)
     # The NPZ pairs the two weight vectors row by row, so the household axes
     # must be identical — same ids, same order — before the pairing is
@@ -273,6 +323,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             seam_part=seam_part,
             release_cut_part=release_cut_part,
             spine_report_path=spine_report_path,
+            staging_delivery=staging_delivery,
         )
     finally:
         shutil.rmtree(staging_parent, ignore_errors=True)
@@ -302,6 +353,7 @@ def _stage_and_finalize(
     seam_part: Mapping[str, object],
     release_cut_part: Mapping[str, object],
     spine_report_path: Path,
+    staging_delivery: Mapping[str, object],
 ) -> dict[str, object]:
     np.savez(
         calibration_path,
@@ -349,6 +401,7 @@ def _stage_and_finalize(
         "attempt_id": attempt_id,
         "cut_tag": cut_tag,
         "created_at": created_at,
+        "staging": dict(staging_delivery),
     }
     build_manifest_path = release_dir / "build_manifest.json"
     _write_json(build_manifest_path, build_manifest)
@@ -463,12 +516,7 @@ def _stage_and_finalize(
             "UK national calibration pipeline release assembled from attempt "
             f"{attempt_id} at immutable cut {cut_tag}."
         ),
-        "publisher_labels": {
-            "obr": "Office for Budget Responsibility",
-            "hmrc": "HM Revenue and Customs",
-            "ons": "Office for National Statistics",
-            "dwp": "Department for Work and Pensions",
-        },
+        "publisher_labels": _uk_publisher_labels(),
     }
     release_manifest_path = release_dir / "release_manifest.json"
     _write_json(release_manifest_path, release_manifest)
@@ -560,9 +608,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         metavar="PACKAGE=VERSION",
     )
     args = parser.parse_args(argv)
-    args.certification_json = (
-        args.certification_json
-        or args.candidate_h5.with_suffix(".release_certification.json")
+    args.certification_json = args.certification_json or args.candidate_h5.with_suffix(
+        ".release_certification.json"
     )
     args.release_cut_gate_json = (
         args.release_cut_gate_json
@@ -608,9 +655,7 @@ def _runtime_versions(
     environment, which is exactly what the release contract cannot detect.
     """
 
-    signed_runtime = _mapping(
-        build_block.get("runtime"), "diagnostics.build.runtime"
-    )
+    signed_runtime = _mapping(build_block.get("runtime"), "diagnostics.build.runtime")
     runtime: dict[str, str] = {}
     for package in _RUNTIME_PACKAGES:
         value = signed_runtime.get(package)
@@ -650,8 +695,7 @@ def _cut_tag(attempt_id: str, override: str | None) -> str:
             override[len(prefix) :]
         ):
             raise SystemExit(
-                f"error: --cut-tag must be "
-                f"{prefix}<YYYYMMDDTHHMMSSZ>-<uuid8>"
+                f"error: --cut-tag must be {prefix}<YYYYMMDDTHHMMSSZ>-<uuid8>"
             )
         return override
     if not attempt_id.startswith(_ATTEMPT_PREFIX):
@@ -661,8 +705,7 @@ def _cut_tag(attempt_id: str, override: str | None) -> str:
     suffix = attempt_id.removeprefix(_ATTEMPT_PREFIX)
     if not _ATTEMPT_SUFFIX.fullmatch(suffix):
         raise SystemExit(
-            "error: build_record.build_id must end with "
-            "<YYYYMMDDTHHMMSSZ>-<uuid8>"
+            "error: build_record.build_id must end with <YYYYMMDDTHHMMSSZ>-<uuid8>"
         )
     return f"{UK_NATIONAL_RELEASE_ID}-{suffix}"
 

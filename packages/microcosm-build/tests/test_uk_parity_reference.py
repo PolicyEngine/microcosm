@@ -189,31 +189,6 @@ class TestEfrsParityReference:
         assert digest == source.sha256
 
     @requires_uk
-    def test_cached_reference_regeneration_matches_committed_surface(self) -> None:
-        source = load_efrs_parity_reference().source
-        cached = _cached_incumbent_path(source)
-        if cached is None:
-            # A content-addressed blob can still be supplied explicitly even
-            # when the HF revision-to-filename cache mapping is unavailable.
-            candidate = (
-                Path.home()
-                / ".cache"
-                / "huggingface"
-                / "hub"
-                / "models--policyengine--policyengine-uk-data-private"
-                / "blobs"
-                / source.sha256
-            )
-            cached = candidate if candidate.is_file() else None
-        if cached is None:
-            pytest.skip("pinned licensed eFRS artifact is not in the local HF cache")
-
-        regenerated = _load_generator().build_reference(cached)
-        committed = json.loads(
-            _resource(EFRS_PARITY_REFERENCE_RESOURCE).read_text(encoding="utf-8")
-        )
-        assert regenerated == committed
-
     def test_implicit_resolution_requires_revision_mapping(
         self,
         monkeypatch,

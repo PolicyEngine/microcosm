@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -65,13 +67,9 @@ class ResolutionAdapter:
 
 class StubMeasureProvider:
     contract_targets = {
-        "needs_input_a": {
-            "bindings": {"policyengine": {"value_variable": "input_a"}}
-        },
+        "needs_input_a": {"bindings": {"policyengine": {"value_variable": "input_a"}}},
         "needs_input_a_and_b": {
-            "bindings": {
-                "policyengine": {"value_expression": "input_a + input_b"}
-            }
+            "bindings": {"policyengine": {"value_expression": "input_a + input_b"}}
         },
         "needs_input_a_again": {
             "bindings": {"policyengine": {"value_variable": "input_a"}}
@@ -160,6 +158,54 @@ def test_prepared_column_path_materializes_filtered_values():
         20.0,
         30.0,
     ]
+
+
+@pytest.mark.parametrize("fact_period", [2024, 2025])
+@pytest.mark.parametrize("require_matching_fact_period", [None, False, True])
+def test_existing_measure_respects_fact_guard_at_default_measurement_period(
+    fact_period, require_matching_fact_period
+):
+    class ExistingMeasureAdapter(StubAdapter):
+        def has_column(self, entity, variable):
+            return variable in self.tables[entity]
+
+    adapter = ExistingMeasureAdapter()
+    adapter.set_column("person", "income_measure", [999.0, 999.0, 999.0])
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="income",
+                entity="person",
+                measure="income_measure",
+                value=60.0,
+                source="test",
+                metadata={
+                    "contract_target_id": "income",
+                    "ledger_fact_period": str(fact_period),
+                },
+            )
+        ],
+        country="uk",
+    )
+    binding = {"value_variable": "income"}
+    if require_matching_fact_period is not None:
+        binding["require_matching_fact_period"] = require_matching_fact_period
+    contract = {"income": {"bindings": {"policyengine": binding}}}
+
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+
+    if require_matching_fact_period and fact_period != 2025:
+        assert len(result.skipped) == 1
+        assert "observation period '2024'" in result.skipped[0].reason
+        assert "measurement period 2025" in result.skipped[0].reason
+    else:
+        assert not result.skipped
+    expected = (
+        [10.0, 20.0, 30.0]
+        if require_matching_fact_period and fact_period == 2025
+        else [999.0, 999.0, 999.0]
+    )
+    assert adapter.tables["person"]["income_measure"].tolist() == expected
 
 
 def test_generic_provider_kinds_materialize_expected_columns():
@@ -328,9 +374,7 @@ def test_resolve_target_measures_raises_when_provided_key_still_fails():
             period=2025,
         )
 
-    assert error.value.receipt["attached"] == {
-        "person.input_a": "stub:person.input_a"
-    }
+    assert error.value.receipt["attached"] == {"person.input_a": "stub:person.input_a"}
     assert error.value.receipt["skips"][-1]["name"] == "needs_input_a"
 
 
@@ -507,8 +551,7 @@ def test_bands_slice_the_population_and_partition_it():
     assert list(adapter.tables["person"]["income_band_40"]) == [0.0, 0.0, 0.0]
     # Every record lands in exactly one band: the bands partition the surface.
     total = sum(
-        adapter.tables["person"][f"income_band_{label}"]
-        for label in ("0", "20", "40")
+        adapter.tables["person"][f"income_band_{label}"] for label in ("0", "20", "40")
     )
     assert list(total) == [1.0, 1.0, 1.0]
 
@@ -701,6 +744,72 @@ def test_published_range_label_edges_survive_sibling_exclusion():
     assert list(adapter.tables["person"]["award_low"]) == [0.0, 1.0, 0.0]
 
 
+@pytest.mark.parametrize("inclusive", [True, False])
+def test_declared_finite_band_ceiling_does_not_absorb_unbound_source_tail(inclusive):
+    """DWP's finite £2400.01–2500 row excludes its separate £2500.01+ row."""
+    adapter = StubAdapter()
+    adapter.tables["person"]["income"] = np.array(
+        [np.nextafter(30_000.0, -np.inf), 30_000.0, np.nextafter(30_000.0, np.inf)]
+    )
+    spec = TargetSpec(
+        name="finite_top",
+        entity="person",
+        measure="finite_top",
+        value=1.0,
+        source="DWP Monthly Award Amount (payment bands)",
+        metadata={
+            "contract_target_id": "uc.finite_bands",
+            "ledger_filter_monthly_award_bands": "£2400.01 to £2500.00",
+        },
+    )
+    registry = TargetRegistry([spec], country="uk")
+    contract = {
+        "uc.finite_bands": {
+            "bindings": {
+                "policyengine": {
+                    "value_variable": "person_count",
+                    "groupby_variable": "income",
+                    "from_entity": "person",
+                    "band_period_factor": 12,
+                    "band_upper_bound": 2500,
+                    "band_upper_bound_inclusive": inclusive,
+                }
+            }
+        }
+    }
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+    assert not result.skipped
+    assert adapter.tables["person"]["finite_top"].tolist() == [1, int(inclusive), 0]
+
+
+@pytest.mark.parametrize(
+    "bound_fields",
+    [
+        {"band_upper_bound": 2500},
+        {"band_upper_bound_inclusive": True},
+        {"band_upper_bound": np.inf, "band_upper_bound_inclusive": True},
+        {"band_upper_bound": 0, "band_upper_bound_inclusive": True},
+        {"band_upper_bound": 2500, "band_upper_bound_inclusive": "yes"},
+        {
+            "band_upper_bound": 2500,
+            "band_upper_bound_inclusive": True,
+            "band_period_factor": 0,
+        },
+    ],
+)
+def test_invalid_declared_band_ceiling_refuses_materialization(bound_fields):
+    from copy import deepcopy
+
+    contract = deepcopy(_BANDED_CONTRACT)
+    target_id = _banded_registry().specs[0].metadata["contract_target_id"]
+    contract[target_id]["bindings"]["policyengine"].update(bound_fields)
+    result = materialize_target_bindings(
+        StubAdapter(), _banded_registry(), contract, period=2025
+    )
+    assert result.skipped
+    assert all("band_upper_bound" in skip.reason for skip in result.skipped)
+
+
 def test_band_bounds_refuse_a_spec_absent_from_the_band_edge_register():
     # A register that cannot bound a spec is a wrong-register problem for the
     # whole run: it must propagate as a refusal, never degrade into a skipped
@@ -768,9 +877,7 @@ def test_resolve_target_measures_threads_the_band_edge_registry():
         band_edge_registry=registry,
     )
 
-    assert resolution.receipt["attached"] == {
-        "person.input_a": "stub:person.input_a"
-    }
+    assert resolution.receipt["attached"] == {"person.input_a": "stub:person.input_a"}
     assert list(probes[-1].tables["person"]["income_band_0"]) == [1.0, 0.0, 0.0]
     assert list(probes[-1].tables["person"]["income_band_40"]) == [0.0, 0.0, 0.0]
 
@@ -966,3 +1073,130 @@ def test_declared_band_filter_dimension_breaks_the_tie():
     assert result.skipped == ()
     assert list(adapter.tables["person"]["income_band_0"]) == [1.0, 0.0, 0.0]
     assert list(adapter.tables["person"]["income_band_20"]) == [0.0, 1.0, 1.0]
+
+
+def _geography_predicate_registry(predicate: str | None) -> TargetRegistry:
+    metadata = {"contract_target_id": "adult_income"}
+    if predicate is not None:
+        metadata["geography_predicate"] = predicate
+    return TargetRegistry(
+        [
+            TargetSpec(
+                name="adult_income@LONDON",
+                entity="person",
+                measure="adult_income@LONDON",
+                value=50.0,
+                source="test",
+                metadata=metadata,
+            )
+        ],
+        country="uk",
+    )
+
+
+_ADULT_INCOME_CONTRACT = {
+    "adult_income": {
+        "bindings": {
+            "policyengine": {
+                "value_variable": "income",
+                "filters": [{"variable": "age", "operator": ">=", "value": 18}],
+            }
+        }
+    }
+}
+
+
+def test_geography_predicate_scopes_a_shared_binding_to_one_reference():
+    adapter = StubAdapter()
+    adapter.tables["person"]["region"] = np.array(["LONDON", "LONDON", "WALES"])
+    registry = _geography_predicate_registry(
+        json.dumps({"variable": "region", "operator": "==", "value": "LONDON"})
+    )
+    result = materialize_target_bindings(
+        adapter, registry, _ADULT_INCOME_CONTRACT, period=2025
+    )
+    assert result.skipped == ()
+    # The contract's age filter still applies; the predicate removes the
+    # Welsh adult, and nothing in the contract itself changed.
+    assert adapter.tables["person"]["adult_income@LONDON"].tolist() == [
+        0.0,
+        20.0,
+        0.0,
+    ]
+    assert _ADULT_INCOME_CONTRACT["adult_income"]["bindings"]["policyengine"][
+        "filters"
+    ] == [{"variable": "age", "operator": ">=", "value": 18}]
+
+
+def test_reference_without_geography_predicate_is_untouched():
+    adapter = StubAdapter()
+    registry = _geography_predicate_registry(None)
+    result = materialize_target_bindings(
+        adapter, registry, _ADULT_INCOME_CONTRACT, period=2025
+    )
+    assert result.skipped == ()
+    assert adapter.tables["person"]["adult_income@LONDON"].tolist() == [
+        0.0,
+        20.0,
+        30.0,
+    ]
+
+
+@pytest.mark.parametrize(
+    "predicate, message",
+    [
+        ("{not json", "not valid JSON"),
+        (json.dumps(["region"]), "must be a predicate object"),
+        (json.dumps({"operator": "==", "value": "LONDON"}), "naming a variable"),
+    ],
+)
+def test_malformed_geography_predicate_refuses_materialization(predicate, message):
+    adapter = StubAdapter()
+    registry = _geography_predicate_registry(predicate)
+    with pytest.raises(ValueError, match=message):
+        materialize_target_bindings(
+            adapter, registry, _ADULT_INCOME_CONTRACT, period=2025
+        )
+
+
+def test_geography_predicate_refuses_provider_bindings():
+    adapter = StubAdapter()
+    registry = _geography_predicate_registry(
+        json.dumps({"variable": "region", "operator": "==", "value": "LONDON"})
+    )
+    contract = {
+        "adult_income": {
+            "bindings": {
+                "policyengine": {
+                    "kind": "input_substitution_counterfactual",
+                    "zeroed_input": "salary_sacrifice",
+                    "output_variable": "baseline_tax",
+                }
+            }
+        }
+    }
+    with pytest.raises(ValueError, match="cannot scope a provider binding"):
+        materialize_target_bindings(adapter, registry, contract, period=2025)
+
+
+def test_geography_predicate_must_project_to_the_reference_entity():
+    adapter = StubAdapter()
+    adapter.tables["person"]["region"] = np.array(["LONDON", "LONDON", "WALES"])
+    registry = _geography_predicate_registry(
+        json.dumps(
+            {
+                "entity": "household",
+                "variable": "region",
+                "operator": "==",
+                "value": "LONDON",
+                "reduce": "any",
+                "map_to": "household",
+            }
+        )
+    )
+    # The reference measures persons; a predicate projected to households
+    # would produce a mask of the wrong length, so it refuses up front.
+    with pytest.raises(ValueError, match="projects to 'household'"):
+        materialize_target_bindings(
+            adapter, registry, _ADULT_INCOME_CONTRACT, period=2025
+        )

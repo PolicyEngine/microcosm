@@ -2186,6 +2186,225 @@
      "type": "object",
      "additionalProperties": false,
      "properties": {
+      "kind": {
+       "const": "derive_ons_household_composition"
+      },
+      "source_columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "head": {
+         "type": "string"
+        },
+        "head_flag": {
+         "type": "string"
+        },
+        "head_index": {
+         "type": "string"
+        },
+        "grid": {
+         "type": "array",
+         "minItems": 14,
+         "maxItems": 14,
+         "items": {
+          "type": "string"
+         }
+        },
+        "full_time_education": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "string"
+         }
+        }
+       },
+       "required": [
+        "head",
+        "head_flag",
+        "head_index",
+        "grid",
+        "full_time_education"
+       ]
+      },
+      "frs_household_grid_relationship_codes": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+         "code": {
+          "type": "integer",
+          "minimum": 1
+         },
+         "label": {
+          "type": "string",
+          "enum": [
+           "SPOUSE",
+           "COHABITEE",
+           "CHILD",
+           "STEP_CHILD",
+           "FOSTER_CHILD",
+           "CHILD_IN_LAW",
+           "PARENT",
+           "STEP_PARENT",
+           "FOSTER_PARENT",
+           "PARENT_IN_LAW",
+           "SIBLING",
+           "STEP_SIBLING",
+           "FOSTER_SIBLING",
+           "SIBLING_IN_LAW",
+           "GRANDCHILD",
+           "GRANDPARENT",
+           "OTHER_RELATIVE",
+           "OTHER_NON_RELATIVE",
+           "CIVIL_PARTNER"
+          ]
+         }
+        },
+        "required": [
+         "code",
+         "label"
+        ]
+       }
+      },
+      "head_label": {
+       "const": "HEAD"
+      },
+      "family_link_codes": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "partner": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "integer"
+         }
+        },
+        "child_of": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "integer"
+         }
+        },
+        "parent_of": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
+          "type": "integer"
+         }
+        }
+       },
+       "required": [
+        "partner",
+        "child_of",
+        "parent_of"
+       ]
+      },
+      "dependent_child": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "unconditional_below_age": {
+         "type": "integer",
+         "minimum": 0
+        },
+        "full_time_education_through_age": {
+         "type": "integer",
+         "minimum": 0
+        }
+       },
+       "required": [
+        "unconditional_below_age",
+        "full_time_education_through_age"
+       ]
+      },
+      "one_person_age_split": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "family_role_values": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "string",
+        "enum": [
+         "COUPLE_PARTNER",
+         "LONE_PARENT",
+         "DEPENDENT_CHILD",
+         "NON_DEPENDENT_CHILD",
+         "INDIVIDUAL"
+        ]
+       }
+      },
+      "household_type_values": {
+       "type": "array",
+       "minItems": 10,
+       "maxItems": 10,
+       "items": {
+        "type": "string",
+        "enum": [
+         "lone_households_under_65",
+         "lone_households_over_65",
+         "unrelated_adult_households",
+         "couple_no_children_households",
+         "couple_under_3_children_households",
+         "couple_3_plus_children_households",
+         "couple_non_dependent_children_only_households",
+         "lone_parent_dependent_children_households",
+         "lone_parent_non_dependent_children_households",
+         "multi_family_households"
+        ]
+       }
+      },
+      "reciprocity_mismatch_tolerance": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "documentation": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "frs_codes": {
+         "type": "string"
+        },
+        "ons_definitions": {
+         "type": "string"
+        },
+        "category_ids": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "frs_codes",
+        "ons_definitions",
+        "category_ids"
+       ]
+      },
+      "reason": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "kind",
+      "source_columns",
+      "frs_household_grid_relationship_codes",
+      "head_label",
+      "family_link_codes",
+      "dependent_child",
+      "one_person_age_split",
+      "family_role_values",
+      "household_type_values",
+      "reciprocity_mismatch_tolerance",
+      "documentation"
+     ]
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
       "dc_share_of_remainder": {
        "type": "number"
       },
@@ -3300,6 +3519,25 @@
       },
       "training_artifact_role": {
        "type": "string"
+      },
+      "recipient_minimum_age": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "rebase_income_to_build_period": {
+       "type": "boolean"
+      },
+      "donor_income_period": {
+       "type": "integer"
+      },
+      "income_uprating_variables": {
+       "type": "object",
+       "additionalProperties": {
+        "type": [
+         "string",
+         "null"
+        ]
+       }
       }
      },
      "required": [
@@ -5838,6 +6076,13 @@
       },
       "fillna": {
        "type": "number"
+      },
+      "year_rule": {
+       "type": "string",
+       "enum": [
+        "survey_year",
+        "calibration_year"
+       ]
       }
      },
      "anyOf": [
@@ -5889,6 +6134,13 @@
       },
       "consumed_only": {
        "type": "boolean"
+      },
+      "year_rule": {
+       "type": "string",
+       "enum": [
+        "survey_year",
+        "calibration_year"
+       ]
       }
      }
     },
@@ -5967,6 +6219,9 @@
       "rate_key": {
        "type": "string"
       },
+      "population": {
+       "type": "string"
+      },
       "seed": {
        "type": "integer"
       }
@@ -6017,6 +6272,34 @@
       },
       "seed": {
        "type": "integer"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "contract_key",
+      "period_source",
+      "dtype"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_period_constant"
+      },
+      "output": {
+       "type": "string"
+      },
+      "contract_key": {
+       "type": "string"
+      },
+      "period_source": {
+       "const": "build_year"
+      },
+      "dtype": {
+       "const": "float64"
       }
      }
     },
@@ -6265,7 +6548,6 @@
        "enum": [
         "allocate_per_capita_from_cell_table",
         "assign_binary_from_rate",
-        "bridge_donor_column_via_qrf",
         "compute_ratio",
         "derive",
         "iterative_proportional_fit",
@@ -6402,6 +6684,44 @@
       },
       "lowercase_columns": {
        "type": "boolean"
+      },
+      "rate_resource": {
+       "type": "string"
+      },
+      "rate_rule": {
+       "const": "one_minus_zero_emission_share"
+      },
+      "period_value": {
+       "type": "integer"
+      },
+      "geography_id": {
+       "type": "string"
+      },
+      "zero_emission_fuel_types": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "margins_resource": {
+       "type": "string"
+      },
+      "mappings": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "string"
+       }
+      },
+      "clip": {
+       "type": "object",
+       "additionalProperties": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {
+         "type": "number"
+        }
+       }
       }
      }
     },
@@ -6940,6 +7260,25 @@
       },
       "seed": {
        "type": "integer"
+      },
+      "recipient_minimum_age": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "rebase_income_to_build_period": {
+       "type": "boolean"
+      },
+      "donor_income_period": {
+       "type": "integer"
+      },
+      "income_uprating_variables": {
+       "type": "object",
+       "additionalProperties": {
+        "type": [
+         "string",
+         "null"
+        ]
+       }
       }
      }
     },
@@ -7605,7 +7944,11 @@
        "const": "assign_student_loan_plan_cohorts"
       },
       "year_rule": {
-       "type": "string"
+       "type": "string",
+       "enum": [
+        "survey_year",
+        "calibration_year"
+       ]
       },
       "start_year_formula": {
        "type": "string"
@@ -7671,7 +8014,11 @@
        "type": "string"
       },
       "year_rule": {
-       "type": "string"
+       "type": "string",
+       "enum": [
+        "survey_year",
+        "calibration_year"
+       ]
       },
       "age_min": {
        "type": "integer"
@@ -7776,6 +8123,419 @@
       },
       "runtime_sha256_required": {
        "type": "boolean"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "from_period",
+      "to_period",
+      "columns"
+     ],
+     "properties": {
+      "kind": {
+       "const": "uprate_donor_columns"
+      },
+      "from_period": {
+       "type": "integer"
+      },
+      "to_period": {
+       "type": "integer"
+      },
+      "columns": {
+       "type": "object",
+       "minProperties": 1,
+       "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "basis"
+        ],
+        "properties": {
+         "basis": {
+          "enum": [
+           "engine_parameter",
+           "vendored_litre_proxy",
+           "vendored_ratio"
+          ]
+         },
+         "parameter_path": {
+          "type": "string"
+         },
+         "resource": {
+          "type": "string"
+         },
+         "price_concept": {
+          "type": "string"
+         },
+         "litres_concept": {
+          "type": "string"
+         },
+         "population_concept": {
+          "type": "string"
+         },
+         "concept": {
+          "type": "string"
+         },
+         "numerator_period": {
+          "type": "string"
+         },
+         "denominator_period": {
+          "type": "string"
+         },
+         "dimension_values": {
+          "type": "object",
+          "additionalProperties": {
+           "type": "string"
+          }
+         },
+         "geography_id": {
+          "type": "string"
+         },
+         "audit_parameter_path": {
+          "type": "string"
+         }
+        }
+       }
+      },
+      "exempt": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "instant": {
+       "const": "january_first"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "output",
+      "seed",
+      "resource",
+      "period_value",
+      "age_threshold",
+      "bands",
+      "non_user_band",
+      "share_geography",
+      "share_age_coverage",
+      "applied_to"
+     ],
+     "properties": {
+      "kind": {
+       "const": "assign_bus_use_incidence"
+      },
+      "output": {
+       "type": "string"
+      },
+      "seed": {
+       "type": "integer"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "period_value": {
+       "type": "integer"
+      },
+      "transport_mode_groupby_value_id": {
+       "type": "string"
+      },
+      "older_age_band": {
+       "type": "string"
+      },
+      "age_threshold": {
+       "type": "integer"
+      },
+      "non_user_band": {
+       "type": "string"
+      },
+      "bands": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "id",
+         "trips_per_year",
+         "labels"
+        ],
+        "properties": {
+         "id": {
+          "type": "string"
+         },
+         "trips_per_year": {
+          "type": "number"
+         },
+         "labels": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      },
+      "user_definition": {
+       "const": "at_least_once_a_year"
+      },
+      "share_geography": {
+       "type": "string"
+      },
+      "share_age_coverage": {
+       "enum": [
+        "all_ages"
+       ]
+      },
+      "applied_to": {
+       "enum": [
+        "fare_rake_regions"
+       ]
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "columns",
+      "cells",
+      "iterations",
+      "weighted",
+      "scope"
+     ],
+     "properties": {
+      "kind": {
+       "const": "rake_to_vendored_facts"
+      },
+      "columns": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "iterations": {
+       "type": "integer",
+       "minimum": 1
+      },
+      "weighted": {
+       "type": "boolean"
+      },
+      "scope": {
+       "enum": [
+        "users_only",
+        "all"
+       ]
+      },
+      "quintile_income": {
+       "type": "string"
+      },
+      "cells": {
+       "type": "array",
+       "minItems": 1,
+       "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+         "label",
+         "regions",
+         "resource",
+         "selector",
+         "allocation"
+        ],
+        "properties": {
+         "label": {
+          "type": "string"
+         },
+         "regions": {
+          "type": "array",
+          "items": {
+           "type": "string"
+          }
+         },
+         "resource": {
+          "type": "string"
+         },
+         "selector": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+           "concept",
+           "fiscal_start"
+          ],
+          "properties": {
+           "concept": {
+            "type": "string"
+           },
+           "fiscal_start": {
+            "type": "string"
+           },
+           "geography_id": {
+            "type": "string"
+           },
+           "groupby_value_id": {
+            "type": "string"
+           },
+           "dimension_values": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "string"
+            }
+           },
+           "sum_over": {
+            "type": "object",
+            "additionalProperties": {
+             "type": "array",
+             "items": {
+              "type": "string"
+             }
+            }
+           }
+          }
+         },
+         "allocation": {
+          "enum": [
+           "uniform",
+           "income_quintile_trips"
+          ]
+         },
+         "allocation_resource": {
+          "type": "string"
+         },
+         "allocation_concept": {
+          "type": "string"
+         },
+         "allocation_period_value": {
+          "type": "integer"
+         },
+         "joint_columns": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+           "type": "string"
+          }
+         }
+        }
+       }
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "resource",
+      "crosswalk_resource",
+      "period_type",
+      "period_value",
+      "payment_method",
+      "vat_treatment",
+      "columns",
+      "gas_connected",
+      "margins_resource",
+      "margins_period_value",
+      "level_resource",
+      "level_fiscal_start",
+      "level_temperature_adjustment"
+     ],
+     "properties": {
+      "kind": {
+       "const": "price_domestic_energy"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "crosswalk_resource": {
+       "type": "string"
+      },
+      "period_type": {
+       "enum": [
+        "fiscal_year",
+        "calendar_year"
+       ]
+      },
+      "period_value": {
+       "type": "integer"
+      },
+      "payment_method": {
+       "type": "string"
+      },
+      "metering_arrangement": {
+       "type": "string"
+      },
+      "vat_treatment": {
+       "enum": [
+        "including_vat"
+       ]
+      },
+      "columns": {
+       "type": "object",
+       "additionalProperties": false,
+       "required": [
+        "electricity",
+        "gas"
+       ],
+       "properties": {
+        "electricity": {
+         "type": "string"
+        },
+        "gas": {
+         "type": "string"
+        }
+       }
+      },
+      "gas_connected": {
+       "enum": [
+        "positive_gas_spend",
+        "published_meter_share"
+       ]
+      },
+      "connection_resource": {
+       "type": "string"
+      },
+      "connection_period_value": {
+       "type": "integer"
+      },
+      "connection_rule": {
+       "enum": [
+        "gas_meters_over_electricity_meters"
+       ]
+      },
+      "connection_fallback": {
+       "enum": [
+        "positive_gas_spend"
+       ]
+      },
+      "disconnect_rule": {
+       "enum": [
+        "lowest_drawn_gas_first"
+       ]
+      },
+      "margins_resource": {
+       "type": "string"
+      },
+      "margins_period_value": {
+       "type": "integer"
+      },
+      "level_resource": {
+       "type": "string"
+      },
+      "level_fiscal_start": {
+       "type": "string"
+      },
+      "level_temperature_adjustment": {
+       "enum": [
+        "actual_temperature"
+       ]
       }
      }
     }

@@ -1,0 +1,3982 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "devolved_bus_finance.json",
+  "purpose": "Scotland bus and coach statistics (2024 and 2025 editions: journeys, passenger revenue, operator revenue, government support components, fare index); Welsh local authority roads and transport revenue outturn public transport lines for the Wales total; Northern Ireland Transport Holding Company transactions with DfI; DfI Translink bus journeys and passenger receipts by service. Consumed by the devolved cells of the bus-fare and bus-support rakes and the country-leg bus targets.",
+  "consumers": [
+    "uk_runtime.lcfs_consumption",
+    "uk_runtime.etb_services"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "ec200856c4e40e0d3fe97c4e17049cb48de02b85",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 275698,
+    "facts_sha256": "47612c481d9917c5f92ba50389c67e8d6a80b525ba06a8c64cbc0ce83ae81412",
+    "manifest_sha256": "c91fa9ff735ea83271e93de7a725fdcdfb65a664c4868412e374a795b8cc65c3"
+  },
+  "selections": [
+    {
+      "label": "scotland_bus_and_coach_statistics",
+      "selector": {
+        "source_name": "scotgov",
+        "source_concept": [
+          "scotgov.bus.passenger_journeys",
+          "scotgov.bus.passenger_revenue",
+          "scotgov.bus.operator_revenue",
+          "scotgov.bus.government_support",
+          "scotgov.bus.local_fare_index"
+        ]
+      },
+      "row_count": 18
+    },
+    {
+      "label": "wales_transport_revenue_outturn_wales_total",
+      "selector": {
+        "source_name": "welshgov",
+        "source_concept": [
+          "welshgov.local_transport.gross_expenditure",
+          "welshgov.local_transport.total_income",
+          "welshgov.local_transport.net_current_expenditure",
+          "welshgov.local_transport.grants"
+        ],
+        "geography_id": "W92000004",
+        "period_type": "fiscal_year"
+      },
+      "row_count": 36
+    },
+    {
+      "label": "nithc_transactions_with_dfi",
+      "selector": {
+        "source_name": "nithc",
+        "period_type": "fiscal_year"
+      },
+      "row_count": 8
+    },
+    {
+      "label": "dfi_ni_translink_bus_journeys_and_receipts",
+      "selector": {
+        "source_name": "dfi_ni",
+        "source_concept": [
+          "dfi_ni.translink_bus.passenger_journeys",
+          "dfi_ni.translink_bus.passenger_receipts"
+        ],
+        "period_type": "fiscal_year"
+      },
+      "row_count": 24
+    }
+  ],
+  "row_count": 86,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_288b81ee8cbcfdfa95bc22cf",
+      "semantic_fact_key": "ledger_semantic_fact_v2_df8a2df5fa3eca57cce2b853",
+      "source_record_id": "dfi_ni.public_transport.figure_3.fy2019.metro_glider.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2019
+      },
+      "period_coverage": {
+        "start_date": "2019-04-01",
+        "end_date": "2020-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_3.fy2019",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "metro_glider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "metro_glider"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 30380000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_01689386178d976b4b42562a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c5a7a6000a6d139e6f6432b6",
+      "source_record_id": "dfi_ni.public_transport.figure_3.fy2019.ulsterbus.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2019
+      },
+      "period_coverage": {
+        "start_date": "2019-04-01",
+        "end_date": "2020-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_3.fy2019",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "ulsterbus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "ulsterbus"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 37890000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_77bde798d3810c9dba8e2c0a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_243c3dacfda11797c6ec0dc7",
+      "source_record_id": "dfi_ni.public_transport.figure_3.fy2020.metro_glider.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_3.fy2020",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "metro_glider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "metro_glider"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 10210000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0323feee36a57c618db58a55",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c026cb7f62177e4452d54c31",
+      "source_record_id": "dfi_ni.public_transport.figure_3.fy2020.ulsterbus.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_3.fy2020",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "ulsterbus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "ulsterbus"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 12150000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d52bfe6ff64ec2133ffdd5e1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c8c4c90f1748be7acdd867cd",
+      "source_record_id": "dfi_ni.public_transport.figure_3.fy2021.metro_glider.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_3.fy2021",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "metro_glider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "metro_glider"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 20890000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cb0de543eb6422a04155062b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2250a49d913dce730bcf54b1",
+      "source_record_id": "dfi_ni.public_transport.figure_3.fy2021.ulsterbus.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_3.fy2021",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "ulsterbus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "ulsterbus"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 29650000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fdc9bf25203f850fafb2933c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ba0e3a242995fd4bdeede4d5",
+      "source_record_id": "dfi_ni.public_transport.figure_3.fy2022.metro_glider.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_3.fy2022",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "metro_glider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "metro_glider"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 26501826.75
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bc939d307529a6d96055619f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3cc8f52d295c1f4eb2e958e0",
+      "source_record_id": "dfi_ni.public_transport.figure_3.fy2022.ulsterbus.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_3.fy2022",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "ulsterbus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "ulsterbus"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 34074689.339999996
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_44b9692220201655060e1522",
+      "semantic_fact_key": "ledger_semantic_fact_v2_71071e04c6b085040eb791c3",
+      "source_record_id": "dfi_ni.public_transport.figure_3.fy2023.metro_glider.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_3.fy2023",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "metro_glider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "metro_glider"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 29085418
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_342898984873635ff3968502",
+      "semantic_fact_key": "ledger_semantic_fact_v2_daaced7b4545235f2f07d88d",
+      "source_record_id": "dfi_ni.public_transport.figure_3.fy2023.ulsterbus.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_3.fy2023",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "ulsterbus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "ulsterbus"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 35332414.420370005
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0cdf6882955dc3cd51d27eef",
+      "semantic_fact_key": "ledger_semantic_fact_v2_408db18b0585d46f0a78679d",
+      "source_record_id": "dfi_ni.public_transport.figure_3.fy2024.metro_glider.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_3.fy2024",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "metro_glider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "metro_glider"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 29838042.25
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a2749650ee6fc1715a1df4c2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_74dc8752857eabdd5a4e2677",
+      "source_record_id": "dfi_ni.public_transport.figure_3.fy2024.ulsterbus.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_3.fy2024",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "ulsterbus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "ulsterbus"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 37956509.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b8567735f3e7c3f4d2463d8f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d4e126319d0e6e3a87c6a681",
+      "source_record_id": "dfi_ni.public_transport.figure_4.fy2019.metro_glider.passenger_receipts",
+      "concept": "dfi_ni.translink_bus.passenger_receipts",
+      "measure_id": "passenger_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "translink_bus_operator"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2019
+      },
+      "period_coverage": {
+        "start_date": "2019-04-01",
+        "end_date": "2020-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_4.fy2019",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "metro_glider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "metro_glider"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 40260000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_28a8603c48a0816234f0fcc3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_44adcbb75a08e8938620780b",
+      "source_record_id": "dfi_ni.public_transport.figure_4.fy2019.ulsterbus.passenger_receipts",
+      "concept": "dfi_ni.translink_bus.passenger_receipts",
+      "measure_id": "passenger_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "translink_bus_operator"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2019
+      },
+      "period_coverage": {
+        "start_date": "2019-04-01",
+        "end_date": "2020-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_4.fy2019",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "ulsterbus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "ulsterbus"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 89690000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5d71579dbe4020118bdf0da9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ab2b7b013969b98bb2c63e5d",
+      "source_record_id": "dfi_ni.public_transport.figure_4.fy2020.metro_glider.passenger_receipts",
+      "concept": "dfi_ni.translink_bus.passenger_receipts",
+      "measure_id": "passenger_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "translink_bus_operator"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_4.fy2020",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "metro_glider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "metro_glider"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 15190000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_11913cfa8495e0a5182fb060",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dd57a8987d117715a25341da",
+      "source_record_id": "dfi_ni.public_transport.figure_4.fy2020.ulsterbus.passenger_receipts",
+      "concept": "dfi_ni.translink_bus.passenger_receipts",
+      "measure_id": "passenger_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "translink_bus_operator"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_4.fy2020",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "ulsterbus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "ulsterbus"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 51020000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e6b260bf1cdb57193dc9b2cc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3fee0d324d8a5c2316345a4a",
+      "source_record_id": "dfi_ni.public_transport.figure_4.fy2021.metro_glider.passenger_receipts",
+      "concept": "dfi_ni.translink_bus.passenger_receipts",
+      "measure_id": "passenger_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "translink_bus_operator"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_4.fy2021",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "metro_glider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "metro_glider"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 28290000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_29d8ac3baf65bb71087dfd53",
+      "semantic_fact_key": "ledger_semantic_fact_v2_49b8ab1c1a9ea1464739cfb4",
+      "source_record_id": "dfi_ni.public_transport.figure_4.fy2021.ulsterbus.passenger_receipts",
+      "concept": "dfi_ni.translink_bus.passenger_receipts",
+      "measure_id": "passenger_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "translink_bus_operator"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_4.fy2021",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "ulsterbus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "ulsterbus"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 68300000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3293cf1f700ae8e80cb2e999",
+      "semantic_fact_key": "ledger_semantic_fact_v2_37f04a86bafcfc297f058769",
+      "source_record_id": "dfi_ni.public_transport.figure_4.fy2022.metro_glider.passenger_receipts",
+      "concept": "dfi_ni.translink_bus.passenger_receipts",
+      "measure_id": "passenger_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "translink_bus_operator"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_4.fy2022",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "metro_glider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "metro_glider"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 38420000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5cb178c89cd4009f3b969a9c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_004105c01c03972dfda213fd",
+      "source_record_id": "dfi_ni.public_transport.figure_4.fy2022.ulsterbus.passenger_receipts",
+      "concept": "dfi_ni.translink_bus.passenger_receipts",
+      "measure_id": "passenger_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "translink_bus_operator"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_4.fy2022",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "ulsterbus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "ulsterbus"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 84050000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ed9e7267018bb5a387096192",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0b82ad49977865a9d68cedaf",
+      "source_record_id": "dfi_ni.public_transport.figure_4.fy2023.metro_glider.passenger_receipts",
+      "concept": "dfi_ni.translink_bus.passenger_receipts",
+      "measure_id": "passenger_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "translink_bus_operator"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_4.fy2023",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "metro_glider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "metro_glider"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 44750000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_06baa4ed924a82c970f1ed7a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d254e18a60aef00de53da7ae",
+      "source_record_id": "dfi_ni.public_transport.figure_4.fy2023.ulsterbus.passenger_receipts",
+      "concept": "dfi_ni.translink_bus.passenger_receipts",
+      "measure_id": "passenger_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "translink_bus_operator"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_4.fy2023",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "ulsterbus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "ulsterbus"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 91070000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_96f72989614e0c5faaeeabbb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2dcd707e91470eac8849cccf",
+      "source_record_id": "dfi_ni.public_transport.figure_4.fy2024.metro_glider.passenger_receipts",
+      "concept": "dfi_ni.translink_bus.passenger_receipts",
+      "measure_id": "passenger_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "translink_bus_operator"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_4.fy2024",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "metro_glider",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "metro_glider"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 49584434.27999999
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_76d5876229830fe042daad65",
+      "semantic_fact_key": "ledger_semantic_fact_v2_39a5350bd20674db3de1598b",
+      "source_record_id": "dfi_ni.public_transport.figure_4.fy2024.ulsterbus.passenger_receipts",
+      "concept": "dfi_ni.translink_bus.passenger_receipts",
+      "measure_id": "passenger_receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "translink_bus_operator"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_4.fy2024",
+        "groupby_dimension": "dfi_ni.bus_service",
+        "groupby_value_id": "ulsterbus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "service": "ulsterbus"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 figures 3 and 4",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 100498383.20999996
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8f511857d67a2334480d3243",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7e09dc7b079e614c9d4c80c7",
+      "source_record_id": "nithc.dfi_transactions.fy2023.capital_grants.transaction_value",
+      "concept": "nithc.dfi_transaction_value",
+      "measure_id": "transaction_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "public_transport_funding_authority"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "nithc.dfi_transactions.fy2023",
+        "groupby_dimension": "nithc.funding_component",
+        "groupby_value_id": "capital_grants",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "Capital grants",
+        "mode_scope": "all_public_transport"
+      },
+      "source": {
+        "source_name": "nithc",
+        "source_table": "Northern Ireland Transport Holding Company Annual Report and Accounts 2024/25, note 23 Related Party Transactions",
+        "source_file": "translink-annual-report-2024-25.pdf",
+        "source_sha256": "898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/nithc/nithc-annual-report-accounts-2024-25/2025/898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f/translink-annual-report-2024-25.pdf"
+      },
+      "value": 275500000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_517da3f7e35294799016bf03",
+      "semantic_fact_key": "ledger_semantic_fact_v2_098be0715f6ccb54d13a1272",
+      "source_record_id": "nithc.dfi_transactions.fy2023.concessionary_fare_compensation.transaction_value",
+      "concept": "nithc.dfi_transaction_value",
+      "measure_id": "transaction_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "public_transport_funding_authority"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "nithc.dfi_transactions.fy2023",
+        "groupby_dimension": "nithc.funding_component",
+        "groupby_value_id": "concessionary_fare_compensation",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "Concessionary fare compensation for a range of groups",
+        "mode_scope": "all_public_transport"
+      },
+      "source": {
+        "source_name": "nithc",
+        "source_table": "Northern Ireland Transport Holding Company Annual Report and Accounts 2024/25, note 23 Related Party Transactions",
+        "source_file": "translink-annual-report-2024-25.pdf",
+        "source_sha256": "898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/nithc/nithc-annual-report-accounts-2024-25/2025/898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f/translink-annual-report-2024-25.pdf"
+      },
+      "value": 43700000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cc5076040a51d0c2caa2e677",
+      "semantic_fact_key": "ledger_semantic_fact_v2_85f6ed93bc44cb787b77370b",
+      "source_record_id": "nithc.dfi_transactions.fy2023.other_revenue_funding.transaction_value",
+      "concept": "nithc.dfi_transaction_value",
+      "measure_id": "transaction_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "public_transport_funding_authority"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "nithc.dfi_transactions.fy2023",
+        "groupby_dimension": "nithc.funding_component",
+        "groupby_value_id": "other_revenue_funding",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "Other revenue funding",
+        "mode_scope": "all_public_transport"
+      },
+      "source": {
+        "source_name": "nithc",
+        "source_table": "Northern Ireland Transport Holding Company Annual Report and Accounts 2024/25, note 23 Related Party Transactions",
+        "source_file": "translink-annual-report-2024-25.pdf",
+        "source_sha256": "898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/nithc/nithc-annual-report-accounts-2024-25/2025/898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f/translink-annual-report-2024-25.pdf"
+      },
+      "value": 67800000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3a54655241443ac3a50763ae",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ffceeb792d85a6e68a0b2526",
+      "source_record_id": "nithc.dfi_transactions.fy2023.public_service_obligation_compensation.transaction_value",
+      "concept": "nithc.dfi_transaction_value",
+      "measure_id": "transaction_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "public_transport_funding_authority"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "nithc.dfi_transactions.fy2023",
+        "groupby_dimension": "nithc.funding_component",
+        "groupby_value_id": "public_service_obligation_compensation",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "Public Service Obligation compensation",
+        "mode_scope": "all_public_transport"
+      },
+      "source": {
+        "source_name": "nithc",
+        "source_table": "Northern Ireland Transport Holding Company Annual Report and Accounts 2024/25, note 23 Related Party Transactions",
+        "source_file": "translink-annual-report-2024-25.pdf",
+        "source_sha256": "898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/nithc/nithc-annual-report-accounts-2024-25/2025/898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f/translink-annual-report-2024-25.pdf"
+      },
+      "value": 55500000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_053664b0720f4af13e35dd8a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b5feeaaca8fcc815768f2479",
+      "source_record_id": "nithc.dfi_transactions.fy2024.capital_grants.transaction_value",
+      "concept": "nithc.dfi_transaction_value",
+      "measure_id": "transaction_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "public_transport_funding_authority"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "nithc.dfi_transactions.fy2024",
+        "groupby_dimension": "nithc.funding_component",
+        "groupby_value_id": "capital_grants",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "Capital grants",
+        "mode_scope": "all_public_transport"
+      },
+      "source": {
+        "source_name": "nithc",
+        "source_table": "Northern Ireland Transport Holding Company Annual Report and Accounts 2024/25, note 23 Related Party Transactions",
+        "source_file": "translink-annual-report-2024-25.pdf",
+        "source_sha256": "898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/nithc/nithc-annual-report-accounts-2024-25/2025/898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f/translink-annual-report-2024-25.pdf"
+      },
+      "value": 250300000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8987c69d07df30fe317d612e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_997b7166bbb9bb64b9957124",
+      "source_record_id": "nithc.dfi_transactions.fy2024.concessionary_fare_compensation.transaction_value",
+      "concept": "nithc.dfi_transaction_value",
+      "measure_id": "transaction_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "public_transport_funding_authority"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "nithc.dfi_transactions.fy2024",
+        "groupby_dimension": "nithc.funding_component",
+        "groupby_value_id": "concessionary_fare_compensation",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "Concessionary fare compensation for a range of groups",
+        "mode_scope": "all_public_transport"
+      },
+      "source": {
+        "source_name": "nithc",
+        "source_table": "Northern Ireland Transport Holding Company Annual Report and Accounts 2024/25, note 23 Related Party Transactions",
+        "source_file": "translink-annual-report-2024-25.pdf",
+        "source_sha256": "898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/nithc/nithc-annual-report-accounts-2024-25/2025/898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f/translink-annual-report-2024-25.pdf"
+      },
+      "value": 49900000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b0992fb688b0254a2913f2df",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8a2c1e4b91f774f3bb8b33a5",
+      "source_record_id": "nithc.dfi_transactions.fy2024.other_revenue_funding.transaction_value",
+      "concept": "nithc.dfi_transaction_value",
+      "measure_id": "transaction_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "public_transport_funding_authority"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "nithc.dfi_transactions.fy2024",
+        "groupby_dimension": "nithc.funding_component",
+        "groupby_value_id": "other_revenue_funding",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "Other revenue funding",
+        "mode_scope": "all_public_transport"
+      },
+      "source": {
+        "source_name": "nithc",
+        "source_table": "Northern Ireland Transport Holding Company Annual Report and Accounts 2024/25, note 23 Related Party Transactions",
+        "source_file": "translink-annual-report-2024-25.pdf",
+        "source_sha256": "898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/nithc/nithc-annual-report-accounts-2024-25/2025/898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f/translink-annual-report-2024-25.pdf"
+      },
+      "value": 53200000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_be8eb7011b6f65fa65d52fcb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d98b181fe06661bf0752f7c1",
+      "source_record_id": "nithc.dfi_transactions.fy2024.public_service_obligation_compensation.transaction_value",
+      "concept": "nithc.dfi_transaction_value",
+      "measure_id": "transaction_value",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "public_transport_funding_authority"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "nithc.dfi_transactions.fy2024",
+        "groupby_dimension": "nithc.funding_component",
+        "groupby_value_id": "public_service_obligation_compensation",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "Public Service Obligation compensation",
+        "mode_scope": "all_public_transport"
+      },
+      "source": {
+        "source_name": "nithc",
+        "source_table": "Northern Ireland Transport Holding Company Annual Report and Accounts 2024/25, note 23 Related Party Transactions",
+        "source_file": "translink-annual-report-2024-25.pdf",
+        "source_sha256": "898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/nithc/nithc-annual-report-accounts-2024-25/2025/898a0d17963b18da40ebcec64c9b222aec11666712f9a7d65b18f648c92dc26f/translink-annual-report-2024-25.pdf"
+      },
+      "value": 61800000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f58a06df5526b59b93712ef2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a79c61328f8066d16ea07bef",
+      "source_record_id": "scotgov.bus.table_2_9.fy2023.all_government_support.support",
+      "concept": "scotgov.bus.government_support",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "bus_funding_authority"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_9.fy2023",
+        "groupby_dimension": "scotgov.funding_component",
+        "groupby_value_id": "all_government_support",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "funding_component": "all_government_support"
+      },
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4",
+        "vintage": "2023_24",
+        "raw_r2_key": "raw/scotgov/scotgov-bus-coach-statistics-2023-24/2024/05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4/bus-and-coach-reference-tables.xls"
+      },
+      "value": 438893000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2bb88499bc2af2139639884d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fdce768a09d9efdba06f18db",
+      "source_record_id": "scotgov.bus.table_2_9.fy2023.concessionary_fares.support",
+      "concept": "scotgov.bus.government_support",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "bus_funding_authority"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_9.fy2023",
+        "groupby_dimension": "scotgov.funding_component",
+        "groupby_value_id": "concessionary_fares",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "concessionary_fares"
+      },
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4",
+        "vintage": "2023_24",
+        "raw_r2_key": "raw/scotgov/scotgov-bus-coach-statistics-2023-24/2024/05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4/bus-and-coach-reference-tables.xls"
+      },
+      "value": 351600000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_45e9a0c51a7358a36df287c5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_414bd1583b2fe0f768d8f13d",
+      "source_record_id": "scotgov.bus.table_2_9.fy2023.local_authority_bus_support.support",
+      "concept": "scotgov.bus.government_support",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "bus_funding_authority"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_9.fy2023",
+        "groupby_dimension": "scotgov.funding_component",
+        "groupby_value_id": "local_authority_bus_support",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "local_authority_bus_support"
+      },
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4",
+        "vintage": "2023_24",
+        "raw_r2_key": "raw/scotgov/scotgov-bus-coach-statistics-2023-24/2024/05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4/bus-and-coach-reference-tables.xls"
+      },
+      "value": 56393000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_158ddc8018e9cce159a6c9fb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9b0f6ae205f318193f548bc4",
+      "source_record_id": "scotgov.bus.table_2_9.fy2023.network_support_grant.support",
+      "concept": "scotgov.bus.government_support",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "bus_funding_authority"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_9.fy2023",
+        "groupby_dimension": "scotgov.funding_component",
+        "groupby_value_id": "network_support_grant",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "network_support_grant"
+      },
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4",
+        "vintage": "2023_24",
+        "raw_r2_key": "raw/scotgov/scotgov-bus-coach-statistics-2023-24/2024/05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4/bus-and-coach-reference-tables.xls"
+      },
+      "value": 30900000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ceb60fd41d0f5587be94c234",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ae320ed4fcef1f28b54c3f97",
+      "source_record_id": "scotgov.bus.table_2_9.fy2024.all_government_support.support",
+      "concept": "scotgov.bus.government_support",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "bus_funding_authority"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_9.fy2024",
+        "groupby_dimension": "scotgov.funding_component",
+        "groupby_value_id": "all_government_support",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "funding_component": "all_government_support"
+      },
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics 2025 bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/scotgov/scotgov-bus-coach-statistics-2024-25/2025/2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c/bus-and-coach-reference-tables.xls"
+      },
+      "value": 499000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0bcd6c5072671ab1111df4c6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5eaef039d2efa20e69b81528",
+      "source_record_id": "scotgov.bus.table_2_9.fy2024.concessionary_fares.support",
+      "concept": "scotgov.bus.government_support",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "bus_funding_authority"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_9.fy2024",
+        "groupby_dimension": "scotgov.funding_component",
+        "groupby_value_id": "concessionary_fares",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "concessionary_fares"
+      },
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics 2025 bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/scotgov/scotgov-bus-coach-statistics-2024-25/2025/2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c/bus-and-coach-reference-tables.xls"
+      },
+      "value": 392000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7dcd28230a38da1a2836380d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7d1547718313646431017e95",
+      "source_record_id": "scotgov.bus.table_2_9.fy2024.local_authority_bus_support.support",
+      "concept": "scotgov.bus.government_support",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "bus_funding_authority"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_9.fy2024",
+        "groupby_dimension": "scotgov.funding_component",
+        "groupby_value_id": "local_authority_bus_support",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "local_authority_bus_support"
+      },
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics 2025 bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/scotgov/scotgov-bus-coach-statistics-2024-25/2025/2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c/bus-and-coach-reference-tables.xls"
+      },
+      "value": 63000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7839ac23f06159cfa7d3774f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7103e71fd46be8bfd709585e",
+      "source_record_id": "scotgov.bus.table_2_9.fy2024.network_support_grant.support",
+      "concept": "scotgov.bus.government_support",
+      "measure_id": "support",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "bus_funding_authority"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_9.fy2024",
+        "groupby_dimension": "scotgov.funding_component",
+        "groupby_value_id": "network_support_grant",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "funding_component": "network_support_grant"
+      },
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics 2025 bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/scotgov/scotgov-bus-coach-statistics-2024-25/2025/2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c/bus-and-coach-reference-tables.xls"
+      },
+      "value": 44000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8ff37e84cdd3499e539ac13d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4ee3e9643ad6206447895ad1",
+      "source_record_id": "scotgov.bus.table_2_5.cy2024.scotland.local_bus_fare_index",
+      "concept": "scotgov.bus.local_fare_index",
+      "measure_id": "local_bus_fare_index",
+      "unit": "index_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_market"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_5.cy2024",
+        "groupby_dimension": "scotgov.bus_scope",
+        "groupby_value_id": "scotland",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4",
+        "vintage": "2023_24",
+        "raw_r2_key": "raw/scotgov/scotgov-bus-coach-statistics-2023-24/2024/05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4/bus-and-coach-reference-tables.xls"
+      },
+      "value": 204.1
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4fd267004ba2fca458862512",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cd359d16b0c3dbeb521928a7",
+      "source_record_id": "scotgov.bus.table_2_5.cy2025.scotland.local_bus_fare_index",
+      "concept": "scotgov.bus.local_fare_index",
+      "measure_id": "local_bus_fare_index",
+      "unit": "index_2005_100",
+      "aggregation": "ratio",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_market"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_5.cy2025",
+        "groupby_dimension": "scotgov.bus_scope",
+        "groupby_value_id": "scotland",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics 2025 bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/scotgov/scotgov-bus-coach-statistics-2024-25/2025/2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c/bus-and-coach-reference-tables.xls"
+      },
+      "value": 214
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f424325f76b4a19b4fc2bbf8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_44cda4f346803865cf024c32",
+      "source_record_id": "scotgov.bus.table_2_8.fy2024.government_support.revenue",
+      "concept": "scotgov.bus.operator_revenue",
+      "measure_id": "revenue",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_operators"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_8.fy2024",
+        "groupby_dimension": "scotgov.revenue_component",
+        "groupby_value_id": "government_support",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "revenue_component": "government_support"
+      },
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics 2025 bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/scotgov/scotgov-bus-coach-statistics-2024-25/2025/2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c/bus-and-coach-reference-tables.xls"
+      },
+      "value": 499000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c4269bb83534f1e46f5801c1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dacd8be4832aa6e751136d14",
+      "source_record_id": "scotgov.bus.table_2_8.fy2024.passenger_revenue.revenue",
+      "concept": "scotgov.bus.operator_revenue",
+      "measure_id": "revenue",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_operators"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_8.fy2024",
+        "groupby_dimension": "scotgov.revenue_component",
+        "groupby_value_id": "passenger_revenue",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "revenue_component": "passenger_revenue"
+      },
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics 2025 bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/scotgov/scotgov-bus-coach-statistics-2024-25/2025/2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c/bus-and-coach-reference-tables.xls"
+      },
+      "value": 391000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4defe5b177db2c9ea478bf08",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3dce07b60b310c8ccc760690",
+      "source_record_id": "scotgov.bus.table_2_8.fy2024.total_operator_revenue.revenue",
+      "concept": "scotgov.bus.operator_revenue",
+      "measure_id": "revenue",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_operators"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_8.fy2024",
+        "groupby_dimension": "scotgov.revenue_component",
+        "groupby_value_id": "total_operator_revenue",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics 2025 bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/scotgov/scotgov-bus-coach-statistics-2024-25/2025/2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c/bus-and-coach-reference-tables.xls"
+      },
+      "value": 890000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3e63e241dc4221db40beb76d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4b7b8f9326791ea008afc78f",
+      "source_record_id": "scotgov.bus.table_2_2a.fy2023.all_passenger_journeys.passenger_journeys",
+      "concept": "scotgov.bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "bus_passenger"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_2a.fy2023",
+        "groupby_dimension": "scotgov.journey_category",
+        "groupby_value_id": "all_passenger_journeys",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4",
+        "vintage": "2023_24",
+        "raw_r2_key": "raw/scotgov/scotgov-bus-coach-statistics-2023-24/2024/05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4/bus-and-coach-reference-tables.xls"
+      },
+      "value": 334329795.89247
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0243bb559554d1c7fd941019",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2b0797ed899a87a8b95f9c29",
+      "source_record_id": "scotgov.bus.table_2_2a.fy2023.concessionary_passenger_journeys.passenger_journeys",
+      "concept": "scotgov.bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "bus_passenger"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_2a.fy2023",
+        "groupby_dimension": "scotgov.journey_category",
+        "groupby_value_id": "concessionary_passenger_journeys",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "journey_category": "concessionary"
+      },
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4",
+        "vintage": "2023_24",
+        "raw_r2_key": "raw/scotgov/scotgov-bus-coach-statistics-2023-24/2024/05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4/bus-and-coach-reference-tables.xls"
+      },
+      "value": 177268865.50683
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5f1dbaef51537cb3e7fe92ab",
+      "semantic_fact_key": "ledger_semantic_fact_v2_db9d73bfe857856f295f7d2b",
+      "source_record_id": "scotgov.bus.table_2_2a.fy2024.all_passenger_journeys.passenger_journeys",
+      "concept": "scotgov.bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "bus_passenger"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_2a.fy2024",
+        "groupby_dimension": "scotgov.journey_category",
+        "groupby_value_id": "all_passenger_journeys",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics 2025 bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/scotgov/scotgov-bus-coach-statistics-2024-25/2025/2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c/bus-and-coach-reference-tables.xls"
+      },
+      "value": 334000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_095b7622061167da2fd6dd0c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2b75513289e82a6cf1bfeaf6",
+      "source_record_id": "scotgov.bus.table_2_2a.fy2024.concessionary_passenger_journeys.passenger_journeys",
+      "concept": "scotgov.bus.passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "bus_passenger"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_2a.fy2024",
+        "groupby_dimension": "scotgov.journey_category",
+        "groupby_value_id": "concessionary_passenger_journeys",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "journey_category": "concessionary"
+      },
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics 2025 bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/scotgov/scotgov-bus-coach-statistics-2024-25/2025/2a0e4bdd48f65a2a70451a6091e2d035c15f9101d70b64203053be472fd3fc6c/bus-and-coach-reference-tables.xls"
+      },
+      "value": 183599374.01433
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e330fab75a2f5c3f5a202654",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a5d842d692d5b0215d566ba0",
+      "source_record_id": "scotgov.bus.table_2_8.fy2023.scotland.passenger_revenue",
+      "concept": "scotgov.bus.passenger_revenue",
+      "measure_id": "passenger_revenue",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "local_bus_operators"
+      },
+      "geography": {
+        "id": "S92000003",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "scotgov.bus.table_2_8.fy2023",
+        "groupby_dimension": "scotgov.bus_scope",
+        "groupby_value_id": "scotland",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "scotgov",
+        "source_table": "Scottish Transport Statistics bus and coach reference tables",
+        "source_file": "bus-and-coach-reference-tables.xls",
+        "source_sha256": "05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4",
+        "vintage": "2023_24",
+        "raw_r2_key": "raw/scotgov/scotgov-bus-coach-statistics-2023-24/2024/05204b0bd634e5d953d6f25eaf220633a82d3249e020133f341271e9af1c6bd4/bus-and-coach-reference-tables.xls"
+      },
+      "value": 318513210.10533
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6190aa2d7f14f289899b247a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4d60744a38b0d05813c14882",
+      "source_record_id": "welshgov.local_transport.concessionary_fares.grants.fy2022.wales.grants",
+      "concept": "welshgov.local_transport.grants",
+      "measure_id": "grants",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.concessionary_fares.grants.fy2022",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Grants",
+        "service_line": "Concessionary fares"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -49978070
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e76d8bbda41f83e27b31325b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f442b3b941b10040773094d9",
+      "source_record_id": "welshgov.local_transport.support_to_operators.grants.fy2022.wales.grants",
+      "concept": "welshgov.local_transport.grants",
+      "measure_id": "grants",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.support_to_operators.grants.fy2022",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Grants",
+        "service_line": "Support to operators"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -17477460
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_95441b16219879bd0a7f5094",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b7d972311f9fdc8a5ad3ddd9",
+      "source_record_id": "welshgov.local_transport.total_public_transport.grants.fy2022.wales.grants",
+      "concept": "welshgov.local_transport.grants",
+      "measure_id": "grants",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.total_public_transport.grants.fy2022",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Grants",
+        "service_line": "Total public transport"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -68297300
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d73d0e34f2ec6b30c2c7e73c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3a0e8101801f99f37618ce8f",
+      "source_record_id": "welshgov.local_transport.concessionary_fares.grants.fy2023.wales.grants",
+      "concept": "welshgov.local_transport.grants",
+      "measure_id": "grants",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.concessionary_fares.grants.fy2023",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Grants",
+        "service_line": "Concessionary fares"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -45869490
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_463b74840c9d4122a9e98945",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ae663d77b79bb9b2a5a9edb7",
+      "source_record_id": "welshgov.local_transport.support_to_operators.grants.fy2023.wales.grants",
+      "concept": "welshgov.local_transport.grants",
+      "measure_id": "grants",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.support_to_operators.grants.fy2023",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Grants",
+        "service_line": "Support to operators"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -21594620
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_385f475422394c0318a4d779",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4bc825aecb84d3a05a86c173",
+      "source_record_id": "welshgov.local_transport.total_public_transport.grants.fy2023.wales.grants",
+      "concept": "welshgov.local_transport.grants",
+      "measure_id": "grants",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.total_public_transport.grants.fy2023",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Grants",
+        "service_line": "Total public transport"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -68399940
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a3035af813fd076ae2e49429",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4db7f47db442c4b4bec55cd9",
+      "source_record_id": "welshgov.local_transport.concessionary_fares.grants.fy2024.wales.grants",
+      "concept": "welshgov.local_transport.grants",
+      "measure_id": "grants",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.concessionary_fares.grants.fy2024",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Grants",
+        "service_line": "Concessionary fares"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -51361320
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_01b1ad53c25df16ac2757620",
+      "semantic_fact_key": "ledger_semantic_fact_v2_73710197452b53f2e1465a1f",
+      "source_record_id": "welshgov.local_transport.support_to_operators.grants.fy2024.wales.grants",
+      "concept": "welshgov.local_transport.grants",
+      "measure_id": "grants",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.support_to_operators.grants.fy2024",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Grants",
+        "service_line": "Support to operators"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -44687170
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7d6c0aaddd436d676228e8e8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_93dfe27d7d7dace23e27c920",
+      "source_record_id": "welshgov.local_transport.total_public_transport.grants.fy2024.wales.grants",
+      "concept": "welshgov.local_transport.grants",
+      "measure_id": "grants",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.total_public_transport.grants.fy2024",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Grants",
+        "service_line": "Total public transport"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -96399180
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2abca07cf964d8593108b14d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ffd877a67bf0de1b0f0d49a7",
+      "source_record_id": "welshgov.local_transport.concessionary_fares.gross_expenditure.fy2022.wales.gross_expenditure",
+      "concept": "welshgov.local_transport.gross_expenditure",
+      "measure_id": "gross_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.concessionary_fares.gross_expenditure.fy2022",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Gross expenditure",
+        "service_line": "Concessionary fares"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 60841220
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3e4ce3bab75318bf8ce98105",
+      "semantic_fact_key": "ledger_semantic_fact_v2_00edd4c9a55f9ec4c9851eb3",
+      "source_record_id": "welshgov.local_transport.support_to_operators.gross_expenditure.fy2022.wales.gross_expenditure",
+      "concept": "welshgov.local_transport.gross_expenditure",
+      "measure_id": "gross_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.support_to_operators.gross_expenditure.fy2022",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Gross expenditure",
+        "service_line": "Support to operators"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 38343450
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3d2a70f82e6d922755f8fab6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1d18fb4a312b9c1df062eba3",
+      "source_record_id": "welshgov.local_transport.total_public_transport.gross_expenditure.fy2022.wales.gross_expenditure",
+      "concept": "welshgov.local_transport.gross_expenditure",
+      "measure_id": "gross_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.total_public_transport.gross_expenditure.fy2022",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Gross expenditure",
+        "service_line": "Total public transport"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 108428300
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cfa5bd8244f587982cbe8394",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e5f1236be3fd78edc72f9047",
+      "source_record_id": "welshgov.local_transport.concessionary_fares.gross_expenditure.fy2023.wales.gross_expenditure",
+      "concept": "welshgov.local_transport.gross_expenditure",
+      "measure_id": "gross_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.concessionary_fares.gross_expenditure.fy2023",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Gross expenditure",
+        "service_line": "Concessionary fares"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 54095480
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_274dc70d0e6e00b962a417c5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3deedd5d15bfde355d0f06fc",
+      "source_record_id": "welshgov.local_transport.support_to_operators.gross_expenditure.fy2023.wales.gross_expenditure",
+      "concept": "welshgov.local_transport.gross_expenditure",
+      "measure_id": "gross_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.support_to_operators.gross_expenditure.fy2023",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Gross expenditure",
+        "service_line": "Support to operators"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 43330760
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ef9eff1bf3904db745c2e982",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7054a77d2004b59d3cd35394",
+      "source_record_id": "welshgov.local_transport.total_public_transport.gross_expenditure.fy2023.wales.gross_expenditure",
+      "concept": "welshgov.local_transport.gross_expenditure",
+      "measure_id": "gross_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.total_public_transport.gross_expenditure.fy2023",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Gross expenditure",
+        "service_line": "Total public transport"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 106001100
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_752b21ef552b3ed41e351729",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8046eb2893bfc821f0bb3403",
+      "source_record_id": "welshgov.local_transport.concessionary_fares.gross_expenditure.fy2024.wales.gross_expenditure",
+      "concept": "welshgov.local_transport.gross_expenditure",
+      "measure_id": "gross_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.concessionary_fares.gross_expenditure.fy2024",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Gross expenditure",
+        "service_line": "Concessionary fares"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 62443460
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a10fcfec7cb458fa0c8c7f10",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5bc1b0af8d6a13c80b79b235",
+      "source_record_id": "welshgov.local_transport.support_to_operators.gross_expenditure.fy2024.wales.gross_expenditure",
+      "concept": "welshgov.local_transport.gross_expenditure",
+      "measure_id": "gross_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.support_to_operators.gross_expenditure.fy2024",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Gross expenditure",
+        "service_line": "Support to operators"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 69046510
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f736c63e9254c3ab25ede472",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f18c070b42819dc13dcaa994",
+      "source_record_id": "welshgov.local_transport.total_public_transport.gross_expenditure.fy2024.wales.gross_expenditure",
+      "concept": "welshgov.local_transport.gross_expenditure",
+      "measure_id": "gross_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.total_public_transport.gross_expenditure.fy2024",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Gross expenditure",
+        "service_line": "Total public transport"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 139589200
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e85260b4495073b1670e4561",
+      "semantic_fact_key": "ledger_semantic_fact_v2_10629c95629d4cec7c58f9e4",
+      "source_record_id": "welshgov.local_transport.concessionary_fares.net_current_expenditure.fy2022.wales.net_current_expenditure",
+      "concept": "welshgov.local_transport.net_current_expenditure",
+      "measure_id": "net_current_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.concessionary_fares.net_current_expenditure.fy2022",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Net current expenditure",
+        "service_line": "Concessionary fares"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 60046640
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3a3ae365624e14d6b2e7f36c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d7ac96ea09ce8851bbf6083e",
+      "source_record_id": "welshgov.local_transport.support_to_operators.net_current_expenditure.fy2022.wales.net_current_expenditure",
+      "concept": "welshgov.local_transport.net_current_expenditure",
+      "measure_id": "net_current_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.support_to_operators.net_current_expenditure.fy2022",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Net current expenditure",
+        "service_line": "Support to operators"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 30725380
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f983d097aabe08fcb6676630",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6dd57633efaf6b838b4fe3b9",
+      "source_record_id": "welshgov.local_transport.total_public_transport.net_current_expenditure.fy2022.wales.net_current_expenditure",
+      "concept": "welshgov.local_transport.net_current_expenditure",
+      "measure_id": "net_current_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.total_public_transport.net_current_expenditure.fy2022",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Net current expenditure",
+        "service_line": "Total public transport"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 97728480
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fe9127127c162c04a51b0676",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b064d93e3dbe6f61708d067a",
+      "source_record_id": "welshgov.local_transport.concessionary_fares.net_current_expenditure.fy2023.wales.net_current_expenditure",
+      "concept": "welshgov.local_transport.net_current_expenditure",
+      "measure_id": "net_current_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.concessionary_fares.net_current_expenditure.fy2023",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Net current expenditure",
+        "service_line": "Concessionary fares"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 52837740
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_90da211f3bafb462957ac4ce",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cf1b9cdc91c99784d29d8d26",
+      "source_record_id": "welshgov.local_transport.support_to_operators.net_current_expenditure.fy2023.wales.net_current_expenditure",
+      "concept": "welshgov.local_transport.net_current_expenditure",
+      "measure_id": "net_current_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.support_to_operators.net_current_expenditure.fy2023",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Net current expenditure",
+        "service_line": "Support to operators"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 36835020
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2d4daf3bd2ea88b93e0e6d6d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6ade712311c520f9565a057a",
+      "source_record_id": "welshgov.local_transport.total_public_transport.net_current_expenditure.fy2023.wales.net_current_expenditure",
+      "concept": "welshgov.local_transport.net_current_expenditure",
+      "measure_id": "net_current_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.total_public_transport.net_current_expenditure.fy2023",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Net current expenditure",
+        "service_line": "Total public transport"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 95598470
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_98c8895c5d651cafc780bd8c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d18bb28aa3946324bf92b004",
+      "source_record_id": "welshgov.local_transport.concessionary_fares.net_current_expenditure.fy2024.wales.net_current_expenditure",
+      "concept": "welshgov.local_transport.net_current_expenditure",
+      "measure_id": "net_current_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.concessionary_fares.net_current_expenditure.fy2024",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Net current expenditure",
+        "service_line": "Concessionary fares"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 61139010
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3ab79b3fcded33e627121013",
+      "semantic_fact_key": "ledger_semantic_fact_v2_71cf1b1628b780d69d50abf6",
+      "source_record_id": "welshgov.local_transport.support_to_operators.net_current_expenditure.fy2024.wales.net_current_expenditure",
+      "concept": "welshgov.local_transport.net_current_expenditure",
+      "measure_id": "net_current_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.support_to_operators.net_current_expenditure.fy2024",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Net current expenditure",
+        "service_line": "Support to operators"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 57208840
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_372237fbe9ae23fd0222ca8a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_76798bb9003d270c69b7ec2d",
+      "source_record_id": "welshgov.local_transport.total_public_transport.net_current_expenditure.fy2024.wales.net_current_expenditure",
+      "concept": "welshgov.local_transport.net_current_expenditure",
+      "measure_id": "net_current_expenditure",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.total_public_transport.net_current_expenditure.fy2024",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Net current expenditure",
+        "service_line": "Total public transport"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": 124178300
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3d9bb3ea1cebab65bb5b0eff",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f0221d84f2c579f3461acb35",
+      "source_record_id": "welshgov.local_transport.concessionary_fares.total_income.fy2022.wales.total_income",
+      "concept": "welshgov.local_transport.total_income",
+      "measure_id": "total_income",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.concessionary_fares.total_income.fy2022",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Total income",
+        "service_line": "Concessionary fares"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -794570
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_16fd07660903f27281ff0f5b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3c3b2d9d270ad57b34baf42d",
+      "source_record_id": "welshgov.local_transport.support_to_operators.total_income.fy2022.wales.total_income",
+      "concept": "welshgov.local_transport.total_income",
+      "measure_id": "total_income",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.support_to_operators.total_income.fy2022",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Total income",
+        "service_line": "Support to operators"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -7618060
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dc4eea35aaf2c8ea15aa6667",
+      "semantic_fact_key": "ledger_semantic_fact_v2_30e2d29a81840479f96620a7",
+      "source_record_id": "welshgov.local_transport.total_public_transport.total_income.fy2022.wales.total_income",
+      "concept": "welshgov.local_transport.total_income",
+      "measure_id": "total_income",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.total_public_transport.total_income.fy2022",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Total income",
+        "service_line": "Total public transport"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -10699760
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_39029d44cb918ab3a07f19d2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d315f13b6466524483b8b066",
+      "source_record_id": "welshgov.local_transport.concessionary_fares.total_income.fy2023.wales.total_income",
+      "concept": "welshgov.local_transport.total_income",
+      "measure_id": "total_income",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.concessionary_fares.total_income.fy2023",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Total income",
+        "service_line": "Concessionary fares"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -1257740
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_684202dc8eda8b8e08ce3c74",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e9126e6ae34419eeb453ebed",
+      "source_record_id": "welshgov.local_transport.support_to_operators.total_income.fy2023.wales.total_income",
+      "concept": "welshgov.local_transport.total_income",
+      "measure_id": "total_income",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.support_to_operators.total_income.fy2023",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Total income",
+        "service_line": "Support to operators"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -6495730
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d0e83870b7f65eee6562dbfa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3d179f1efe559defa31d3ba8",
+      "source_record_id": "welshgov.local_transport.total_public_transport.total_income.fy2023.wales.total_income",
+      "concept": "welshgov.local_transport.total_income",
+      "measure_id": "total_income",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.total_public_transport.total_income.fy2023",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Total income",
+        "service_line": "Total public transport"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -10402640
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_32bed077722c778e65665da9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_846147f5eacab7c880e38cbf",
+      "source_record_id": "welshgov.local_transport.concessionary_fares.total_income.fy2024.wales.total_income",
+      "concept": "welshgov.local_transport.total_income",
+      "measure_id": "total_income",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.concessionary_fares.total_income.fy2024",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Total income",
+        "service_line": "Concessionary fares"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -1304450
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9ecb77b14a7ce7bf3607110b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6cbc742029a9f8c5576fe9d9",
+      "source_record_id": "welshgov.local_transport.support_to_operators.total_income.fy2024.wales.total_income",
+      "concept": "welshgov.local_transport.total_income",
+      "measure_id": "total_income",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.support_to_operators.total_income.fy2024",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Total income",
+        "service_line": "Support to operators"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -11837670
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3e3385b42342d7b960a0cb15",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2e168b78ecc9fa229421faa3",
+      "source_record_id": "welshgov.local_transport.total_public_transport.total_income.fy2024.wales.total_income",
+      "concept": "welshgov.local_transport.total_income",
+      "measure_id": "total_income",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "unitary_authority"
+      },
+      "geography": {
+        "id": "W92000004",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "welshgov.local_transport.total_public_transport.total_income.fy2024",
+        "groupby_dimension": "welshgov.authority",
+        "groupby_value_id": "wales",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "expenditure_component": "Total income",
+        "service_line": "Total public transport"
+      },
+      "source": {
+        "source_name": "welshgov",
+        "source_table": "Roads and transport revenue outturn expenditure by authority and service",
+        "source_file": "roads-and-transport-revenue-outturn-expenditure.csv",
+        "source_sha256": "2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/uk/welshgov/welshgov-transport-revenue-outturn-2024-25/2025/2e08e36ecfdcdb7628025dd90fcabe5e7b7d1c830b4de16f75f448abe772b096/roads-and-transport-revenue-outturn-expenditure.csv"
+      },
+      "value": -15410910
+    }
+  ]
+}

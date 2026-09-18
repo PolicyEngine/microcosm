@@ -1,12 +1,11 @@
 """Standard calibration diagnostics for UK release candidates.
 
 The shared :mod:`microcosm.calibrate.diagnostics` payload is the release
-contract: it carries the target surface, every target row, solver options, and
-the concentration scalars used by US releases.  UK needs a little more release
-evidence without changing that shared schema (and therefore without changing
-US output): the effective-sample-size fraction, shipped-weight concentration,
-zero-weight rows split by their declared support strata, and target fit by UK
-geography level.
+contract: it carries the target surface, every target row, solver options,
+the schema-8 provider/category/geography/dimension/target hierarchy, and the
+concentration scalars used by US releases. UK adds the effective-sample-size
+fraction, shipped-weight concentration, zero-weight rows split by their
+declared support strata, and target fit by UK geography level.
 
 This module wraps the shared payload and places those additions under a
 separately versioned ``uk_diagnostics`` block.  The common top-level
@@ -38,6 +37,8 @@ __all__ = [
     "UK_DIAGNOSTICS_SCHEMA_VERSION",
     "UK_TARGET_GEOGRAPHY_LEVELS",
     "uk_calibration_diagnostics_payload",
+    "uk_fit_by_family",
+    "uk_support_limited_misses",
     "uk_target_geography_levels",
     "uk_weakest_areas_by_fit",
     "uk_weakest_families",
@@ -49,7 +50,7 @@ __all__ = [
 #: UK-only extension version nested inside the shared calibration diagnostics.
 UK_DIAGNOSTICS_SCHEMA_VERSION = 1
 
-#: Stable vocabulary used by the UK target registry and future OA-ladder rows.
+#: Stable vocabulary used by the UK target registry.
 #: ``"la"`` is accepted only as an input adapter and is serialized as
 #: ``"local_authority"``.
 UK_TARGET_GEOGRAPHY_LEVELS: tuple[str, ...] = (
@@ -181,11 +182,14 @@ def uk_weakest_areas_by_fit(
     for row in target_rows:
         metadata = row.get("metadata")
         if not isinstance(metadata, Mapping):
-            raise ValueError("UK area rollups require target metadata.")
-        level = _normalize_geography_level(metadata.get("area_type"))
+            continue
+        area_type = metadata.get("area_type")
+        if area_type is None:
+            continue
+        level = _normalize_geography_level(area_type)
         area_code = str(metadata.get("area_code") or "")
         if level not in {"constituency", "local_authority"} or not area_code:
-            raise ValueError("UK area rollups require local target area metadata.")
+            continue
         name, error = _finite_target_error(row)
         grouped.setdefault((level, area_code), []).append(
             (name, abs(error), _finite_loss_contribution(row))
@@ -280,6 +284,133 @@ def _country_for_area(area_code: str) -> str:
         ) from error
 
 
+def _local_grain_column(frame: pd.DataFrame) -> str:
+    for column in ("grain", "area_type", "geography_level"):
+        if column in frame.columns:
+            return column
+    raise ValueError(
+        "UK local diagnostics require a grain, area_type, or geography_level column."
+    )
+
+
+def uk_support_limited_misses(
+    local_diagnostics: pd.DataFrame,
+    area_support: Mapping[str, pd.DataFrame],
+    *,
+    max_abs_relative_error: float,
+) -> dict[str, dict[str, object]]:
+    """Relate failing local cells to each area's measured support."""
+
+    if not math.isfinite(max_abs_relative_error) or max_abs_relative_error < 0:
+        raise ValueError("max_abs_relative_error must be finite and non-negative.")
+    required = {"area_code", "abs_relative_error"}
+    missing = sorted(required - set(local_diagnostics.columns))
+    if missing:
+        raise ValueError(f"UK local diagnostics are missing columns {missing}.")
+    grain_column = _local_grain_column(local_diagnostics)
+    result: dict[str, dict[str, object]] = {}
+    for raw_grain, support in sorted(area_support.items()):
+        grain = str(raw_grain)
+        required_support = {
+            "area_code",
+            "assigned_households",
+            "effective_sample_size",
+            "nonzero_source_households",
+        }
+        support_missing = sorted(required_support - set(support.columns))
+        if support_missing:
+            raise ValueError(
+                f"UK area support for {grain!r} is missing columns {support_missing}."
+            )
+        grain_aliases = {grain}
+        if grain == "la":
+            grain_aliases.add("local_authority")
+        elif grain == "local_authority":
+            grain_aliases.add("la")
+        cells = local_diagnostics.loc[
+            local_diagnostics[grain_column].astype(str).isin(grain_aliases)
+            & local_diagnostics["area_code"].notna()
+        ].copy()
+        cells["abs_relative_error"] = pd.to_numeric(
+            cells["abs_relative_error"], errors="raise"
+        )
+        failing = cells.loc[cells["abs_relative_error"] > max_abs_relative_error]
+        support_rows = support.copy()
+        support_rows["area_code"] = support_rows["area_code"].astype(str)
+        support_rows["effective_sample_size"] = pd.to_numeric(
+            support_rows["effective_sample_size"], errors="raise"
+        )
+        bottom_cutoff = (
+            float(support_rows["effective_sample_size"].quantile(0.1))
+            if len(support_rows)
+            else None
+        )
+        failing_with_support = failing.merge(
+            support_rows, on="area_code", how="left", validate="many_to_one"
+        )
+        if (
+            len(failing_with_support)
+            and failing_with_support["effective_sample_size"].isna().any()
+        ):
+            missing_areas = sorted(
+                failing_with_support.loc[
+                    failing_with_support["effective_sample_size"].isna(), "area_code"
+                ]
+                .astype(str)
+                .unique()
+            )
+            raise ValueError(
+                f"UK area support for {grain!r} is missing failing areas {missing_areas}."
+            )
+        share_bottom = (
+            float(
+                (failing_with_support["effective_sample_size"] <= bottom_cutoff).mean()
+            )
+            if len(failing_with_support)
+            else None
+        )
+        worst = (
+            cells.groupby("area_code", sort=True)["abs_relative_error"]
+            .max()
+            .reset_index(name="worst_abs_relative_error")
+            .merge(support_rows, on="area_code", how="left", validate="one_to_one")
+        )
+        correlation = (
+            float(
+                worst["worst_abs_relative_error"].corr(
+                    worst["effective_sample_size"], method="spearman"
+                )
+            )
+            if len(worst) > 1
+            else None
+        )
+        if correlation is not None and not math.isfinite(correlation):
+            correlation = None
+        elif correlation is not None and math.isclose(abs(correlation), 1.0):
+            correlation = math.copysign(1.0, correlation)
+        worst = worst.sort_values(
+            ["worst_abs_relative_error", "area_code"],
+            ascending=[False, True],
+            kind="stable",
+        ).head(10)
+        result[grain] = {
+            "n_failing_cells": int(len(failing)),
+            "share_failing_cells_in_bottom_ess_decile": share_bottom,
+            "spearman_worst_abs_relative_error_vs_ess": correlation,
+            "worst_areas": [
+                {
+                    "area_code": str(row["area_code"]),
+                    "worst_abs_relative_error": float(row["worst_abs_relative_error"]),
+                    "rows": int(row["assigned_households"]),
+                    "ess": float(row["effective_sample_size"]),
+                    "sources": int(row["nonzero_source_households"]),
+                }
+                for _, row in worst.iterrows()
+            ],
+        }
+    return result
+
+
 def _as_weights(values: Sequence[float] | np.ndarray) -> np.ndarray:
     """Return one finite, non-negative, non-empty weight vector."""
 
@@ -343,6 +474,33 @@ def uk_weight_summary(
         "max_to_median_positive_weight": max_to_median,
         "top_1pct_weight_share": top_share,
     }
+
+
+def uk_fit_by_family(
+    diagnostics: pd.DataFrame,
+    *,
+    name_column: str = "target_name",
+) -> list[dict[str, object]]:
+    """Summarize target-fit diagnostics by family."""
+
+    if diagnostics.empty:
+        return []
+    rows = []
+    for family, group in diagnostics.groupby("family", sort=True):
+        errors = group["abs_relative_error"].to_numpy(dtype=np.float64)
+        worst_index = int(np.argmax(errors))
+        worst = group.iloc[worst_index]
+        rows.append(
+            {
+                "family": str(family),
+                "n_targets": len(group),
+                "share_within_10pct": float((errors <= 0.10).mean()),
+                "share_within_25pct": float((errors <= 0.25).mean()),
+                "worst_abs_relative_error": float(errors[worst_index]),
+                "worst_cell": str(worst.get(name_column, worst.get("name", "unknown"))),
+            }
+        )
+    return rows
 
 
 def _json_scalar(value: object, *, column: str) -> object:
@@ -701,6 +859,11 @@ def uk_calibration_diagnostics_payload(
         "weights": weights,
         "zero_weight_rows_by_stratum": strata,
         "target_pass_rates_by_geography_level": pass_rates,
+        "target_observation_basis": {
+            spec.to_target().row_name: str(spec.metadata["observation_basis"])
+            for spec in registry.specs
+            if spec.metadata.get("observation_basis")
+        },
     }
     if local_area_support is not None:
         uk_diagnostics["weakest_families"] = uk_weakest_families(target_rows)

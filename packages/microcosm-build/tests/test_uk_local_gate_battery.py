@@ -24,14 +24,9 @@ def test_local_scope_is_the_declared_six_gate_terminal_battery() -> None:
     )
     assert tuple(entry.id for entry in manifest.gates) == UK_LOCAL_GATE_SCOPE
     assert {entry.phase for entry in manifest.gates} == {"terminal"}
-    assert {
-        entry.id for entry in manifest.gates if entry.criticality == "diagnostic"
-    } == {
-        "uk_local_target_fit",
-        "uk_local_per_family_fit",
-        "uk_local_weight_ratio",
-        "uk_local_weight_ess",
-    }
+    # PR #870 review: every local gate is release-blocking; the fit and weight
+    # gates no longer report without vetoing.
+    assert {entry.criticality for entry in manifest.gates} == {"release_blocking"}
 
 
 def test_local_area_support_parameters_pin_both_grains_and_all_floors() -> None:
@@ -44,6 +39,7 @@ def test_local_area_support_parameters_pin_both_grains_and_all_floors() -> None:
         "minimum_rows": 50,
         "minimum_effective_sample_size": 50.0,
         "minimum_distinct_sources": 50,
+        "exclusions_resource": "local_area_support_exclusions.json",
     }
 
 

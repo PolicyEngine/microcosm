@@ -158,7 +158,9 @@ recorded in `docs/graph-interface.lock` at the start of parallel work.
 Changing either file requires the owner's sign-off on the pull request and
 re-recording the lock. Everything else moves freely.
 
-Amendments so far (each re-locked):
+Amendments to the contract are numbered below. Changes to the two frozen
+interface files are re-locked; runtime-only amendments leave their existing
+lock unchanged:
 
 1. **Structural kernels return data; the executor does the structural
    work.** Only `CREATE` returns `KernelResult.frame`. `FILTER` returns the
@@ -292,9 +294,229 @@ Amendments so far (each re-locked):
     `hit` forced to false) and `load_certified` refuses it. Raised by the
     #847 gate review; adopted 2026-09-03.
 
+19. **Typed opaque artifacts.** A build has byte dependencies that are not
+    cells — a fitted forest, a transfer matrix, a prepared table another
+    node reads whole. Until now the only channel was
+    `KernelResult.artifacts`: undeclared bytes, invisible to the compiler,
+    outside every key, and unreadable by any other node, so the real edge
+    was carried out of band. `decl.py` gains `ArtifactType` (a nominal
+    `name` and positive `schema_version`; the graph never parses the
+    payload), `ArtifactOutput` (a named, typed subset of the bytes a kernel
+    already returns) and `ArtifactInput` (a consumer-local alias naming a
+    producer, its output, and the exact type), plus `Node.artifact_inputs`
+    and `Node.artifact_outputs`. `kernel.py` gains `ArtifactValue` —
+    immutable bytes with the artifact's store identity (derived from the
+    producing node's key and the output name, not a hash of the payload;
+    the store validates the bytes against their own recorded SHA-256 on
+    load, as E1 requires), its producer's node key, and the producer's
+    `NumericScope` — and
+    `KernelContext.artifacts`, one value per declared alias. It rides
+    before `tolerances`, so amendment 17's statement that `numerics` rides
+    at the end of the context stays literally true; the acceptance suite's
+    B2 field set gains it in its own commit. Undeclared diagnostic bytes
+    remain legal and stay unaddressable.
+
+    `compile_graph` resolves every edge and refuses an unknown producer, an
+    undeclared output, a type the producer does not declare, and
+    self-dependence; the producer becomes a predecessor, so an artifact
+    cycle is refused by the same depth computation as a cell cycle and C3's
+    "declared predecessors only" now covers bytes as well as columns. The
+    executor loads each declared input from the store after checking the
+    producer receipt's identity, hands over verified values, and folds the
+    payload and its provenance into the input context digest, so B4's
+    mutation check covers artifacts. A kernel that omits a declared output
+    is rejected; a cached record that lacks one is a miss. Bytes carry
+    their producer's numeric class across the edge and may not launder it:
+    a `platform_bitwise` or `tolerance_bound` payload requires a consumer
+    of the same class (amendments 16 and 17), because opaque bytes have no
+    per-cell coordinates to scope. The typed contract is pinned in the
+    cache record (its schema moves to 2 only for a node that declares
+    artifacts) and in `NodeReceipt.typed_artifacts`; a run manifest
+    carrying any typed edge serializes at schema 3 and authenticates every
+    edge on load. F2 is held by two separate mechanisms. In a run, a byte
+    edge joins the same predecessor set as a cell edge, so the executor's
+    tier derivation walks it and a gate reachable only through bytes is in
+    the release's `gate_ancestry`. On load, the manifest additionally
+    refuses a release whose `gate_ancestry` omits a gate in its typed
+    ancestry — which binds only on a manifest produced elsewhere, since a
+    gate in this codebase cannot be an artifact producer (see the refusal
+    below), and is there so a foreign manifest cannot claim otherwise.
+    `keys.py` exposes `opaque_artifact_key` under the domain and formula the
+    executor already used for undeclared opaque outputs, so typed and
+    undeclared bytes share one derivation and the amendment introduces no
+    second identity scheme. A given output does **not** keep its identity
+    when a type is declared for it: `artifact_outputs` is normative, so the
+    declaration moves the producing node's key and the output's identity
+    moves with it, like any other normative declaration.
+
+    One shape is refused rather than modelled: a **gate kernel may not
+    declare a typed artifact output**. A gate whose kernel raises becomes a
+    `fail` verdict and the run continues (amendment 7), so its synthesized
+    result carries no artifacts, and a declared output would turn that
+    verdict into an aborted run. Amendment 19 carries no regime for an
+    output a node was unable to produce and for the consumers that are
+    therefore unreachable; until one is adopted the executor refuses the
+    declaration outright, so amendment 7 stays literally true for every
+    legal node shape.
+
+    **Node keys do not move.** Unlike amendments 11's `entrants` and 12's
+    `mass_partition`, the two new fields are normative but elided from the
+    canonical projection when empty, and a consumer's `typed_artifacts`
+    term is added only when it declares an input — so a node that declares
+    no artifacts projects, keys, and serializes exactly as it did before.
+    Measured rather than asserted: the whole `microcosm-graph` acceptance
+    suite is green with no re-pin, and every node key of six graphs is
+    byte-identical when computed against `origin/main`'s sources and against
+    this amendment's — `_toy.small_graph()` (5 nodes),
+    `_toy.chained_graph()` (5), `_toy.chained_graph(leaves=("leaf_a",))`
+    (6), `_toy.full_graph()` (9), `uk_spine_graph(load_country_spec("uk"))`
+    (41) and `us_post_transfer_graph()` (8), 74 node keys in all. Keys move
+    for a node that declares an artifact edge and, by A3, for every
+    descendant of either end — the consumer's cell readers, and any
+    structural node whose base version contains the producer or consumer,
+    since its key binds every member's key. No graph on `main` declares an
+    edge, so no key there moves.
+    Raised by the US launch integration branch
+    (`microcosm-us-launch-integration-20260909`), which extended both
+    frozen files without an amendment; extracted and adopted 2026-09-11.
+20. **Keyed draw streams.** `SeedSource.KEYED` and
+    `microcosm.graph.randomness.keyed_uniform`: a keyed kernel's draws are a
+    pure function of normative stream parameters — `("sha256-u53-v1",
+    experiment_id, replicate, base_seed)` — and one stable coordinate per
+    draw, conventionally `(person_id, process, period, draw_index)`, with a
+    float coordinate's signed zero normalised to one identity, as the
+    capabilities projection already does for tolerances. It
+    reads and advances no generator, so a row's draw stops depending on how
+    many rows were drawn before it: the invariance to packing that C1 and C2
+    already gave a node's key and seed now reaches each individual draw, and
+    an inserted or removed identity leaves every other row's value alone. C4
+    is neither weakened nor edited — `randomness.py` consumes no RNG at all,
+    positionally or otherwise, so its static check still holds over the
+    whole shard. `microcosm-fit` carries the first consumer surface,
+    `FittedRegimeGatedQRF.predict_from_uniforms`, which draws from
+    caller-supplied per-row uniforms; pairing those with stable entity ids
+    makes a batch's results invariant to recipient ordering and chunking.
+    **`fit.qrf@1`'s existing outputs are unchanged.** `predict`, its RNG
+    consumption order, and every value it draws are untouched; the new
+    method is additive, and the kernel still declares `PARAM` or `EXECUTOR`,
+    never `KEYED`. Its *implementation* identity moves all the same, because
+    `QRFKernel.implementation_hash()` hashes `microcosm.fit.qrf`'s module
+    bytes — so H1's `fit.qrf` pins are re-recorded on every pinned platform
+    while `direct.csv` stays byte-identical on each, and that byte-identity
+    is the evidence for the additivity claim rather than a restatement of
+    it. Unlike amendments 11 and 13 this adds an enum member, not a
+    normative field: no node's canonical projection gains a field, so the
+    member itself moves no node key — every kernel keeps projecting the seed
+    source it already declared. The `fit.qrf` keys move because the
+    implementation hash moved, not because `KEYED` exists. One deliberate
+    difference from the generator path, commented where it lives: the sign
+    gate's inverse CDF compares strictly and closes its final bin at 1.0,
+    so a uniform of exactly zero skips a zero-probability class instead of
+    selecting it, and a CDF that sums to just under one can no longer
+    silently select the first class. Raised by the US launch integration
+    branch, which carried the code without an amendment; adopted 2026-09-11.
+
+
+21. **Raw sources have an explicit byte codec.** A lookup, crosswalk or fitted
+    input may be a file rather than a population. `SourceCodecRegistry`
+    therefore has separate Frame and byte registration/loading methods under
+    one codec-name namespace. Registering a name in both modes is refused;
+    loading through the wrong mode raises `TypeError`. Existing Frame
+    enumeration and mapping methods remain Frame-only, and byte codecs have
+    their own equivalents. `get` resolves availability in either mode, so a
+    missing codec or import dependency still raises fatal `StoreUnavailable`
+    before execution instead of authorizing recomputation (E2).
+
+    The built-in `raw-bytes-v1` reads one regular file into immutable bytes,
+    bounded at 64 MiB. Its descriptor is opened without blocking and checked
+    for regular-file type; directories, pipes, devices and oversized files
+    are refused. The consuming kernel owns payload parsing and validation.
+    This codec does not turn a lookup into a Frame or a source receipt into
+    survey data. Existing executor source-content identity and post-run
+    mutation checks still apply. Source declarations and canonical projections
+    do not change. A future country import must ship its declared resource
+    files with its first consumer; this generic codec supplies no country
+    resources. Extracted from the US launch integration on 2026-09-12.
+
+22. **Frame metadata survives the content store.** Frame format
+    `microcosm-graph-frame-v2` persists the complete recursively frozen
+    metadata alongside entity/link tables, schema, strata, typed weights and
+    the Frame mass log. Tagged metadata preserves mapping order, tuples,
+    frozensets, scalar kinds and binary float values, including signed zero
+    and supported non-finite values. The metadata payload has a separately
+    recorded SHA-256, checked on load; writing the same frame key with
+    different metadata is corruption, including concurrent write collisions.
+
+    A stored v1 Frame is `StoreUnavailable`, never a metadata-empty substitute
+    or an automatic cache miss. Malformed metadata is `StoreCorrupt`.
+    Non-finite JSON literals and overflowing JSON numbers are refused at the
+    JSON decode boundary; supported non-finite *metadata floats* use tagged
+    binary encodings and remain valid. This is a complete Frame persistence
+    contract, not a new source authority or a release verdict. Extracted from
+    the US launch integration on 2026-09-12.
+
+23. **Unavailable artifacts have executor-owned outcomes.** This amendment
+    supersedes amendment 19's interim refusal of gate kernels with declared
+    typed outputs. Such a gate may now produce verified bytes normally. If
+    the kernel raises, amendment 7 still applies: the executor records its
+    failed verdict and exception evidence. It additionally records
+    `microcosm.graph.execution.v1`, state `gate_exception`, with the exact
+    declared artifact names that were not produced. No replacement bytes or
+    successful computation are invented. An ordinary returned result that
+    omits a declared output is still rejected.
+
+    A node requiring an unavailable artifact is `unreached`; this propagates
+    through causal predecessors, including version/base, cell and byte
+    dependencies. Its kernel does not run and it has no columns, Frame,
+    weights, opaque bytes or observable population. Its receipt names each
+    direct blocker by node id and key. A failed gate's existing verdict
+    columns remain available, so an independent branch or a reader of that
+    verdict can still run. An unreached release remains evidence-tier and
+    cannot certify a file.
+
+    Execution status and cache status are independent. Exceptional node
+    records use schema 3 and manifests containing them use schema 4. A valid
+    cached exceptional record is a hit only with the same blocker provenance;
+    strict required replay validates that provenance before any kernel runs.
+    Missing cache records remain misses, unavailable codecs remain fatal,
+    and corrupt, fabricated or inconsistent execution evidence is refused.
+    Manifests validate unavailable typed inputs and blocker identities on
+    load. Ordinary typed records/manifests retain their previous schemas.
+
+    Only the executor may author the exact tagged execution schema. Kernel
+    attempts to return it are rejected; older free-form `execution`
+    diagnostics without that schema remain uninterpreted. The graph view
+    displays exceptional execution outcomes separately from hit/miss state.
+    No fields in `Node`, `KernelContext`, `KernelResult` or their canonical
+    declarations change. Extracted from the US launch integration on
+    2026-09-12.
+
+24. **Population observers cannot change computation.** The private executor
+    observer receives a detached snapshot of each admitted Population, on
+    cold execution and restored cache hits, before the current node is
+    persisted. Entity/link tables, object-cell leaves, pandas attributes and
+    axis/category buffers, strata, schema/link records, weights, design
+    anchors, owners, metadata and both mass ledgers are detached. The
+    observer may retain or mutate its snapshot during later callbacks or
+    after return without changing downstream inputs or stored outputs.
+    Its exception still refuses the run. An unreached node has no snapshot;
+    an absent observer allocates none.
+
+    The snapshot is an observation seam for an integrating verifier, not a
+    kernel capability, authority-bearing receipt or input to node identity.
+    The implementation uses an in-memory round trip of its own pandas
+    objects and explicit record reconstruction; it accepts no external
+    pickle bytes and introduces no pickle cache format. One complete copy
+    and a temporary serialization buffer are needed per callback, and
+    retained snapshots retain memory. Larger data pilots must measure that
+    cost before scaling. Extracted with the independently reviewed observer
+    isolation repair on 2026-09-12.
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.
+Amendment 19 elides its two fields when they are empty instead, so keys
+move only for the nodes that use them.
 
 ## Ownership
 

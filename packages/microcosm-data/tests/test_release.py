@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from microcosm.data import ReleaseContractError
+from microcosm.data import ReleaseContractError, publish_cli
 from microcosm.data import release as release_module
 from microcosm.data.contract import (
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
@@ -1690,4 +1690,154 @@ def test_publish_refuses_path_components_in_extra_files(
             artifact_root=artifact_root,
             extra_files=("../escape.json",),
         )
+    assert hub.uploads == []
+
+
+@pytest.mark.parametrize(
+    ("condition", "error_type", "message"),
+    [
+        ("extra-file-traversal", ValueError, "bare file name"),
+        ("missing-extra-file", FileNotFoundError, "extra release file"),
+        ("tag-mismatch", ValueError, "tag_name must match"),
+        ("no-create-tag", ValueError, "must create the matching"),
+        ("missing-artifact-root", ValueError, "pass artifact_root"),
+        ("missing-root-artifact", FileNotFoundError, "release artifact"),
+        ("root-artifact-hash-mismatch", ValueError, "has sha256"),
+        ("reserved-pointer-path", ValueError, "reserved pointer path"),
+        ("unclean-root-path", ValueError, "clean relative POSIX path"),
+    ],
+)
+def test_cli_preflight_matches_publisher_guards_before_hub_activity(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+    monkeypatch,
+    condition: str,
+    error_type: type[Exception],
+    message: str,
+) -> None:
+    """Real contracts used to pass CLI preflight despite these publisher errors."""
+    kwargs = {"artifact_root": artifact_root}
+    cli_args = [str(release_dir), "--artifact-root", str(artifact_root)]
+    if condition == "extra-file-traversal":
+        (release_dir.parent / "escape.json").write_text("{}")
+        kwargs["extra_files"] = ("../escape.json",)
+        cli_args.extend(["--extra-file", "../escape.json"])
+    elif condition == "missing-extra-file":
+        kwargs["extra_files"] = ("missing.json",)
+        cli_args.extend(["--extra-file", "missing.json"])
+    elif condition == "tag-mismatch":
+        kwargs["tag_name"] = "different-tag"
+        cli_args.extend(["--tag-name", "different-tag"])
+    elif condition == "no-create-tag":
+        kwargs["create_tag"] = False
+        cli_args.append("--no-create-tag")
+    elif condition == "missing-artifact-root":
+        kwargs = {}
+        cli_args = [str(release_dir)]
+    elif condition == "missing-root-artifact":
+        (artifact_root / "populace_us_2024_calibration.npz").unlink()
+    elif condition == "root-artifact-hash-mismatch":
+        (artifact_root / "populace_us_2024.h5").write_bytes(b"wrong payload")
+    elif condition == "reserved-pointer-path":
+        _declare_root_artifact(
+            release_dir, key="smuggled_pointer", path=LATEST_EVIDENCE_POINTER_PATH
+        )
+    elif condition == "unclean-root-path":
+        _declare_root_artifact(
+            release_dir, key="smuggled_pointer", path=f"./{LATEST_POINTER_PATH}"
+        )
+    else:
+        raise AssertionError(f"unhandled condition: {condition}")
+
+    def unexpected_hub_activity(*args, **kwargs):
+        pytest.fail("invalid local publication must fail before any Hub activity")
+
+    monkeypatch.setattr(release_module, "_hf_api", unexpected_hub_activity)
+    # FakeHub logs writes; forbid its read methods too, so an empty event log
+    # proves these failures occurred before any supplied-client activity.
+    monkeypatch.setattr(hub, "repo_info", unexpected_hub_activity)
+    monkeypatch.setattr(hub, "hf_hub_download", unexpected_hub_activity)
+
+    with pytest.raises(error_type, match=message) as publication_error:
+        publish_release(release_dir, "policyengine/populace-us", **kwargs)
+    with pytest.raises(error_type) as supplied_hub_error:
+        publish_release(release_dir, "policyengine/populace-us", api=hub, **kwargs)
+    with pytest.raises(error_type) as cli_publication_error:
+        publish_cli.main(cli_args)
+    with pytest.raises(error_type) as preflight_error:
+        publish_cli.main([*cli_args, "--preflight-only"])
+
+    for error in (supplied_hub_error, cli_publication_error, preflight_error):
+        assert type(error.value) is type(publication_error.value)
+        assert str(error.value) == str(publication_error.value)
+    assert hub.events == []
+    assert hub.uploads == []
+    assert hub.tags == []
+
+
+def test_cli_valid_preflight_performs_no_publication_or_notification(
+    release_dir: Path, artifact_root: Path, monkeypatch, capsys
+) -> None:
+    def unexpected_side_effect(*args, **kwargs):
+        pytest.fail("preflight must not construct a Hub client, publish, or notify")
+
+    monkeypatch.setattr(release_module, "_hf_api", unexpected_side_effect)
+    monkeypatch.setattr(release_module, "notify_release", unexpected_side_effect)
+    monkeypatch.setattr(publish_cli, "publish_release", unexpected_side_effect)
+
+    assert (
+        publish_cli.main(
+            [
+                str(release_dir),
+                "--artifact-root",
+                str(artifact_root),
+                "--preflight-only",
+            ]
+        )
+        == 0
+    )
+    assert json.loads(capsys.readouterr().out) == {"valid": True, "published": False}
+
+
+@pytest.mark.parametrize("evidence", [False, True])
+@pytest.mark.parametrize("release_type", [None, "calibration"])
+@pytest.mark.parametrize("argument", ["parent_h5", "compatibility_wheels", "both"])
+def test_non_enrichment_publisher_refuses_enrichment_only_arguments(
+    hub, release_dir, artifact_root, monkeypatch, release_type, argument, evidence
+):
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if release_type is not None:
+        manifest["release_type"] = release_type
+        manifest_path.write_text(json.dumps(manifest))
+    kwargs = {"artifact_root": artifact_root, "evidence": evidence}
+    cli_args = [str(release_dir), "--artifact-root", str(artifact_root)]
+    if evidence:
+        cli_args.append("--evidence")
+    if argument in ("parent_h5", "both"):
+        kwargs["parent_h5"] = artifact_root / "populace_us_2024.h5"
+        cli_args.extend(["--parent-h5", str(kwargs["parent_h5"])])
+    if argument in ("compatibility_wheels", "both"):
+        kwargs["compatibility_wheels"] = (artifact_root / "unrelated.whl",)
+        cli_args.extend(
+            ["--compatibility-wheel", str(kwargs["compatibility_wheels"][0])]
+        )
+
+    def no_hub(*args, **kwargs):
+        pytest.fail("non-enrichment arguments must fail before Hub activity")
+
+    monkeypatch.setattr(release_module, "_hf_api", no_hub)
+    monkeypatch.setattr(hub, "repo_info", no_hub)
+    monkeypatch.setattr(hub, "hf_hub_download", no_hub)
+    message = "require a source_enrichment release"
+    with pytest.raises(ValueError, match=message):
+        release_module.prepare_release(release_dir, **kwargs)
+    with pytest.raises(ValueError, match=message):
+        publish_release(release_dir, "policyengine/populace-us", api=hub, **kwargs)
+    with pytest.raises(ValueError, match=message):
+        publish_cli.main(cli_args)
+    with pytest.raises(ValueError, match=message):
+        publish_cli.main([*cli_args, "--preflight-only"])
+    assert hub.events == []
     assert hub.uploads == []

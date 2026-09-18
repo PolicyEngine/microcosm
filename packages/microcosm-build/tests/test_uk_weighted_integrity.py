@@ -36,6 +36,7 @@ from microcosm.build.uk_runtime.weighted_integrity import (
     UKReviewedExclusion,
     coerce_input_mass_reference_registry,
     load_uk_input_mass_reference,
+    load_uk_local_area_support_exclusion_register,
     load_uk_reference_scoped_exclusion_register,
     load_uk_reviewed_exclusion_register,
     uk_default_input_mass_reviewed_exclusions,
@@ -669,6 +670,35 @@ def test_committed_exclusion_registers_load() -> None:
     assert uk_default_qrf_tail_reviewed_exclusions() is (
         uk_default_qrf_tail_reviewed_exclusions()
     )
+
+
+def test_local_area_support_register_loads_both_schema3_blocks() -> None:
+    loaded = load_uk_local_area_support_exclusion_register(None)
+    assert set(loaded["exclusions"]) == {
+        "local_authority/E06000053",
+        "local_authority/E09000001",
+    }
+    assert set(loaded["bound_despite_support_floor"]) == {"census_households"}
+    approval = loaded["bound_despite_support_floor"]["census_households"]
+    assert approval.approved_by == "juaristi22"
+    assert approval.approved_on == "2026-09-10"
+    assert approval.expires_on == "2026-12-10"
+
+
+def test_local_area_support_register_refuses_schema2(tmp_path) -> None:
+    path = tmp_path / "local-area.json"
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "description": "stale shape",
+                "exclusions": {},
+                "bound_despite_support_floor": {},
+            }
+        )
+    )
+    with pytest.raises(ValueError, match="schema_version must be 3"):
+        load_uk_local_area_support_exclusion_register(path)
 
 
 def test_register_loader_rejects_missing_reasons_and_bad_schema(tmp_path) -> None:

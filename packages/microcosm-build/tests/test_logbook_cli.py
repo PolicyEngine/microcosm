@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib.util
 import json
 from pathlib import Path
@@ -165,9 +166,7 @@ def test_export_refuses_a_directory_archive(
     spool.mkdir()
     cli = _load_cli()
 
-    assert (
-        cli.main(["export", "--archive", str(tmp_path), "--source", str(spool)]) == 1
-    )
+    assert cli.main(["export", "--archive", str(tmp_path), "--source", str(spool)]) == 1
     assert "extends exactly one scope chain" in capsys.readouterr().err
 
 
@@ -256,9 +255,7 @@ def test_cli_local_export_refuses_wrong_scope_rows(
     _write_jsonl(source, _chain(pipeline="uk-local-rowwise"))
     cli = _load_cli()
 
-    exit_code = cli.main(
-        ["export", "--archive", str(archive), "--source", str(source)]
-    )
+    exit_code = cli.main(["export", "--archive", str(archive), "--source", str(source)])
 
     assert exit_code == 1
     err = capsys.readouterr().err
@@ -280,9 +277,7 @@ def test_cli_export_refuses_an_unratified_scope_archive(
     _write_jsonl(source, _chain(pipeline="uk-firms-staging"))
     cli = _load_cli()
 
-    exit_code = cli.main(
-        ["export", "--archive", str(archive), "--source", str(source)]
-    )
+    exit_code = cli.main(["export", "--archive", str(archive), "--source", str(source)])
 
     assert exit_code == 1
     assert "not in the ratified scope list" in capsys.readouterr().err
@@ -300,9 +295,7 @@ def test_cli_export_accepts_uk_local_scope_archive(
     _write_jsonl(source, rows)
     cli = _load_cli()
 
-    exit_code = cli.main(
-        ["export", "--archive", str(archive), "--source", str(source)]
-    )
+    exit_code = cli.main(["export", "--archive", str(archive), "--source", str(source)])
 
     assert exit_code == 0
     assert "exported 3 new Logbook rows" in capsys.readouterr().out
@@ -616,3 +609,48 @@ def test_chain_scope_matches_sql_contract(
     cli = _load_cli()
 
     assert cli._chain_scope(pipeline) == scope
+
+
+def test_remote_help_asks_for_the_preferred_logbook_variable_names() -> None:
+    """``--help`` is the only place most operators read these names.
+
+    It advertised ``POPULACE_LEDGER_URL`` alone, so an operator configuring
+    from the help text set up the very spelling the dual-read window exists to
+    retire — and then got a deprecation warning for following the
+    instructions. The preferred names come first; the ledger-era ones are
+    named as the fallback they are, because an operator whose environment
+    predates the rename still has to recognise what is being asked for.
+    """
+    cli = _load_cli()
+
+    remote = next(
+        action
+        for action in _export_actions(cli)
+        if "--remote" in getattr(action, "option_strings", ())
+    )
+    help_text = remote.help or ""
+
+    for preferred in (
+        cli.LOGBOOK_URL_ENV,
+        cli.LOGBOOK_EXPORT_KEY_ENV,
+        cli.LOGBOOK_API_KEY_ENV,
+    ):
+        assert preferred in help_text, preferred
+    for legacy in (
+        cli.LEGACY_URL_ENV,
+        cli.REMOTE_EXPORT_KEY_ENV,
+        cli.REMOTE_API_KEY_ENV,
+    ):
+        assert legacy in help_text, legacy
+    # Preferred first: the reading order is the migration instruction.
+    assert help_text.index(cli.LOGBOOK_URL_ENV) < help_text.index(cli.LEGACY_URL_ENV)
+
+
+def _export_actions(cli: ModuleType) -> list[object]:
+    """Every argparse action on the ``export`` subcommand."""
+    subparsers = next(
+        action
+        for action in cli._parser()._actions
+        if isinstance(action, argparse._SubParsersAction)
+    )
+    return list(subparsers.choices["export"]._actions)

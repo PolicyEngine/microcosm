@@ -230,6 +230,9 @@ from microcosm.build.us_runtime.us_late_producer_registry import (
     CANONICAL_US_LATE_TRANSFER_GROUPS,
     us_late_producer_schedule_receipt,
 )
+from microcosm.build.us_runtime.worker_identity import (
+    current_worker_execution_authentication_receipt,
+)
 from microcosm.frame import US_SCHEMA, Frame
 
 __all__ = [
@@ -335,8 +338,9 @@ _STACKED_CHECKPOINT_IDENTITY_ARTIFACT_KIND = (
     "populace_us_stacked_pool_checkpoint_identity"
 )
 # Version 13 binds native ACS humanitarian eligibility, pooled immigration
-# control scaling, reconciliation, and the final composition gate. Earlier
-# stacked checkpoints predate the source-aware status surface.
+# control scaling, reconciliation, the final composition gate, and the
+# portable authenticated primary-QRF worker identity. Earlier stacked
+# checkpoints predate the source-aware status surface.
 # Version 12 binds the post-assembly household geography assignment authority,
 # target vintage, algorithm, operator order, and seed.  Earlier checkpoints
 # predate the congressional-district support required by release preflight.
@@ -4136,6 +4140,49 @@ def _stacked_run_config_receipt(
     return normalized
 
 
+def _stacked_worker_execution_authentication(
+    stage_receipts: Mapping[str, object],
+) -> dict[str, object]:
+    """Derive publication evidence from the signed primary-QRF DAG resource."""
+
+    impute = stage_receipts.get("impute")
+    dag = (
+        impute.get("stacked_late_producer_dag") if isinstance(impute, Mapping) else None
+    )
+    execution = dag.get("execution") if isinstance(dag, Mapping) else None
+    primary_rows = [
+        row
+        for row in execution or ()
+        if isinstance(row, Mapping) and row.get("producer") == "primary_puf_qrf"
+    ]
+    if len(primary_rows) != 1:
+        raise ValueError(
+            "Stacked publication must carry exactly one primary-QRF execution row."
+        )
+    available = primary_rows[0].get("available_input_receipts")
+    config_receipt = (
+        available.get("tax_unit.@primary_puf_execution_config")
+        if isinstance(available, Mapping)
+        else None
+    )
+    config = (
+        config_receipt.get("binding") if isinstance(config_receipt, Mapping) else None
+    )
+    qrf = config.get("qrf") if isinstance(config, Mapping) else None
+    if (
+        not isinstance(config, Mapping)
+        or config.get("schema_version") != 5
+        or not isinstance(qrf, Mapping)
+    ):
+        raise ValueError("Stacked publication primary execution config changed.")
+    return current_worker_execution_authentication_receipt(
+        qrf.get("worker_execution"),
+        manifest_schema_version=POOL_MANIFEST_SCHEMA_VERSION,
+        execution_config_schema_version=5,
+        boundary="stacked publication primary-QRF worker",
+    )
+
+
 def _stacked_manifest_payload(
     *,
     result: StackedPoolBuildResult,
@@ -4183,6 +4230,9 @@ def _stacked_manifest_payload(
     _assert_stacked_geography_verified_inputs(verified_inputs)
     gates = _stacked_gate_payload(result)
     stack_manifest = _json_ready(result.stack_receipt)
+    worker_execution_authentication = _stacked_worker_execution_authentication(
+        result.stage_receipts
+    )
     return {
         "artifact_kind": US_MULTISPINE_POOL_MANIFEST_ARTIFACT_KIND,
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
@@ -4243,6 +4293,7 @@ def _stacked_manifest_payload(
         "provenance_counts": result.provenance_counts,
         "stage_receipts": result.stage_receipts,
         "stage_checkpoints": checkpoint_provenance,
+        "worker_execution_authentication": worker_execution_authentication,
         "terminal_gates": gates,
         # Compatibility alias for existing simulation-ready manifest readers.
         # Its contents are the stacked terminal battery, never us_spine_agreement.
@@ -4474,6 +4525,9 @@ def _write_stacked_outputs(
         publication_run_id=publication_run_id,
     )
     gates = _stacked_gate_payload(result)
+    worker_execution_authentication = _stacked_worker_execution_authentication(
+        result.stage_receipts
+    )
     diagnostics = {
         "artifact_kind": US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND,
         "schema_version": POOL_MANIFEST_SCHEMA_VERSION,
@@ -4484,6 +4538,7 @@ def _write_stacked_outputs(
         "publication_run_id": publication_run_id,
         "terminal_gates": gates,
         "agreement_gate": gates,
+        "worker_execution_authentication": worker_execution_authentication,
     }
     try:
         write_nullable_us_h5(

@@ -15,6 +15,7 @@ from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 from microcosm.graph.canonical import canonical_json, sha256_domain
 from microcosm.graph.decl import StructuralDelta
 from microcosm.graph.kernel import Capabilities, Determinism, KernelRole, SeedSource
+from microcosm.graph.keys import opaque_artifact_key
 from microcosm.graph.manifest import Decision, NodeReceipt, PopulationView, RunManifest
 from microcosm.graph.population import MassRecord
 
@@ -695,3 +696,411 @@ def test_package_exports_runtime_implementations_and_failures() -> None:
     assert graph_api.StoreCorrupt is graph_api.StoreCorruptError
     assert graph_api.StoreUnavailable is graph_api.StoreUnavailableError
     assert graph_api.NodeRejected is graph_api.NodeRejectedError
+
+
+def _typed_descriptor(producer: str, artifact: str, producer_key: str) -> dict:
+    return {
+        "producer": producer,
+        "artifact": artifact,
+        "producer_key": producer_key,
+        "key": opaque_artifact_key(producer_key, artifact),
+        "type": {"name": "qrf.forest", "schema_version": 1},
+        "numerics": {"numeric": "bitwise", "tolerance": None, "platform": None},
+    }
+
+
+def _typed_pair() -> tuple[NodeReceipt, NodeReceipt]:
+    """A producer of one typed artifact and the consumer that declares it."""
+    producer_key = "a" * 64
+    descriptor = _typed_descriptor("fit", "forest", producer_key)
+    producer = NodeReceipt(
+        key=producer_key,
+        hit=False,
+        seed=1,
+        kernel_ref="fit@1",
+        kernel_impl_hash="b" * 64,
+        capabilities=_capabilities(),
+        receipt={"trees": 3},
+        opaque_artifacts={"forest": descriptor["key"]},
+        typed_artifacts={"inputs": {}, "outputs": {"forest": descriptor}},
+    )
+    consumer = NodeReceipt(
+        key="c" * 64,
+        hit=False,
+        seed=2,
+        kernel_ref="consume@1",
+        kernel_impl_hash="d" * 64,
+        capabilities=_capabilities(),
+        receipt={"read": True},
+        typed_artifacts={"inputs": {"donor": descriptor}, "outputs": {}},
+    )
+    return producer, consumer
+
+
+def test_a_manifest_authenticates_its_typed_artifact_edges() -> None:
+    """Amendment 19: a recorded edge must resolve to its producer's output."""
+    producer, consumer = _typed_pair()
+    RunManifest(
+        country="toy",
+        nodes={"fit": producer, "draw": consumer},
+        started_at="t0",
+        finished_at="t1",
+        host="h",
+    )
+    with pytest.raises(ValueError, match="producer is missing or inconsistent"):
+        RunManifest(
+            country="toy",
+            nodes={"draw": consumer},
+            started_at="t0",
+            finished_at="t1",
+            host="h",
+        )
+    stripped = replace(producer, opaque_artifacts={})
+    with pytest.raises(ValueError, match="output provenance mismatch"):
+        RunManifest(
+            country="toy",
+            nodes={"fit": stripped, "draw": consumer},
+            started_at="t0",
+            finished_at="t1",
+            host="h",
+        )
+    renamed = _typed_descriptor("fit", "other", producer.key)
+    mismatched = replace(
+        consumer, typed_artifacts={"inputs": {"donor": renamed}, "outputs": {}}
+    )
+    with pytest.raises(ValueError, match="does not match its producer output"):
+        RunManifest(
+            country="toy",
+            nodes={"fit": producer, "draw": mismatched},
+            started_at="t0",
+            finished_at="t1",
+            host="h",
+        )
+
+
+def test_a_release_may_not_omit_a_gate_reached_only_through_bytes() -> None:
+    """Amendment 19 cannot route around F2 by hiding a gate behind an edge."""
+    gate_key = "a" * 64
+    descriptor = _typed_descriptor("gate", "evidence", gate_key)
+    gate = NodeReceipt(
+        key=gate_key,
+        hit=False,
+        seed=1,
+        kernel_ref="gate@1",
+        kernel_impl_hash="b" * 64,
+        capabilities=_capabilities(KernelRole.GATE),
+        receipt={"outcome": "fail", "evidence": {"fixture": True}},
+        opaque_artifacts={"evidence": descriptor["key"]},
+        typed_artifacts={"inputs": {}, "outputs": {"evidence": descriptor}},
+    )
+    release = NodeReceipt(
+        key="c" * 64,
+        hit=False,
+        seed=2,
+        kernel_ref="release@1",
+        kernel_impl_hash="d" * 64,
+        capabilities=_capabilities(KernelRole.RELEASE),
+        receipt={
+            "tier": "evidence",
+            "outcome": "fail",
+            "gate_ancestry": ["gate"],
+            "requires_decisions": [],
+        },
+        typed_artifacts={"inputs": {"donor": descriptor}, "outputs": {}},
+    )
+    honest = RunManifest(
+        country="toy",
+        nodes={"gate": gate, "release": release},
+        started_at="t0",
+        finished_at="t1",
+        host="h",
+    )
+    assert honest.tier == "evidence"
+    hidden = replace(
+        release,
+        receipt={**dict(release.receipt), "gate_ancestry": [], "tier": "certified"},
+    )
+    with pytest.raises(ValueError, match="omitted a typed artifact gate ancestor"):
+        RunManifest(
+            country="toy",
+            nodes={"gate": gate, "release": hidden},
+            started_at="t0",
+            finished_at="t1",
+            host="h",
+        )
+
+
+def test_a_laundered_artifact_scope_loads_as_store_corrupt(tmp_path: Path) -> None:
+    """Amendment 19: a corrupt manifest surfaces as StoreCorruptError, not a
+    node rejection, however its typed provenance was tampered with."""
+    producer, consumer = _typed_pair()
+    manifest = RunManifest(
+        country="toy",
+        nodes={"fit": producer, "draw": consumer},
+        started_at="t0",
+        finished_at="t1",
+        host="h",
+    )
+    path = tmp_path / "manifest.json"
+    manifest.save(path)
+    document = json.loads(path.read_text())
+    scope = {
+        "numeric": "platform_bitwise",
+        "tolerance": None,
+        "platform": "arm64/darwin/py3.14",
+    }
+    # A platform-bitwise producer whose bitwise consumer reads its bytes. The
+    # producer's own records stay self-consistent and both copies of every
+    # receipt agree, so only the cross-edge scope rule can catch it.
+    for nodes in (document["nodes"], document["content_addressed"]["nodes"]):
+        nodes["fit"]["capabilities"]["numeric"] = "platform_bitwise"
+        nodes["fit"]["typed_artifacts"]["outputs"]["forest"]["numerics"] = scope
+        nodes["draw"]["typed_artifacts"]["inputs"]["donor"]["numerics"] = scope
+    path.write_text(json.dumps(document))
+
+    store = graph_api.ContentStore(tmp_path / "store")
+    with pytest.raises(graph_api.StoreCorruptError, match="may not read"):
+        RunManifest.load(path, store)
+
+
+def test_a_malformed_gate_ancestry_behind_a_byte_edge_keeps_the_tier_diagnostic() -> (
+    None
+):
+    """Amendment 19: a foreign manifest's bad ``gate_ancestry`` is named, not TypeError'd.
+
+    When a byte edge reaches a gate, ``_validate_typed_ancestry`` reads the
+    release's ``gate_ancestry`` before ``tier`` does; a non-sequence there must
+    surface with ``tier``'s own diagnostic (node and offending value), never as
+    a bare ``TypeError`` from building a set of it.
+    """
+    gate_key = "a" * 64
+    descriptor = _typed_descriptor("gate", "evidence", gate_key)
+    gate = NodeReceipt(
+        key=gate_key,
+        hit=False,
+        seed=1,
+        kernel_ref="gate@1",
+        kernel_impl_hash="b" * 64,
+        capabilities=_capabilities(KernelRole.GATE),
+        receipt={"outcome": "fail", "evidence": {"fixture": True}},
+        opaque_artifacts={"evidence": descriptor["key"]},
+        typed_artifacts={"inputs": {}, "outputs": {"evidence": descriptor}},
+    )
+    release = NodeReceipt(
+        key="c" * 64,
+        hit=False,
+        seed=2,
+        kernel_ref="release@1",
+        kernel_impl_hash="d" * 64,
+        capabilities=_capabilities(KernelRole.RELEASE),
+        receipt={
+            "tier": "evidence",
+            "outcome": "fail",
+            "gate_ancestry": 5,
+            "requires_decisions": [],
+        },
+        typed_artifacts={"inputs": {"donor": descriptor}, "outputs": {}},
+    )
+    with pytest.raises(
+        ValueError, match="release node 'release' has invalid gate ancestry 5"
+    ):
+        RunManifest(
+            country="toy",
+            nodes={"gate": gate, "release": release},
+            started_at="t0",
+            finished_at="t1",
+            host="h",
+        )
+
+
+def test_a_manifest_without_typed_edges_keeps_its_gate_ancestry_diagnostic() -> None:
+    """Amendment 19 must not change a manifest that declares no byte edges.
+
+    A malformed ``gate_ancestry`` is reported by ``tier`` with the node and
+    the offending value, exactly as before; the typed-ancestry check has
+    nothing to say about a manifest with no typed artifacts.
+    """
+    release = NodeReceipt(
+        key="c" * 64,
+        hit=False,
+        seed=2,
+        kernel_ref="release@1",
+        kernel_impl_hash="d" * 64,
+        capabilities=_capabilities(KernelRole.RELEASE),
+        receipt={"tier": "evidence", "outcome": "fail", "gate_ancestry": 5},
+    )
+    manifest = RunManifest(
+        country="toy",
+        nodes={"release": release},
+        started_at="t0",
+        finished_at="t1",
+        host="h",
+    )
+    with pytest.raises(ValueError, match="invalid gate ancestry 5"):
+        assert manifest.tier is None
+
+
+def test_a_malformed_typed_descriptor_is_refused_field_by_field() -> None:
+    """Amendment 19: foreign provenance is parsed, not trusted.
+
+    ``_validate_typed_ancestry`` rebuilds every recorded descriptor, so a
+    manifest written elsewhere cannot smuggle one through by omitting a
+    field, misspelling a type, or claiming an identity its producer key does
+    not derive. Each arm below is a separate refusal in
+    ``value_from_descriptor``.
+    """
+    producer_key = "a" * 64
+    good = _typed_descriptor("fit", "forest", producer_key)
+
+    def _consumer(descriptor: object) -> None:
+        NodeReceipt(
+            key="c" * 64,
+            hit=False,
+            seed=2,
+            kernel_ref="consume@1",
+            kernel_impl_hash="d" * 64,
+            capabilities=_capabilities(),
+            typed_artifacts={"inputs": {"donor": descriptor}, "outputs": {}},
+        )
+
+    _consumer(good)  # the control: the well-formed descriptor is accepted
+
+    with pytest.raises(ValueError, match="Malformed typed artifact descriptor"):
+        _consumer("not a mapping")
+    with pytest.raises(ValueError, match="Malformed typed artifact descriptor"):
+        _consumer({name: good[name] for name in good if name != "numerics"})
+    with pytest.raises(ValueError, match="Malformed typed artifact descriptor"):
+        _consumer({**good, "extra": 1})
+    with pytest.raises(ValueError, match="producer/name must be nonempty strings"):
+        _consumer({**good, "producer": ""})
+    with pytest.raises(ValueError, match="producer/name must be nonempty strings"):
+        _consumer({**good, "artifact": 3})
+    with pytest.raises(ValueError, match="Malformed typed artifact type"):
+        _consumer({**good, "type": {"name": "qrf.forest"}})
+    with pytest.raises(ValueError, match="Malformed artifact numeric scope"):
+        _consumer({**good, "numerics": {"numeric": "bitwise"}})
+    # The identity is re-derived, not read: a descriptor may not name bytes
+    # its own producer key does not produce.
+    with pytest.raises(ValueError, match="identity does not match its producer"):
+        _consumer({**good, "key": opaque_artifact_key(producer_key, "other")})
+
+
+def test_a_tolerance_bound_artifact_records_and_rebuilds_its_bound() -> None:
+    """Amendment 19: a tolerance scope survives the round trip intact."""
+    bound = {"rtol": 1e-09, "atol": 0.0, "ulps": 4}
+    producer_key = "a" * 64
+    descriptor = {
+        **_typed_descriptor("fit", "forest", producer_key),
+        "numerics": {
+            "numeric": "tolerance_bound",
+            "tolerance": bound,
+            "platform": None,
+        },
+    }
+    capabilities = Capabilities(
+        determinism=Determinism.SEEDED,
+        numeric=graph_api.Numeric.TOLERANCE_BOUND,
+        seed_source=SeedSource.EXECUTOR,
+        dependencies=("numpy",),
+        tolerance=graph_api.Tolerance(**bound),
+    )
+    producer = NodeReceipt(
+        key=producer_key,
+        hit=False,
+        seed=1,
+        kernel_ref="fit@1",
+        kernel_impl_hash="b" * 64,
+        capabilities=capabilities,
+        receipt={"trees": 3},
+        opaque_artifacts={"forest": descriptor["key"]},
+        typed_artifacts={"inputs": {}, "outputs": {"forest": descriptor}},
+    )
+    consumer = NodeReceipt(
+        key="c" * 64,
+        hit=False,
+        seed=2,
+        kernel_ref="consume@1",
+        kernel_impl_hash="d" * 64,
+        capabilities=capabilities,
+        receipt={"read": True},
+        typed_artifacts={"inputs": {"donor": descriptor}, "outputs": {}},
+    )
+    RunManifest(
+        country="toy",
+        nodes={"fit": producer, "draw": consumer},
+        started_at="t0",
+        finished_at="t1",
+        host="h",
+    )
+    # A bound that is not the three declared fields is not a bound.
+    with pytest.raises(ValueError, match="Malformed artifact tolerance"):
+        replace(
+            consumer,
+            typed_artifacts={
+                "inputs": {
+                    "donor": {
+                        **descriptor,
+                        "numerics": {
+                            "numeric": "tolerance_bound",
+                            "tolerance": {"rtol": 1e-09},
+                            "platform": None,
+                        },
+                    }
+                },
+                "outputs": {},
+            },
+        )
+
+
+def test_a_scope_claiming_both_platform_and_tolerance_is_refused() -> None:
+    """Amendment 19: the two numeric classes are alternatives, not a pair.
+
+    ``numeric_scope`` never builds this combination, so only provenance
+    written elsewhere can carry it — which is exactly why the manifest
+    re-derives the scope rather than trusting the recorded one.
+    """
+    producer_key = "a" * 64
+    descriptor = {
+        **_typed_descriptor("fit", "forest", producer_key),
+        "numerics": {
+            "numeric": "tolerance_bound",
+            "tolerance": {"rtol": 1e-09, "atol": 0.0, "ulps": 4},
+            "platform": "arm64/darwin/py3.13",
+        },
+    }
+    capabilities = Capabilities(
+        determinism=Determinism.SEEDED,
+        numeric=graph_api.Numeric.TOLERANCE_BOUND,
+        seed_source=SeedSource.EXECUTOR,
+        dependencies=("numpy",),
+        tolerance=graph_api.Tolerance(rtol=1e-09, atol=0.0, ulps=4),
+    )
+    producer = NodeReceipt(
+        key=producer_key,
+        hit=False,
+        seed=1,
+        kernel_ref="fit@1",
+        kernel_impl_hash="b" * 64,
+        capabilities=capabilities,
+        receipt={"trees": 3},
+        opaque_artifacts={"forest": descriptor["key"]},
+        typed_artifacts={"inputs": {}, "outputs": {"forest": descriptor}},
+    )
+    consumer = NodeReceipt(
+        key="c" * 64,
+        hit=False,
+        seed=2,
+        kernel_ref="consume@1",
+        kernel_impl_hash="d" * 64,
+        capabilities=capabilities,
+        receipt={"read": True},
+        typed_artifacts={"inputs": {"donor": descriptor}, "outputs": {}},
+    )
+    with pytest.raises(ValueError, match="combining platform and tolerance scopes"):
+        RunManifest(
+            country="toy",
+            nodes={"fit": producer, "draw": consumer},
+            started_at="t0",
+            finished_at="t1",
+            host="h",
+        )

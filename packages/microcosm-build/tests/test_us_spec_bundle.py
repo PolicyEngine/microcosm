@@ -9,6 +9,7 @@ import json
 import re
 import sys
 from collections import Counter
+from functools import cache
 from pathlib import Path
 
 import pytest
@@ -190,15 +191,20 @@ EXPECTED_RUNGS = [
 
 LEGACY_COMPATIBILITY_SHA256 = {
     "source_stages.json": (
-        "788b815f748abb2061c41efb0cec4cc4952435dbcb4448ecf21ccac85a5ccec2"
+        "7935d891ed16eac618f04813a7b8a3ceb9a971c8b4c4273683594ba61e7dd631"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
     ),
     "take_up_contract.json": (
-        "a9e70fb3e14b0af6cac5cc7935ef554f62dc3dca0377bc1fb57c0e6fa583e813"
+        "282dbc4c31e30134d008152138a95dd1a84f4355b44ac83607760dcaeef35db5"
     ),
 }
+
+
+@pytest.fixture(autouse=True)
+def _prime_worker_identity(prime_primary_qrf_worker_identity: None) -> None:
+    """Share the real session attestation unless a test opts into live identity."""
 
 
 @pytest.fixture(scope="module")
@@ -211,8 +217,17 @@ def resolved_country_spec() -> ResolvedCountrySpec:
     return load_country_spec("us")
 
 
-@pytest.fixture(scope="module")
-def generated_documents() -> dict[str, dict[str, object]]:
+@pytest.fixture
+def generated_documents(
+    prime_primary_qrf_worker_identity: None,
+) -> dict[str, dict[str, object]]:
+    # The function fixture primes before the first cached generation, including
+    # when earlier tests already initialized and then cleared the session memo.
+    return _cached_generated_documents()
+
+
+@cache
+def _cached_generated_documents() -> dict[str, dict[str, object]]:
     # The extractor is intentionally exercised once per module: this proves
     # the checked-in package remains a projection of the live constants while
     # keeping the comparatively expensive PolicyEngine ABI read bounded.
@@ -386,7 +401,7 @@ def test_constant_derived_domain_counts_are_complete(
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "324b8e495920af091cb7c14f78b461b2a10fb3fedeb4ce706d68ae6b4c2e3b6b"
+        == "7be038d34f228d66c12b53558fc5f30c93f1b376f1058c5e4fd7e7563a88d67f"
     )
 
     assert len(take_up["programs"]) == 17
@@ -722,6 +737,11 @@ def test_authored_imputation_sha256_fields_are_assets_or_policy_identity(
                 if key.endswith("sha256"):
                     if key == "asset_sha256":
                         asset_pins.append((str(value["asset"]), str(child)))
+                    elif isinstance(child, dict) and "resolver_op" in child:
+                        # A resolver binding names the runtime op that
+                        # produces the digest; it is neither an authored
+                        # digest nor an asset pin.
+                        pass
                     else:
                         identity_digests.append((child_path, str(child)))
                 collect_sha256(child, child_path)
@@ -790,6 +810,25 @@ def test_authored_imputation_sha256_fields_are_assets_or_policy_identity(
         for resource in primary_node["virtual_resources"]
         if resource["binding"]["resource_kind"] == "primary_puf_execution_config"
     )
+    assert graph["schedule_payload_schema_version"] == 17
+    assert graph["execution_receipt_contract"]["version"] == 4
+    assert graph["execution_receipt_contract"]["transition_authority"]["version"] == 2
+    assert graph["resource_semantics"]["schema_version"] == 2
+    assert primary_binding["schema_version"] == 5
+    assert primary_binding["qrf"]["worker_execution"] == {
+        "surface": "execution_profile",
+        "resolve_as": "worker_execution",
+        "template": {
+            "schema_version": 1,
+            "semantic_identity": {
+                "resolver_op": "primary_qrf_worker_semantic_identity"
+            },
+            "semantic_identity_sha256": {
+                "resolver_op": "primary_qrf_worker_semantic_identity_sha256"
+            },
+            "audit_aliases": {"resolver_op": "primary_qrf_worker_audit_aliases"},
+        },
+    }
     runtime_bands = primary_binding["capital_gains_tail"]["soi_e19200_agi_bands"][
         "runtime_agi_bands"
     ]
@@ -1084,3 +1123,17 @@ def test_root_us_drafting_location_is_a_symlink_free_pointer() -> None:
     assert "packages/microcosm-build/src/microcosm/build/us/spec" in (
         readme.read_text(encoding="utf-8")
     )
+
+
+@pytest.mark.requires_us
+def test_generated_bundle_reuses_primed_worker_identity(
+    generated_documents: dict[str, dict[str, object]],
+    request: pytest.FixtureRequest,
+) -> None:
+    """Generation and session priming must share one real worker attestation."""
+    from microcosm.build.us_runtime import worker_identity
+
+    assert "imputation.yaml" in generated_documents
+    generated_identity = worker_identity.primary_qrf_worker_semantic_identity()
+    request.getfixturevalue("_session_primary_qrf_worker_identities")
+    assert worker_identity.primary_qrf_worker_semantic_identity() is generated_identity

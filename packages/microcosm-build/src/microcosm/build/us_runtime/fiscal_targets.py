@@ -21,6 +21,7 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     apply_ledger_target_profile,
     compile_ledger_target_references,
+    hierarchy_seed_from_catalog,
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
     translate_congressional_district_facts_to_current_vintage,
@@ -29,7 +30,17 @@ from microcosm.build.us_runtime.target_aging import (
     age_us_dollar_targets,
     enforce_period_contract,
 )
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import (
+    CalibrationHierarchy,
+    CalibrationHierarchySeed,
+    HierarchyCategory,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+    calibration_provider_label,
+    calibration_variable_label,
+)
+from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
 
 __all__ = [
     "US_FISCAL_MACRO_REALISM_BANDS",
@@ -57,59 +68,39 @@ TaxExpenditureReformKind = Literal["neutralize_variable"]
 TaxExpenditureMatrixRow = Literal["reform_minus_baseline_income_tax"]
 
 
-STATE_FIPS_TO_POSTAL: dict[str, str] = {
-    "01": "AL",
-    "02": "AK",
-    "04": "AZ",
-    "05": "AR",
-    "06": "CA",
-    "08": "CO",
-    "09": "CT",
-    "10": "DE",
-    "11": "DC",
-    "12": "FL",
-    "13": "GA",
-    "15": "HI",
-    "16": "ID",
-    "17": "IL",
-    "18": "IN",
-    "19": "IA",
-    "20": "KS",
-    "21": "KY",
-    "22": "LA",
-    "23": "ME",
-    "24": "MD",
-    "25": "MA",
-    "26": "MI",
-    "27": "MN",
-    "28": "MS",
-    "29": "MO",
-    "30": "MT",
-    "31": "NE",
-    "32": "NV",
-    "33": "NH",
-    "34": "NJ",
-    "35": "NM",
-    "36": "NY",
-    "37": "NC",
-    "38": "ND",
-    "39": "OH",
-    "40": "OK",
-    "41": "OR",
-    "42": "PA",
-    "44": "RI",
-    "45": "SC",
-    "46": "SD",
-    "47": "TN",
-    "48": "TX",
-    "49": "UT",
-    "50": "VT",
-    "51": "VA",
-    "53": "WA",
-    "54": "WV",
-    "55": "WI",
-    "56": "WY",
-}
+def _us_hierarchy_seed(
+    provider_id: str,
+    category_id: str,
+    *,
+    category_label: str = "",
+) -> CalibrationHierarchySeed:
+    """Build the explicit provider/category declaration for a selected US row."""
+
+    provider_label = calibration_provider_label("us", provider_id)
+    if provider_label is None:
+        raise ValueError(
+            f"US calibration provider {provider_id!r} has no declared label."
+        )
+    resolved_category_label = category_label or calibration_variable_label(
+        "us", provider_id, category_id
+    )
+    if not resolved_category_label:
+        raise ValueError(
+            f"US calibration category {provider_id!r}/{category_id!r} has no "
+            "declared label."
+        )
+    return CalibrationHierarchySeed(
+        provider=HierarchyNode(provider_id, provider_label),
+        category=HierarchyCategory(
+            f"{provider_id}.{category_id}",
+            resolved_category_label,
+            provider_id,
+        ),
+        # Programmatic US references use the category's reviewed display label
+        # when target compilation changes the period or combines facts. Direct,
+        # unchanged references still take their target label from Chronicle.
+        target_label=resolved_category_label,
+    )
 
 
 SOI_AMOUNT_MEASURE_VARIABLES: dict[str, str] = {
@@ -908,7 +899,20 @@ def _load_us_fiscal_target_references() -> tuple[LedgerTargetReference, ...]:
             "US fiscal target references currently permit only identity value "
             f"resolution from Ledger facts; got {sorted(allowed_operations)!r}."
         )
-    return tuple(LedgerTargetReference(**raw) for raw in payload["target_references"])
+    hierarchy = payload.get("hierarchy")
+    if not isinstance(hierarchy, dict):
+        raise ValueError("US fiscal target manifest requires a hierarchy catalog.")
+    references = []
+    for raw in payload["target_references"]:
+        normalized = dict(raw)
+        category_id = str(normalized.pop("category_id", ""))
+        normalized["hierarchy"] = hierarchy_seed_from_catalog(
+            hierarchy,
+            category_id,
+            target_id=str(normalized.get("name") or ""),
+        )
+        references.append(LedgerTargetReference(**normalized))
+    return tuple(references)
 
 
 def _load_us_fiscal_target_profile() -> dict[str, Any]:
@@ -1088,9 +1092,33 @@ def _with_derived_chip_enrollment_targets(registry: TargetRegistry) -> TargetReg
                     combined_spec,
                     medicaid_spec,
                 ),
+                hierarchy=_derived_chip_enrollment_hierarchy(combined_spec),
             )
         )
     return TargetRegistry(specs, country=registry.country)
+
+
+def _derived_chip_enrollment_hierarchy(
+    combined_spec: TargetSpec,
+) -> CalibrationHierarchy:
+    hierarchy = combined_spec.hierarchy
+    if hierarchy is None:
+        raise ValueError(
+            f"CMS source target {combined_spec.name!r} has no hierarchy for "
+            "the derived CHIP enrollment target."
+        )
+    name = _derived_chip_enrollment_name(combined_spec)
+    return CalibrationHierarchy(
+        provider=hierarchy.provider,
+        category=HierarchyCategory(
+            f"{hierarchy.provider.id}.total_chip_enrollment",
+            "Total CHIP enrollment",
+            hierarchy.provider.id,
+        ),
+        geography=hierarchy.geography,
+        dimensions=hierarchy.dimensions,
+        target=HierarchyNode(name, "Total CHIP enrollment"),
+    )
 
 
 def _cms_medicaid_specs_by_key(
@@ -2440,6 +2468,7 @@ def _soi_reference_from_fact(
         family="irs_soi",
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed("irs_soi", display_variable),
     )
 
 
@@ -2547,12 +2576,19 @@ def _state_income_tax_reference_from_fact(
         measure=source_record_id,
         period=target_period,
         family="state_income_tax",
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            "individual_income_tax_collections",
+        ),
         metadata={
             "source_measure_id": "collections",
             "source_period": str(_period_value(fact)),
             "target_period": str(target_period),
             "state_fips": state_fips,
             "target_role": "state_income_tax",
+            "materializer": "policyengine_variable",
+            "measure_mode": "sum",
+            "base_variable": "state_income_tax",
         },
     )
 
@@ -2614,6 +2650,10 @@ def _population_age_reference_from_fact(
         period=target_period,
         family="census_population",
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            "resident_population",
+        ),
     )
 
 
@@ -2779,6 +2819,11 @@ def _ssa_ssi_reference_from_fact(
             measure=source_record_id,
             period=target_period,
             family="ssa",
+            hierarchy=_us_hierarchy_seed(
+                _source_name(fact),
+                "ssi_federal_payment_recipients",
+                category_label="Federal SSI payment recipients",
+            ),
             metadata={
                 "materializer": "policyengine_variable",
                 "measure_mode": "indicator_sum",
@@ -2847,6 +2892,10 @@ def _ssa_ssi_reference_from_fact(
         period=target_period,
         family="ssa",
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            ("ssi_recipients" if measure_id == "recipient_count" else "ssi_payments"),
+        ),
     )
 
 
@@ -2939,6 +2988,10 @@ def _bea_reference_from_fact(
         family="bea",
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed(
+            _source_name(fact),
+            target_role,
+        ),
     )
 
 
@@ -2998,6 +3051,16 @@ def _direct_reference_from_fact(
         family=family,
         signed=_numeric_value(fact) < 0,
         metadata=metadata,
+        hierarchy=_us_hierarchy_seed(source_name, family),
+        # These explicitly mapped CBO levels are publisher projections. Keep
+        # their assertion intact without admitting projections for other inputs.
+        assertion_policy=(
+            "allow_source_projection"
+            if source_name == "cbo"
+            and measure_id == "projected_amount"
+            and mapping is not None
+            else "observed_only"
+        ),
     )
 
 
@@ -3178,7 +3241,7 @@ def _state_fips(fact: object) -> str | None:
     if not geoid.startswith("0400000US"):
         return None
     fips = geoid.removeprefix("0400000US")
-    if fips not in STATE_FIPS_TO_POSTAL:
+    if fips not in US_STATE_FIPS_TO_POSTAL:
         return None
     return fips
 
@@ -3196,7 +3259,7 @@ def _congressional_district_geoid(fact: object) -> str | None:
     if not congressional_district_geoid.isdigit():
         return None
     state_fips = congressional_district_geoid[:2]
-    if state_fips not in STATE_FIPS_TO_POSTAL:
+    if state_fips not in US_STATE_FIPS_TO_POSTAL:
         return None
     return congressional_district_geoid
 

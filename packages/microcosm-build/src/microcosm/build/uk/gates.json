@@ -222,7 +222,29 @@
           "transport_consumption": 0
         }
       },
-      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
+      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus fares are clipped before the fare rake (microcosm#890, María's ruling 2026-09-15): the clip bounds the regions no fare cell levels at donor support, the rake then moves the raked regions beyond it, and the column carries no committed terminal support bound."
+    },
+    {
+      "id": "uk_stage_lcfs_consumption_energy_rake",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "energy_rake",
+        "margins": [
+          "income",
+          "tenure",
+          "accommodation",
+          "region"
+        ],
+        "margins_period_value": 2024,
+        "maximum_relative_deviation": 0.025,
+        "maximum_connected_share_deviation": 0.005
+      },
+      "notes": "Stage-time energy check (microcosm#890 F, chronicle#270). María's ruling (2026-09-15, PR #927): 'I'm not sure why we are comparing against NEED as a gate in the first place if that is not what we are calibrating, but I agree we should implement Vahid's recommended fix and move the fix to before calibration.' Fact checks on the lcfs energy_rake receipt, every published value recomputed at gate time from the vendored rows the stage declares: each cell's shape target is the vendored NEED 2024 mean (need_energy_facts.json, margins_period_value), each fuel's level is the vendored DESNZ Energy Trends domestic consumption at actual temperature over the four FY2024-25 quarters (desnz_domestic_energy_facts.json) with the level factor equal to that total over the frame's pre-level total and the levelled frame total equal to the published one, each cell's target is shape times factor, and every region with a published gas-connected share (DESNZ subnational gas meters over electricity meters, 2024) sits within 0.5 points of it after the imposition unless the draw could not fill it (a receipted shortfall). The residual check holds the maximum absolute relative deviation of any cell mean from its levelled target, per margin (income band, tenure, property type, region) and fuel, electricity over every household of a cell and gas over its gas-connected households, to one fixed 2.5 % tolerance on the IPF's cross-margin residual (region is swept last and fits to machine precision by construction, so the tolerance binds the earlier three; a declared rule set above the observed maxima, not a fact: spine-s3 on NEED 2023 showed income 1.65 %, tenure 1.29 %, accommodation 0.83 %; spine-s5 on the NEED 2024 shape with the published connection showed income 2.16 % electricity / 1.97 % gas, accommodation 1.46 %, tenure 1.31 %, which is why the 2 % rule of spine-s3 moved to 2.5 %). This gate replaced the two NEED mean-spend anchors that uk_aggregate_admin measured on the calibrated frame; the calibrated frame is held to the bound ONS 04.5.1 electricity and 04.5.2 gas rows, and the gap between the DESNZ-volume-times-QEP-price level the stage sets and the ONS national-accounts spend is the published-source residual PR #927 receipts Part T records, not a gate. The entry is a population_fact_check: a synthetic smoke build (the staging smoke over the H2 fixture) records its outcome without blocking, because the fixture is not the population NEED, DESNZ and the meter counts describe; every licensed build blocks on it."
     },
     {
       "id": "uk_stage_etb_vat_support",
@@ -259,18 +281,19 @@
           "dfe_education_spending",
           "rail_subsidy_spending"
         ],
+        "exempt_columns": [
+          "bus_subsidy_spending"
+        ],
         "max_clipped_low_rows_by_column": {
-          "bus_subsidy_spending": 0,
           "dfe_education_spending": 0,
           "rail_subsidy_spending": 0
         },
         "max_clipped_high_rows_by_column": {
-          "bus_subsidy_spending": 0,
           "dfe_education_spending": 0,
           "rail_subsidy_spending": 0
         }
       },
-      "notes": "Stage-time support-clip health gate over the ETB services receipt. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
+      "notes": "Stage-time support-clip health gate over the ETB services receipt. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus support is exempt since microcosm#890: the declared rake to the published net support sets its level."
     },
     {
       "id": "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -405,6 +428,20 @@
       "notes": "Stage-time achieved-versus-target gate over the age-tail disaggregation receipt. At its post-frs_spine position, achieved_weighted measures raw FRS-grossed 80+ mass before clone or zero-weight support channels exist."
     },
     {
+      "id": "uk_stage_frs_relationships_composition",
+      "gate": "stage_health",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "frs_relationships",
+        "check": "household_composition",
+        "max_grid_reciprocity_mismatches": 3,
+        "require_partition_closure": true
+      },
+      "notes": "Stage-time invariants over the #791 relationship receipt: exactly one HEAD per household agreeing with hrpid and hrpnum, contiguous person numbers, no person with two partners, no unmapped relhrp code, family index and enum domains consistent, and the ten-cell household-type partition covering every household exactly once. The grid reciprocity tolerance is the reviewed 2024-25 tape count; a re-issued tape with a different count refuses for review."
+    },
+    {
       "id": "uk_release_input_coverage",
       "gate": "release_input_coverage",
       "phase": "terminal",
@@ -478,7 +515,7 @@
       "criticality": "release_blocking",
       "parameters": {},
       "evidence_absent_blocks": true,
-      "notes": "Every fit-produced weight column carries a completed audit record. Armed by the SPI income stage; an absent audit is not a passing audit \u2014 and blocks every posture, not only release candidates: the legacy schema-3 path's strictness, ported during the #654 retirement (microcosm#691 review)."
+      "notes": "Every fit-produced weight column carries a completed audit record. Armed by the SPI income stage; an absent audit is not a passing audit — and blocks every posture, not only release candidates: the legacy schema-3 path's strictness, ported during the #654 retirement (microcosm#691 review)."
     },
     {
       "id": "uk_nonnegative_columns",
@@ -532,26 +569,6 @@
         "default_rtol": 0.15,
         "anchors": [
           {
-            "name": "need_electricity_mean_spending",
-            "entity": "household",
-            "measure": "electricity_consumption",
-            "value": 882.91463,
-            "period": "2023",
-            "source": "Unweighted mean of NEED 2023 income-band electricity kWh anchors converted with Ofgem Q2 2026 unit rates.",
-            "family": "need_energy",
-            "tolerance": 132.4371945
-          },
-          {
-            "name": "need_gas_mean_spending",
-            "entity": "household",
-            "measure": "gas_consumption",
-            "value": 700.3661,
-            "period": "2023",
-            "source": "Unweighted mean of NEED 2023 income-band gas kWh anchors converted with Ofgem Q2 2026 unit rates.",
-            "family": "need_energy",
-            "tolerance": 105.054915
-          },
-          {
             "name": "nhs_spending_total",
             "entity": "person",
             "measure": "nhs_spending",
@@ -563,7 +580,7 @@
           }
         ]
       },
-      "notes": "Release-blocking aggregate-admin gate for E6 NEED energy anchors and the NHS budget. The build supplies SDC-safe measured aggregates as evidence; the gate checks signs and tolerances."
+      "notes": "Release-blocking aggregate-admin gate for the NHS budget. The two NEED energy anchors left this gate under microcosm#890 by María's ruling (2026-09-15, PR #927): 'I'm not sure why we are comparing against NEED as a gate in the first place if that is not what we are calibrating, but I agree we should implement Vahid's recommended fix and move the fix to before calibration.' NEED is checked where the rake acts, at design weights, by uk_stage_lcfs_consumption_energy_rake; the calibrated frame is held to the bound ONS 04.5.1 electricity and 04.5.2 gas rows (per fuel since chronicle #271). Known and now unchecked after calibration: the calibrated NEED means sat at GBP 824 / 688 against the anchors' GBP 1,082 / 850 (-24 % / -19 %) because NEED kWh priced at the FY2024-25 cap (about GBP 52bn at design weights) and ONS 04.5 (GBP 43.4bn) disagree by roughly 20 % on this frame (PR #927 receipts Parts N-Q). The build supplies SDC-safe measured aggregates as evidence; the gate checks signs and tolerances."
     },
     {
       "id": "uk_export_surface",
@@ -579,6 +596,7 @@
           "benunit.uc_deduction_type_random_draw",
           "benunit.uc_latent_deduction_rate",
           "benunit.uc_reported_capital",
+          "benunit.would_claim_uc_childcare",
           "household.bus_fare_spending",
           "household.bus_subsidy_spending",
           "household.cash_isa",
@@ -597,6 +615,7 @@
           "household.msoa_code",
           "household.num_vehicles",
           "household.oa_code",
+          "household.ons_household_type",
           "household.private_pension_wealth",
           "household.property_purchased",
           "household.rail_usage",
@@ -607,6 +626,7 @@
           "person.admitted_patient_visits",
           "person.age_started_or_accepted_current_education_or_training",
           "person.attends_private_school_random_draw",
+          "person.care_hours",
           "person.charitable_investment_gifts",
           "person.dla_m_category",
           "person.dla_sc_category",
@@ -618,17 +638,23 @@
           "person.is_before_universal_credit_qualifying_young_person_terminal_date",
           "person.is_in_non_advanced_education",
           "person.is_parent",
+          "person.is_uc_claimant",
           "person.legacy_jobseeker_proxy",
+          "person.ons_family_index",
+          "person.ons_family_role",
           "person.outpatient_visits",
           "person.pension_contributions_via_salary_sacrifice",
           "person.pip_dl_category",
           "person.pip_m_category",
           "person.receives_benefits_in_own_right",
+          "person.relationship_to_head",
           "person.salary_sacrifice_asked",
           "person.salary_sacrifice_reported",
           "person.sic_industry_division",
           "person.student_loan_balance",
           "person.student_loan_plan",
+          "person.tax_free_childcare_spend_routed_share",
+          "person.would_claim_carers_allowance",
           "person.would_claim_marriage_allowance",
           "person.would_claim_scp"
         ],
@@ -659,6 +685,18 @@
         ]
       },
       "notes": "The household BRMA assignment must remain inside the PolicyEngine-UK brma enum domain. Evaluated at the assembled boundary, right after frs_brma writes the column: enum membership is a property of the values themselves, so checking it there is identical to checking it at the end and refuses fourteen stages earlier. Take-up signal stays terminal by contrast, because its weighted shares are not the same statistic before and after calibration."
+    },
+    {
+      "id": "uk_ons_household_type_enum_domain",
+      "gate": "enum_domain",
+      "phase": "assembled",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "ons_household_type"
+        ]
+      },
+      "notes": "The household ONS household-type value must be one of the ten Chronicle ons.household_type value ids the frs_relationships stage declares (the build supplies the declared domain as evidence; the column is a frame input, not a PolicyEngine-UK enum). Evaluated at the assembled boundary like the BRMA enum: membership is a property of the values themselves."
     },
     {
       "id": "uk_uc_deduction_combination_enum_domain",
@@ -698,7 +736,7 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {},
-      "notes": "The solve's realized target surface must equal the declared register exactly, at name-and-period grain; the gate takes no tunable parameters. The reference side is the declared register, not an incumbent-derived surface \u2014 the frozen parity instrument carries input-column shares only \u2014 so this proves that every declared target was bound at its declared period, not agreement with the incumbent."
+      "notes": "The solve's realized target surface must equal the declared register exactly, at name-and-period grain; the gate takes no tunable parameters. The reference side is the declared register, not an incumbent-derived surface — the frozen parity instrument carries input-column shares only — so this proves that every declared target was bound at its declared period, not agreement with the incumbent."
     },
     {
       "id": "uk_target_fit",
@@ -706,7 +744,8 @@
       "phase": "terminal",
       "criticality": "release_blocking",
       "parameters": {
-        "max_abs_relative_error": 0.25
+        "max_abs_relative_error": 0.25,
+        "reviewed_exclusions_resource": "target_fit_reviewed_exclusions.json"
       },
       "notes": "Every calibration target within twenty-five percent absolute relative error, the certified June acceptance bound."
     },
@@ -733,7 +772,7 @@
         "minimum_reference_total": 0.0,
         "reviewed_exclusions_resource": "input_mass_reviewed_exclusions.json"
       },
-      "notes": "Weighted input-mass parity against the active named reference in the registry, with reviewed exclusions scoped per reference so a channel-blind reference exclusion does not suppress comparison against a future channel-aware reference. The tolerance is the worst surviving measured drift at the reviewed floor, exact, with no headroom; the sole breach, charitable_investment_gifts at +15,168.8% on the post-#710 surface, is the per-reference exclusion. The 0.0 floor excludes only arithmetically meaningless zero-mass denominators. Totals stay uncommitted under the UKDS licence, supplied per-run and pinned by totals_sha256; missing sidecar evidence records evidence_absent. Totals keys are flat frame column names since the #611 A4 dedup; that digest re-freeze was keys-only against the #610 values (identity unchanged, values byte-identical). Sensitivity floor, recorded rather than silent (microcosm#706 review): the tolerance is the worst surviving measured drift, and that edge is currently set by a column whose deviation is explained (vintage plus SPI composition, microcosm#703's head-to-head receipt), so at this value the gate is a gross mass-loss/explosion fence rather than a regression detector \u2014 the compared population sits at median 0.24 and p90 0.63. Tightening runs through this register: each explained top drift that earns a receipt lets the tolerance re-mint at the worst unexplained survivor, with the full distribution and the exclusions-versus-tolerance tradeoff in experiments/630-uk-gate-adjudication-receipts.md."
+      "notes": "Weighted input-mass parity against the active named reference in the registry, with reviewed exclusions scoped per reference so a channel-blind reference exclusion does not suppress comparison against a future channel-aware reference. The tolerance is the worst surviving measured drift at the reviewed floor, exact, with no headroom; the sole breach, charitable_investment_gifts at +15,168.8% on the post-#710 surface, is the per-reference exclusion. The 0.0 floor excludes only arithmetically meaningless zero-mass denominators. Totals stay uncommitted under the UKDS licence, supplied per-run and pinned by totals_sha256; missing sidecar evidence records evidence_absent. Totals keys are flat frame column names since the #611 A4 dedup; that digest re-freeze was keys-only against the #610 values (identity unchanged, values byte-identical). Sensitivity floor, recorded rather than silent (microcosm#706 review): the tolerance is the worst surviving measured drift, and that edge is currently set by a column whose deviation is explained (vintage plus SPI composition, microcosm#703's head-to-head receipt), so at this value the gate is a gross mass-loss/explosion fence rather than a regression detector — the compared population sits at median 0.24 and p90 0.63. Tightening runs through this register: each explained top drift that earns a receipt lets the tolerance re-mint at the worst unexplained survivor, with the full distribution and the exclusions-versus-tolerance tradeoff in experiments/630-uk-gate-adjudication-receipts.md."
     },
     {
       "id": "uk_qrf_tail_concentration",
@@ -769,53 +808,54 @@
         ],
         "minimum_rows": 50,
         "minimum_effective_sample_size": 50.0,
-        "minimum_distinct_sources": 50
+        "minimum_distinct_sources": 50,
+        "exclusions_resource": "local_area_support_exclusions.json"
       },
-      "notes": "Both local grains are blocking from birth. Each declared area needs at least 50 positive-weight rows, Kish ESS 50, and 50 distinct positive-weight source households. The constituency K=4 receipt measured minima of 101 rows, ESS 86.4, and 97 sources; a local-authority miss reopens K or requires a separately reviewed exclusion."
+      "notes": "Both local grains are blocking from birth. Each declared area needs at least 50 positive-weight rows, Kish ESS 50, and 50 distinct positive-weight source households. Reviewed exclusions carry measured shortfalls; a stale exclusion fails and must be retired. The constituency K=4 receipt measured minima of 101 rows, ESS 86.4, and 97 sources; a local-authority miss reopens K or requires a separately reviewed exclusion."
     },
     {
       "id": "uk_local_target_fit",
       "gate": "target_fit",
       "phase": "terminal",
-      "criticality": "diagnostic",
+      "criticality": "release_blocking",
       "parameters": {
         "surface": "local_candidate",
         "max_abs_relative_error": 0.25
       },
-      "notes": "Report every bound local target outside 25% absolute relative error. Diagnostic until the first #762 measured-fit receipt arms it."
+      "notes": "Every bound target must be within 25% absolute relative error. Release-blocking following PR #870 review; the numeric threshold is unchanged."
     },
     {
       "id": "uk_local_per_family_fit",
       "gate": "per_family_fit",
       "phase": "terminal",
-      "criticality": "diagnostic",
+      "criticality": "release_blocking",
       "parameters": {
         "within": 0.1,
         "min_family_share": 0.5,
         "hard_within": 0.25,
         "min_hard_family_share": 0.5
       },
-      "notes": "Report 10% fit shares per bound family and the 25% broad-fit share, so a weak family cannot hide in the aggregate. Diagnostic until the first #762 measured-fit receipt arms it."
+      "notes": "Each bound family of at least five rows needs at least half within 25%; the within-10% share remains diagnostic. Release-blocking following PR #870 review; existing evaluator thresholds and family-size policy are unchanged."
     },
     {
       "id": "uk_local_weight_ratio",
       "gate": "weight_ratio",
       "phase": "terminal",
-      "criticality": "diagnostic",
+      "criticality": "release_blocking",
       "parameters": {
         "maximum_max_to_median_ratio": 100.0
       },
-      "notes": "The reviewed local doctrine ratio is 100.0. It ships diagnostic until #762 records the first measured candidate and arms the threshold."
+      "notes": "Maximum-to-median positive weight ratio must not exceed 100.0. Release-blocking following PR #870 review; the numeric threshold is unchanged."
     },
     {
       "id": "uk_local_weight_ess",
       "gate": "weight_ess",
       "phase": "terminal",
-      "criticality": "diagnostic",
+      "criticality": "release_blocking",
       "parameters": {
         "minimum_ess_fraction": 0.01
       },
-      "notes": "The local ESS-fraction diagnostic uses the national analogue's 0.01 floor and remains diagnostic until #762's measured arming review."
+      "notes": "Effective sample size must be at least 0.01 of rows. Release-blocking following PR #870 review; the numeric threshold is unchanged."
     }
   ]
 }

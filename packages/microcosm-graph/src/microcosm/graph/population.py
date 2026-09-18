@@ -26,6 +26,7 @@ from .decl import (
     StructuralDelta,
 )
 from .kernel import KernelResult
+from .store import _encode_object_scalar
 
 __all__ = [
     "MassRecord",
@@ -1036,7 +1037,26 @@ def storage_equal(
     right: pd.Series,
     positions: np.ndarray | pd.Series | None = None,
 ) -> bool:
-    """Compare physical values and nullable masks exactly, including float bits."""
+    """Compare physical values and nullable masks exactly, including float bits.
+
+    Dense, string and object leaves are compared by content, so a column stays
+    equal to its own persisted-and-reloaded self.  Object leaves are compared
+    at the ContentStore's own leaf resolution, which is what makes that round
+    trip a fixed point: a NumPy floating leaf compares at ``float64`` width and
+    a NumPy integer leaf by value, because that is what the store decodes back.
+    A leaf outside that vocabulary raises :class:`PopulationError` rather than
+    comparing addresses, so for object columns this predicate is not total.
+
+    Masked storage is not compared by content: it reads ``_data`` under the
+    null mask, where pandas leaves whatever the construction route happened to
+    put, so two content-equal ``Int64`` columns built by different routes can
+    legitimately differ.  A digest folded from these parts is therefore an
+    in-process seal — a statement about what the digest can identify, not about
+    where it may be stored.  Build a cross-reconstruction pin from a content
+    identity of the values instead, together with whatever population-level
+    state the pin has to cover; a frame identity alone does not carry the
+    version, owners, weight kinds, mass ledger or design weights.
+    """
 
     if left.dtype != right.dtype or len(left) != len(right):
         return False
@@ -1799,7 +1819,12 @@ def _patch_columns(
                 owners[(owned.entity, owned.column)] = node.id
                 continue
         else:
+            # The placeholder is built positionally; bind it to the table's own
+            # index before insertion. A filtered population (a sampled rung)
+            # carries a non-contiguous index, and a label-aligned insert would
+            # NaN-fill the gaps and silently widen an int64 or bool column.
             incumbent = _empty_column(len(table), owned.dtype, owned_mask)
+            incumbent.index = table.index
             table[owned.column] = incumbent
 
         positions = pd.Series(
@@ -2666,6 +2691,51 @@ def _rebuild_frame(frame: Frame, tables: Mapping[str, pd.DataFrame]) -> Frame:
     )
 
 
+def _object_storage_values(values: np.ndarray) -> bytes:
+    """Encode an object array as length-prefixed, type-tagged content bytes.
+
+    An object array holds PyObject pointers, so ``tobytes()`` on one
+    serializes addresses: equal content re-materialized in a second array
+    hashes differently, and a comparison across a store round trip or a
+    rebuilt frame can never agree.  Each leaf therefore contributes an 8-byte
+    little-endian body length followed by the ContentStore's own object-scalar
+    body, mirroring the ``StringDtype`` framing above.  Reusing that encoder is
+    what keeps a column equal to its own persisted-and-reloaded self: it is the
+    store's definition of an object leaf's bytes, and its tags keep ``1``,
+    ``1.0``, ``True``, ``"1"`` and ``b"1"`` distinct.  (The executor's
+    kernel-context digest keeps a separate leaf vocabulary in
+    ``executor._update_scalar``, with a ``repr()`` fallback; storage hashing
+    deliberately does not share it.)  Every body
+    carries a tag, so a body is never empty and a zero length stays reserved.
+
+    What it deliberately does not keep distinct is a NumPy integer or float
+    scalar from its Python counterpart: the encoder normalizes ``np.int32(1)``
+    to ``1`` and ``np.float32(1.0)`` to ``1.0`` because the store's decoder
+    hands back the Python form, so a leaf-type-only difference inside an
+    object column is not a storage change.  Refusing it would mean a column
+    could never equal its own persisted-and-reloaded self, which is the defect
+    being fixed.  ``np.timedelta64`` and ``np.datetime64`` leaves are refused
+    outright: timedelta64 is a signedinteger subclass at runtime, and encoding
+    it as an integer would drop the unit and collide with a plain int.
+    """
+
+    payload = bytearray()
+    for value in values:
+        try:
+            body = _encode_object_scalar(value)
+        except (TypeError, UnicodeEncodeError) as error:
+            # Both ways that encoder declines a leaf: TypeError for a type
+            # outside its vocabulary, UnicodeEncodeError for a str that is not
+            # encodable (a lone surrogate).  Fail closed rather than repr() an
+            # unvetted leaf: a repr is neither guaranteed injective nor
+            # guaranteed stable across reconstructions, and calling it can
+            # itself raise.
+            raise PopulationError(f"storage-object-leaf: {error}") from error
+        payload.extend(len(body).to_bytes(8, "little"))
+        payload.extend(body)
+    return bytes(payload)
+
+
 def _storage_parts(series: pd.Series, selected: np.ndarray) -> tuple[bytes, bytes]:
     nulls = series.isna().to_numpy(dtype=np.bool_, copy=False)[selected]
     array = series.array
@@ -2688,6 +2758,11 @@ def _storage_parts(series: pd.Series, selected: np.ndarray) -> tuple[bytes, byte
                 payload.extend(encoded)
         return bytes(payload), np.ascontiguousarray(nulls).tobytes()
     values = series.to_numpy(copy=False)[selected]
+    if values.dtype == object:
+        return (
+            _object_storage_values(values),
+            np.ascontiguousarray(nulls).tobytes(),
+        )
     return (
         np.ascontiguousarray(values).tobytes(),
         np.ascontiguousarray(nulls).tobytes(),

@@ -229,11 +229,11 @@
     },
     {
      "kind": "map_columns",
-     "scope": "direct raw-to-column E2 mappings only; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence)"
+     "scope": "raw-to-column E2 mappings and FRS claimant-role derivation (is_benunit_head OR is_parent OR no dependent children within the benefit unit) to is_uc_claimant; benunit.TOTCAPB4 -> frs_benunit_capital with blank, nonnumeric, or negative raw values -> named -1 unavailable sentinel (mapped-row count reported in stage evidence)"
     },
     {
      "kind": "map_coded_amounts",
-     "scope": "region, tenure, accommodation, council tax band, benefit-code amount mappings"
+     "scope": "region, tenure, accommodation, council tax band, benefit-code amount mappings; adult HOURTOT care-hours band code to weekly care_hours at the band's lower edge (codes 5, 6, 7 and 10 reach the 35-hour Carer's Allowance line); would_claim_carers_allowance from positive reported Carer's Allowance"
     },
     {
      "kind": "annualize_periodic_amounts",
@@ -248,9 +248,11 @@
     "gender",
     "marital_status",
     "hours_worked",
+    "care_hours",
     "is_household_head",
     "is_benunit_head",
     "is_parent",
+    "is_uc_claimant",
     "employment_income",
     "self_employment_income",
     "private_pension_income",
@@ -288,6 +290,7 @@
     "dla_m_reported",
     "iidb_reported",
     "carers_allowance_reported",
+    "would_claim_carers_allowance",
     "sda_reported",
     "afcs_reported",
     "ssmg_reported",
@@ -351,9 +354,10 @@
     "mortgage_capital_repayment",
     "structural_insurance_payments",
     "housing_service_charges",
-    "external_child_payments"
+    "external_child_payments",
+    "care_hours"
    ],
-   "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity."
+   "notes": "Root E2 spine assembly. It carries direct raw mappings only; education-grant aggregate and council-tax reported fields remain raw carriers for E3. Benefit take-up, BRMA/LHA assignment, stochastic flags, and imputations are intentionally absent from this stage. The 2024-25 househol.tab is not sernum-ordered; the declared household sort guards stable identity. care_hours carries the FRS banded care-hours code as weekly hours (lower band edge) and would_claim_carers_allowance follows reported receipt, so the engine keeps Carer's Allowance on reported claimants while the hours qualify carers for the Universal Credit carer element (#882)."
   },
   {
    "stage": "age_tail",
@@ -362,50 +366,272 @@
    "grain": "person",
    "artifacts": [
     {
-     "format": "json",
+     "role": "age_tail_band_populations",
      "kind": "public_aggregate_reference",
      "resource": "ons_age_tail_band_populations.json",
-     "role": "age_tail_band_populations",
+     "format": "json",
      "runtime_sha256_required": true
     }
    ],
    "operations": [
     {
+     "kind": "disaggregate_top_coded_ages",
+     "output": "age",
+     "resource": "ons_age_tail_band_populations.json",
+     "top_code": 80,
      "bands": [
       {
-       "low": 80,
        "name": "80_84",
+       "low": 80,
        "width": 5
       },
       {
-       "low": 85,
        "name": "85_89",
+       "low": 85,
        "width": 5
       },
       {
-       "low": 90,
        "name": "90_plus",
+       "low": 90,
        "width": 8
       }
      ],
+     "seed": 0,
      "draw_key": "person_id",
-     "kind": "disaggregate_top_coded_ages",
-     "output": "age",
-     "reason": "Age disaggregation rewrites an existing person column in place; no rows move, no weights change, and total household mass is conserved.",
-     "resource": "ons_age_tail_band_populations.json",
      "salt_streams": [
       "band",
       "within"
      ],
-     "seed": 0,
-     "top_code": 80
+     "reason": "Age disaggregation rewrites an existing person column in place; no rows move, no weights change, and total household mass is conserved."
     }
    ],
    "outputs": [],
-   "notes": "The licensed FRS records no age above 80, so every 80+ person arrives piled at exactly 80 and the 85-89 and 90+ population targets are structurally unbindable; the incumbent shares the defect. Each piled base person draws a band from the sex-specific ONS inverse CDF and a uniform integer age within it, keyed on person_id. Runs immediately after frs_spine, before every stage that conditions on age, so all age-conditioned imputations derive from the disaggregated surface. The stage precedes person_source_id provenance; later support and capital-gains clones copy the donor's rewritten age, preserving the #623 final-age identity invariant. Ages are assigned toward the ONS distribution; calibration still owns the totals.",
    "rewrites": [
     "age"
-   ]
+   ],
+   "notes": "The licensed FRS records no age above 80, so every 80+ person arrives piled at exactly 80 and the 85-89 and 90+ population targets are structurally unbindable; the incumbent shares the defect. Each piled base person draws a band from the sex-specific ONS inverse CDF and a uniform integer age within it, keyed on person_id. Runs immediately after frs_spine, before every stage that conditions on age, so all age-conditioned imputations derive from the disaggregated surface. The stage precedes person_source_id provenance; later support and capital-gains clones copy the donor's rewritten age, preserving the #623 final-age identity invariant. Ages are assigned toward the ONS distribution; calibration still owns the totals."
+  },
+  {
+   "stage": "frs_relationships",
+   "survey": "Family Resources Survey 2024-25",
+   "source": "Department for Work and Pensions Family Resources Survey 2024-25, UK Data Service SN 9563, DOI 10.5255/UKDA-SN-9563-1; local licensed 2024_25 tabs (household grid, relhrp and R01-R14).",
+   "grain": "household+person",
+   "artifacts": [
+    {
+     "role": "frs_table",
+     "table": "adult",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "adult.tab",
+     "sha256": "4eaea0809a7ccca0fddeb98e358771e4a6e5ebb81b21c4fac4070fc9d227658d",
+     "size_bytes": 34885825,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "frs_table",
+     "table": "child",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "child.tab",
+     "sha256": "88ec53fc52eea4374864bbc74219d551f4b4c5f54a220bf9607c7a6289719aa5",
+     "size_bytes": 2753961,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    },
+    {
+     "role": "frs_table",
+     "table": "househol",
+     "kind": "licensed_microdata",
+     "format": "tab",
+     "vintage": "2024_25",
+     "locator": "househol.tab",
+     "sha256": "2b93b6aed49e1591d6f5360736b4aee3a11ef506b276435f4d2c011a8afbb6a5",
+     "size_bytes": 12108606,
+     "runtime_sha256_required": true,
+     "tax_year_start": 2024,
+     "ukds_study_number": 9563,
+     "doi": "10.5255/UKDA-SN-9563-1"
+    }
+   ],
+   "operations": [
+    {
+     "kind": "read_tables",
+     "format": "tab",
+     "delimiter": "\t",
+     "lowercase_columns": true,
+     "numeric_errors": "coerce",
+     "runtime_sha256_required": true
+    },
+    {
+     "kind": "derive_ons_household_composition",
+     "source_columns": {
+      "head": "relhrp",
+      "head_flag": "hrpid",
+      "head_index": "hrpnum",
+      "grid": [
+       "r01",
+       "r02",
+       "r03",
+       "r04",
+       "r05",
+       "r06",
+       "r07",
+       "r08",
+       "r09",
+       "r10",
+       "r11",
+       "r12",
+       "r13",
+       "r14"
+      ],
+      "full_time_education": [
+       "fted",
+       "educft"
+      ]
+     },
+     "frs_household_grid_relationship_codes": [
+      {
+       "code": 1,
+       "label": "SPOUSE"
+      },
+      {
+       "code": 2,
+       "label": "COHABITEE"
+      },
+      {
+       "code": 3,
+       "label": "CHILD"
+      },
+      {
+       "code": 4,
+       "label": "STEP_CHILD"
+      },
+      {
+       "code": 5,
+       "label": "FOSTER_CHILD"
+      },
+      {
+       "code": 6,
+       "label": "CHILD_IN_LAW"
+      },
+      {
+       "code": 7,
+       "label": "PARENT"
+      },
+      {
+       "code": 8,
+       "label": "STEP_PARENT"
+      },
+      {
+       "code": 9,
+       "label": "FOSTER_PARENT"
+      },
+      {
+       "code": 10,
+       "label": "PARENT_IN_LAW"
+      },
+      {
+       "code": 11,
+       "label": "SIBLING"
+      },
+      {
+       "code": 12,
+       "label": "STEP_SIBLING"
+      },
+      {
+       "code": 13,
+       "label": "FOSTER_SIBLING"
+      },
+      {
+       "code": 14,
+       "label": "SIBLING_IN_LAW"
+      },
+      {
+       "code": 15,
+       "label": "GRANDCHILD"
+      },
+      {
+       "code": 16,
+       "label": "GRANDPARENT"
+      },
+      {
+       "code": 17,
+       "label": "OTHER_RELATIVE"
+      },
+      {
+       "code": 18,
+       "label": "OTHER_NON_RELATIVE"
+      },
+      {
+       "code": 20,
+       "label": "CIVIL_PARTNER"
+      }
+     ],
+     "head_label": "HEAD",
+     "family_link_codes": {
+      "partner": [
+       1,
+       2,
+       20
+      ],
+      "child_of": [
+       3,
+       4
+      ],
+      "parent_of": [
+       7,
+       8
+      ]
+     },
+     "dependent_child": {
+      "unconditional_below_age": 16,
+      "full_time_education_through_age": 18
+     },
+     "one_person_age_split": 65,
+     "family_role_values": [
+      "COUPLE_PARTNER",
+      "LONE_PARENT",
+      "DEPENDENT_CHILD",
+      "NON_DEPENDENT_CHILD",
+      "INDIVIDUAL"
+     ],
+     "household_type_values": [
+      "lone_households_under_65",
+      "lone_households_over_65",
+      "unrelated_adult_households",
+      "couple_no_children_households",
+      "couple_under_3_children_households",
+      "couple_3_plus_children_households",
+      "couple_non_dependent_children_only_households",
+      "lone_parent_dependent_children_households",
+      "lone_parent_non_dependent_children_households",
+      "multi_family_households"
+     ],
+     "reciprocity_mismatch_tolerance": 3,
+     "documentation": {
+      "frs_codes": "UK Data Service SN 9563 (DOI 10.5255/UKDA-SN-9563-1), FRS 2024-25 question instructions, Household Grid: Relationship; HRP definition in the FRS background information and methodology",
+      "ons_definitions": "ONS Families and households in the UK: 2025, Measuring the data and Glossary (family, dependent and non-dependent children, one-family, two or more unrelated adults, multi-family households)",
+      "category_ids": "chronicle package ons-families-households-2025, Table 7, dimension ons.household_type value ids"
+     }
+    }
+   ],
+   "outputs": [
+    "relationship_to_head",
+    "ons_family_role",
+    "ons_family_index",
+    "ons_household_type"
+   ],
+   "nonnegative_outputs": [
+    "ons_family_index"
+   ],
+   "notes": "Derives the ONS Families and households Table 7 household type from the FRS household grid (microcosm#791). Every person's relhrp code becomes relationship_to_head (HEAD for the household reference person, whose relhrp is blank and whose hrpid is 1; hrpnum on the househol tab is the independent check). The pairwise R01-R14 matrix builds ONS families: any partner pair (spouse, cohabitee, civil partner) is a couple; a person with no partner and no own child in the household joins a parent's family through a natural/adopted or step child link (natural before step, then the lowest person number, on ties); foster, in-law, grandparent and sibling links never form a family, so foster children and grandchildren without a parent present stay individuals, as ONS treats them. A child is dependent under 16, or 16-18 in full-time education (child-tab members are in full-time non-advanced education by construction; adults use educft, fted on earlier tapes); 19 and over is non-dependent whatever the education status - the FRS child tab runs to 19, ONS stops at 18, so the two definitions are translated here rather than assumed equal. Household type: one person (split at 65), no family present (two or more unrelated adults, which counts related non-family households such as two siblings), exactly one family classified by that family whatever other individuals live there (a couple plus a lodger is a couple household - the class the #757 person-count restrictions could not place), or two or more families. The ten values are the Chronicle ons-families-households-2025 ons.household_type value ids verbatim, so the frame value, this declaration, the contract row and the published fact share one string. The reciprocity tolerance is the 2024-25 tape's three ordered pairs (two households) where a child records a parent link the parent records as non-relative or sibling; either side's declaration establishes the link, and any other count refuses the build for review."
   },
   {
    "stage": "frs_employment",
@@ -511,11 +737,13 @@
    "operations": [
     {
      "kind": "derive",
-     "parameters": "disability category thresholds from baseline.gov.dwp at Jan-1"
+     "parameters": "disability category thresholds from the fiscal-converted gov.dwp tree at the survey year",
+     "year_rule": "survey_year"
     },
     {
      "kind": "derive",
-     "parameters": "disability flags from gov.dwp at Jan-1"
+     "parameters": "disability flags from the fiscal-converted gov.dwp tree at the survey year",
+     "year_rule": "survey_year"
     }
    ],
    "outputs": [
@@ -669,11 +897,24 @@
       "parents_learning_allowance",
       "adult_dependants_grant"
      ],
-     "consumed_only": true
+     "consumed_only": true,
+     "year_rule": "survey_year"
+    },
+    {
+     "kind": "materialize_rules_engine_predictors",
+     "predictors": [
+      "maintenance_loan_in_england_system",
+      "disabled_students_allowance_course_eligible",
+      "disabled_students_allowance_has_qualifying_condition"
+     ],
+     "consumed_only": true,
+     "year_rule": "calibration_year"
     },
     {
      "kind": "derive",
-     "scope": "proportional split of aggregate education_grants and DSA residual capacity"
+     "scope": "proportional split of aggregate education_grants and DSA residual capacity",
+     "parameters": "DSA maximum from gov.dfe.disabled_students_allowance.maximum at the calibration year",
+     "year_rule": "calibration_year"
     }
    ],
    "outputs": [
@@ -685,7 +926,7 @@
    "nonnegative_outputs": [
     "disabled_students_allowance_eligible_expenses"
    ],
-   "notes": "Runs before BRMA and always runs; both are signed inert differences for 2023-24. Pre-2025 DSA capacity is an aligned zero vector rather than an engine shape-sizing read. EDUCQUAL grant-split compatibility is re-cited to the FRS 2024-25 SN 9563 dictionary; codes 1-87 are empirically present and code 87 remains undocumented/defaulted."
+   "notes": "Runs before BRMA and always runs; the DSA seed evaluates at the release calibration year (uk-data#478) and the modelling-start gate compares against that year, not the frame period. EDUCQUAL grant-split compatibility is re-cited to the FRS 2024-25 SN 9563 dictionary; codes 1-87 are empirically present and code 87 remains undocumented/defaulted."
   },
   {
    "stage": "frs_take_up",
@@ -702,6 +943,14 @@
       "child_benefit_reported_anchor": "child_benefit_reported",
       "pension_credit_reported_anchor": "pension_credit_reported",
       "universal_credit_reported_anchor": "universal_credit_reported"
+     }
+    },
+    {
+     "kind": "aggregate_person_to_benunit",
+     "method": "any_adult_under_state_pension_age",
+     "consumed_only": true,
+     "aggregates": {
+      "uc_age_eligible": "age"
      }
     },
     {
@@ -733,6 +982,7 @@
      "draw": "would_claim_uc",
      "rate_key": "universal_credit",
      "anchor": "universal_credit_reported_anchor",
+     "population": "uc_age_eligible",
      "seed": 0
     },
     {
@@ -764,6 +1014,22 @@
      "seed": 0
     },
     {
+     "kind": "assign_binary_from_banded_rates",
+     "output": "would_claim_uc_childcare",
+     "draw": "would_claim_uc_childcare",
+     "band_column": "is_married",
+     "bands": [
+      {
+       "upper_exclusive": 1,
+       "rate_key": "uc_childcare_single"
+      },
+      {
+       "rate_key": "uc_childcare_couple"
+      }
+     ],
+     "seed": 0
+    },
+    {
      "kind": "assign_clipped_normal",
      "output": "maximum_extended_childcare_hours_usage",
      "draw": "maximum_extended_childcare_hours_usage",
@@ -780,19 +1046,27 @@
     "would_claim_extended_childcare",
     "would_claim_universal_childcare",
     "would_claim_targeted_childcare",
+    "would_claim_uc_childcare",
     "maximum_extended_childcare_hours_usage"
    ],
    "nonnegative_outputs": [
     "maximum_extended_childcare_hours_usage"
    ],
-   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only."
+   "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; salts are output variable names. Reported positive receipt anchors are transient and consumed only. The Universal Credit draw's population is the benefit units with an adult under State Pension age (66 for everyone who can reach it in this release; the engine lockstep test pins it), so the contract rate is a share of those units, an anchor outside them stays true, and a unit with every adult at or over State Pension age is never drawn; its reported Housing Benefit is no longer zeroed by a claim it cannot make (#882, microcosm#867)."
   },
   {
    "stage": "frs_person_draws",
    "survey": "Family Resources Survey 2024-25",
    "source": "Sourced UK take-up contract rates and identity-keyed deterministic draws.",
    "grain": "person",
-   "artifacts": [],
+   "artifacts": [
+    {
+     "role": "stochastic_contract",
+     "resource": "take_up_contract.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    }
+   ],
    "operations": [
     {
      "kind": "assign_binary_from_rate",
@@ -821,15 +1095,24 @@
      "kind": "assign_uniform_draw",
      "output": "attends_private_school_random_draw",
      "seed": 0
+    },
+    {
+     "kind": "assign_period_constant",
+     "output": "tax_free_childcare_spend_routed_share",
+     "contract_key": "tax_free_childcare_spend_routed_share",
+     "period_source": "build_year",
+     "dtype": "float64"
     }
    ],
    "outputs": [
     "would_claim_marriage_allowance",
     "would_claim_scp",
-    "attends_private_school_random_draw"
+    "attends_private_school_random_draw",
+    "tax_free_childcare_spend_routed_share"
    ],
    "nonnegative_outputs": [
-    "attends_private_school_random_draw"
+    "attends_private_school_random_draw",
+    "tax_free_childcare_spend_routed_share"
    ],
    "notes": "Identity-keyed seed 0 streams replace the incumbent sequential take-up seed 100; higher_earner_tie_break is intentionally not produced."
   },
@@ -1144,7 +1427,7 @@
   {
    "stage": "lcfs_consumption",
    "survey": "Living Costs and Food Survey 2023-24",
-   "source": "UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs, NEED 2023 headline energy tables, Ofgem Q2 2026 unit rates, and WAS round-8 bridge donor.",
+   "source": "UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs and the vendored Chronicle facts for NEED 2023 mean kWh, the FY2024-25 Ofgem cap levels, road-fuel outturn (DESNZ, HMRC, ONS), the DfT VEH1103 licensed-car stock, NTS bus use and the DfT and devolved bus finance tables.",
    "grain": "household",
    "base_candidate": {
     "filename": "populace_uk_2023.h5",
@@ -1176,25 +1459,56 @@
      "filename": "dvper_ukanon_202324_2023.tab"
     },
     {
-     "role": "was_bridge_donor",
-     "kind": "private_microdata",
-     "format": "tab",
-     "vintage": "2018_20",
-     "locator": "caller-supplied local input",
-     "sha256": "18b3eb980c02c99f3d8a3254af859bee31682b2bdc11703877677292b3ce9374",
-     "size_bytes": 39073613,
-     "runtime_sha256_required": true,
-     "filename": "was_round_8_hhold_eul_may_2025_230525.tab"
-    },
-    {
-     "role": "need_energy_targets",
-     "resource": "need_energy_targets.json",
+     "role": "need_energy_facts",
+     "resource": "need_energy_facts.json",
      "kind": "public_aggregate_reference",
      "format": "json"
     },
     {
-     "role": "lcfs_consumption_anchors",
-     "resource": "lcfs_consumption_anchors.json",
+     "role": "qep_energy_prices",
+     "resource": "qep_energy_prices.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
+     "role": "desnz_domestic_energy_facts",
+     "resource": "desnz_domestic_energy_facts.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
+     "role": "ofgem_region_crosswalk",
+     "resource": "ofgem_region_crosswalk.json",
+     "kind": "public_parameter_reference",
+     "format": "json"
+    },
+    {
+     "role": "road_fuel_anchors",
+     "resource": "road_fuel_anchors.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
+     "role": "licensed_cars_fuel_type",
+     "resource": "licensed_cars_fuel_type.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
+     "role": "nts_bus_use_frequency",
+     "resource": "nts_bus_use_frequency.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
+     "role": "dft_bus_value_anchors",
+     "resource": "dft_bus_value_anchors.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
+     "role": "devolved_bus_finance",
+     "resource": "devolved_bus_finance.json",
      "kind": "public_aggregate_reference",
      "format": "json"
     }
@@ -1205,11 +1519,121 @@
      "lowercase_columns": true,
      "annualization_weeks": 52.17857142857143,
      "donor_weight": "weighta * 1000",
+     "mappings": {
+      "num_vehicles": "a124"
+     },
+     "clip": {
+      "num_vehicles": [
+       0,
+       5
+      ]
+     },
      "lossy_mappings": [
       "LCFS tenure 4 and 8 -> RENT_PRIVATELY",
       "LCFS accommodation 4 and 5 -> FLAT"
      ],
      "logged_dropna_row_count": true
+    },
+    {
+     "kind": "uprate_donor_columns",
+     "from_period": 2023,
+     "to_period": 2024,
+     "instant": "january_first",
+     "columns": {
+      "food_and_non_alcoholic_beverages_consumption": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "alcohol_and_tobacco_consumption": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "clothing_and_footwear_consumption": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "housing_water_and_electricity_consumption": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "household_furnishings_consumption": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "health_consumption": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "transport_consumption": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "communication_consumption": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "recreation_consumption": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "education_consumption": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "restaurants_and_hotels_consumption": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "miscellaneous_consumption": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "bus_fare_spending": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "employment_income": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+      },
+      "self_employment_income": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.per_capita.mixed_income"
+      },
+      "private_pension_income": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.private_pension_index"
+      },
+      "hbai_household_net_income": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+      },
+      "household_gross_income": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+      },
+      "petrol_spending": {
+       "basis": "vendored_litre_proxy",
+       "resource": "road_fuel_anchors.json",
+       "price_concept": "desnz.road_fuel.annual_ulsp_pump_price",
+       "litres_concept": "hmrc.hydrocarbon_oils.total_petrol_quantity",
+       "population_concept": "ons.mid_year_population_estimate",
+       "audit_parameter_path": "gov.economic_assumptions.indices.obr.petrol_spending_litre_proxy"
+      },
+      "diesel_spending": {
+       "basis": "vendored_litre_proxy",
+       "resource": "road_fuel_anchors.json",
+       "price_concept": "desnz.road_fuel.annual_ulsd_pump_price",
+       "litres_concept": "hmrc.hydrocarbon_oils.total_diesel_quantity",
+       "population_concept": "ons.mid_year_population_estimate",
+       "audit_parameter_path": "gov.economic_assumptions.indices.obr.diesel_spending_litre_proxy"
+      }
+     },
+     "exempt": [
+      "electricity_consumption",
+      "gas_consumption",
+      "domestic_energy_consumption"
+     ]
     },
     {
      "kind": "iterative_proportional_fit",
@@ -1220,32 +1644,91 @@
      "margins": [
       "gross_income_band"
      ],
+     "margins_resource": "need_energy_facts.json",
      "iterations": 1,
      "weighted": false
     },
     {
-     "kind": "bridge_donor_column_via_qrf",
-     "source": "was_wealth",
-     "target": "has_fuel_consumption",
-     "predictors": [
-      "household_net_income",
-      "num_adults",
-      "num_children",
-      "private_pension_income",
-      "employment_income",
-      "self_employment_income",
-      "region"
-     ],
-     "weights": "explicit",
-     "seed": 0,
-     "n_estimators": 100
-    },
-    {
      "kind": "assign_binary_from_rate",
      "target": "has_fuel_consumption",
-     "rate_key": "nts_ice_share",
+     "rate_resource": "licensed_cars_fuel_type.json",
+     "rate_rule": "one_minus_zero_emission_share",
+     "period_value": 2024,
+     "geography_id": "K03000001",
+     "zero_emission_fuel_types": [
+      "battery_electric",
+      "fuel_cell_electric"
+     ],
      "condition": "num_vehicles > 0",
      "seed": 0
+    },
+    {
+     "kind": "assign_bus_use_incidence",
+     "output": "uses_local_bus",
+     "seed": 0,
+     "resource": "nts_bus_use_frequency.json",
+     "period_value": 2024,
+     "share_geography": "E92000001",
+     "share_age_coverage": "all_ages",
+     "applied_to": "fare_rake_regions",
+     "transport_mode_groupby_value_id": "local_bus",
+     "older_age_band": "60 and over",
+     "age_threshold": 60,
+     "user_definition": "at_least_once_a_year",
+     "non_user_band": "less_than_once_a_year_or_never",
+     "bands": [
+      {
+       "id": "three_or_more_times_a_week",
+       "trips_per_year": 208,
+       "labels": [
+        "3 or more times a week (%)"
+       ]
+      },
+      {
+       "id": "once_or_twice_a_week",
+       "trips_per_year": 78,
+       "labels": [
+        "Once or twice a week (%)"
+       ]
+      },
+      {
+       "id": "less_than_weekly_more_than_twice_a_month",
+       "trips_per_year": 36,
+       "labels": [
+        "Less than once a week, more than once or twice a month (%)",
+        "Less than once per week, more than twice a month (%)"
+       ]
+      },
+      {
+       "id": "once_or_twice_a_month",
+       "trips_per_year": 18,
+       "labels": [
+        "Once or twice a month (%)"
+       ]
+      },
+      {
+       "id": "less_than_monthly_more_than_twice_a_year",
+       "trips_per_year": 6,
+       "labels": [
+        "Less than once a month, more than once or twice a year (%)",
+        "Less than once a month, more than twice a year (%)"
+       ]
+      },
+      {
+       "id": "once_or_twice_a_year",
+       "trips_per_year": 1.5,
+       "labels": [
+        "Once or twice a year (%)"
+       ]
+      },
+      {
+       "id": "less_than_once_a_year_or_never",
+       "trips_per_year": 0,
+       "labels": [
+        "Less than once a year or never (%)"
+       ]
+      }
+     ]
     },
     {
      "kind": "materialize_rules_engine_predictors",
@@ -1270,7 +1753,7 @@
       "hbai_household_net_income",
       "tenure_type",
       "accommodation_type",
-      "has_fuel_consumption"
+      "num_vehicles"
      ],
      "targets": [
       "food_and_non_alcoholic_beverages_consumption",
@@ -1322,8 +1805,116 @@
       "accommodation",
       "region"
      ],
+     "margins_resource": "need_energy_facts.json",
      "iterations": 50,
      "weighted": true
+    },
+    {
+     "kind": "price_domestic_energy",
+     "resource": "qep_energy_prices.json",
+     "crosswalk_resource": "ofgem_region_crosswalk.json",
+     "period_type": "fiscal_year",
+     "period_value": 2024,
+     "payment_method": "all",
+     "metering_arrangement": "standard",
+     "vat_treatment": "including_vat",
+     "columns": {
+      "electricity": "electricity_consumption",
+      "gas": "gas_consumption"
+     },
+     "gas_connected": "published_meter_share",
+     "connection_resource": "desnz_domestic_energy_facts.json",
+     "connection_period_value": 2024,
+     "connection_rule": "gas_meters_over_electricity_meters",
+     "connection_fallback": "positive_gas_spend",
+     "disconnect_rule": "lowest_drawn_gas_first",
+     "margins_resource": "need_energy_facts.json",
+     "margins_period_value": 2024,
+     "level_resource": "desnz_domestic_energy_facts.json",
+     "level_fiscal_start": "2024-04-01",
+     "level_temperature_adjustment": "actual_temperature"
+    },
+    {
+     "kind": "rake_to_vendored_facts",
+     "columns": [
+      "bus_fare_spending"
+     ],
+     "scope": "users_only",
+     "quintile_income": "hbai_household_net_income",
+     "iterations": 1,
+     "weighted": true,
+     "cells": [
+      {
+       "label": "london",
+       "regions": [
+        "LONDON"
+       ],
+       "resource": "dft_bus_value_anchors.json",
+       "selector": {
+        "concept": "dft.local_bus_passenger_fare_receipts",
+        "fiscal_start": "2024-04-01",
+        "geography_id": "E12000007"
+       },
+       "allocation": "income_quintile_trips",
+       "allocation_resource": "dft_bus_value_anchors.json",
+       "allocation_concept": "dft.bus_in_london_trips_per_person",
+       "allocation_period_value": 2024
+      },
+      {
+       "label": "england_outside_london",
+       "regions": [
+        "NORTH_EAST",
+        "NORTH_WEST",
+        "YORKSHIRE",
+        "EAST_MIDLANDS",
+        "WEST_MIDLANDS",
+        "EAST_OF_ENGLAND",
+        "SOUTH_EAST",
+        "SOUTH_WEST"
+       ],
+       "resource": "dft_bus_value_anchors.json",
+       "selector": {
+        "concept": "dft.local_bus_passenger_fare_receipts",
+        "fiscal_start": "2024-04-01",
+        "geography_id": "dft:england_outside_london"
+       },
+       "allocation": "income_quintile_trips",
+       "allocation_resource": "dft_bus_value_anchors.json",
+       "allocation_concept": "dft.other_local_bus_trips_per_person",
+       "allocation_period_value": 2024
+      },
+      {
+       "label": "scotland",
+       "regions": [
+        "SCOTLAND"
+       ],
+       "resource": "devolved_bus_finance.json",
+       "selector": {
+        "concept": "scotgov.bus.operator_revenue",
+        "fiscal_start": "2024-04-01",
+        "groupby_value_id": "passenger_revenue"
+       },
+       "allocation": "uniform"
+      },
+      {
+       "label": "northern_ireland",
+       "regions": [
+        "NORTHERN_IRELAND"
+       ],
+       "resource": "devolved_bus_finance.json",
+       "selector": {
+        "concept": "dfi_ni.translink_bus.passenger_receipts",
+        "fiscal_start": "2024-04-01",
+        "sum_over": {
+         "service": [
+          "ulsterbus",
+          "metro_glider"
+         ]
+        }
+       },
+       "allocation": "uniform"
+      }
+     ]
     },
     {
      "kind": "fold_into",
@@ -1385,7 +1976,7 @@
     "gas_consumption",
     "has_fuel_consumption"
    ],
-   "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and identity-keyed seed-0 fuel flags. Energy support clipping is exempt because NEED raking governs those columns. Donor uprating is identity at this vintage (LCFS survey year equals the 2023 build year), so the incumbent's CPI and fuel litre-proxy donor uprating is deliberately not declared here; the machinery lands with the FRS 2024-25 refresh (microcosm#687), where a donor/build year gap first exists. The DESNZ pump-price anchors stay committed as the cited litre-proxy denominators for that refresh."
+   "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns. Bus fares are clipped to donor support before the fare rake (María's ruling 2026-09-15), which bounds the regions no fare cell levels (Wales keeps the chain's raw draw) while the rake is free to move the raked regions beyond donor support afterwards; for that reason the column carries no committed support bound for the terminal gate. Domestic energy is raked in kWh to the NEED 2024 shape at the DESNZ level and priced at the average prices paid (microcosm#890 F, chronicle#270), where both NEED rakes take their mean-kWh margins from the vendored NEED 2024 tables (England and Wales by income band, tenure, property type and region; Scotland by income band, tenure and property type with the all-dwellings mean as its region margin; Northern Ireland untouched), the declared price_domestic_energy step converts spend to kWh and back at each household's QEP price region through the committed crosswalk using the FY2024-25 average variable unit cost and fixed cost across payment methods, standard metering, including VAT (Northern Ireland gas at the UK average because QEP publishes no Northern Ireland gas row), a gas fixed cost only for connected households, the gas connection imposed on the recipient frame at the published share of each region (DESNZ subnational gas meters over electricity meters, 2024) by disconnecting the households with the smallest drawn gas first, skipping a household whose weight would overshoot the published share (Northern Ireland has no subnational row and keeps the positive-gas rule), and after the four-margin NEED rake one factor per fuel scales the kWh so the design-weighted frame total equals the DESNZ Energy Trends domestic consumption at actual temperature summed over the four FY2024-25 quarters; NEED gas means are per gas-metered household, so the gas kWh margins are raked over connected households only while electricity is raked over every household, and the energy_rake gate recomputes every NEED mean, the DESNZ level and the connection shares from the vendored rows. Who uses local buses is drawn take-up style (microcosm#890 I), where each person takes a frequency band by an identity-keyed draw from the vendored NTS0313 shares (NTS0621 for people aged 60 and over, the under-60 shares derived from the two with the frame's design-weighted 60-plus share), a household is a user when any member rides at least once a year, user households the chain drew at zero take the bus step's positive-regime draw at an identity-keyed quantile and non-users take zero, in the regions a fare-rake cell levels afterwards (a positive-regime amount is a diary-positive fortnight annualised and would overstate an unraked region several-fold, so Wales keeps the raw draw); the NTS shares are England's and DfT publishes no Scottish or Northern Irish frequency table, so the same shares govern the Scotland and Northern Ireland cells, as declared (share_geography). Bus fares are then raked (microcosm#890 D) so that user households' design-weighted totals equal the FY2024-25 DfT BUS05ai receipts for London and England outside London, spread across design-weighted person income quintiles in proportion to NTS0705a trips per person, Scottish Transport Statistics passenger revenue for Scotland and Translink passenger receipts for Northern Ireland; Wales publishes no fare receipts and is untouched. The 2023-24 diary is uprated to the FRS 2024-25 base year by the declared uprate_donor_columns step (microcosm#890), with consumption columns and bus fares uprated by the engine's CPI index (the fare factor survives only where no fare cell levels the column, i.e. Wales), income predictors by the engine's earnings, mixed-income and pension indices, petrol and diesel by the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json; the energy columns are exempt because the NEED rake and the FY2024-25 Ofgem pricing set their level."
   },
   {
    "stage": "etb_vat",
@@ -1495,6 +2086,24 @@
      "resource": "etb_services_anchors.json",
      "kind": "public_parameter_reference",
      "format": "json"
+    },
+    {
+     "role": "orr_rail_facts",
+     "resource": "orr_rail_facts.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
+     "role": "dft_bus_value_anchors",
+     "resource": "dft_bus_value_anchors.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
+     "role": "devolved_bus_finance",
+     "resource": "devolved_bus_finance.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
     }
    ],
    "operations": [
@@ -1502,6 +2111,33 @@
      "kind": "derive",
      "year": "max",
      "annualization_weeks": 52
+    },
+    {
+     "kind": "uprate_donor_columns",
+     "from_period": 2023,
+     "to_period": 2024,
+     "instant": "january_first",
+     "columns": {
+      "dfe_education_spending": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.consumer_price_index"
+      },
+      "hbai_household_net_income": {
+       "basis": "engine_parameter",
+       "parameter_path": "gov.economic_assumptions.indices.obr.average_earnings"
+      },
+      "rail_subsidy_spending": {
+       "basis": "vendored_ratio",
+       "resource": "orr_rail_facts.json",
+       "concept": "orr.rail.total_government_support"
+      },
+      "bus_subsidy_spending": {
+       "basis": "vendored_ratio",
+       "resource": "dft_bus_value_anchors.json",
+       "concept": "dft.local_bus_total_estimated_net_support",
+       "geography_id": "E92000001"
+      }
+     }
     },
     {
      "kind": "materialize_rules_engine_predictors",
@@ -1544,14 +2180,122 @@
     },
     {
      "kind": "support_clip",
-     "range": "donor_realized"
+     "range": "donor_realized",
+     "exempt": [
+      "bus_subsidy_spending"
+     ]
+    },
+    {
+     "kind": "rake_to_vendored_facts",
+     "columns": [
+      "bus_subsidy_spending"
+     ],
+     "scope": "all",
+     "iterations": 1,
+     "weighted": true,
+     "cells": [
+      {
+       "label": "london",
+       "regions": [
+        "LONDON"
+       ],
+       "resource": "dft_bus_value_anchors.json",
+       "selector": {
+        "concept": "dft.local_bus_total_estimated_net_support",
+        "fiscal_start": "2024-04-01",
+        "geography_id": "E12000007"
+       },
+       "allocation": "uniform"
+      },
+      {
+       "label": "england_outside_london",
+       "regions": [
+        "NORTH_EAST",
+        "NORTH_WEST",
+        "YORKSHIRE",
+        "EAST_MIDLANDS",
+        "WEST_MIDLANDS",
+        "EAST_OF_ENGLAND",
+        "SOUTH_EAST",
+        "SOUTH_WEST"
+       ],
+       "resource": "dft_bus_value_anchors.json",
+       "selector": {
+        "concept": "dft.local_bus_total_estimated_net_support",
+        "fiscal_start": "2024-04-01",
+        "geography_id": "dft:england_outside_london"
+       },
+       "allocation": "uniform"
+      },
+      {
+       "label": "scotland",
+       "regions": [
+        "SCOTLAND"
+       ],
+       "resource": "devolved_bus_finance.json",
+       "selector": {
+        "concept": "scotgov.bus.government_support",
+        "fiscal_start": "2024-04-01",
+        "dimension_values": {
+         "funding_component": "all_government_support"
+        }
+       },
+       "allocation": "uniform"
+      },
+      {
+       "label": "wales",
+       "regions": [
+        "WALES"
+       ],
+       "resource": "devolved_bus_finance.json",
+       "selector": {
+        "concept": "welshgov.local_transport.gross_expenditure",
+        "fiscal_start": "2024-04-01",
+        "dimension_values": {
+         "expenditure_component": "Gross expenditure"
+        },
+        "sum_over": {
+         "service_line": [
+          "Concessionary fares",
+          "Support to operators"
+         ]
+        }
+       },
+       "allocation": "uniform"
+      },
+      {
+       "label": "northern_ireland",
+       "regions": [
+        "NORTHERN_IRELAND"
+       ],
+       "resource": "devolved_bus_finance.json",
+       "selector": {
+        "concept": "nithc.dfi_transaction_value",
+        "fiscal_start": "2024-04-01",
+        "dimension_values": {
+         "mode_scope": "all_public_transport"
+        },
+        "sum_over": {
+         "funding_component": [
+          "Public Service Obligation compensation",
+          "Concessionary fare compensation for a range of groups"
+         ]
+        }
+       },
+       "allocation": "uniform",
+       "joint_columns": [
+        "bus_subsidy_spending",
+        "rail_subsidy_spending"
+       ]
+      }
+     ]
     },
     {
      "kind": "compute_ratio",
      "output": "rail_usage",
      "numerator": "rail_subsidy_spending",
      "denominator_resource": "etb_services_anchors.json",
-     "denominator_key": "rail_fare_index_2023"
+     "denominator_key": "rail_fare_index_2024"
     },
     {
      "kind": "allocate_per_capita_from_cell_table",
@@ -1585,7 +2329,7 @@
     "nhs_admitted_patient_spending",
     "nhs_outpatient_spending"
    ],
-   "notes": "Ports ETB public-services QRF at household grain, computes rail_usage from the 2023 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage."
+   "notes": "Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the support rake levels away in every nation and which therefore only positions the donor before the QRF), rakes bus support so each area's design-weighted total equals the FY2024-25 published net support (DfT BUS05bi for London and England outside London, Scottish Transport Statistics all government support, the StatsWales local-authority gross expenditure on concessionary fares plus support to operators for Wales, and for Northern Ireland the NITHC accounts' PSO plus concessionary compensation bound jointly on bus plus rail support since the accounts carry no split; microcosm#890 D), with the raked column exempt from the support clip, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage."
   },
   {
    "stage": "frs_hmrc_spine_leaves",
@@ -2040,11 +2784,34 @@
      "require_all_predictors": true,
      "require_all_outputs": true,
      "initialize_frs_channel_columns": {
-      "gift_aid": 0,
-      "charitable_investment_gifts": 0
+      "gift_aid": 0.0,
+      "charitable_investment_gifts": 0.0
      },
      "n_estimators": 100,
-     "seed": 42
+     "seed": 42,
+     "donor_income_period": 2022,
+     "income_uprating_variables": {
+      "charitable_investment_gifts": null,
+      "dividend_income": "dividend_income",
+      "gift_aid": null,
+      "hmrc_spi_employment_benefits": "employment_income_before_lsr",
+      "hmrc_spi_employment_expenses": "employment_income_before_lsr",
+      "hmrc_spi_incapacity_benefit_income": null,
+      "hmrc_spi_miscellaneous_employment_income": "employment_income_before_lsr",
+      "hmrc_spi_other_income": "miscellaneous_income",
+      "hmrc_spi_other_social_security_income": null,
+      "hmrc_spi_pay": "employment_income_before_lsr",
+      "hmrc_spi_state_pension_income": null,
+      "hmrc_spi_taxable_termination_pay": "employment_income_before_lsr",
+      "hmrc_spi_unemployment_benefit_income": null,
+      "other_investment_income": "other_investment_income",
+      "private_pension_income": "private_pension_income",
+      "property_income": "property_income",
+      "savings_interest_income": "savings_interest_income",
+      "self_employment_income": "self_employment_income"
+     },
+     "rebase_income_to_build_period": true,
+     "recipient_minimum_age": 16
     },
     {
      "kind": "fit_weighted_qrf_stage2",
@@ -2059,7 +2826,8 @@
       "savings_interest_income",
       "dividend_income",
       "private_pension_income",
-      "property_income"
+      "property_income",
+      "state_pension_receipt"
      ],
      "reviewed_absent_predictors": {
       "other_investment_income": "This remains a stage-1 SPI draw and an official HMRC fact component, but it is not an FRS-only stage-2 predictor: the incumbent UK data build's frs_only.py defines exactly six income predictors and the certified Microcosm UK base candidate has no other_investment_income column."
@@ -2474,48 +3242,50 @@
    "notes": "Runs the SPI-trained income QRFs on the raw-spine support channel, initializes FRS charity columns to zero, trains FRS-only stage 2 before redrawing base-channel dividends, and emits a sidecar-only 208-fact replay report for the spine path."
   },
   {
-   "artifacts": [],
+   "stage": "uc_reporter_redraw",
+   "survey": "Family Resources Survey 2024-25",
+   "source": "Family Resources Survey 2024-25 reported Universal Credit amounts, conditioned on benefit-unit composition and post-SPI incomes with PolicyEngine-UK eligibility inputs.",
    "grain": "benunit",
-   "notes": "Runs after the person-grain SPI income chain and before UC capital coherence. One temporary engine simulation screens both FRS and SPI benefit units to a positive pre-take-up award using FRS-carried capital AND at least one non-child member (uc_maximum_amount pays qualifying-young-person-only units mechanically), and materializes the UC child and state-pension-age flags; engine-known values are consumed only. A benefit-unit RegimeGatedQRF fitted on the screened base domain draws the screened SPI domain (rows); the rewrite domain (rewrite_rows) is the whole SPI channel, so screen-failing SPI units are zeroed. Each positive amount lands on one deterministic adult claimant; base-FRS rows remain byte-unchanged; an empty screened SPI domain refuses.",
+   "artifacts": [],
    "operations": [
     {
+     "kind": "derive",
      "derived": {
-      "claimable_screen": "positive_pre_takeup_uc_award AND has_non_child_member",
-      "has_non_child_member": "any(NOT is_child_or_qualifying_young_person_for_universal_credit) over benefit-unit members",
+      "is_uc_couple": "count(is_benunit_head OR is_parent OR (dependent_children == 0)) over benefit-unit members == 2",
+      "uc_reported_capital": "frs_benunit_capital",
       "positive_pre_takeup_uc_award": "max(0, uc_maximum_amount - uc_income_reduction) > 0",
-      "uc_reported_capital": "frs_benunit_capital"
-     },
-     "kind": "derive"
+      "has_non_child_member": "any(NOT is_child_or_qualifying_young_person_for_universal_credit) over benefit-unit members",
+      "claimable_screen": "positive_pre_takeup_uc_award AND has_non_child_member"
+     }
     },
     {
-     "consumed_only": true,
      "kind": "materialize_rules_engine_predictors",
      "predictors": [
       "uc_maximum_amount",
       "uc_income_reduction",
       "is_child_or_qualifying_young_person_for_universal_credit",
       "is_SP_age"
-     ]
+     ],
+     "consumed_only": true
     },
     {
+     "kind": "aggregate_person_to_benunit",
+     "method": "sum",
+     "consumed_only": true,
      "aggregates": {
       "uc_child_count": "is_child_or_qualifying_young_person_for_universal_credit",
       "universal_credit_reported_amount": "universal_credit_reported"
-     },
-     "consumed_only": true,
-     "kind": "aggregate_person_to_benunit",
-     "method": "sum"
+     }
     },
     {
-     "categorical_predictors": [
-      "region"
-     ],
-     "fit": "regime_gated_qrf",
      "kind": "redraw_spi_reported_uc",
-     "landing": "eldest_working_age_adult_lowest_person_id",
      "output": "universal_credit_reported",
+     "training_rows": "base_frs_channel_not_capital_gains_clone_support_clone_0_screened",
+     "rows": "spi_channel_screened",
+     "rewrite_rows": "spi_channel",
+     "screen": "claimable_screen",
      "predictors": [
-      "is_married",
+      "is_uc_couple",
       "uc_child_band",
       "benunit_employment_income",
       "benunit_self_employment_income",
@@ -2525,22 +3295,21 @@
       "claimant_age",
       "region"
      ],
-     "rewrite_rows": "spi_channel",
-     "rows": "spi_channel_screened",
-     "screen": "claimable_screen",
-     "seed": 44,
+     "categorical_predictors": [
+      "region"
+     ],
      "target": "universal_credit_reported_amount",
-     "training_rows": "base_frs_channel_not_capital_gains_clone_support_clone_0_screened",
-     "weight_mapping": "household_to_benunit"
+     "weight_mapping": "household_to_benunit",
+     "fit": "regime_gated_qrf",
+     "landing": "eldest_working_age_adult_lowest_person_id",
+     "seed": 44
     }
    ],
    "outputs": [],
    "rewrites": [
     "universal_credit_reported"
    ],
-   "source": "Family Resources Survey 2024-25 reported Universal Credit amounts, conditioned on benefit-unit composition and post-SPI incomes with PolicyEngine-UK eligibility inputs.",
-   "stage": "uc_reporter_redraw",
-   "survey": "Family Resources Survey 2024-25"
+   "notes": "Runs after the person-grain SPI income chain and before UC capital coherence. One temporary engine simulation screens both FRS and SPI benefit units to a positive pre-take-up award using FRS-carried capital AND at least one non-child member (uc_maximum_amount pays qualifying-young-person-only units mechanically), and materializes the UC child and state-pension-age flags; engine-known values are consumed only. The consumed is_uc_couple predictor counts two retained FRS claimant/partner roles, independently of legal is_married; older dependent children do not become partners. A benefit-unit RegimeGatedQRF fitted on the screened base domain draws the screened SPI domain (rows); the rewrite domain (rewrite_rows) is the whole SPI channel, so screen-failing SPI units are zeroed. Each positive amount lands on one deterministic adult claimant; base-FRS rows remain byte-unchanged; an empty screened SPI domain refuses."
   },
   {
    "stage": "uc_capital_coherence",
@@ -2568,7 +3337,7 @@
       "2",
       "3+"
      ],
-     "couple_status": "is_married",
+     "couple_status": "is_uc_couple",
      "weight_mapping": "household_to_benunit",
      "draw": "weighted_empirical",
      "identity": "benunit_id",
@@ -2590,7 +3359,7 @@
     "frs_benunit_capital",
     "would_claim_uc"
    ],
-   "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws only SPI post-fill reporters from weighted base-FRS reporter capital within dependent-children band by couple-status cells, then applies the monotone reported-UC OR refresh."
+   "notes": "Runs after the last universal_credit_reported writer and before CGT cloning. Redraws only SPI post-fill reporters from weighted base-FRS reporter capital within dependent-children band by is_uc_couple cells (two retained FRS claimant/partner roles, independently of legal is_married), then applies the monotone reported-UC OR refresh."
   },
   {
    "stage": "uc_deduction_attributes",

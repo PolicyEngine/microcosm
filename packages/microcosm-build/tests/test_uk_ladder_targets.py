@@ -11,6 +11,10 @@ population_universe_private_households adjudication.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -19,10 +23,17 @@ from microcosm.build.uk_runtime import (
     assemble_uk_oa_ladder,
     compute_household_metrics,
     constituency_household_targets,
+    ladder_vs_chronicle_household_dispersion,
     load_uk_oa_ladder,
     local_authority_household_targets,
     metric_names,
 )
+from microcosm.calibrate import TargetSpec
+
+NISRA_HOUSEHOLD_FEED_ROWS = (
+    Path(__file__).parent / "fixtures" / "uk_nisra_pcon24_households_feed_rows.jsonl"
+)
+BUILT_LADDER = Path("build/uk/uk_oa_ladder_2021.npz")
 
 
 def _ladder(tmp_path):
@@ -100,6 +111,70 @@ def test_local_authority_household_targets_sum_ladder_counts(tmp_path) -> None:
     }
 
 
+def test_ladder_vs_nisra_constituency_household_dispersion() -> None:
+    if not BUILT_LADDER.exists():
+        pytest.skip("rebuilt UK OA ladder artifact is not present")
+    facts = [
+        json.loads(line)
+        for line in NISRA_HOUSEHOLD_FEED_ROWS.read_text().splitlines()
+        if line.strip()
+    ]
+    specs = [
+        TargetSpec(
+            name=f"ons.census.households@{fact['geography']['id']}",
+            entity="household",
+            value=fact["value"],
+            measure="households",
+            period=2025,
+            source=fact["source"]["url"],
+            family="census_households",
+            metadata={
+                "ledger_geography_level": fact["geography"]["level"],
+                "ledger_geography_id": fact["geography"]["id"],
+            },
+        )
+        for fact in facts
+    ]
+
+    report = ladder_vs_chronicle_household_dispersion(
+        load_uk_oa_ladder(BUILT_LADDER),
+        specs,
+    )
+
+    ni = report["countries"]["Northern Ireland"]
+    assert ni == {
+        "cells": 18,
+        "mean_absolute_delta": pytest.approx(7.0),
+        "max_absolute_delta": pytest.approx(16.0),
+        "net_delta": pytest.approx(4.0),
+    }
+    assert sum(cell["ladder_households"] for cell in report["cells"]) == 768_813
+
+
+def test_ladder_vs_chronicle_household_dispersion_refuses_bad_ni_mapping() -> None:
+    ladder = SimpleNamespace(
+        households=np.asarray([100.0]),
+        constituency_code=np.asarray(["N05000001"], dtype=object),
+        local_authority_code=np.asarray(["N09000001"], dtype=object),
+    )
+    spec = TargetSpec(
+        name="ons.census.households@N05000001",
+        entity="household",
+        value=0,
+        measure="households",
+        period=2025,
+        source="synthetic publisher oracle",
+        family="census_households",
+        metadata={
+            "ledger_geography_level": "constituency",
+            "ledger_geography_id": "N05000001",
+        },
+    )
+
+    with pytest.raises(ValueError, match="publisher oracle"):
+        ladder_vs_chronicle_household_dispersion(ladder, [spec])
+
+
 def test_households_metric_is_in_the_computed_surface() -> None:
     assert "households" in metric_names("constituency")
     assert "households" in metric_names("la")
@@ -118,6 +193,7 @@ def test_households_metric_is_in_the_computed_surface() -> None:
             "income_tax": [1.0, 0.0, 2.0, 3.0],
             "age": [5, 35, 72, 12],
             "universal_credit": [0.0, 100.0, 50.0],
+            "num_children": [1, 0, 2],
             "is_child": [1.0, 0.0, 0.0, 1.0],
         }
 
@@ -148,15 +224,16 @@ def test_census_family_and_pinned_sources() -> None:
     assert "census_households" in families
     family = families["census_households"]
     source_ids = set(family["sources"])
-    assert {
-        "nomis_ts041_ew_oa_households",
-        "nrs_census_2022_index",
-        "nisra_dz21_households",
-    } <= source_ids
+    assert source_ids == {
+        "ons_census2021_ts041_households",
+        "nrs_census2022_uv404_households",
+        "nisra_census2021_households",
+    }
 
     sources = {row["source_id"]: row for row in census["sources"]}
     for source_id in source_ids:
-        assert sources[source_id]["status"] == "pinned_in_ladder"
+        assert sources[source_id]["status"] == "pinned_in_ledger_facts"
+        assert sources[source_id]["ledger_fact_pin"]
 
     metrics = {row["name"]: row for row in census["metrics"]}
     assert metrics["households"]["family"] == "census_households"
@@ -216,7 +293,7 @@ def test_local_metric_surface_is_append_only() -> None:
     # Positional stability: adding a metric must never renumber the metrics
     # already in the surface, because consumers address them by index
     # (local_rowwise builds target_index as area_index * n_metrics +
-    # metric_index). The ladder-derived "households" metric was itself
+    # metric_index). The Chronicle-derived "households" metric was itself
     # appended under this rule, so it keeps its index rather than staying
     # last: a later family lands after it, never before it.
     prefix_through_households = {

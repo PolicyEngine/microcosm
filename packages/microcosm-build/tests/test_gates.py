@@ -44,6 +44,65 @@ from microcosm.build import (
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
 
+def _area_support(rows=2, ess=2.0, sources=2):
+    return pd.DataFrame(
+        {
+            "geography_level": ["constituency"],
+            "area_code": ["C1"],
+            "nonzero_households": [rows],
+            "effective_sample_size": [ess],
+            "nonzero_source_households": [sources],
+        }
+    )
+
+
+def test_area_support_reviewed_exclusion_records_measured_shortfalls() -> None:
+    record = {"approved_by": "reviewer", "adjudication": "uk-data#123"}
+    result = area_support_gate(
+        _area_support(),
+        area_roster={"constituency": ["C1"]},
+        geography_levels=["constituency"],
+        minimum_rows=50,
+        minimum_effective_sample_size=50.0,
+        minimum_distinct_sources=50,
+        reviewed_exclusions={"constituency/C1": record},
+    )
+    assert result.passed
+    assert result.details["excluded_area_count"] == 1
+    excluded = result.details["reviewed_exclusions"]["constituency/C1"]
+    assert excluded["rows"] == 2
+    assert excluded["ess"] == 2.0
+    assert excluded["sources"] == 2
+    assert excluded["record"] == record
+    assert len(excluded["shortfalls"]) == 3
+
+
+def test_area_support_stale_and_unknown_exclusions_fail() -> None:
+    stale = area_support_gate(
+        _area_support(rows=50, ess=50.0, sources=50),
+        area_roster={"constituency": ["C1"]},
+        geography_levels=["constituency"],
+        minimum_rows=50,
+        minimum_effective_sample_size=50.0,
+        minimum_distinct_sources=50,
+        reviewed_exclusions={"constituency/C1": {"reason": "old"}},
+    )
+    assert not stale.passed
+    assert stale.details["stale_exclusions"] == ["constituency/C1"]
+
+    unknown = area_support_gate(
+        _area_support(rows=50, ess=50.0, sources=50),
+        area_roster={"constituency": ["C1"]},
+        geography_levels=["constituency"],
+        minimum_rows=50,
+        minimum_effective_sample_size=50.0,
+        minimum_distinct_sources=50,
+        reviewed_exclusions={"constituency/X": {"reason": "wrong roster"}},
+    )
+    assert not unknown.passed
+    assert unknown.details["unknown_exclusions"] == ["constituency/X"]
+
+
 class TestGateResultInvariants:
     def test_pass_with_failures_is_refused(self) -> None:
         with pytest.raises(ValueError, match="cannot pass with failures"):

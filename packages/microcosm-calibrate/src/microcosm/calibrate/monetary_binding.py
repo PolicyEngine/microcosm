@@ -59,11 +59,18 @@ _REFERENCE_KEYS = frozenset(
         "tolerance",
         "notes",
         "metadata",
+        "hierarchy",
         "assertion_policy",
         "period_match_policy",
         "uprating_index",
         "uprating_from_period",
         "uprating_to_period",
+        # #834: multi-member references (a sum or difference over declared
+        # operands) carry their operand roles and member-count guard in the
+        # receipt, so the activated reference stays byte-identical to the
+        # declaration that compiled it.
+        "value_operands",
+        "expected_member_count",
     }
 )
 _PREPARED_KEYS = frozenset(

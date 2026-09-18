@@ -34,17 +34,12 @@ from typing import Any
 
 from microcosm.build.us_runtime.engine_lifecycle import release_engine_simulation
 from microcosm.build.us_runtime.fiscal_targets import (
-    STATE_FIPS_TO_POSTAL,
     US_JCT_TAX_EXPENDITURE_REFORMS,
     SimpleTaxExpenditureReform,
 )
-
-# Postal code -> integer FIPS, for slicing person-level rates by state (the
-# numeric household state_fips broadcasts to persons; the string state code
-# does not).
-_STATE_FIPS: dict[str, int] = {
-    postal: int(fips) for fips, postal in STATE_FIPS_TO_POSTAL.items()
-}
+from microcosm.calibrate.geography_constants import (
+    US_STATE_POSTAL_TO_NUMERIC_FIPS,
+)
 
 __all__ = [
     "REFORM_VALIDATION_SCHEMA_VERSION",
@@ -674,6 +669,21 @@ def _capped_weighted_total(
     return float((capped * np.asarray(weights)).sum())
 
 
+# The SPM measurement selection every US release simulation declares.
+#
+# PolicyEngine-US 2.0.0 stopped inferring SPM geography from an absent county:
+# an SPM-dependent variable raises ``SPMInputError(SPM_GEOGRAPHY_REQUIRED)``
+# unless the caller supplies five-digit string county FIPS or explicitly
+# selects national (or a fixed metro area).  The release H5 carries observed
+# county FIPS -- ``county_fips`` is a ``required`` column of the release input
+# coverage manifest -- so county measurement is the correct selection here, and
+# it is the engine's current default.  Naming it makes the release's geography
+# intent a declaration rather than an inherited default, so a later change to
+# the engine default cannot silently reinterpret the 104 state SPM poverty
+# levels this factory feeds.
+US_RELEASE_SPM_SELECTION: dict[str, object] = {"geography_kind": "county"}
+
+
 def default_simulate_factory(dataset_path: Path) -> SimulateFn:
     """Build a simulate() that runs a Microsimulation over the release H5."""
 
@@ -683,8 +693,12 @@ def default_simulate_factory(dataset_path: Path) -> SimulateFn:
 
         dataset = USSingleYearDataset(file_path=str(dataset_path))
         if reform is None:
-            return Microsimulation(dataset=dataset)
-        return Microsimulation(dataset=dataset, reform=reform)
+            return Microsimulation(dataset=dataset, spm=US_RELEASE_SPM_SELECTION)
+        return Microsimulation(
+            dataset=dataset,
+            reform=reform,
+            spm=US_RELEASE_SPM_SELECTION,
+        )
 
     return simulate
 
@@ -933,7 +947,7 @@ def reform_validation_payload(
             fips = np.asarray(
                 baseline.calculate("state_fips", level.period, map_to="person")
             )
-            mask &= fips == _STATE_FIPS[level.state]
+            mask &= fips == US_STATE_POSTAL_TO_NUMERIC_FIPS[level.state]
         denominator = float(weights[mask].sum())
         if denominator == 0:
             return 0.0

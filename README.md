@@ -63,6 +63,18 @@ This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
 final candidate diagnostics under `runs/<run_id>/` without updating production
 `latest.json`.
 
+The UK commands (`tools/build_uk_frs_spine.py`,
+`tools/calibrate_uk_national_dataset.py`, `tools/build_uk_rowwise_candidate.py`)
+stage version 2 telemetry to `policyengine/populace-uk-staging` under the same
+switch. The rowwise candidate command also **stages the finished dataset
+bundle** it built, dense or exact-count, under `staged/<run_id>/` in the
+private `policyengine/populace-uk-private` repository so the team can inspect
+it without publishing it: `releases/` and `latest.json` are untouched, the
+release contract is not consulted, and a `releasable: false` size run stages
+like any other. Fetch a bundle with `tools/fetch_uk_staged_dataset.py`;
+re-stage a finished run directory with `tools/stage_uk_rowwise_candidate.py`.
+See [docs/uk-staging-operations.md](docs/uk-staging-operations.md).
+
 See [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md) for the measured memory,
 disk, and CPU footprint of developing and building locally (and what to budget
 on a build machine — RAM is the binding constraint).
@@ -110,6 +122,12 @@ synthetic-fixture unit tests
 normal `uv run pytest` suite; the real-H5 mode above is a local/runbook step.
 
 ## Releasing & alerts
+
+The [native SPM role source-enrichment lane](docs/us-native-spm-role-source-enrichment.md)
+creates a new US H5 from the exact reviewed BuildP parent, preserves its original
+variables and schema-5 calibration evidence, and requires fresh country/wrapper
+compatibility checks. It has a local candidate builder and uses the regular
+publisher's contract with `--parent-h5` and `--preflight-only`.
 
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs

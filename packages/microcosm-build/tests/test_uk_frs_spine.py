@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import sys
+from datetime import UTC, datetime
 from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
@@ -14,13 +15,20 @@ import pytest
 
 from microcosm.build.country_spec import country_stage_plan, load_country_spec
 from microcosm.build.logbook import load_spool_rows
+from microcosm.build.observation import StageObservation
 from microcosm.build.source_manifest import SourceManifest, SourceStageSpec
+from microcosm.build.staging_v2 import validate_v2_bundle
 from microcosm.build.uk_runtime import (
     frs_disability,
     frs_education_grants,
     frs_legacy_proxies,
+    frs_take_up,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
+from microcosm.build.uk_runtime.frs_relationships import (
+    FRS_RELATIONSHIPS_OUTPUT_COLUMNS,
+    frs_relationships_operation_parameters,
+)
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_SPINE_TABLES,
     REGION_MAP,
@@ -52,6 +60,38 @@ def _load_tool():
     return module
 
 
+def test_staging_stage_observer_translates_shared_observation() -> None:
+    tool = _load_tool()
+    calls = []
+
+    class RecordingTelemetry:
+        def stage(self, stage_id: str, **payload: object) -> None:
+            calls.append((stage_id, payload))
+
+    observer = tool._staging_stage_observer(RecordingTelemetry())
+    observer(
+        StageObservation(
+            stage_id="frs_spine",
+            status="completed",
+            elapsed_seconds=1.25,
+            produced_column_count=4,
+            entity_row_counts={"household": 2},
+        )
+    )
+
+    assert calls == [
+        (
+            "frs_spine",
+            {
+                "event_status": "completed",
+                "elapsed_seconds": 1.25,
+                "entity_row_counts": {"household": 2},
+                "produced_column_count": 4,
+            },
+        )
+    ]
+
+
 def _write_tab(root: Path, table: str, rows: list[dict[str, object]]) -> None:
     path = root / f"{table}.tab"
     pd.DataFrame(rows).to_csv(path, sep="\t", index=False)
@@ -62,6 +102,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "SERNUM": 2,
         "GROSS4": 20.0,
         "GVTREGNO": 1,
+        "HRPNUM": 1,
         "PTENTYP2": 5,
         "TYPEACC": 1,
         "BEDROOM6": 3,
@@ -91,6 +132,7 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "SERNUM": 1,
         "GROSS4": 10.0,
         "GVTREGNO": 12,
+        "HRPNUM": 1,
         "PTENTYP2": 6,
         "TYPEACC": 4,
         "BEDROOM6": 2,
@@ -117,8 +159,15 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "AGE": 40,
         "SEX": 1,
         "TOTHOURS": 40,
+        # HOURTOT 5 = 35-49 hours of care a week (#882).
+        "HOURTOT": 5,
         "HRPID": 1,
         "UPERSON": 1,
+        # #791 household grid: the HRP carries a blank relhrp and the parent
+        # code toward person 2 (the child).
+        "RELHRP": "",
+        **{f"R{index:02d}": "" for index in range(1, 15)},
+        "R02": 7,
         "MARITAL": 1,
         "EMPSTATI": 5,
         "MJOBSECT": 1,
@@ -159,7 +208,15 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         # heartval is on the adult tape too; the three school columns are not.
         "HEARTVAL": 5.0,
     }
-    adult_2 = {**adult_1, "SERNUM": 2, "PERSON": 1, "SEX": 2, "HRPID": 1}
+    adult_2 = {
+        **adult_1,
+        "SERNUM": 2,
+        "PERSON": 1,
+        "SEX": 2,
+        "HRPID": 1,
+        "R02": "",
+        "HOURTOT": "",
+    }
     child_1 = {
         "SERNUM": 1,
         "BENUNIT": 1,
@@ -170,6 +227,9 @@ def _fixture_tables() -> dict[str, list[dict[str, object]]]:
         "TOTHOURS": np.nan,
         "HRPID": 0,
         "UPERSON": 0,
+        "RELHRP": 3,
+        **{f"R{index:02d}": "" for index in range(1, 15)},
+        "R01": 3,
         "MARITAL": 2,
         "FTED": 1,
         "TYPEED2": 2,
@@ -415,6 +475,20 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
             policy="Synthetic FRS spine spec.",
             stages=(
                 stage,
+                # #791: the relationship-grid stage runs right after the root
+                # (age_tail sits later in this synthetic roster) and declares
+                # the same operation parameters the runtime lockstep-asserts.
+                source_stage(
+                    "frs_relationships",
+                    tables=("adult", "child", "househol"),
+                    operations=[
+                        {"kind": "read_tables"},
+                        frs_relationships_operation_parameters(),
+                    ],
+                    outputs=FRS_RELATIONSHIPS_OUTPUT_COLUMNS,
+                    nonnegative_outputs=("ons_family_index",),
+                    grain="household+person",
+                ),
                 source_stage(
                     "frs_employment",
                     tables=("adult",),
@@ -435,6 +509,18 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                 ),
                 source_stage(
                     "frs_disability",
+                    operations=[
+                        {
+                            "kind": "derive",
+                            "parameters": "disability category thresholds from the fiscal-converted gov.dwp tree at the survey year",
+                            "year_rule": "survey_year",
+                        },
+                        {
+                            "kind": "derive",
+                            "parameters": "disability flags from the fiscal-converted gov.dwp tree at the survey year",
+                            "year_rule": "survey_year",
+                        },
+                    ],
                     outputs=(
                         "aa_category",
                         "dla_sc_category",
@@ -494,8 +580,25 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                                 "parents_learning_allowance",
                                 "adult_dependants_grant",
                             ],
+                            "consumed_only": True,
+                            "year_rule": "survey_year",
                         },
-                        {"kind": "derive"},
+                        {
+                            "kind": "materialize_rules_engine_predictors",
+                            "predictors": [
+                                "maintenance_loan_in_england_system",
+                                "disabled_students_allowance_course_eligible",
+                                "disabled_students_allowance_has_qualifying_condition",
+                            ],
+                            "consumed_only": True,
+                            "year_rule": "calibration_year",
+                        },
+                        {
+                            "kind": "derive",
+                            "scope": "proportional split of aggregate education_grants and DSA residual capacity",
+                            "parameters": "DSA maximum from gov.dfe.disabled_students_allowance.maximum at the calibration year",
+                            "year_rule": "calibration_year",
+                        },
                     ],
                     outputs=("disabled_students_allowance_eligible_expenses",),
                     rewrites=("education_grants",),
@@ -508,6 +611,12 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                     grain="benunit",
                     operations=[
                         {"kind": "aggregate_person_to_benunit"},
+                        {
+                            "kind": "aggregate_person_to_benunit",
+                            "method": "any_adult_under_state_pension_age",
+                            "consumed_only": True,
+                            "aggregates": {"uc_age_eligible": "age"},
+                        },
                         {
                             "kind": "assign_binary_with_anchored_residual",
                             "output": "would_claim_child_benefit",
@@ -526,6 +635,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         {
                             "kind": "assign_binary_with_anchored_residual",
                             "output": "would_claim_uc",
+                            "population": "uc_age_eligible",
                             "seed": 0,
                         },
                         {
@@ -549,6 +659,11 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                             "seed": 0,
                         },
                         {
+                            "kind": "assign_binary_from_banded_rates",
+                            "output": "would_claim_uc_childcare",
+                            "seed": 0,
+                        },
+                        {
                             "kind": "assign_clipped_normal",
                             "output": "maximum_extended_childcare_hours_usage",
                             "seed": 0,
@@ -563,6 +678,7 @@ def _synthetic_spec(stage: SourceStageSpec) -> SimpleNamespace:
                         "would_claim_extended_childcare",
                         "would_claim_universal_childcare",
                         "would_claim_targeted_childcare",
+                        "would_claim_uc_childcare",
                         "maximum_extended_childcare_hours_usage",
                     ),
                     nonnegative_outputs=("maximum_extended_childcare_hours_usage",),
@@ -883,6 +999,12 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     assert adult["is_benunit_head"]
     assert adult["is_parent"]
     assert adult["hours_worked"] == pytest.approx(40 * WEEKS_IN_YEAR)
+    assert adult["care_hours"] == 35.0
+    assert bool(adult["would_claim_carers_allowance"]) == bool(
+        adult["carers_allowance_reported"] > 0
+    )
+    other = person.loc[person["person_id"] == 2001].iloc[0]
+    assert other["care_hours"] == 0.0
     assert adult["employment_income"] == pytest.approx(10 * WEEKS_IN_YEAR)
     assert adult["self_employment_income"] == pytest.approx(3 * WEEKS_IN_YEAR)
     assert adult["private_pension_income"] == pytest.approx(15 * WEEKS_IN_YEAR)
@@ -912,6 +1034,47 @@ def test_direct_person_mapping_values_are_ported(tmp_path: Path) -> None:
     )
     assert adult["salary_sacrifice_reported"] == 1
     assert adult["salary_sacrifice_asked"] == 1
+
+
+@pytest.mark.parametrize("couple_has_children", [False, True])
+def test_uc_claimant_input_uses_frs_membership_not_age_or_marriage(
+    tmp_path: Path, couple_has_children: bool
+) -> None:
+    tables = _fixture_tables()
+    # A lone parent with a 19-year-old child remains a single claimant.
+    tables["child"][0]["AGE"] = 19
+    # A young cohabiting partner is a claimant even below the generic adult age.
+    tables["adult"].append(
+        {
+            **tables["adult"][0],
+            "PERSON": 2,
+            "UPERSON": 2,
+            "HRPID": 0,
+            "AGE": 17,
+            "MARITAL": 2,
+            "RELHRP": 2,
+            "R01": 2,
+            "R02": "",
+        }
+    )
+    tables["adult"][0]["R02"] = 2
+    tables["benunit"][0]["FAMTYPB2"] = 6
+    if couple_has_children:
+        tables["benunit"][0]["DEPCHLDB"] = 1
+        tables["child"].append(
+            {**tables["child"][0], "SERNUM": 2, "PERSON": 3, "AGE": 18, "R02": 3}
+        )
+        tables["adult"][0]["R03"] = 7
+        tables["adult"][-1]["R03"] = 7
+    stage = _write_fixture(tmp_path, tables)
+    frame = build_uk_frs_spine_frame(tmp_path, stage=stage)
+    person = frame.table("person").set_index("person_id")
+    expected = {1001: True, 1002: False, 2001: True, 2002: True}
+    if couple_has_children:
+        expected[2003] = False
+    assert person["is_uc_claimant"].to_dict() == expected
+    assert person["is_uc_claimant"].dtype == bool
+    assert not frame.table("benunit").set_index("benunit_id").loc[201, "is_married"]
 
 
 def test_benefit_code_splits_are_ported(tmp_path: Path) -> None:
@@ -1032,8 +1195,8 @@ def _stub_policy_readers(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(
         frs_disability,
-        "uk_dwp_baseline_disability_rates",
-        lambda period: frs_disability.UKDWPBaselineDisabilityRates(
+        "uk_dwp_disability_category_rates",
+        lambda period: frs_disability.UKDWPDisabilityCategoryRates(
             aa_lower=68.1,
             aa_higher=101.75,
             dla_sc_lower=26.9,
@@ -1074,6 +1237,16 @@ def _stub_policy_readers(monkeypatch: pytest.MonkeyPatch) -> None:
         "uk_dsa_policy",
         lambda period: frs_education_grants.UKDSAPolicy(
             maximum=0.0,
+            instant=f"{period}-01-01",
+            source="test stub",
+        ),
+    )
+    monkeypatch.setattr(
+        frs_take_up,
+        "uk_take_up_population_policy",
+        lambda period: frs_take_up.UKTakeUpPopulationPolicy(
+            adult_age=18,
+            state_pension_age=66,
             instant=f"{period}-01-01",
             source="test stub",
         ),
@@ -1191,6 +1364,7 @@ def test_driver_writes_spine_h5_sidecars_and_logbook(
                 str(hmrc_ods),
                 "--emit-nonzero-shares",
                 str(shares),
+                "--no-staging",
             ]
         )
         == 0
@@ -1311,6 +1485,7 @@ def test_driver_writes_payload_identical_h5s(
                 str(spi_tab),
                 "--hmrc-ods",
                 str(hmrc_ods),
+                "--no-staging",
             ]
         )
         == 0
@@ -1327,6 +1502,7 @@ def test_driver_writes_payload_identical_h5s(
                 str(spi_tab),
                 "--hmrc-ods",
                 str(hmrc_ods),
+                "--no-staging",
             ]
         )
         == 0
@@ -1464,6 +1640,129 @@ def test_driver_derives_rung_tokens_from_sample_fraction() -> None:
     assert tool.UK_SAMPLE_RUNG_TOKENS[tool._rung_sample_fraction("1.0")] == "f100"
 
 
+def test_driver_accepts_full_fixture_smoke_posture(tmp_path: Path) -> None:
+    tool = _load_tool()
+
+    args = tool._parse_args(
+        [
+            "--frs-raw-dir",
+            str(tmp_path),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--spi-tab",
+            str(tmp_path / "put2223uk.tab"),
+            "--hmrc-ods",
+            str(tmp_path / "hmrc.ods"),
+            "--sample-seed",
+            "41",
+            "--smoke",
+        ]
+    )
+
+    assert args.sample_fraction == 1.0
+    assert tool._sample_token(args) == "f100"
+    assert (
+        tool._new_build_id(datetime(2026, 9, 8, tzinfo=UTC))
+        == "uk-frs-spine-20260908T000000Z"
+    )
+
+
+def test_driver_accepts_synthetic_fixture_for_remote_smoke(tmp_path: Path) -> None:
+    tool = _load_tool()
+
+    args = tool._parse_args(
+        [
+            "--synthetic-fixture-dir",
+            str(tmp_path / "fixture"),
+            "--spine-h5",
+            str(tmp_path / "spine.h5"),
+            "--smoke",
+            "--staging-read-back",
+        ]
+    )
+
+    assert args.smoke
+    assert args.staging_read_back
+    assert not args.staging_local_only
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--smoke", "--release-candidate"],
+        [
+            "--sample-fraction",
+            "0.10",
+            "--checkpoint-dir",
+            "checkpoints",
+        ],
+    ],
+)
+def test_driver_refuses_incompatible_smoke_or_sampling_options(
+    tmp_path: Path, extra: list[str]
+) -> None:
+    tool = _load_tool()
+
+    with pytest.raises(SystemExit):
+        tool._parse_args(
+            [
+                "--frs-raw-dir",
+                str(tmp_path),
+                "--spine-h5",
+                str(tmp_path / "spine.h5"),
+                "--spi-tab",
+                str(tmp_path / "put2223uk.tab"),
+                "--hmrc-ods",
+                str(tmp_path / "hmrc.ods"),
+                *extra,
+            ]
+        )
+
+
+def test_driver_refuses_synthetic_fixture_without_smoke(tmp_path: Path) -> None:
+    tool = _load_tool()
+
+    with pytest.raises(SystemExit):
+        tool._parse_args(
+            [
+                "--synthetic-fixture-dir",
+                str(tmp_path / "fixture"),
+                "--spine-h5",
+                str(tmp_path / "spine.h5"),
+                "--staging-local-only",
+            ]
+        )
+
+
+def test_driver_exposes_all_staging_modes_and_rejects_empty_remote(
+    tmp_path: Path,
+) -> None:
+    tool = _load_tool()
+    base = [
+        "--frs-raw-dir",
+        str(tmp_path),
+        "--spine-h5",
+        str(tmp_path / "spine.h5"),
+        "--spi-tab",
+        str(tmp_path / "put2223uk.tab"),
+        "--hmrc-ods",
+        str(tmp_path / "hmrc.ods"),
+    ]
+
+    remote = tool._parse_args(base)
+    local = tool._parse_args([*base, "--staging-local-only"])
+    disabled = tool._parse_args([*base, "--no-staging"])
+
+    assert remote.staging_repo_id == "policyengine/populace-uk-staging"
+    assert not remote.staging_local_only and not remote.no_staging
+    assert local.staging_local_only and not local.no_staging
+    assert disabled.no_staging and not disabled.staging_local_only
+    with pytest.raises(SystemExit):
+        tool._parse_args([*base, "--staging-repo-id", ""])
+    with pytest.raises(SystemExit):
+        tool._parse_args([*base, "--staging-local-only", "--staging-read-back"])
+
+
 def test_driver_refuses_checkpoint_dir_on_sampled_rung(tmp_path: Path) -> None:
     tool = _load_tool()
 
@@ -1529,6 +1828,7 @@ def test_driver_records_sampled_spine_sidecar(
                 "0.10",
                 "--sample-seed",
                 "999",
+                "--no-staging",
             ]
         )
         == 0
@@ -1546,6 +1846,119 @@ def test_driver_records_sampled_spine_sidecar(
     }
     rows = load_spool_rows(tmp_path / "logbook-spool")
     assert rows[0].rung == "f010"
+
+
+def test_driver_marks_full_fixture_smoke_outputs_non_release(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pytest.importorskip("tables")
+    h5py = pytest.importorskip("h5py")
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "smoke.h5"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--sample-seed",
+                "41",
+                "--smoke",
+                "--staging-local-only",
+                "--staging-run-id",
+                "full-smoke-test",
+                "--staging-dir",
+                str(tmp_path / "staging"),
+            ]
+        )
+        == 0
+    )
+
+    sidecar = json.loads(output.with_suffix(".build.json").read_text())
+    assert sidecar["non_release"] is True
+    assert sidecar["release_posture"] == "non_release_smoke"
+    assert sidecar["sampling"] is None
+    bundle = validate_v2_bundle(tmp_path / "staging", "full-smoke-test")
+    assert bundle["run_manifest"]["non_release"] is True
+    assert bundle["run_manifest"]["sample"] == {"mode": "full"}
+    assert sidecar["staging_delivery"] == bundle["run_manifest"]["delivery"]
+    event_pairs = [(event["stage_id"], event["status"]) for event in bundle["events"]]
+    assert ("frs_spine", "started") in event_pairs
+    assert ("frs_spine", "completed") in event_pairs
+    assert ("sampling", "completed") in event_pairs
+    assert ("spine_h5_creation", "completed") in event_pairs
+    assert ("sidecar_creation", "completed") in event_pairs
+    assert event_pairs[-1] == ("complete", "completed")
+    with h5py.File(output, mode="r") as file:
+        assert bool(file.attrs["populace_non_release"]) is True
+        assert file.attrs["populace_release_posture"] == "smoke"
+        assert file.attrs["populace_smoke_build_id"].startswith("uk-frs-spine-")
+    rows = load_spool_rows(tmp_path / "logbook-spool")
+    assert rows[0].rung == "f100"
+
+
+def test_driver_records_sanitized_failed_staging_lifecycle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw_dir = tmp_path / "raw"
+    stage = _write_fixture(raw_dir)
+    output = tmp_path / "failed.h5"
+    staging_dir = tmp_path / "staging"
+    tool = _load_tool()
+    monkeypatch.setattr(
+        tool, "load_country_spec", lambda country: _synthetic_spec(stage)
+    )
+    monkeypatch.setattr(tool, "_rules_engine", lambda: _FakeUKEngine())
+    _stub_policy_readers(monkeypatch)
+    spi_tab, hmrc_ods = _patch_spi_spine_driver_runtime(tool, monkeypatch, tmp_path)
+    secret = "operator-secret-value"
+
+    def _fail_graph(*args, **kwargs):
+        raise RuntimeError(f"{tmp_path}/adult.tab token={secret}")
+
+    monkeypatch.setattr(tool, "run_graph", _fail_graph)
+
+    assert (
+        tool.main(
+            [
+                "--frs-raw-dir",
+                str(raw_dir),
+                "--spine-h5",
+                str(output),
+                "--spi-tab",
+                str(spi_tab),
+                "--hmrc-ods",
+                str(hmrc_ods),
+                "--staging-local-only",
+                "--staging-dir",
+                str(staging_dir),
+                "--staging-run-id",
+                "failed-staging-test",
+            ]
+        )
+        == 1
+    )
+
+    bundle = validate_v2_bundle(staging_dir, "failed-staging-test")
+    manifest = bundle["run_manifest"]
+    serialized = json.dumps(bundle, default=str)
+    assert manifest["status"] == "failed"
+    assert manifest["failure"]["error_code"] == "BUILD_FAILED"
+    assert secret not in serialized
+    assert str(tmp_path) not in serialized
 
 
 def test_driver_sampled_named_edge_aborts_with_receipt(
@@ -1580,6 +1993,7 @@ def test_driver_sampled_named_edge_aborts_with_receipt(
                 str(hmrc_ods),
                 "--sample-fraction",
                 "0.10",
+                "--no-staging",
             ]
         )
         == tool._RUNG_ABORT_EXIT_CODE
@@ -1652,7 +2066,6 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "lcfs_person_tab",
         "published_fact_surface",
         "qrf_donor",
-        "was_bridge_donor",
         "was_qrf_donor",
     }
     for pin in pins.values():
@@ -1688,6 +2101,11 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     )
 
     assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
+    assert declared["lcfs_consumption"] == {
+        "has_fuel_consumption": 0,
+        "uses_local_bus": 0,
+        "lcfs_consumption": 0,
+    }
     assert declared["uc_capital_coherence"] == {"frs_benunit_capital": 0}
     assert declared["uc_deduction_attributes"] == {
         "uc_deduction_random_draw": 0,
@@ -1969,3 +2387,29 @@ def test_boundary_evidence_asks_only_the_stages_that_have_run() -> None:
         stage_names=("early_stage", "late_stage"), implementations=implementations
     )
     assert transferred == {"late_stage": {"stage": "late_stage", "ok": True}}
+
+
+def test_care_hours_map_the_hourtot_band_codes_and_refuse_unknown_codes() -> None:
+    from microcosm.build.uk_runtime.frs_spine import (
+        FRS_CARE_HOURS_BY_BAND,
+        frs_care_hours,
+    )
+
+    person = pd.DataFrame(
+        {"hourtot": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, "", np.nan, "x"]}
+    )
+    hours = frs_care_hours(person)
+    assert hours.tolist() == [0, 0, 5, 10, 20, 35, 50, 100, 0, 20, 35, 0, 0, 0]
+    assert hours.dtype == "float64"
+    # Only the 35-hour codes reach the Carer's Allowance line the engine tests.
+    assert [code for code, value in FRS_CARE_HOURS_BY_BAND.items() if value >= 35] == [
+        5,
+        6,
+        7,
+        10,
+    ]
+    assert frs_care_hours(pd.DataFrame({"age": [1, 2]})).tolist() == [0.0, 0.0]
+    with pytest.raises(ValueError, match="unknown band code"):
+        frs_care_hours(pd.DataFrame({"hourtot": [11]}))
+    with pytest.raises(ValueError, match="must be integral"):
+        frs_care_hours(pd.DataFrame({"hourtot": [2.5]}))

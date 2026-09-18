@@ -48,6 +48,13 @@ class CrossGrainRule:
     bridges: tuple[CrossGrainBridge, ...]
     leg_of_area: Callable[[str], str]
     parent_geography_legs: Mapping[str, tuple[str, ...]]
+    #: Grains whose rows parent the grains below them. Empty means the top
+    #: grain alone (the standing single-winner rule). Declaring a middle tier
+    #: (a region between country and constituency) lets each lower leg take
+    #: its nearest covering control, so a region row controls its own
+    #: constituencies and authorities while a country row controls the legs no
+    #: region row covers.
+    control_grains: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -69,18 +76,25 @@ def detect_cross_grain_inconsistencies(
     bound_higher_targets: Iterable[str],
     contract_signatures: Mapping[str, Mapping[str, Any]],
     rule: CrossGrainRule,
+    *,
+    reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[CrossGrainInconsistency, ...]:
     """Detect exact-signature and explicitly bridged cross-grain groups.
 
     ``local_frame`` is a long target surface.  It must expose ``value`` and
     ``target_id`` plus either the canonical ``grain``/``geography_id`` columns
-    or the rowwise aliases ``area_type``/``area_code``.  Contract sides may be
-    written as either ``<target id>`` or ``contract:<target id>``; external
-    sides use their declared ``external:...`` bridge name.
+    or the rowwise aliases ``area_type``/``area_code``. Contract sides may be
+    written as either ``<target id>`` or ``contract:<target id>``. External
+    target sides are forbidden: every reconciled row belongs to the contract.
+
+    A partially bound declared bridge is ignored only when every missing
+    higher member has a record in ``reviewed_unbound_higher_targets``.
     """
 
     columns = _surface_columns(local_frame)
     _validate_rule(rule)
+    _validate_licensed_empty_legs(licensed_empty_legs)
     bound = tuple(str(target_id) for target_id in bound_higher_targets)
     _require_unique_nonblank(bound, label="bound_higher_targets")
     unknown = sorted(set(bound) - set(contract_signatures))
@@ -92,14 +106,14 @@ def detect_cross_grain_inconsistencies(
 
     bridge_by_side = _bridge_by_side(rule)
     bound_set = set(bound)
-    for bridge in rule.bridges:
-        selected = bound_set & set(bridge.higher_target_ids)
-        if selected and selected != set(bridge.higher_target_ids):
-            missing = sorted(set(bridge.higher_target_ids) - selected)
-            raise ValueError(
-                f"cross-grain bridge {bridge.bridge_id!r} is partially bound; "
-                f"missing higher target(s) {missing}."
-            )
+    unbound_bridge_ids = {
+        record["bridge_id"]
+        for record in _reviewed_unbound_bridges(
+            bound_set,
+            rule,
+            reviewed_unbound_higher_targets,
+        )
+    }
 
     grouped: dict[
         tuple[str, str, tuple[tuple[str, Any], ...]],
@@ -129,9 +143,11 @@ def detect_cross_grain_inconsistencies(
             bridge = bridge_by_side.get(contract_id)
             if bridge is None:
                 bridge = bridge_by_side.get(f"contract:{contract_id}")
+        if bridge is not None and bridge.bridge_id in unbound_bridge_ids:
+            bridge = None
 
         is_bound_higher = contract_id in bound_set
-        if grain == rule.grain_precedence[0] and not is_bound_higher:
+        if grain in _control_grains(rule) and not is_bound_higher:
             continue
         if is_bound_higher:
             seen_bound.add(contract_id)
@@ -173,34 +189,47 @@ def detect_cross_grain_inconsistencies(
 
     inconsistencies: list[CrossGrainInconsistency] = []
     precedence = {grain: index for index, grain in enumerate(rule.grain_precedence)}
+    control_grains = _control_grains(rule)
     for (kind, bridge_id, signature), rows in grouped.items():
         grains = sorted({row[1] for row in rows}, key=precedence.__getitem__)
         if len(grains) < 2:
             continue
-        winning_grain = grains[0]
-        winning = tuple(row[0] for row in rows if row[1] == winning_grain)
-        higher_ids = tuple(
-            sorted(
-                {
-                    target_id
-                    for position in winning
-                    if (
-                        target_id := _contract_target_id(
-                            str(local_frame.iloc[position][columns["target_id"]])
-                        )
-                    )
-                    is not None
-                }
-            )
-        )
         identity = _inconsistency_identity(kind, bridge_id, signature)
-        for lower_grain in grains[1:]:
+        controls_present = [grain for grain in grains if grain in control_grains]
+        # A group with no control-tier row keeps the standing single-winner
+        # rule: its top grain parents the rest. With control rows present,
+        # every control grain parents each grain below it, and reconciliation
+        # assigns each lower leg to its nearest covering control.
+        pairs = (
+            [(grains[0], lower) for lower in grains[1:]]
+            if not controls_present
+            else [
+                (higher, lower)
+                for lower in grains
+                for higher in controls_present
+                if precedence[higher] < precedence[lower]
+            ]
+        )
+        for winning_grain, lower_grain in pairs:
+            winning = tuple(row[0] for row in rows if row[1] == winning_grain)
+            higher_ids = tuple(
+                sorted(
+                    {
+                        target_id
+                        for position in winning
+                        if (
+                            target_id := _contract_target_id(
+                                str(local_frame.iloc[position][columns["target_id"]])
+                            )
+                        )
+                        is not None
+                    }
+                )
+            )
             lower = tuple(row[0] for row in rows if row[1] == lower_grain)
             inconsistencies.append(
                 CrossGrainInconsistency(
-                    inconsistency_id=(
-                        f"{identity}:{winning_grain}_over_{lower_grain}"
-                    ),
+                    inconsistency_id=(f"{identity}:{winning_grain}_over_{lower_grain}"),
                     bridge_id=bridge_id or None,
                     signature=signature,
                     winning_grain=winning_grain,
@@ -210,28 +239,68 @@ def detect_cross_grain_inconsistencies(
                     higher_target_ids=higher_ids,
                 )
             )
+    # Lower grains reconcile top-down (a region row is rescaled to its country
+    # before it controls its authorities), and within one lower grain the
+    # nearest control grain claims first.
     return tuple(
-        sorted(inconsistencies, key=lambda group: group.inconsistency_id)
+        sorted(
+            inconsistencies,
+            key=lambda group: (
+                precedence[group.lower_grain],
+                -precedence[group.winning_grain],
+                group.inconsistency_id,
+            ),
+        )
     )
 
 
-def reconcile_cross_grain_surface(
+def _reconcile_cross_grain_surface_with_control_receipts(
     local_frame: pd.DataFrame,
     groups: Iterable[CrossGrainInconsistency],
     rule: CrossGrainRule,
-) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    *,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
+) -> tuple[
+    pd.DataFrame,
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+]:
     """Return a copied surface with every detected lower grain rescaled."""
 
     columns = _surface_columns(local_frame)
     _validate_rule(rule)
+    _validate_licensed_empty_legs(licensed_empty_legs)
     materialized_groups = tuple(groups)
     _assert_compatible_overlapping_groups(
         local_frame, materialized_groups, columns, rule
     )
     reconciled = local_frame.copy(deep=True)
     receipts: list[dict[str, Any]] = []
+    empty_legs_licensed: list[dict[str, Any]] = []
+    controls_without_lower_rows: list[dict[str, Any]] = []
+    delegated_legs: list[dict[str, Any]] = []
+    control_grains = _control_grains(rule)
+    # Rows already rescaled by a nearer control, per group identity and lower
+    # grain, so a farther control never rescales them again; and the rows no
+    # control has covered yet, checked once every pair has had its turn.
+    claimed: dict[tuple[str, str], set[int]] = {}
+    unparented_rows: dict[tuple[str, str], dict[int, str]] = {}
+    first_pair_id: dict[tuple[str, str], str] = {}
+    absent_middle_tier_legs: list[dict[str, Any]] = []
+    pairs_per_key: dict[tuple[str, str], int] = {}
+    for group in materialized_groups:
+        key = (group.inconsistency_id.rsplit(":", 1)[0], group.lower_grain)
+        pairs_per_key[key] = pairs_per_key.get(key, 0) + 1
+    pairs_seen: dict[tuple[str, str], int] = {}
     for group in materialized_groups:
         controls = _winning_controls(reconciled, group, columns, rule)
+        claim_key = (group.inconsistency_id.rsplit(":", 1)[0], group.lower_grain)
+        first_pair_id.setdefault(claim_key, group.inconsistency_id)
+        pairs_seen[claim_key] = pairs_seen.get(claim_key, 0) + 1
+        last_pair_for_key = pairs_seen[claim_key] == pairs_per_key[claim_key]
+        already = claimed.setdefault(claim_key, set())
+        lower_by_leg_all: dict[str, list[int]] = {}
         lower_by_leg: dict[str, list[int]] = {}
         for position in group.lower_positions:
             area = str(reconciled.iloc[position][columns["geography_id"]])
@@ -241,8 +310,18 @@ def reconcile_cross_grain_surface(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
                     f"maps area {area!r} to a blank leg."
                 )
-            lower_by_leg.setdefault(leg, []).append(position)
+            lower_by_leg_all.setdefault(leg, []).append(position)
+            if position not in already:
+                lower_by_leg.setdefault(leg, []).append(position)
 
+        lower_target_ids = tuple(
+            sorted(
+                {
+                    str(reconciled.iloc[position][columns["target_id"]])
+                    for position in group.lower_positions
+                }
+            )
+        )
         assigned_controls: dict[str, dict[str, Any]] = {}
         for control in controls:
             for leg in control["covered_legs"]:
@@ -261,12 +340,114 @@ def reconcile_cross_grain_surface(
                     continue
                 assigned_controls[leg] = control
 
-        unparented = sorted(set(lower_by_leg) - set(assigned_controls))
-        if unparented:
-            raise ValueError(
-                f"cross-grain inconsistency {group.inconsistency_id!r} has "
-                f"unparented lower-grain leg(s) {unparented}."
+        pending = unparented_rows.setdefault(claim_key, {})
+        for leg in set(lower_by_leg) - set(assigned_controls):
+            for position in lower_by_leg[leg]:
+                pending[position] = leg
+        if last_pair_for_key and group.lower_grain not in control_grains:
+            # No farther control can still claim these leaf rows: refuse now,
+            # ahead of the empty-leg licence check, as the standing rule does.
+            unparented = sorted(
+                {
+                    leg
+                    for position, leg in pending.items()
+                    if position not in already and leg not in assigned_controls
+                }
             )
+            if unparented:
+                raise ValueError(
+                    f"cross-grain inconsistency {group.inconsistency_id!r} has "
+                    f"unparented lower-grain leg(s) {unparented}."
+                )
+
+        populated_controls: list[dict[str, Any]] = []
+        for control in controls:
+            positions = [
+                position
+                for leg in control["covered_legs"]
+                for position in lower_by_leg.get(leg, ())
+            ]
+            delegated = [
+                leg
+                for leg in control["covered_legs"]
+                if leg not in lower_by_leg and leg in lower_by_leg_all
+            ]
+            empty = [
+                leg for leg in control["covered_legs"] if leg not in lower_by_leg_all
+            ]
+            if positions and delegated:
+                raise ValueError(
+                    f"cross-grain inconsistency {group.inconsistency_id!r} "
+                    f"control {control['parent_geography_id']!r} covers leg(s) "
+                    f"{delegated} that a nearer control already reconciled "
+                    "alongside legs it must still reconcile; a control cannot "
+                    "be split across tiers."
+                )
+            if positions:
+                populated_controls.append(control)
+                continue
+            if delegated:
+                delegated_legs.append(
+                    {
+                        "inconsistency_id": group.inconsistency_id,
+                        "parent_geography_id": str(control["parent_geography_id"]),
+                        "legs": delegated,
+                        "reason": (
+                            "every lower row on these legs was reconciled by a "
+                            "nearer control grain"
+                        ),
+                    }
+                )
+            if group.lower_grain in control_grains:
+                # A middle tier need not exist under every control: a country
+                # row with no region rows on its legs parents the leaf rows
+                # there directly. Not a licence matter.
+                if empty:
+                    absent_middle_tier_legs.append(
+                        {
+                            "inconsistency_id": group.inconsistency_id,
+                            "parent_geography_id": str(control["parent_geography_id"]),
+                            "legs": empty,
+                        }
+                    )
+                continue
+            if not empty:
+                continue
+            for leg in empty:
+                unlicensed = [
+                    target_id
+                    for target_id in lower_target_ids
+                    if leg
+                    not in _licensed_legs_for_target(
+                        target_id,
+                        licensed_empty_legs,
+                    )
+                ]
+                if unlicensed:
+                    raise ValueError(
+                        f"cross-grain inconsistency {group.inconsistency_id!r} "
+                        f"has an empty leg {leg!r} for parent geography "
+                        f"{control['parent_geography_id']!r}; the leg lacks a "
+                        f"licence for lower target(s) {unlicensed}."
+                    )
+                empty_legs_licensed.append(
+                    {
+                        "inconsistency_id": group.inconsistency_id,
+                        "parent_geography_id": str(control["parent_geography_id"]),
+                        "leg": leg,
+                        "lower_target_ids": list(lower_target_ids),
+                    }
+                )
+            controls_without_lower_rows.append(
+                {
+                    "inconsistency_id": group.inconsistency_id,
+                    "parent_geography_id": str(control["parent_geography_id"]),
+                    "covered_legs": list(control["covered_legs"]),
+                    "higher_target_ids": list(control["higher_target_ids"]),
+                    "lower_target_ids": list(lower_target_ids),
+                }
+            )
+        controls = populated_controls
 
         leg_receipts: list[dict[str, Any]] = []
         used_controls: set[tuple[str, tuple[str, ...]]] = set()
@@ -283,12 +464,6 @@ def reconcile_cross_grain_surface(
                 for leg in control["covered_legs"]
                 for position in lower_by_leg.get(leg, ())
             ]
-            if not positions:
-                raise ValueError(
-                    f"cross-grain inconsistency {group.inconsistency_id!r} "
-                    f"has an empty leg for parent geography "
-                    f"{control['parent_geography_id']!r}."
-                )
             raw_values = reconciled.iloc[positions][columns["value"]].to_numpy(
                 dtype=np.float64
             )
@@ -322,9 +497,10 @@ def reconcile_cross_grain_surface(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
                     "cannot reconcile opposite-signed lower and control targets."
                 )
-            reconciled.iloc[
-                positions, reconciled.columns.get_loc(columns["value"])
-            ] = raw_values * factor
+            reconciled.iloc[positions, reconciled.columns.get_loc(columns["value"])] = (
+                raw_values * factor
+            )
+            already.update(positions)
             new_total = float(
                 reconciled.iloc[positions][columns["value"]]
                 .to_numpy(dtype=np.float64)
@@ -335,9 +511,7 @@ def reconcile_cross_grain_surface(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
                     "produced a non-finite reconciled total."
                 )
-            if not np.isclose(
-                new_total, parent_value, rtol=_CLOSURE_RTOL, atol=0.0
-            ):
+            if not np.isclose(new_total, parent_value, rtol=_CLOSURE_RTOL, atol=0.0):
                 raise ValueError(
                     f"cross-grain inconsistency {group.inconsistency_id!r} "
                     f"left leg {'+'.join(control['covered_legs'])!r} off its "
@@ -374,6 +548,47 @@ def reconcile_cross_grain_surface(
                 "legs": leg_receipts,
             }
         )
+    for (identity, lower_grain), pending in unparented_rows.items():
+        if lower_grain in control_grains:
+            # A control-tier row with no control above it is the top of its
+            # own leg, not an orphan.
+            continue
+        still = {
+            leg
+            for position, leg in pending.items()
+            if position not in claimed[(identity, lower_grain)]
+        }
+        if still:
+            raise ValueError(
+                f"cross-grain inconsistency "
+                f"{first_pair_id[(identity, lower_grain)]!r} has "
+                f"unparented lower-grain leg(s) {sorted(still)}."
+            )
+    return (
+        reconciled,
+        receipts,
+        empty_legs_licensed,
+        controls_without_lower_rows,
+        delegated_legs,
+        absent_middle_tier_legs,
+    )
+
+
+def reconcile_cross_grain_surface(
+    local_frame: pd.DataFrame,
+    groups: Iterable[CrossGrainInconsistency],
+    rule: CrossGrainRule,
+    *,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
+) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    """Return a copied surface with every detected lower grain rescaled."""
+
+    reconciled, receipts, *_ = _reconcile_cross_grain_surface_with_control_receipts(
+        local_frame,
+        groups,
+        rule,
+        licensed_empty_legs=licensed_empty_legs,
+    )
     return reconciled, receipts
 
 
@@ -382,6 +597,9 @@ def apply_cross_grain_reconciliation(
     bound_higher_targets: Iterable[str],
     contract_signatures: Mapping[str, Mapping[str, Any]],
     rule: CrossGrainRule,
+    *,
+    reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None = None,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """Detect, reconcile, and return the always-present pass receipt."""
 
@@ -391,16 +609,36 @@ def apply_cross_grain_reconciliation(
         bound,
         contract_signatures,
         rule,
+        reviewed_unbound_higher_targets=reviewed_unbound_higher_targets,
+        licensed_empty_legs=licensed_empty_legs,
     )
-    reconciled, group_receipts = reconcile_cross_grain_surface(
-        local_frame, groups, rule
+    unbound_bridges = _reviewed_unbound_bridges(
+        set(bound),
+        rule,
+        reviewed_unbound_higher_targets,
+    )
+    (
+        reconciled,
+        group_receipts,
+        empty_legs_licensed,
+        controls_without_lower_rows,
+        delegated_legs,
+        absent_middle_tier_legs,
+    ) = _reconcile_cross_grain_surface_with_control_receipts(
+        local_frame,
+        groups,
+        rule,
+        licensed_empty_legs=licensed_empty_legs,
     )
     receipt = {
         "bound_higher_targets": list(bound),
-        "inconsistencies_in_force": [
-            group.inconsistency_id for group in groups
-        ],
+        "inconsistencies_in_force": [group.inconsistency_id for group in groups],
         "groups": group_receipts,
+        "unbound_bridges": unbound_bridges,
+        "empty_legs_licensed": empty_legs_licensed,
+        "controls_without_lower_rows": controls_without_lower_rows,
+        "delegated_legs": delegated_legs,
+        "absent_middle_tier_legs": absent_middle_tier_legs,
         "absence": (
             None
             if groups
@@ -408,6 +646,39 @@ def apply_cross_grain_reconciliation(
         ),
     }
     return reconciled, receipt
+
+
+def _reviewed_unbound_bridges(
+    bound_higher_targets: set[str],
+    rule: CrossGrainRule,
+    reviewed_unbound_higher_targets: Mapping[str, Mapping[str, object]] | None,
+) -> list[dict[str, Any]]:
+    reviewed = reviewed_unbound_higher_targets or {}
+    unbound: list[dict[str, Any]] = []
+    for bridge in rule.bridges:
+        higher = set(bridge.higher_target_ids)
+        selected = bound_higher_targets & higher
+        if not selected or selected == higher:
+            continue
+        missing = sorted(higher - selected)
+        unreviewed = [target_id for target_id in missing if target_id not in reviewed]
+        if unreviewed:
+            raise ValueError(
+                f"cross-grain bridge {bridge.bridge_id!r} is partially bound; "
+                f"missing higher target(s) {missing}; missing target(s) that "
+                f"lack a reviewed exclusion: {unreviewed}."
+            )
+        unbound.append(
+            {
+                "bridge_id": bridge.bridge_id,
+                "missing": missing,
+                "basis": "reviewed_exclusion",
+                "records": {
+                    target_id: dict(reviewed[target_id]) for target_id in missing
+                },
+            }
+        )
+    return unbound
 
 
 def _surface_columns(frame: pd.DataFrame) -> dict[str, str]:
@@ -429,8 +700,24 @@ def _surface_columns(frame: pd.DataFrame) -> dict[str, str]:
     return resolved
 
 
+def _control_grains(rule: CrossGrainRule) -> tuple[str, ...]:
+    return tuple(rule.control_grains) or (rule.grain_precedence[0],)
+
+
 def _validate_rule(rule: CrossGrainRule) -> None:
     _require_unique_nonblank(rule.grain_precedence, label="grain_precedence")
+    if rule.control_grains:
+        _require_unique_nonblank(rule.control_grains, label="control_grains")
+        unknown = [g for g in rule.control_grains if g not in rule.grain_precedence]
+        if unknown:
+            raise ValueError(
+                f"cross-grain control_grains {unknown} are not in grain_precedence."
+            )
+        if rule.grain_precedence[0] not in rule.control_grains:
+            raise ValueError(
+                "cross-grain control_grains must include the top grain "
+                f"{rule.grain_precedence[0]!r}."
+            )
     _require_unique_nonblank(rule.signature_fields, label="signature_fields")
     if not rule.grain_precedence:
         raise ValueError("cross-grain grain_precedence must not be empty.")
@@ -450,6 +737,16 @@ def _validate_rule(rule: CrossGrainRule) -> None:
             raise ValueError(
                 f"cross-grain bridge {bridge.bridge_id!r} has no higher targets."
             )
+        external_sides = [
+            side
+            for side in (*bridge.higher_target_ids, bridge.lower_side)
+            if side.startswith("external:")
+        ]
+        if external_sides:
+            raise ValueError(
+                f"cross-grain bridge {bridge.bridge_id!r} uses forbidden "
+                f"external side(s) {external_sides}; all sides must be contract targets."
+            )
     for geography_id, legs in rule.parent_geography_legs.items():
         if not str(geography_id) or not legs or any(not str(leg) for leg in legs):
             raise ValueError(
@@ -467,11 +764,8 @@ def _bridge_by_side(rule: CrossGrainRule) -> dict[str, CrossGrainBridge]:
     for bridge in rule.bridges:
         sides = (*bridge.higher_target_ids, bridge.lower_side)
         for side in sides:
-            aliases = {side}
-            if side.startswith("contract:"):
-                aliases.add(side.removeprefix("contract:"))
-            elif not side.startswith("external:"):
-                aliases.add(f"contract:{side}")
+            canonical = side.removeprefix("contract:")
+            aliases = {canonical, f"contract:{canonical}"}
             for alias in aliases:
                 existing = result.get(alias)
                 if existing is not None and existing.bridge_id != bridge.bridge_id:
@@ -505,8 +799,7 @@ def _measurement_signature(
     if not isinstance(measurement, Mapping):
         raise ValueError("cross-grain contract measurement must be a mapping.")
     return tuple(
-        (field, _canonical_signature_value(measurement.get(field)))
-        for field in fields
+        (field, _canonical_signature_value(measurement.get(field))) for field in fields
     )
 
 
@@ -530,7 +823,9 @@ def _sort_key(member: Any) -> str:
 
 def _freeze(value: Any) -> Any:
     if isinstance(value, Mapping):
-        return tuple(sorted((str(key), _freeze(member)) for key, member in value.items()))
+        return tuple(
+            sorted((str(key), _freeze(member)) for key, member in value.items())
+        )
     if isinstance(value, (set, frozenset)):
         # A set has no order to preserve; sort for a deterministic signature.
         return tuple(sorted((_freeze(member) for member in value), key=_sort_key))
@@ -546,10 +841,46 @@ def _freeze(value: Any) -> Any:
     return value
 
 
-def _contract_target_id(side: str) -> str | None:
+def _contract_target_id(side: str) -> str:
     if side.startswith("external:"):
-        return None
+        raise ValueError(
+            f"cross-grain target side {side!r} is external; every side must "
+            "name a contract target."
+        )
     return side.removeprefix("contract:")
+
+
+def _validate_licensed_empty_legs(
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None,
+) -> None:
+    if licensed_empty_legs is None:
+        return
+    if not isinstance(licensed_empty_legs, Mapping):
+        raise TypeError("licensed_empty_legs must be a mapping.")
+    for target_id, legs in licensed_empty_legs.items():
+        if not isinstance(target_id, str) or not target_id.strip():
+            raise ValueError("licensed_empty_legs target ids must be nonblank strings.")
+        if not isinstance(legs, frozenset):
+            raise TypeError(f"licensed_empty_legs[{target_id!r}] must be a frozenset.")
+        if any(not isinstance(leg, str) or not leg.strip() for leg in legs):
+            raise ValueError(
+                f"licensed_empty_legs[{target_id!r}] must contain nonblank strings."
+            )
+
+
+def _licensed_legs_for_target(
+    target_id: str,
+    licensed_empty_legs: Mapping[str, frozenset[str]] | None,
+) -> frozenset[str]:
+    if licensed_empty_legs is None:
+        return frozenset()
+    canonical = _contract_target_id(target_id)
+    aliases = {target_id}
+    if canonical is not None:
+        aliases.update((canonical, f"contract:{canonical}"))
+    return frozenset(
+        leg for alias in aliases for leg in licensed_empty_legs.get(alias, frozenset())
+    )
 
 
 def _inconsistency_identity(
@@ -561,7 +892,9 @@ def _inconsistency_identity(
         return bridge_id
     payload = json.dumps(_json_safe(signature), sort_keys=True, separators=(",", ":"))
     digest = hashlib.sha256(payload.encode()).hexdigest()[:12]
-    concept = next((str(value) for field, value in signature if field == "concept"), "target")
+    concept = next(
+        (str(value) for field, value in signature if field == "concept"), "target"
+    )
     return f"exact:{concept}:{digest}"
 
 
@@ -588,7 +921,15 @@ def _winning_controls(
         }
         for position in group.winning_positions
     ]
-    if group.winning_grain == rule.grain_precedence[0]:
+    # A winning row whose geography declares its legs is a parent control in
+    # its own right, whatever grain it sits at: the top grain always is, and a
+    # middle tier (a region between country and constituency) is when the
+    # country declares a leg map for every one of its codes. Rows with no
+    # declared legs stay on the area-derived path below.
+    declared_parents = group.winning_grain == rule.grain_precedence[0] or all(
+        row["geography_id"] in rule.parent_geography_legs for row in rows
+    )
+    if declared_parents:
         by_geography: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
             by_geography.setdefault(row["geography_id"], []).append(row)
@@ -615,9 +956,7 @@ def _winning_controls(
                     for bridge in rule.bridges
                     if bridge.bridge_id == group.bridge_id
                 )
-                missing = sorted(
-                    set(bridge.higher_target_ids) - set(deduplicated)
-                )
+                missing = sorted(set(bridge.higher_target_ids) - set(deduplicated))
                 if missing:
                     raise ValueError(
                         f"cross-grain bridge {bridge.bridge_id!r} is partially "
@@ -643,8 +982,7 @@ def _winning_controls(
         leg = str(rule.leg_of_area(row["geography_id"]))
         if not leg:
             raise ValueError(
-                f"cross-grain winning area {row['geography_id']!r} maps to a "
-                "blank leg."
+                f"cross-grain winning area {row['geography_id']!r} maps to a blank leg."
             )
         by_leg.setdefault(leg, []).append(row)
     return [
@@ -656,9 +994,7 @@ def _winning_controls(
                     {
                         target_id
                         for member in members
-                        if (
-                            target_id := _contract_target_id(member["target_id"])
-                        )
+                        if (target_id := _contract_target_id(member["target_id"]))
                         is not None
                     }
                 )

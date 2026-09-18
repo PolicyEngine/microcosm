@@ -30,7 +30,8 @@
         "series": "Structure of the population: age band by sex by region",
         "target_role": "calibration"
       },
-      "notes": "Non-executable series placeholder for an age-band x sex x NUTS1 count surface. Chronicle must fan this into dimension- and geography-pinned scalar references before compilation. The selector uses the typed NUTS1-2025 authority alias; a differently-vintaged source requires an explicit Chronicle projection/crosswalk. An observation for another year may enter only as a Chronicle source_projection whose fact period is the declared 2023 reference year."
+      "notes": "Non-executable series placeholder for an age-band x sex x NUTS1 count surface. Chronicle must fan this into dimension- and geography-pinned scalar references before compilation. The selector uses the typed NUTS1-2025 authority alias; a differently-vintaged source requires an explicit Chronicle projection/crosswalk. An observation for another year may enter only as a Chronicle source_projection whose fact period is the declared 2023 reference year.",
+      "category_id": "statbel.demography"
     },
     {
       "name": "statbel_fiscal_income_by_commune",
@@ -58,7 +59,8 @@
         "series": "Fiscal statistics of income: total net taxable income by municipality",
         "target_role": "calibration"
       },
-      "notes": "Non-executable series placeholder for commune fiscal-income cells; Chronicle must fan it into one commune-pinned scalar reference per selected cell before compilation. The eventual open commune series is diagnostic until the synthetic spine demonstrates adequate support. The selector binds the typed nis_2025 alias to the spine's 2025 NIS code set, and another code set must be projected and crosswalked in Chronicle rather than partially joined."
+      "notes": "Non-executable series placeholder for commune fiscal-income cells; Chronicle must fan it into one commune-pinned scalar reference per selected cell before compilation. The eventual open commune series is diagnostic until the synthetic spine demonstrates adequate support. The selector binds the typed nis_2025 alias to the spine's 2025 NIS code set, and another code set must be projected and crosswalked in Chronicle rather than partially joined.",
+      "category_id": "statbel.fiscal_income"
     },
     {
       "name": "spf_finances_pit_total",
@@ -82,7 +84,8 @@
         "series": "Personal income tax: assessed total",
         "target_role": "calibration"
       },
-      "notes": "National assessed PIT is compared with the Axiom-computed federal and local liability on the 2022 income-year basis. Assessment-year facts must identify the represented income year in Chronicle; a period mismatch is a projection, never a silent relabeling."
+      "notes": "National assessed PIT is compared with the Axiom-computed federal and local liability on the 2022 income-year basis. Assessment-year facts must identify the represented income year in Chronicle; a period mismatch is a projection, never a silent relabeling.",
+      "category_id": "spf_finances.income_tax"
     },
     {
       "name": "onss_employee_contribution_total",
@@ -106,7 +109,8 @@
         "series": "Employee social-security contributions",
         "target_role": "calibration"
       },
-      "notes": "Worker-side contributions on the encoded slice. Employer-side and capped-regime totals can enter as distinct references when both the engine concepts and Ledger selectors exist."
+      "notes": "Worker-side contributions on the encoded slice. Employer-side and capped-regime totals can enter as distinct references when both the engine concepts and Ledger selectors exist.",
+      "category_id": "onss.social_security"
     },
     {
       "name": "onem_unemployment_caseload",
@@ -130,7 +134,8 @@
         "series": "Unemployment benefit recipients",
         "target_role": "calibration"
       },
-      "notes": "The initial caseload family uses the calendar-year recipient count. Pension and regional child-benefit caseload references can join this family when their Chronicle packages and model mappings land."
+      "notes": "The initial caseload family uses the calendar-year recipient count. Pension and regional child-benefit caseload references can join this family when their Chronicle packages and model mappings land.",
+      "category_id": "onem.caseloads"
     },
     {
       "name": "nbb_household_disposable_income",
@@ -154,7 +159,8 @@
         "series": "Household-sector disposable income (national accounts)",
         "target_role": "validation"
       },
-      "notes": "Validation-tier level anchor only. The macro-realism gate may use it as a broad band, but neither the exact NBB level nor any survey- or EUROMOD-derived quantity enters the calibration objective."
+      "notes": "Validation-tier level anchor only. The macro-realism gate may use it as a broad band, but neither the exact NBB level nor any survey- or EUROMOD-derived quantity enters the calibration objective.",
+      "category_id": "nbb.national_accounts"
     }
   ],
   "target_profile": {
@@ -226,5 +232,51 @@
       }
     },
     "hierarchy_reconciliations": []
+  },
+  "schema_version": 2,
+  "hierarchy": {
+    "providers": {
+      "statbel": {
+        "label": "Statbel"
+      },
+      "spf_finances": {
+        "label": "FPS Finance"
+      },
+      "onss": {
+        "label": "National Social Security Office"
+      },
+      "onem": {
+        "label": "National Employment Office"
+      },
+      "nbb": {
+        "label": "National Bank of Belgium"
+      }
+    },
+    "categories": {
+      "statbel.demography": {
+        "provider_id": "statbel",
+        "label": "Demography"
+      },
+      "statbel.fiscal_income": {
+        "provider_id": "statbel",
+        "label": "Fiscal income"
+      },
+      "spf_finances.income_tax": {
+        "provider_id": "spf_finances",
+        "label": "Personal income tax"
+      },
+      "onss.social_security": {
+        "provider_id": "onss",
+        "label": "Social security contributions"
+      },
+      "onem.caseloads": {
+        "provider_id": "onem",
+        "label": "Benefit caseloads"
+      },
+      "nbb.national_accounts": {
+        "provider_id": "nbb",
+        "label": "National accounts"
+      }
+    }
   }
 }

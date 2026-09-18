@@ -180,7 +180,9 @@ def geography_coverage_payload(dataset_path: Path | str) -> dict[str, Any]:
     """
     import pandas as pd
 
-    from microcosm.build.us_runtime.fiscal_targets import STATE_FIPS_TO_POSTAL
+    from microcosm.calibrate.geography_constants import (
+        US_STATE_NUMERIC_FIPS_TO_POSTAL,
+    )
 
     with pd.HDFStore(str(dataset_path), "r") as store:
         household = store["household"]
@@ -205,9 +207,8 @@ def geography_coverage_payload(dataset_path: Path | str) -> dict[str, Any]:
             "counts": counts,
         }
 
-    postal = {int(fips): code for fips, code in STATE_FIPS_TO_POSTAL.items()}
     state_counts = {
-        postal[int(fips)]: int(count)
+        US_STATE_NUMERIC_FIPS_TO_POSTAL[int(fips)]: int(count)
         for fips, count in household.groupby("state_fips").size().items()
     }
     district_counts = {}
@@ -216,7 +217,8 @@ def geography_coverage_payload(dataset_path: Path | str) -> dict[str, Any]:
             household.groupby("congressional_district_geoid").size().items()
         ):
             geoid = int(geoid)
-            district_counts[f"{postal[geoid // 100]}-{geoid % 100:02d}"] = int(count)
+            state = US_STATE_NUMERIC_FIPS_TO_POSTAL[geoid // 100]
+            district_counts[f"{state}-{geoid % 100:02d}"] = int(count)
 
     return {
         "schema_version": GEOGRAPHY_COVERAGE_SCHEMA_VERSION,

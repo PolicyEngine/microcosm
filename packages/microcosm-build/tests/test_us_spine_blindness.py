@@ -291,6 +291,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Data-only live battery authority extraction; never reads or mutates Frames.
         "stacked_battery_contract.py",
         "spm_resources.py",
+        # Pinned ASEC role reconstruction and exact parent join; no population
+        # treatment. Remains subject to the all-runtime source-identity scan.
+        "spm_role_source.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
         "support_provenance.py",
         "take_up.py",
@@ -307,6 +310,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # nothing with the source registry and treats no population itself.
         "graph.py",
         "graph_kernels.py",
+        "worker_identity.py",  # Portable primary-QRF worker identity; no population treatment.
     }
 )
 _CLASSIFIED_US_RUNTIME_MODULES = frozenset(_SPINE_BLIND_OPERATOR_MODULES).union(
@@ -3402,8 +3406,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 69, (
-            f"{tool.name} must reach the pinned 69-module runtime graph; "
+        assert len(runtime_graph) == 70, (
+            f"{tool.name} must reach the pinned 70-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

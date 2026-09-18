@@ -144,6 +144,8 @@ def test_us_fiscal_target_references_are_declared_registry() -> None:
     for reference in US_FISCAL_TARGET_REFERENCES:
         assert reference.value_operation == "identity"
         assert reference.ledger_source_record_id or reference.ledger_selector
+        assert reference.hierarchy is not None
+        assert reference.hierarchy.target_label
 
 
 def test_us_fiscal_references_compile_against_external_ledger_facts() -> None:
@@ -858,14 +860,14 @@ def test_locked_policyengine_us_pin_guards_the_obbba_window_premise() -> None:
     # Companion to the engine-gated window test above, enforced in the BASE
     # environment (mandatory CI installs no engine extra, so that test skips
     # there). The window premise was verified against policyengine-us
-    # 1.819.0, and uv.lock is the only door a different engine can enter
+    # 2.2.1, and uv.lock is the only door a different engine can enter
     # mandatory CI through — so pin it here. Bumping the engine must move
     # this pin in the same change, after re-running
     # test_obbba_no_tax_channels_are_absent_from_2024_law_deduction_lists in
     # a [us]-extra environment to re-verify the TY2025-TY2028 window.
     lock_text = (Path(__file__).parents[3] / "uv.lock").read_text()
     versions = re.findall(r'name = "policyengine-us"\nversion = "([^"]+)"', lock_text)
-    assert versions == ["1.819.0"], versions
+    assert versions == ["2.2.1"], versions
 
 
 def test_us_fiscal_target_references_pass_issue_40_coverage_gate() -> None:
@@ -896,12 +898,17 @@ def test_medicaid_chip_enrollment_reference_uses_medicaid_and_chip_support() -> 
                 for index, reference in enumerate(US_FISCAL_TARGET_REFERENCES)
             ],
             {
+                "label": "Test Medicaid and CHIP enrollment",
                 "lineage": {
                     "source_record_id": medicaid_chip_source_record_id,
                 },
                 "value": 90_000_000,
                 "period": {"value": 2024},
-                "geography": {"level": "country", "id": "0100000US"},
+                "geography": {
+                    "level": "country",
+                    "id": "0100000US",
+                    "name": "United States",
+                },
                 "aggregation": {"method": "sum"},
                 "layout": {"measure_id": "total_medicaid_chip_enrollment"},
                 "observed_measure": {
@@ -1163,6 +1170,7 @@ def _usda_snap_caseload_fact(
     record_set_id = f"usda_snap.fy2024.{record_set_slug}"
     source_record_id = f"{record_set_id}.{value_id}.{measure_id}"
     return {
+        "label": f"Test label for {source_record_id}",
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:{source_record_id}",
         "semantic_fact_key": f"ledger.semantic_fact.v2:{source_record_id}",
         "legacy_fact_key": f"ledger.fact.v1:{source_record_id}",
@@ -1171,13 +1179,27 @@ def _usda_snap_caseload_fact(
         "period": {"type": "fiscal_year", "value": "2024"},
         "entity": {"name": entity_name},
         "aggregation": {"method": "mean"},
-        "geography": {"level": geography_level, "id": geography_id},
+        "geography": {
+            "level": geography_level,
+            "id": geography_id,
+            "name": f"Test geography {geography_id}",
+        },
         "dimensions": {},
+        "dimension_labels": {
+            "usda_snap.summary_scope": "SNAP summary scope",
+        },
+        "dimension_value_labels": {
+            "usda_snap.summary_scope": {
+                value_id: f"Test SNAP summary scope {value_id}",
+            }
+        },
         "universe_constraints": {"constraints": []},
         "layout": {
             "record_set_id": record_set_id,
             "groupby_dimension": "usda_snap.summary_scope",
+            "groupby_dimension_label": "SNAP summary scope",
             "groupby_value_id": value_id,
+            "groupby_value_label": f"Test SNAP summary scope {value_id}",
             "measure_id": measure_id,
         },
         "observed_measure": {
@@ -1820,6 +1842,35 @@ def test_soi_income_tax_liability_supplies_federal_income_tax_target() -> None:
     assert spec.metadata["materializer"] == "irs_soi_slice"
     assert spec.metadata["measure_mode"] == "sum"
     assert spec.metadata["base_variable"] == "income_tax"
+
+
+def test_state_income_tax_target_exposes_policyengine_variable() -> None:
+    source_record_id = (
+        "census_stc.fy2023.individual_income_tax_collections.ca.t40.collections"
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            _dynamic_ledger_fact(
+                source_record_id=source_record_id,
+                source_name="census_stc",
+                measure_id="collections",
+                value=150_000_000_000,
+                period_value=2023,
+                geography_level="state",
+                geography_id="0400000US06",
+            ),
+        ],
+        allow_unaged_dollar_targets=True,
+    )
+
+    specs = {spec.name: spec for spec in registry.specs}
+    spec = specs[source_record_id]
+    assert spec.family == "state_income_tax"
+    assert spec.metadata["materializer"] == "policyengine_variable"
+    assert spec.metadata["measure_mode"] == "sum"
+    assert spec.metadata["base_variable"] == "state_income_tax"
+    assert spec.metadata["state_fips"] == "06"
 
 
 def test_dynamic_us_fiscal_targets_choose_latest_available_source_period() -> None:
@@ -5288,6 +5339,7 @@ def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
     entity_name = str(selector.get("entity_name") or reference.entity)
     fact_id = _fact_id(reference.name, period_value)
     return {
+        "label": f"Test label for {reference.name}",
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:{fact_id}",
         "semantic_fact_key": f"ledger.semantic_fact.v2:{fact_id}",
         "legacy_fact_key": f"ledger.fact.v1:{fact_id}",
@@ -5299,7 +5351,11 @@ def _ledger_fact_for_reference(reference, *, value: float) -> dict[str, object]:
         },
         "entity": {"name": entity_name},
         "aggregation": {"method": "sum"},
-        "geography": {"level": geography_level, "id": geography_id},
+        "geography": {
+            "level": geography_level,
+            "id": geography_id,
+            "name": f"Test geography {geography_id}",
+        },
         "dimensions": dimensions,
         "layout": {
             "record_set_id": str(
@@ -5669,6 +5725,7 @@ def _soi_income_tax_fact(source_period: int, *, value: float) -> dict[str, objec
         f"irs_soi.ty{source_period}.table_3_3.us.all.income_tax_liability_amount"
     )
     return {
+        "label": "Income tax liability",
         "aggregate_fact_key": (
             f"ledger.aggregate_fact.v2:income-tax-liability-{source_period}"
         ),
@@ -5681,13 +5738,29 @@ def _soi_income_tax_fact(source_period: int, *, value: float) -> dict[str, objec
         "period": {"type": "tax_year", "value": source_period},
         "entity": {"name": "tax_unit"},
         "aggregation": {"method": "sum"},
-        "geography": {"level": "country", "id": "0100000US"},
+        "geography": {
+            "level": "country",
+            "id": "0100000US",
+            "name": "United States",
+        },
         "dimensions": {"income_range": "all", "filing_status": "all"},
+        "dimension_labels": {
+            "adjusted_gross_income": "Adjusted gross income",
+            "filing_status": "Filing status",
+            "income_range": "Income range",
+        },
+        "dimension_value_labels": {
+            "adjusted_gross_income": {"all": "All adjusted gross income"},
+            "filing_status": {"all": "All filing statuses"},
+            "income_range": {"all": "All income ranges"},
+        },
         "universe_constraints": {"constraints": []},
         "layout": {
             "record_set_id": f"irs_soi.ty{source_period}.table_3_3",
             "groupby_dimension": "adjusted_gross_income",
+            "groupby_dimension_label": "Adjusted gross income",
             "groupby_value_id": "all",
+            "groupby_value_label": "All adjusted gross income",
             "measure_id": "income_tax_liability_amount",
         },
         "observed_measure": {
@@ -5717,6 +5790,7 @@ def _cbo_income_tax_fact(
         f"cbo.fy{source_period}.revenues.individual_income_taxes.{measure_id}"
     )
     return {
+        "label": "Individual income tax receipts",
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:cbo-income-tax-{source_period}",
         "semantic_fact_key": f"ledger.semantic_fact.v2:cbo-income-tax-{source_period}",
         "legacy_fact_key": f"ledger.fact.v1:cbo-income-tax-{source_period}",
@@ -5725,13 +5799,23 @@ def _cbo_income_tax_fact(
         "period": {"type": "fiscal_year", "value": source_period},
         "entity": {"name": "household"},
         "aggregation": {"method": "sum"},
-        "geography": {"level": "country", "id": "0100000US"},
+        "geography": {
+            "level": "country",
+            "id": "0100000US",
+            "name": "United States",
+        },
         "dimensions": {},
+        "dimension_labels": {"revenue_source": "Revenue source"},
+        "dimension_value_labels": {
+            "revenue_source": {"individual_income_taxes": "Individual income taxes"}
+        },
         "universe_constraints": {"constraints": []},
         "layout": {
             "record_set_id": f"cbo.fy{source_period}.revenues",
             "groupby_dimension": "revenue_source",
+            "groupby_dimension_label": "Revenue source",
             "groupby_value_id": "individual_income_taxes",
+            "groupby_value_label": "Individual income taxes",
             "measure_id": measure_id,
         },
         "observed_measure": {
@@ -5765,6 +5849,7 @@ def _cms_medicaid_enrollment_fact(
         f"cms_medicaid.month{normalized_period}.{geography_slug}.{measure_id}"
     )
     return {
+        "label": f"Test label for {source_record_id}",
         "aggregate_fact_key": (
             f"ledger.aggregate_fact.v2:cms-medicaid-{normalized_period}"
         ),
@@ -5777,13 +5862,23 @@ def _cms_medicaid_enrollment_fact(
         "period": {"type": "month", "value": source_period},
         "entity": {"name": "person"},
         "aggregation": {"method": "sum"},
-        "geography": {"level": geography_level, "id": geography_id},
+        "geography": {
+            "level": geography_level,
+            "id": geography_id,
+            "name": f"Test geography {geography_id}",
+        },
         "dimensions": {},
+        "dimension_labels": {"program": "Program"},
+        "dimension_value_labels": {
+            "program": {measure_id: f"Test program {measure_id}"}
+        },
         "universe_constraints": {"constraints": []},
         "layout": {
             "record_set_id": f"cms_medicaid.month{normalized_period}",
             "groupby_dimension": "program",
+            "groupby_dimension_label": "Program",
             "groupby_value_id": measure_id,
+            "groupby_value_label": f"Test program {measure_id}",
             "measure_id": measure_id,
         },
         "observed_measure": {
@@ -5819,7 +5914,22 @@ def _dynamic_ledger_fact(
     universe_constraints: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     fact_id = _fact_id(source_record_id, period_value)
+    fact_dimensions = dict(dimensions or {})
+    hierarchy_dimensions = dict(fact_dimensions)
+    if groupby_dimension and groupby_value_id:
+        hierarchy_dimensions.setdefault(groupby_dimension, groupby_value_id)
+    dimension_labels = {
+        dimension_id: f"Test dimension {dimension_id}"
+        for dimension_id in hierarchy_dimensions
+    }
+    dimension_value_labels = {
+        dimension_id: {
+            str(dimension_value): (f"Test value {dimension_id}={dimension_value}")
+        }
+        for dimension_id, dimension_value in hierarchy_dimensions.items()
+    }
     return {
+        "label": f"Test label for {source_record_id}",
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:{fact_id}",
         "semantic_fact_key": f"ledger.semantic_fact.v2:{fact_id}",
         "legacy_fact_key": f"ledger.fact.v1:{fact_id}",
@@ -5828,13 +5938,26 @@ def _dynamic_ledger_fact(
         "period": {"type": "calendar_year", "value": period_value},
         "entity": {"name": "person"},
         "aggregation": {"method": "sum"},
-        "geography": {"level": geography_level, "id": geography_id},
-        "dimensions": dict(dimensions or {}),
+        "geography": {
+            "level": geography_level,
+            "id": geography_id,
+            "name": f"Test geography {geography_id}",
+        },
+        "dimensions": fact_dimensions,
+        "dimension_labels": dimension_labels,
+        "dimension_value_labels": dimension_value_labels,
         "universe_constraints": {"constraints": list(universe_constraints or [])},
         "layout": {
             "record_set_id": layout_record_set_id or f"{source_name}.record_set",
             "groupby_dimension": groupby_dimension,
+            "groupby_dimension_label": (dimension_labels.get(groupby_dimension, "")),
             "groupby_value_id": groupby_value_id,
+            "groupby_value_label": (
+                dimension_value_labels.get(groupby_dimension, {}).get(
+                    groupby_value_id,
+                    "",
+                )
+            ),
             "measure_id": measure_id,
         },
         "observed_measure": {
@@ -6088,6 +6211,8 @@ def _cbo_income_source_projection_fact(
         f"{income_source}.projected_amount"
     )
     return {
+        "label": f"Test CBO projection for {income_source}",
+        "assertion": "source_projection",
         "aggregate_fact_key": (
             f"ledger.aggregate_fact.v2:cbo-proj-{income_source}-{source_period}"
         ),
@@ -6100,8 +6225,17 @@ def _cbo_income_source_projection_fact(
         "period": {"type": "tax_year", "value": source_period},
         "entity": {"name": "tax_unit", "role": "filing_unit"},
         "aggregation": {"method": "sum"},
-        "geography": {"level": "country", "id": "0100000US", "vintage": "current"},
+        "geography": {
+            "level": "country",
+            "id": "0100000US",
+            "name": "United States",
+            "vintage": "current",
+        },
         "dimensions": {},
+        "dimension_labels": {"cbo.income_source": "Income source"},
+        "dimension_value_labels": {
+            "cbo.income_source": {income_source: f"Test income source {income_source}"}
+        },
         "universe_constraints": {"constraints": []},
         "layout": {
             "record_set_id": (
@@ -6109,7 +6243,9 @@ def _cbo_income_source_projection_fact(
                 f"{income_source}"
             ),
             "groupby_dimension": "cbo.income_source",
+            "groupby_dimension_label": "Income source",
             "groupby_value_id": income_source,
+            "groupby_value_label": f"Test income source {income_source}",
             "measure_id": "projected_amount",
         },
         "observed_measure": {
@@ -6133,6 +6269,66 @@ def _aged_spec_by_source_record_id(registry, source_record_id):
     return {spec.metadata["ledger_source_record_id"]: spec for spec in registry.specs}[
         source_record_id
     ]
+
+
+@pytest.mark.parametrize(
+    "income_source",
+    [
+        "adjusted_gross_income",
+        "wages_and_salaries",
+        "qualified_dividend_income",
+        "net_capital_gain",
+        "net_business_income",
+    ],
+)
+def test_mapped_cbo_projection_preserves_assertion_and_value(income_source) -> None:
+    # Real Chronicle CBO rows declare source_projection. Missing assertions in
+    # this fixture previously disguised the compiler's observation-only default.
+    fact = _cbo_income_source_projection_fact(2024, income_source, value=125_000)
+    registry = compile_us_fiscal_target_registry(
+        [*packaged_reference_facts(), fact], target_period=2024, age_targets=True
+    )
+    spec = _aged_spec_by_source_record_id(registry, fact["lineage"]["source_record_id"])
+
+    assert spec.value == 125_000
+    assert spec.period == 2024
+    assert spec.metadata["ledger_assertion"] == "source_projection"
+    assert spec.metadata["ledger_resolved_assertion"] == "source_projection"
+    assert spec.metadata["ledger_assertion_policy"] == "allow_source_projection"
+    assert fact["assertion"] == "source_projection"
+
+
+def test_unapproved_non_cbo_projection_is_still_refused() -> None:
+    fact = _dynamic_ledger_fact(
+        source_record_id="usda_snap.fy2024.total_benefits",
+        source_name="usda_snap",
+        measure_id="total_benefits",
+        value=125_000,
+    )
+    fact["assertion"] = "source_projection"
+
+    with pytest.raises(ValueError, match="assertion_policy='observed_only'"):
+        compile_us_fiscal_target_registry([*packaged_reference_facts(), fact])
+
+
+@pytest.mark.parametrize(
+    ("income_source", "measure_id"),
+    [
+        ("unmapped_income", "projected_amount"),
+        ("adjusted_gross_income", "other_amount"),
+    ],
+)
+def test_unmapped_cbo_projection_does_not_become_a_target(
+    income_source, measure_id
+) -> None:
+    fact = _cbo_income_source_projection_fact(2024, income_source, value=125_000)
+    fact["layout"]["measure_id"] = measure_id
+    fact["observed_measure"]["source_measure_id"] = measure_id
+    registry = compile_us_fiscal_target_registry([*packaged_reference_facts(), fact])
+
+    assert fact["lineage"]["source_record_id"] not in {
+        spec.metadata["ledger_source_record_id"] for spec in registry.specs
+    }
 
 
 def test_age_targets_defaults_off_leaves_surface_unchanged() -> None:

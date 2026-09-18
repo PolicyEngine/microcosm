@@ -10,18 +10,407 @@ from microcosm.build.ledger_targets import LedgerTargetReference
 from microcosm.build.uk_runtime.ledger_targets import (
     UK_CROSS_GRAIN_BRIDGES,
     UK_CROSS_GRAIN_GRAIN_PRECEDENCE,
+    UK_CROSS_GRAIN_PARENT_GEOGRAPHY_LEGS,
     UK_CROSS_GRAIN_RULE,
+    UK_REGION_TIER_CODES,
+    _spec_geography,
+    _uk_contract_targets,
+    _uk_cross_grain_leg_of_area,
+    _uk_licensed_empty_legs_from_membership,
     align_uk_local_registry_parity_fixture,
+    align_uk_national_registry_parity_fixture,
     apply_uk_cross_grain_reconciliation,
     compile_uk_local_target_registry,
     compile_uk_target_registry,
     materialize_uk_ledger_targets,
+    uk_census_household_uprating,
+    uk_cross_grain_leg_of_area,
+    uk_ledger_households_total,
+    uk_local_target_surface,
+    uk_private_rent_mean_to_total,
 )
 from microcosm.calibrate import TargetRegistry, TargetSpec
 
 FIXTURE_FEED_ROWS = (
     Path(__file__).parent / "fixtures" / "uk_target_reference_feed_rows.jsonl"
 )
+
+
+def test_uk_local_target_surface_uses_registry_names_and_reconciles() -> None:
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="dwp.uc.households",
+                entity="household",
+                value=90.0,
+                measure="uc_households",
+                period=2025,
+                source="DWP",
+                family="uc_households",
+                metadata={
+                    "contract_target_id": "dwp.uc.households",
+                    "ledger_geography_level": "country",
+                    "ledger_geography_id": "K03000001",
+                },
+            ),
+            TargetSpec(
+                name="dwp.uc.households_by_area@E14001073",
+                entity="household",
+                value=30.0,
+                measure="uc_households",
+                period=2025,
+                source="DWP",
+                family="uc_households",
+                metadata={
+                    "contract_target_id": "dwp.uc.households_by_area",
+                    "geography_level": "constituency",
+                    "geography_id": "E14001073",
+                },
+            ),
+            TargetSpec(
+                name="dwp.uc.households_by_area@S14000001",
+                entity="household",
+                value=15.0,
+                measure="uc_households",
+                period=2025,
+                source="DWP",
+                family="uc_households",
+                metadata={
+                    "contract_target_id": "dwp.uc.households_by_area",
+                    "geography_level": "constituency",
+                    "geography_id": "S14000001",
+                },
+            ),
+        ],
+        country="uk",
+    )
+    surface, receipt = uk_local_target_surface(
+        registry,
+        bound_national_target_ids=("dwp.uc.households",),
+        period=2025,
+    )
+
+    uc = surface.loc[surface["metric"] == "uc_households"]
+    assert uc["value"].tolist() == [60.0, 30.0]
+    assert uc["target_name"].tolist() == [
+        "dwp.uc.households_by_area@E14001073",
+        "dwp.uc.households_by_area@S14000001",
+    ]
+    contract = _uk_contract_targets(national_only=False)
+    assert set(surface["contract_target_id"]) <= set(contract)
+    assert "national_uc_caseload_vs_uc_households_by_area" in {
+        group["bridge_id"] for group in receipt["groups"]
+    }
+    uc_group = next(
+        group
+        for group in receipt["groups"]
+        if group["bridge_id"] == "national_uc_caseload_vs_uc_households_by_area"
+    )
+    assert uc_group["winning_grain"] == "country"
+    assert {leg["parent_geography_id"] for leg in uc_group["legs"]} == {"K03000001"}
+
+
+def test_uk_local_target_surface_fires_k020_household_partition_bridge() -> None:
+    composition_ids = UK_CROSS_GRAIN_BRIDGES[0].higher_target_ids
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name=target_id,
+                entity="household",
+                value=10.0,
+                measure=f"measure/{position}",
+                period=2025,
+                source="ONS",
+                family="household_composition",
+                metadata={
+                    "contract_target_id": target_id,
+                    "ledger_geography_level": "country",
+                    "ledger_geography_id": "K02000001",
+                },
+            )
+            for position, target_id in enumerate(composition_ids)
+        ]
+        + [
+            _household_spec("E14001073", "constituency", 10.0),
+            _household_spec("S14000001", "constituency", 20.0),
+            _household_spec("E09000001", "local_authority", 10.0),
+            _household_spec("S12000005", "local_authority", 20.0),
+        ],
+        country="uk",
+    )
+
+    surface, receipt = uk_local_target_surface(
+        registry,
+        bound_national_target_ids=composition_ids,
+        period=2025,
+    )
+
+    ladder_rows = surface.loc[surface["metric"] == "households"]
+    assert ladder_rows.groupby("area_type")["value"].sum().to_dict() == {
+        "constituency": pytest.approx(100.0),
+        "la": pytest.approx(100.0),
+    }
+    groups = [
+        group
+        for group in receipt["groups"]
+        if group["bridge_id"]
+        == "national_household_composition_partition_vs_census_households"
+    ]
+    assert {group["winning_grain"] for group in groups} == {"country"}
+    assert {
+        leg["parent_geography_id"] for group in groups for leg in group["legs"]
+    } == {"K02000001"}
+
+
+def _national_geography_spec(metadata: dict[str, str]) -> TargetSpec:
+    return TargetSpec(
+        name="dwp.uc.households",
+        entity="household",
+        value=90.0,
+        measure="uc_households",
+        period=2025,
+        source="DWP",
+        family="uc_households",
+        metadata={"contract_target_id": "dwp.uc.households", **metadata},
+    )
+
+
+def _household_spec(
+    area: str,
+    level: str,
+    value: float,
+    *,
+    from_period: int | None = None,
+    to_period: int | None = None,
+) -> TargetSpec:
+    metadata = {
+        "contract_target_id": "ons.census.households",
+        "geography_level": level,
+        "geography_id": area,
+    }
+    if from_period is not None:
+        metadata["uprating_from_period"] = from_period
+    if to_period is not None:
+        metadata["uprating_to_period"] = to_period
+    return TargetSpec(
+        name=f"ons.census.households@{area}@2025",
+        entity="household",
+        value=value,
+        measure="households",
+        period=2025,
+        source="Chronicle census households",
+        family="census_households",
+        metadata=metadata,
+    )
+
+
+def _national_control_spec(
+    name: str,
+    *,
+    value: float,
+    target_id: str = "dwp.uc.payment_distribution_single",
+    geography_level: str = "country",
+    geography_id: str = "K03000001",
+) -> TargetSpec:
+    return TargetSpec(
+        name=name,
+        entity="household",
+        value=value,
+        measure=f"measure/{name}",
+        period=2025,
+        source="synthetic national control fixture",
+        family="national_control",
+        metadata={
+            "contract_target_id": target_id,
+            "ledger_geography_level": geography_level,
+            "ledger_geography_id": geography_id,
+        },
+    )
+
+
+def test_uk_local_target_surface_excludes_fanout_from_cross_grain_controls() -> None:
+    specs = [
+        _national_control_spec(f"payment-band-{index}", value=value)
+        for index, value in enumerate((10.0, 20.0, 30.0))
+    ]
+    specs.extend(
+        [
+            TargetSpec(
+                name=f"dwp.uc.households_by_area@{area}",
+                entity="household",
+                value=value,
+                measure="uc_households",
+                period=2025,
+                source="synthetic local UC fixture",
+                family="uc_households",
+                metadata={
+                    "contract_target_id": "dwp.uc.households_by_area",
+                    "geography_level": "constituency",
+                    "geography_id": area,
+                },
+            )
+            for area, value in (("E14001073", 30.0), ("S14000001", 15.0))
+        ]
+    )
+
+    surface, receipt = uk_local_target_surface(
+        TargetRegistry(specs, country="uk"),
+        bound_national_target_ids=("dwp.uc.payment_distribution_single",),
+        period=2025,
+    )
+
+    assert surface.loc[surface["metric"] == "uc_households", "value"].tolist() == [
+        30.0,
+        15.0,
+    ]
+    assert receipt["bound_higher_targets"] == []
+    assert all(
+        group["bridge_id"] != "national_uc_caseload_vs_uc_households_by_area"
+        for group in receipt["groups"]
+    )
+    assert receipt["fanout_targets_not_controls"] == [
+        {
+            "target_id": "dwp.uc.payment_distribution_single",
+            "geography_id": "K03000001",
+            "cells": 3,
+            "cell_names": ["payment-band-0", "payment-band-1", "payment-band-2"],
+            "activated_sum": 60.0,
+            "reason": (
+                "The activated cells are a band subset, so this distribution "
+                "is not a cross-grain control."
+            ),
+        }
+    ]
+    assert "fanout_controls_summed" not in receipt
+
+
+def test_uk_local_target_surface_keeps_single_national_control(monkeypatch) -> None:
+    from microcosm.build.uk_runtime import ledger_targets as module
+
+    captured: dict[str, pd.DataFrame] = {}
+
+    def capture(frame, bound_higher_targets, *_args, **_kwargs):
+        captured["frame"] = frame.copy(deep=True)
+        captured["bound"] = tuple(bound_higher_targets)
+        return frame.copy(deep=True), {"groups": []}
+
+    monkeypatch.setattr(module, "apply_uk_cross_grain_reconciliation", capture)
+    spec = _national_control_spec("only-cell", value=42.0)
+
+    _, receipt = module.uk_local_target_surface(
+        TargetRegistry([spec], country="uk"),
+        bound_national_target_ids=("dwp.uc.payment_distribution_single",),
+        period=2025,
+    )
+
+    assert captured["frame"]["target_id"].str.startswith("contract:").all()
+    controls = captured["frame"].loc[
+        captured["frame"]["target_id"] == "contract:dwp.uc.payment_distribution_single"
+    ]
+    assert controls[["grain", "geography_id", "value"]].to_dict("records") == [
+        {"grain": "country", "geography_id": "K03000001", "value": 42.0}
+    ]
+    assert captured["bound"] == ("dwp.uc.payment_distribution_single",)
+    assert receipt["fanout_targets_not_controls"] == []
+    assert "fanout_controls_summed" not in receipt
+
+
+def test_uk_local_target_surface_refuses_named_nonfinite_national_cell() -> None:
+    specs = [
+        _national_control_spec("finite-cell", value=10.0),
+        _national_control_spec("bad-cell", value=20.0),
+    ]
+    object.__setattr__(specs[1], "value", float("nan"))
+
+    with pytest.raises(ValueError, match="bad-cell.*non-finite"):
+        uk_local_target_surface(
+            TargetRegistry(specs, country="uk"),
+            bound_national_target_ids=("dwp.uc.payment_distribution_single",),
+            period=2025,
+        )
+
+
+def test_uk_local_target_surface_refuses_fanout_across_levels() -> None:
+    target_id = "mhclg.council_tax_stock.band_a"
+    specs = [
+        _national_control_spec(
+            "country-cell",
+            value=10.0,
+            target_id=target_id,
+            geography_level="country",
+            geography_id="K02000001",
+        ),
+        _national_control_spec(
+            "region-cell",
+            value=20.0,
+            target_id=target_id,
+            geography_level="region",
+            geography_id="K02000001",
+        ),
+    ]
+
+    with pytest.raises(
+        ValueError,
+        match="country-cell.*region-cell.*mixed geography levels",
+    ):
+        uk_local_target_surface(
+            TargetRegistry(specs, country="uk"),
+            bound_national_target_ids=(target_id,),
+            period=2025,
+        )
+
+
+@pytest.mark.parametrize(
+    ("metadata", "message"),
+    [
+        ({}, "dwp.uc.households.*names no geography"),
+        (
+            {
+                "geography_level": "country",
+                "geography_id": "K02000001",
+                "ledger_geography_level": "country",
+                "ledger_geography_id": "K03000001",
+            },
+            "dwp.uc.households.*disagree",
+        ),
+        (
+            {
+                "ledger_geography_level": "constituency",
+                "ledger_geography_id": "E14001073",
+            },
+            "dwp.uc.households.*contract.*country",
+        ),
+    ],
+)
+def test_uk_local_target_surface_refuses_invalid_compiled_geography(
+    metadata: dict[str, str],
+    message: str,
+) -> None:
+    registry = TargetRegistry([_national_geography_spec(metadata)], country="uk")
+
+    with pytest.raises(ValueError, match=message):
+        uk_local_target_surface(
+            registry,
+            bound_national_target_ids=(),
+            period=2025,
+        )
+
+
+def test_compiled_geography_resolver_refuses_blank_spelling() -> None:
+    spec = SimpleNamespace(
+        name="dwp.uc.households",
+        metadata={
+            "contract_target_id": "dwp.uc.households",
+            "ledger_geography_level": "",
+            "ledger_geography_id": "K02000001",
+        },
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="dwp.uc.households.*blank ledger geography",
+    ):
+        _spec_geography(spec)
 
 
 def test_local_parity_fixture_aligns_legacy_council_tax_band_names():
@@ -38,18 +427,16 @@ def test_local_parity_fixture_aligns_legacy_council_tax_band_names():
     aligned = align_uk_local_registry_parity_fixture(fixture)
 
     assert aligned["rows"][0]["name"] == (
-        "voa.council_tax_stock.by_area.band_a@E06000001"
+        "mhclg.council_tax_stock.by_area.band_a@E06000001"
     )
 
 
 class StubUKAdapter:
-    """Seven people across three households, with distinct child concepts.
+    """Prepared benefit-unit measures distinguish flags and child counts.
 
-    The affected flag and the child counts are deliberately distinct here:
-    household 0 holds three affected children but four children in all, and
-    household 2 holds two of each. A household-grain read of the boolean
-    (1/0/1) can therefore be distinguished from both the affected-child counts
-    (3/0/2) and the all-child counts (4/0/2).
+    These independent prepared vectors test binding selection, not the
+    demographic calculation: the flag (1/0/1), affected counts (3/0/2), and
+    qualifying counts (4/0/2) must not substitute for one another.
     """
 
     def __init__(self):
@@ -57,7 +444,9 @@ class StubUKAdapter:
         child_flags = np.array([True, True, True, False, False, True, True])
         self.tables = {
             "person": {
-                "capital_gains": np.array([0.0, 0.0, 0.0, 5_000.0, 0.0, 0.0, 20_000.0]),
+                "cgt_2024_gains": np.array(
+                    [0.0, 0.0, 0.0, 5_000.0, 0.0, 0.0, 20_000.0]
+                ),
                 "person_household_id": person_household,
                 "uc_is_child_limit_affected": child_flags,
                 "is_child": np.array([True, True, True, True, False, True, True]),
@@ -68,6 +457,13 @@ class StubUKAdapter:
                 # The household-grain flag is the any-collapse: "this
                 # household contains at least one flagged child".
                 "uc_is_child_limit_affected": np.array([1.0, 0.0, 1.0]),
+            },
+            "benunit": {
+                "benunit_id": np.array([0, 1, 2]),
+                "uc_tcl_affected_benunit_proxy": np.array([True, False, True]),
+                "uc_tcl_affected_child_count_proxy": np.array([3.0, 0.0, 2.0]),
+                "uc_tcl_qualifying_child_count": np.array([4.0, 0.0, 2.0]),
+                "uc_tcl_claimant_receives_pip": np.array([True, True, False]),
             },
         }
 
@@ -92,6 +488,9 @@ class StubUKAdapter:
         )
 
     def household_condition(self, condition):
+        if condition["variable"] == "region":
+            assert condition["map_to"] == "benunit"
+            return np.array([True, True, True])
         assert condition["variable"] == "pip"
         assert condition["entity"] == "person"
         assert condition["reduce"] == "sum"
@@ -100,7 +499,7 @@ class StubUKAdapter:
 
     def parameter(self, name, period):
         assert name == "gov.hmrc.cgt.annual_exempt_amount"
-        assert period == 2025
+        assert period == 2024
         return 6_000.0
 
     def counterfactual_delta(self, binding, period):
@@ -304,11 +703,14 @@ def test_materialize_uk_ledger_targets_with_stub_adapter():
                 measure="hmrc/cgt_taxpayers",
                 value=378_000.0,
                 source="test",
-                metadata={"contract_target_id": "hmrc.cgt.taxpayers_total"},
+                metadata={
+                    "contract_target_id": "hmrc.cgt.taxpayers_total",
+                    "ledger_fact_period": "2024",
+                },
             ),
             TargetSpec(
                 name="dwp.uc.two_child_limit.children_affected",
-                entity="household",
+                entity="benunit",
                 measure="dwp/uc/two_child_limit/children_affected",
                 value=1.0,
                 source="test",
@@ -318,7 +720,7 @@ def test_materialize_uk_ledger_targets_with_stub_adapter():
             ),
             TargetSpec(
                 name="dwp.uc.two_child_limit.children_claimant_pip",
-                entity="household",
+                entity="benunit",
                 measure="dwp/uc/two_child_limit/adult_pip_children",
                 value=1.0,
                 source="test",
@@ -345,16 +747,15 @@ def test_materialize_uk_ledger_targets_with_stub_adapter():
         0.0,
         1.0,
     ]
-    # Child counts, not household indicators: the declared value_reduction
-    # sums the flag over each household's people. A boolean any-collapse
-    # would have published [1.0, 0.0, 1.0] against a count target.
-    assert adapter.tables["household"][
+    # The binding reads the prepared affected-child count, preserving its
+    # difference from the benefit-unit indicator [1.0, 0.0, 1.0].
+    assert adapter.tables["benunit"][
         "dwp/uc/two_child_limit/children_affected"
     ].tolist() == [3.0, 0.0, 2.0]
-    # Sheet 04B's claimant-PIP row counts every child in affected households
-    # satisfying the PIP condition, not only the children carrying the
-    # affected flag. Household 0 therefore contributes four, not three.
-    assert adapter.tables["household"][
+    # Sheet 04B counts all qualifying children in affected claims whose own
+    # claimant receives PIP. The first prepared unit contributes four, not
+    # its three affected children or its one affected-unit indicator.
+    assert adapter.tables["benunit"][
         "dwp/uc/two_child_limit/adult_pip_children"
     ].tolist() == [4.0, 0.0, 0.0]
 
@@ -411,17 +812,25 @@ def _uc_composition_frame():
             "benunit": pd.DataFrame(
                 {
                     "benunit_id": np.arange(4),
-                    "family_type": [
+                    "uc_calibration_family_type": [
                         "LONE_PARENT",
                         "SINGLE",
                         "LONE_PARENT",
                         "SINGLE",
                     ],
+                    "uc_calibration_administrative_family_type": [
+                        "LONE_PARENT",
+                        "UNKNOWN",
+                        "UNKNOWN",
+                        "SINGLE",
+                    ],
                     "universal_credit": [100.0, 0.0, 0.0, 100.0],
-                    "num_children": [1, 0, 1, 0],
+                    "uc_calibration_child_count": [1, 0, 1, 0],
                 }
             ),
-            "household": pd.DataFrame({"household_id": np.arange(2)}),
+            "household": pd.DataFrame(
+                {"household_id": np.arange(2), "region": ["LONDON", "SCOTLAND"]}
+            ),
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(np.array([10.0, 20.0]), WeightKind.DESIGN)},
@@ -472,6 +881,112 @@ def test_uc_composition_materializes_at_benunit_grain():
     ].tolist() == [0.0, 0.0, 0.0, 1.0]
 
 
+def test_uc_national_counts_exclude_ni_and_unknown_regions_at_benunit_grain():
+    """The GB source excludes Northern Ireland, not just on the fact selector.
+
+    DWP methodology: Creating a Great Britain dataset. Multiple benefit units
+    share each dwelling; order differs between benefit-unit and household ids.
+    """
+    import pandas as pd
+
+    from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
+    from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+
+    regions = ["NORTHERN_IRELAND", "LONDON", "WALES", "SCOTLAND", "UNKNOWN"]
+    household_ids = np.array([4, 3, 2, 1, 0, 4, 3, 2, 1, 0])
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.arange(10),
+                    "person_benunit_id": np.arange(10),
+                    "person_household_id": household_ids,
+                }
+            ),
+            "benunit": pd.DataFrame(
+                {
+                    "benunit_id": np.arange(10),
+                    "universal_credit": np.full(10, 29_000.0),
+                    "uc_calibration_family_type": ["COUPLE_NO_CHILDREN"] * 10,
+                    "uc_calibration_administrative_family_type": ["COUPLE_NO_CHILDREN"]
+                    * 10,
+                    "uc_calibration_child_count": np.ones(10),
+                }
+            ),
+            "household": pd.DataFrame(
+                {"household_id": np.arange(5), "region": regions}
+            ),
+        },
+        EntitySchema(group_entities=("benunit", "household")),
+        {"household": Weights(np.ones(5), WeightKind.DESIGN)},
+    )
+    ids = [
+        "dwp.uc.households",
+        "dwp.uc.households_children_1",
+        "dwp.uc.households_couple_no_children",
+        "dwp.uc.payment_distribution_couple_no_children",
+    ]
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name=target_id,
+                entity="benunit",
+                measure=target_id,
+                value=1.0,
+                source="synthetic; DWP UC_Households GB",
+                metadata={
+                    "contract_target_id": target_id,
+                    "ledger_filter_monthly_award_amount_bands": "£2400.01 to £2500.00",
+                },
+            )
+            for target_id in ids
+        ],
+        country="uk",
+    )
+    adapter = UKFrameTargetAdapter(frame)
+    result = materialize_uk_ledger_targets(adapter, registry, period=2025)
+    assert not result.skipped
+    expected = [0.0, 1.0, 1.0, 1.0, 0.0] * 2
+    for target_id in ids:
+        assert adapter.tables["benunit"][target_id].tolist() == expected
+
+
+def test_household_geography_condition_projects_through_benefit_unit_links():
+    from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
+
+    adapter = UKFrameTargetAdapter(_uc_composition_frame())
+    adapter.tables["household"]["region"] = ["NORTHERN_IRELAND", "SCOTLAND"]
+    result = adapter.household_condition(
+        {
+            "entity": "household",
+            "variable": "region",
+            "reduce": "any",
+            "operator": "in",
+            "value": ["SCOTLAND"],
+            "map_to": "benunit",
+        }
+    )
+    assert result.tolist() == [False, False, True, True]
+
+
+def test_household_geography_projection_refuses_benunits_spanning_dwellings():
+    from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
+
+    adapter = UKFrameTargetAdapter(_uc_composition_frame())
+    adapter.tables["person"].loc[1, "person_household_id"] = 1
+    with pytest.raises(ValueError, match="groups span multiple households"):
+        adapter.household_condition(
+            {
+                "entity": "household",
+                "variable": "region",
+                "reduce": "any",
+                "operator": "==",
+                "value": "SCOTLAND",
+                "map_to": "benunit",
+            }
+        )
+
+
 def test_household_condition_reduces_person_level_conditions():
     # Person-level conditions collapse through person_household_id. Building
     # the group-membership column here would ask for "person_person_id",
@@ -515,17 +1030,27 @@ def test_household_condition_still_reduces_group_entities():
 def test_uk_cross_grain_rule_constants_are_review_pinned():
     assert UK_CROSS_GRAIN_GRAIN_PRECEDENCE == (
         "country",
+        "region",
         "constituency",
         "la",
     )
     assert UK_CROSS_GRAIN_RULE.grain_precedence == (
         "country",
+        "region",
         "constituency",
         "la",
     )
     assert [bridge.bridge_id for bridge in UK_CROSS_GRAIN_BRIDGES] == [
         "national_household_composition_partition_vs_census_households",
         "national_uc_caseload_vs_uc_households_by_area",
+        "national_age_0_9_vs_local_age_0_10",
+        "national_age_10_19_vs_local_age_10_20",
+        "national_age_20_29_vs_local_age_20_30",
+        "national_age_30_39_vs_local_age_30_40",
+        "national_age_40_49_vs_local_age_40_50",
+        "national_age_50_59_vs_local_age_50_60",
+        "national_age_60_69_vs_local_age_60_70",
+        "national_age_70_79_vs_local_age_70_80",
     ]
     assert UK_CROSS_GRAIN_BRIDGES[0].higher_target_ids == (
         "ons.household_composition.lone_households_under_65",
@@ -540,6 +1065,217 @@ def test_uk_cross_grain_rule_constants_are_review_pinned():
         "ons.household_composition.multi_family_households",
     )
     assert UK_CROSS_GRAIN_BRIDGES[1].higher_target_ids == ("dwp.uc.households",)
+
+
+def test_uk_age_cross_grain_bridges_are_complete_and_exclude_80_89():
+    age_bridges = {
+        bridge.bridge_id: (
+            bridge.concept,
+            bridge.higher_target_ids,
+            bridge.lower_side,
+        )
+        for bridge in UK_CROSS_GRAIN_BRIDGES
+        if bridge.bridge_id.startswith("national_age_")
+    }
+
+    assert age_bridges == {
+        f"national_age_{lower}_{upper - 1}_vs_local_age_{lower}_{upper}": (
+            "uk.person.count",
+            (f"ons.population.age_{lower}_{upper - 1}_by_region",),
+            f"contract:ons.age.{lower}_{upper}",
+        )
+        for lower, upper in zip(range(0, 80, 10), range(10, 90, 10), strict=True)
+    }
+    assert all(
+        "80_89" not in target_id
+        for bridge in UK_CROSS_GRAIN_BRIDGES
+        for target_id in bridge.higher_target_ids
+    )
+
+
+def test_uk_age_bridge_rescales_constituency_and_la_to_region_controls():
+    """Region-tier rows are the controls; each leg is one region or nation.
+
+    London and the North East stand for the nine English regions (whose
+    constituencies and authorities resolve their leg through the crosswalk's
+    ladder-derived membership); Wales, Scotland and Northern Ireland are
+    Chronicle ``country`` rows that the surface places at the region grain
+    (microcosm#905), so here they carry ``grain: region`` directly.
+    """
+
+    national_id = "ons.population.age_0_9_by_region"
+    local_id = "ons.age.0_10"
+    controls = {
+        "E12000007": 100.0,
+        "E12000001": 50.0,
+        "W92000004": 40.0,
+        "S92000003": 30.0,
+        "N92000002": 20.0,
+    }
+    constituencies = {
+        "E14001073": 60.0,  # London
+        "E14001101": 20.0,  # North East
+        "W07000041": 30.0,
+        "S14000001": 25.0,
+        "N06000001": 15.0,
+    }
+    authorities = {
+        "E09000001": 80.0,  # London
+        "E06000001": 60.0,  # North East
+        "W06000001": 50.0,
+        "S12000005": 20.0,
+        "N09000001": 10.0,
+    }
+    surface = pd.DataFrame(
+        [
+            *[
+                {
+                    "grain": "region",
+                    "geography_id": code,
+                    "target_id": national_id,
+                    "value": value,
+                }
+                for code, value in controls.items()
+            ],
+            *[
+                {
+                    "grain": "constituency",
+                    "geography_id": area,
+                    "target_id": local_id,
+                    "value": value,
+                }
+                for area, value in constituencies.items()
+            ],
+            *[
+                {
+                    "grain": "la",
+                    "geography_id": area,
+                    "target_id": local_id,
+                    "value": value,
+                }
+                for area, value in authorities.items()
+            ],
+        ]
+    )
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        surface,
+        (national_id,),
+    )
+    expected_controls = list(controls.values())
+    assert reconciled.loc[reconciled["grain"] == "region", "value"].tolist() == (
+        expected_controls
+    )
+    # One lower row per leg at each grain, so each is rescaled onto its own
+    # region's control, never onto a UK or England total.
+    assert reconciled.loc[
+        reconciled["grain"] == "constituency", "value"
+    ].tolist() == pytest.approx(expected_controls)
+    assert reconciled.loc[reconciled["grain"] == "la", "value"].tolist() == (
+        pytest.approx(expected_controls)
+    )
+    groups = [
+        group
+        for group in receipt["groups"]
+        if group["bridge_id"] == "national_age_0_9_vs_local_age_0_10"
+    ]
+    assert {group["legs"][0]["reason"] for group in groups} == {
+        "standing cross-grain rule: region controls constituency",
+        "standing cross-grain rule: region controls la",
+    }
+    assert all(group["winning_grain"] == "region" for group in groups)
+    for group in groups:
+        assert [leg["leg"] for leg in group["legs"]] == sorted(controls)
+        for leg in group["legs"]:
+            assert leg["parent_geography_id"] == leg["leg"]
+            assert leg["new_total"] == pytest.approx(controls[leg["leg"]])
+    london = next(
+        leg for leg in groups[0]["legs"] if leg["parent_geography_id"] == "E12000007"
+    )
+    assert london["old_total"] in {60.0, 80.0}
+    assert london["declared_factor"] == pytest.approx(100.0 / london["old_total"])
+
+
+def test_uk_empty_leg_licences_require_complete_signed_deferral_coverage():
+    membership = {
+        "areas_by_geography_level": {
+            "local_authority": ["E09000001", "S12000005", "S12000006"],
+        },
+        "signed_deferrals": [
+            {
+                "target_id": "mhclg.council_tax_stock.by_area.band_a",
+                "geography_level": "local_authority",
+                "area_ids": ["S12000005", "S12000006"],
+            },
+            {
+                "target_id": "mhclg.council_tax_stock.by_area.band_b",
+                "geography_level": "local_authority",
+                "area_ids": ["S12000005"],
+            },
+        ],
+    }
+
+    assert _uk_licensed_empty_legs_from_membership(membership) == {
+        "mhclg.council_tax_stock.by_area.band_a": frozenset({"S92000003"}),
+    }
+
+
+def test_uk_empty_leg_licences_honour_each_target_area_scope():
+    # microcosm#929: a nation-scoped family binds only its scoped areas, so a
+    # leg holding none of them is licensed outright (the Welsh band-H cells
+    # never sit under an English region control), and a leg holding some is
+    # licensed once those are all signed deferred. An unscoped target still
+    # needs every roster area of the leg deferred.
+    membership = {
+        "areas_by_geography_level": {
+            "local_authority": ["E09000001", "E09000002", "W06000001", "S12000005"],
+        },
+        "area_scope_by_target_id": {
+            "welshgov.council_tax_stock.by_area.band_h": {
+                "local_authority": ["W06000001"]
+            },
+            "mhclg.council_tax_stock.by_area.band_h": {
+                "local_authority": ["E09000001", "E09000002"]
+            },
+            "mhclg.council_tax_stock.by_area.band_a": {
+                "local_authority": ["E09000001", "E09000002"]
+            },
+        },
+        "signed_deferrals": [
+            {
+                "target_id": "mhclg.council_tax_stock.by_area.band_h",
+                "geography_level": "local_authority",
+                "area_ids": ["E09000001", "E09000002"],
+            },
+            {
+                "target_id": "mhclg.council_tax_stock.by_area.band_a",
+                "geography_level": "local_authority",
+                "area_ids": ["E09000001"],
+            },
+            {
+                "target_id": "ons.census.households",
+                "geography_level": "local_authority",
+                "area_ids": ["E09000001"],
+            },
+        ],
+    }
+
+    licences = _uk_licensed_empty_legs_from_membership(membership)
+    assert licences["welshgov.council_tax_stock.by_area.band_h"] == frozenset(
+        {"E12000007", "S92000003"}
+    )
+    assert licences["mhclg.council_tax_stock.by_area.band_h"] == frozenset(
+        {"E12000007", "W92000004", "S92000003"}
+    )
+    assert licences["mhclg.council_tax_stock.by_area.band_a"] == frozenset(
+        {"W92000004", "S92000003"}
+    )
+    assert "ons.census.households" not in licences
+
+    membership["area_scope_by_target_id"][
+        "welshgov.council_tax_stock.by_area.band_h"
+    ] = {"local_authority": ["W06000099"]}
+    with pytest.raises(ValueError, match="absent from the 'local_authority' roster"):
+        _uk_licensed_empty_legs_from_membership(membership)
 
 
 def test_committed_contract_detects_exact_uc_payment_partition():
@@ -562,7 +1298,7 @@ def test_committed_contract_detects_exact_uc_payment_partition():
             ],
             {
                 "grain": "constituency",
-                "geography_id": "E14000001",
+                "geography_id": "E14001073",
                 "target_id": "dwp.uc.households_by_area",
                 "value": 30.0,
             },
@@ -594,13 +1330,13 @@ def test_council_tax_stock_country_control_rescales_la_band_counts():
             {
                 "grain": "la",
                 "geography_id": "S12000005",
-                "target_id": "voa.council_tax_stock.by_area.band_a",
+                "target_id": "mhclg.council_tax_stock.by_area.band_a",
                 "value": 30.0,
             },
             {
                 "grain": "la",
                 "geography_id": "S12000006",
-                "target_id": "voa.council_tax_stock.by_area.band_a",
+                "target_id": "mhclg.council_tax_stock.by_area.band_a",
                 "value": 20.0,
             },
         ]
@@ -615,8 +1351,12 @@ def test_council_tax_stock_country_control_rescales_la_band_counts():
     assert reconciled.loc[1:, "value"].tolist() == [60.0, 40.0]
 
 
-def test_real_uk_bridges_resolve_contract_and_external_lower_sides():
-    household_bridge, uc_bridge = UK_CROSS_GRAIN_BRIDGES
+def test_real_uk_bridges_resolve_contract_lower_sides():
+    bridges = {bridge.bridge_id: bridge for bridge in UK_CROSS_GRAIN_BRIDGES}
+    household_bridge = bridges[
+        "national_household_composition_partition_vs_census_households"
+    ]
+    uc_bridge = bridges["national_uc_caseload_vs_uc_households_by_area"]
     household_surface = pd.DataFrame(
         [
             *[
@@ -630,14 +1370,14 @@ def test_real_uk_bridges_resolve_contract_and_external_lower_sides():
             ],
             {
                 "grain": "constituency",
-                "geography_id": "E14000001",
-                "target_id": "external:census_households/households",
+                "geography_id": "E14001073",
+                "target_id": "ons.census.households",
                 "value": 40.0,
             },
             {
                 "grain": "constituency",
                 "geography_id": "S14000001",
-                "target_id": "external:census_households/households",
+                "target_id": "ons.census.households",
                 "value": 10.0,
             },
         ]
@@ -645,7 +1385,9 @@ def test_real_uk_bridges_resolve_contract_and_external_lower_sides():
     reconciled, receipt = apply_uk_cross_grain_reconciliation(
         household_surface, household_bridge.higher_target_ids
     )
-    assert receipt["groups"][0]["bridge_id"] == household_bridge.bridge_id
+    assert household_bridge.bridge_id in {
+        group["bridge_id"] for group in receipt["groups"]
+    }
     assert reconciled.loc[10:, "value"].tolist() == [80.0, 20.0]
 
     uc_surface = pd.DataFrame(
@@ -658,7 +1400,7 @@ def test_real_uk_bridges_resolve_contract_and_external_lower_sides():
             },
             {
                 "grain": "constituency",
-                "geography_id": "E14000001",
+                "geography_id": "E14001073",
                 "target_id": "dwp.uc.households_by_area",
                 "value": 30.0,
             },
@@ -675,6 +1417,127 @@ def test_real_uk_bridges_resolve_contract_and_external_lower_sides():
     )
     assert receipt["groups"][0]["bridge_id"] == uc_bridge.bridge_id
     assert reconciled.loc[1:, "value"].tolist() == [60.0, 30.0]
+
+
+def test_partially_bound_household_composition_bridge_stays_unbound_with_reviewed_records():
+    # Synthetic partial bridge: the production register no longer carries these
+    # three exclusions (microcosm#791), so this exercises the reviewed-record
+    # path on a hand-built surface only.
+    household_bridge = UK_CROSS_GRAIN_BRIDGES[0]
+    missing = {
+        "ons.household_composition.unrelated_adult_households",
+        "ons.household_composition.lone_parent_non_dependent_children_households",
+        "ons.household_composition.multi_family_households",
+    }
+    selected = tuple(
+        target_id
+        for target_id in household_bridge.higher_target_ids
+        if target_id not in missing
+    )
+    surface = pd.DataFrame(
+        [
+            *[
+                {
+                    "grain": "country",
+                    "geography_id": "K02000001",
+                    "target_id": target_id,
+                    "value": 10.0,
+                }
+                for target_id in selected
+            ],
+            {
+                "grain": "constituency",
+                "geography_id": "E14001073",
+                "target_id": "ons.census.households",
+                "value": 40.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "S14000001",
+                "target_id": "ons.census.households",
+                "value": 10.0,
+            },
+        ]
+    )
+    reviewed = {
+        target_id: {
+            "tracking": "microcosm#791",
+            "reason": "relationship-to-head is unavailable",
+        }
+        for target_id in missing
+    }
+
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        surface,
+        selected,
+        reviewed_unbound_higher_targets=reviewed,
+    )
+
+    assert reconciled.loc[len(selected) :, "value"].tolist() == [40.0, 10.0]
+    assert receipt["groups"] == []
+    assert receipt["unbound_bridges"] == [
+        {
+            "bridge_id": household_bridge.bridge_id,
+            "missing": sorted(missing),
+            "basis": "reviewed_exclusion",
+            "records": {
+                target_id: reviewed[target_id] for target_id in sorted(missing)
+            },
+        }
+    ]
+
+
+def test_fully_bound_household_composition_bridge_reconciles_census_cells():
+    # microcosm#791: with the three composition exclusions retired, the ten-cell
+    # partition binds and the census household cells rescale to its total.
+    household_bridge = UK_CROSS_GRAIN_BRIDGES[0]
+    surface = pd.DataFrame(
+        [
+            *[
+                {
+                    "grain": "country",
+                    "geography_id": "K02000001",
+                    "target_id": target_id,
+                    "value": 10.0,
+                }
+                for target_id in household_bridge.higher_target_ids
+            ],
+            {
+                "grain": "constituency",
+                "geography_id": "E14001073",
+                "target_id": "ons.census.households",
+                "value": 40.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "S14000001",
+                "target_id": "ons.census.households",
+                "value": 10.0,
+            },
+        ]
+    )
+
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        surface,
+        household_bridge.higher_target_ids,
+        reviewed_unbound_higher_targets={},
+    )
+
+    assert receipt["unbound_bridges"] == []
+    groups = [
+        group
+        for group in receipt["groups"]
+        if group["bridge_id"] == household_bridge.bridge_id
+    ]
+    assert len(groups) == 1
+    assert groups[0]["winning_grain"] == "country"
+    legs = groups[0]["legs"]
+    assert len(legs) == 1
+    assert legs[0]["parent_geography_id"] == "K02000001"
+    assert legs[0]["declared_factor"] == pytest.approx(2.0)
+    assert legs[0]["new_total"] == pytest.approx(100.0)
+    census = reconciled.loc[reconciled["target_id"] == "ons.census.households", "value"]
+    assert census.tolist() == pytest.approx([80.0, 20.0])
 
 
 def test_uk_front_door_reconciles_per_country_legs_and_builds_uniform_surface():
@@ -694,7 +1557,7 @@ def test_uk_front_door_reconciles_per_country_legs_and_builds_uniform_surface():
             },
             {
                 "grain": "constituency",
-                "geography_id": "E14000001",
+                "geography_id": "E14001073",
                 "target_id": "dwp.uc.households_by_area",
                 "value": 30.0,
             },
@@ -716,7 +1579,7 @@ def test_uk_front_door_reconciles_per_country_legs_and_builds_uniform_surface():
         index=pd.Index([1, 2], name="household_id"),
     )
     assigned = pd.Series(
-        ["E14000001", "S14000001"],
+        ["E14001073", "S14000001"],
         index=metrics.index,
     )
 
@@ -733,3 +1596,932 @@ def test_uk_front_door_reconciles_per_country_legs_and_builds_uniform_surface():
     )
     _require_uniform_target_surface(problem)
     assert problem.targets.tolist() == [60.0, 40.0]
+
+
+def test_uk_local_target_surface_refuses_bridge_control_fanout() -> None:
+    # dwp.uc.households is a cross-grain bridge control: two cells at one
+    # geography would ride through as duplicate reconciliation rows.
+    specs = [
+        _national_control_spec(
+            f"uc-households-cell-{index}", value=value, target_id="dwp.uc.households"
+        )
+        for index, value in enumerate((40.0, 5.0))
+    ]
+    with pytest.raises(ValueError, match="bridge control"):
+        uk_local_target_surface(
+            TargetRegistry(specs, country="uk"),
+            bound_national_target_ids=("dwp.uc.households",),
+            period=2025,
+        )
+
+
+def test_uk_local_target_surface_receipts_a_single_cell_dropped_by_the_fanout_rule() -> (
+    None
+):
+    specs = [
+        _national_control_spec(f"payment-band-{index}", value=value)
+        for index, value in enumerate((10.0, 20.0))
+    ]
+    specs.append(
+        _national_control_spec(
+            "single-cell-elsewhere", value=7.0, geography_id="K02000001"
+        )
+    )
+    _, receipt = uk_local_target_surface(
+        TargetRegistry(specs, country="uk"),
+        bound_national_target_ids=("dwp.uc.payment_distribution_single",),
+        period=2025,
+    )
+    entries = {
+        (entry["geography_id"], entry["cells"]): entry["reason"]
+        for entry in receipt["fanout_targets_not_controls"]
+    }
+    assert ("K03000001", 2) in entries
+    assert entries[("K02000001", 1)].startswith("Single cell at this geography")
+
+
+def _households_total_fact(period: int, value: float, **overrides):
+    fact = {
+        "concept_alignment": {"canonical_concept": "ons.households_total"},
+        "geography": {"id": "K02000001", "level": "country"},
+        "period": {"type": "calendar_year", "value": period},
+        "dimensions": {},
+        "value": value,
+        "semantic_fact_key": f"ledger.semantic_fact.v2:{period}",
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{period}",
+        "lineage": {"source_record_id": f"ons.table5.all_households.cy{period}"},
+    }
+    fact.update(overrides)
+    return fact
+
+
+def test_uk_ledger_households_total_selects_exactly_one_fact() -> None:
+    facts = (
+        _households_total_fact(2021, 28_119_000.0),
+        _households_total_fact(2025, 29_003_000.0),
+        _households_total_fact(
+            2025,
+            1.0,
+            concept_alignment={"canonical_concept": "ons.average_household_size"},
+        ),
+        _households_total_fact(2025, 5.0, geography={"id": "E92000001"}),
+        _households_total_fact(2025, 7.0, dimensions={"household_type": "lone"}),
+    )
+    reference = uk_ledger_households_total(facts, period=2025)
+    assert reference == {
+        "concept": "ons.households_total",
+        "geography_id": "K02000001",
+        "period": 2025,
+        "value": 29_003_000.0,
+        "semantic_fact_key": "ledger.semantic_fact.v2:2025",
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:2025",
+        "source_record_id": "ons.table5.all_households.cy2025",
+    }
+    with pytest.raises(ValueError, match="found 0"):
+        uk_ledger_households_total(facts, period=2030)
+    with pytest.raises(ValueError, match="found 2"):
+        uk_ledger_households_total(
+            (*facts, _households_total_fact(2025, 29_003_000.0)), period=2025
+        )
+    with pytest.raises(ValueError, match="positive finite"):
+        uk_ledger_households_total((_households_total_fact(2025, 0.0),), period=2025)
+
+
+def _tenure_spec(
+    area: str,
+    value: float,
+    *,
+    from_period: int | None = None,
+    to_period: int | None = None,
+) -> TargetSpec:
+    metadata = {
+        "contract_target_id": "ons.tenure.social_rent",
+        "geography_level": "local_authority",
+        "geography_id": area,
+    }
+    if from_period is not None:
+        metadata["uprating_from_period"] = from_period
+    if to_period is not None:
+        metadata["uprating_to_period"] = to_period
+    return TargetSpec(
+        name=f"ons.tenure.social_rent@{area}@2025",
+        entity="household",
+        value=value,
+        measure="tenure/social_rent",
+        period=2025,
+        source="ONS",
+        family="ons_housing",
+        metadata=metadata,
+    )
+
+
+def _census_household_registry(*extra: TargetSpec) -> TargetRegistry:
+    return TargetRegistry(
+        [
+            _household_spec(
+                "E14001073", "constituency", 10.0, from_period=2021, to_period=2025
+            ),
+            _household_spec(
+                "S14000001", "constituency", 20.0, from_period=2022, to_period=2025
+            ),
+            _household_spec(
+                "E09000001", "local_authority", 12.0, from_period=2021, to_period=2025
+            ),
+            _household_spec(
+                "S12000005", "local_authority", 18.0, from_period=2022, to_period=2025
+            ),
+            *extra,
+        ],
+        country="uk",
+    )
+
+
+def test_uk_census_household_uprating_uses_each_compiled_grain() -> None:
+    registry = _census_household_registry()
+    reference = uk_ledger_households_total(
+        (_households_total_fact(2025, 33.0),), period=2025
+    )
+    uprating = uk_census_household_uprating(registry, reference, period=2025)
+
+    assert uprating == {
+        "applied": True,
+        "period": 2025,
+        "reference": reference,
+        "grains": {
+            "constituency": {
+                "cells": 2,
+                "census_households_total": 30.0,
+                "census_years": [2021, 2022],
+                "factor": pytest.approx(1.1),
+            },
+            "local_authority": {
+                "cells": 2,
+                "census_households_total": 30.0,
+                "census_years": [2021, 2022],
+                "factor": pytest.approx(1.1),
+            },
+        },
+        "adjudication": (
+            "microcosm#887 (per-grain Chronicle denominator supersedes #762 "
+            "A15; A17 rule unchanged, factor moves from 1.0335759 to the "
+            "LA-grain 1.0335595)"
+        ),
+    }
+    with pytest.raises(ValueError, match="calibration period"):
+        uk_census_household_uprating(registry, reference, period=2024)
+
+
+def test_uk_local_target_surface_uprates_households_and_tenure_by_grain() -> None:
+    household_bridge = UK_CROSS_GRAIN_BRIDGES[0]
+    bound_composition = household_bridge.higher_target_ids[0]
+    composition_spec = TargetSpec(
+        name=bound_composition,
+        entity="household",
+        value=1.0,
+        measure="household_composition",
+        period=2025,
+        source="ONS",
+        family="household_composition",
+        metadata={
+            "contract_target_id": bound_composition,
+            "ledger_geography_level": "country",
+            "ledger_geography_id": "K02000001",
+        },
+    )
+    reviewed = {
+        target_id: {"tracking": "microcosm#887", "reason": "test exclusion"}
+        for target_id in household_bridge.higher_target_ids[1:]
+    }
+    registry = _census_household_registry(
+        composition_spec,
+        _tenure_spec("E09000001", 5.0, from_period=2021, to_period=2025),
+        _tenure_spec("S12000005", 4.0, from_period=2022, to_period=2025),
+        _tenure_spec("E06000002", 3.0),
+    )
+    reference = uk_ledger_households_total(
+        (_households_total_fact(2025, 33.0),), period=2025
+    )
+    uprating = uk_census_household_uprating(registry, reference, period=2025)
+
+    as_published, receipt = uk_local_target_surface(
+        registry,
+        bound_national_target_ids=(bound_composition,),
+        period=2025,
+        reviewed_unbound_higher_targets=reviewed,
+    )
+    assert as_published.loc[
+        as_published["metric"] == "households", "value"
+    ].tolist() == [10.0, 20.0, 10.0, 20.0]
+    assert receipt["census_household_uprating"]["applied"] is False
+
+    surface, receipt = uk_local_target_surface(
+        registry,
+        bound_national_target_ids=(bound_composition,),
+        period=2025,
+        reviewed_unbound_higher_targets=reviewed,
+        census_household_uprating=uprating,
+    )
+    assert surface.loc[surface["metric"] == "households", "value"].tolist() == (
+        pytest.approx([11.0, 22.0, 11.0, 22.0])
+    )
+    assert surface.loc[
+        surface["metric"] == "tenure/social_rent", "value"
+    ].tolist() == pytest.approx([5.5, 4.4, 3.0])
+    household_receipt = receipt["census_household_uprating"]["household_cells"]
+    assert household_receipt["cells"] == 4
+    assert household_receipt["by_census_vintage"] == {"2021": 2, "2022": 2}
+    tenure_receipt = receipt["census_household_uprating"]["tenure_cells"]
+    assert tenure_receipt["cells"] == 2
+    assert tenure_receipt["skipped_cells"] == 1
+    assert tenure_receipt["by_census_vintage"] == {"2021": 1, "2022": 1}
+    assert "A17" in tenure_receipt["adjudication"]
+
+
+def test_uk_local_target_surface_refuses_ineligible_household_denominator() -> None:
+    registry = _census_household_registry()
+    reference = uk_ledger_households_total(
+        (_households_total_fact(2025, 33.0),), period=2025
+    )
+    uprating = uk_census_household_uprating(registry, reference, period=2025)
+    bad_specs = list(registry.specs)
+    bad_specs[0] = _household_spec(
+        "E14001073", "constituency", 10.0, from_period=2020, to_period=2025
+    )
+    with pytest.raises(ValueError, match="denominator.*not eligible"):
+        uk_local_target_surface(
+            TargetRegistry(bad_specs, country="uk"),
+            bound_national_target_ids=(),
+            period=2025,
+            census_household_uprating=uprating,
+        )
+
+
+def _private_rent_target_frame() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "area_type": "la",
+                "area_code": "E09000001",
+                "metric": "rent/private_rent",
+                "family": "private_rent",
+                "value": 1_000.0,
+                "target_name": "ons.rent.private_rent@E06000001@2025",
+            },
+            {
+                "area_type": "la",
+                "area_code": "E09000001",
+                "metric": "tenure/private_rent",
+                "family": "tenure",
+                "value": 20.0,
+                "target_name": "ons.tenure.private_rent@E06000001@2025",
+            },
+            {
+                "area_type": "la",
+                "area_code": "E06000002",
+                "metric": "rent/private_rent",
+                "family": "private_rent",
+                "value": 750.0,
+                "target_name": "ons.rent.private_rent@E06000002@2025",
+            },
+            {
+                "area_type": "la",
+                "area_code": "E06000002",
+                "metric": "tenure/private_rent",
+                "family": "tenure",
+                "value": 30.0,
+                "target_name": "ons.tenure.private_rent@E06000002@2025",
+            },
+            {
+                "area_type": "la",
+                "area_code": "E06000003",
+                "metric": "tenure/private_rent",
+                "family": "tenure",
+                "value": 40.0,
+                "target_name": "ons.tenure.private_rent@E06000003@2025",
+            },
+        ]
+    )
+
+
+def test_uk_private_rent_mean_to_total_composes_and_receipts_cells() -> None:
+    composed, receipt = uk_private_rent_mean_to_total(_private_rent_target_frame())
+
+    rent_rows = composed.loc[composed["metric"] == "rent/private_rent"]
+    assert rent_rows["value"].tolist() == [12 * 1_000.0 * 20.0, 12 * 750.0 * 30.0]
+    assert rent_rows["metadata"].tolist() == [
+        {
+            "price_level_mean_monthly": 1_000.0,
+            "renter_households": 20.0,
+            "renter_households_target_name": ("ons.tenure.private_rent@E06000001@2025"),
+        },
+        {
+            "price_level_mean_monthly": 750.0,
+            "renter_households": 30.0,
+            "renter_households_target_name": ("ons.tenure.private_rent@E06000002@2025"),
+        },
+    ]
+    assert receipt == {
+        "applied": True,
+        "months": 12,
+        "cells": 2,
+        "adjudication": "microcosm#355 (ruling 2026-09-08)",
+        "reason": (
+            "PIPR supplies monthly private-rent price levels while the bound "
+            "metric is an annual weighted total; compose each mean with the "
+            "same authority's A17-uprated private-renter household count."
+        ),
+        "price_level_source": "ons_pipr_private_rents calendar_year_average 2025",
+        "renter_count_source": "ons.tenure.private_rent (A17-uprated)",
+        "cells_detail": [
+            {
+                "area_code": "E09000001",
+                "mean_monthly_rent": 1_000.0,
+                "renter_households": 20.0,
+                "total": 240_000.0,
+            },
+            {
+                "area_code": "E06000002",
+                "mean_monthly_rent": 750.0,
+                "renter_households": 30.0,
+                "total": 270_000.0,
+            },
+        ],
+    }
+
+
+def test_uk_private_rent_mean_to_total_refuses_missing_tenure_by_area() -> None:
+    frame = _private_rent_target_frame().loc[
+        lambda rows: (
+            ~(
+                (rows["area_code"] == "E06000002")
+                & (rows["metric"] == "tenure/private_rent")
+            )
+        )
+    ]
+
+    with pytest.raises(ValueError, match="E06000002"):
+        uk_private_rent_mean_to_total(frame)
+
+
+@pytest.mark.parametrize(
+    ("metric", "value"),
+    [("tenure/private_rent", 0.0), ("rent/private_rent", float("nan"))],
+)
+def test_uk_private_rent_mean_to_total_refuses_invalid_inputs_by_area(
+    metric, value
+) -> None:
+    frame = _private_rent_target_frame()
+    frame.loc[
+        (frame["area_code"] == "E09000001") & (frame["metric"] == metric), "value"
+    ] = value
+
+    with pytest.raises(ValueError, match="E09000001"):
+        uk_private_rent_mean_to_total(frame)
+
+
+def test_uk_private_rent_mean_to_total_reports_no_rent_rows() -> None:
+    frame = _private_rent_target_frame().loc[
+        lambda rows: rows["metric"] != "rent/private_rent"
+    ]
+
+    unchanged, receipt = uk_private_rent_mean_to_total(frame)
+
+    pd.testing.assert_frame_equal(unchanged, frame)
+    assert receipt == {
+        "applied": False,
+        "reason": "no private_rent rows on the surface",
+    }
+
+
+def test_uk_local_target_surface_composes_rent_after_a17_uprating() -> None:
+    def spec(name, metric, value):
+        return TargetSpec(
+            name=name,
+            entity="household",
+            value=value,
+            measure=metric,
+            period=2025,
+            source="ONS",
+            family="ons_housing",
+            metadata={
+                "contract_target_id": name.split("@", 1)[0],
+                "geography_level": "local_authority",
+                "geography_id": "E09000001",
+                "uprating_from_period": 2021,
+                "uprating_to_period": 2025,
+            },
+        )
+
+    registry = TargetRegistry(
+        [
+            spec(
+                "ons.rent.private_rent@E06000001@2025",
+                "rent/private_rent",
+                1_000.0,
+            ),
+            spec(
+                "ons.tenure.private_rent@E06000001@2025",
+                "tenure/private_rent",
+                20.0,
+            ),
+        ],
+        country="uk",
+    )
+    uprating = {
+        "applied": True,
+        "grains": {
+            "local_authority": {
+                "cells": 1,
+                "census_households_total": 10.0,
+                "census_years": [2021],
+                "factor": 1.1,
+            }
+        },
+    }
+
+    surface, cross_grain = uk_local_target_surface(
+        registry,
+        bound_national_target_ids=(),
+        period=2025,
+        census_household_uprating=uprating,
+    )
+
+    rent = surface.loc[surface["metric"] == "rent/private_rent"].iloc[0]
+    assert rent["value"] == pytest.approx(12 * 1_000.0 * 22.0)
+    assert rent["metadata"]["price_level_mean_monthly"] == 1_000.0
+    assert rent["metadata"]["renter_households"] == pytest.approx(22.0)
+    receipt = cross_grain["private_rent_mean_to_total"]
+    assert receipt["applied"] is True
+    assert receipt["cells_detail"][0]["renter_households"] == pytest.approx(22.0)
+
+
+@pytest.mark.parametrize(
+    ("from_period", "to_period", "reason", "eligible"),
+    [
+        (None, None, "no_identity_hold", False),
+        (2020, 2025, "hold_not_from_grain_census_vintage_or_wrong_period", False),
+        (2021, 2024, "hold_not_from_grain_census_vintage_or_wrong_period", False),
+        (2021, 2025, "census_vintage_hold_uprated", True),
+    ],
+)
+def test_tenure_receipt_counts_attempted_and_skipped_holds(
+    from_period, to_period, reason, eligible
+):
+    registry = _census_household_registry(
+        _tenure_spec("E09000001", 5.0, from_period=from_period, to_period=to_period)
+    )
+    reference = uk_ledger_households_total(
+        (_households_total_fact(2025, 33.0),), period=2025
+    )
+    uprating = uk_census_household_uprating(registry, reference, period=2025)
+    surface, receipt = uk_local_target_surface(
+        registry,
+        bound_national_target_ids=(),
+        period=2025,
+        census_household_uprating=uprating,
+    )
+    tenure = receipt["census_household_uprating"]["tenure_cells"]
+    assert tenure["total_cells"] == 1
+    assert tenure["attempted_cells"] == int(
+        from_period is not None or to_period is not None
+    )
+    assert tenure["eligible_cells"] == tenure["cells"] == int(eligible)
+    assert tenure["skipped_cells"] == int(not eligible)
+    assert tenure["holds"][0]["reason"] == reason
+    assert surface.loc[
+        surface["metric"] == "tenure/social_rent", "value"
+    ].tolist() == pytest.approx([5.5 if eligible else 5.0])
+
+
+def test_uk_cross_grain_legs_are_the_region_tier() -> None:
+    codes = list(UK_REGION_TIER_CODES)
+    assert len(codes) == 12
+    english = [code for code in codes if code.startswith("E12")]
+    assert len(english) == 9
+    legs = UK_CROSS_GRAIN_PARENT_GEOGRAPHY_LEGS
+    for code in codes:
+        assert legs[code] == (code,)
+    assert legs["K02000001"] == tuple(codes)
+    assert legs["K03000001"] == (*english, "W92000004", "S92000003")
+    assert legs["E92000001"] == tuple(english)
+    assert UK_CROSS_GRAIN_RULE.parent_geography_legs is legs
+    assert "England" not in {leg for legs_ in legs.values() for leg in legs_}
+
+
+def test_uk_cross_grain_leg_of_area_resolves_regions_nations_and_refuses() -> None:
+    # Tier codes are their own leg.
+    assert _uk_cross_grain_leg_of_area("E12000007") == "E12000007"
+    assert _uk_cross_grain_leg_of_area("W92000004") == "W92000004"
+    # Nations resolve by GSS prefix without a crosswalk lookup.
+    assert _uk_cross_grain_leg_of_area("W07000041") == "W92000004"
+    assert _uk_cross_grain_leg_of_area("S14000001") == "S92000003"
+    assert _uk_cross_grain_leg_of_area("N06000001") == "N92000002"
+    # English areas resolve through the crosswalk's ladder-derived membership.
+    assert _uk_cross_grain_leg_of_area("E14001073") == "E12000007"
+    assert _uk_cross_grain_leg_of_area("E09000001") == "E12000007"
+    assert _uk_cross_grain_leg_of_area("E06000001") == "E12000001"
+    with pytest.raises(ValueError, match="not in the local-area crosswalk"):
+        _uk_cross_grain_leg_of_area("E14000001")
+    with pytest.raises(ValueError, match="Unknown UK area code prefix"):
+        _uk_cross_grain_leg_of_area("X12345678")
+    with pytest.raises(ValueError, match="must not be blank"):
+        _uk_cross_grain_leg_of_area(" ")
+
+
+def test_align_uk_national_registry_parity_fixture_renames_regional_rows() -> None:
+    fixture = {
+        "rows": [
+            {"name": "ons/london_age_0_9", "value": 1.0, "period": 2025},
+            {"name": "ons/yorkshire_and_the_humber_age_80_89", "value": 2.0},
+            {"name": "ons/northern_ireland_age_10_19", "value": 3.0},
+            {"name": "voa/council_tax/NORTH_EAST/A", "value": 4.0},
+            {"name": "voa/council_tax/LONDON/total", "value": 5.0},
+            {"name": "voa/council_tax/WALES/A", "value": 6.0},
+            {"name": "ons/female_0_4", "value": 7.0},
+            {"name": "ons/uk_population", "value": 8.0},
+            "not-a-row",
+        ]
+    }
+    aligned = align_uk_national_registry_parity_fixture(fixture)
+    assert [
+        row if isinstance(row, str) else row["name"] for row in aligned["rows"]
+    ] == [
+        "ons.population.age_0_9_by_region@E12000007",
+        "ons.population.age_80_89_by_region@E12000003",
+        "ons.population.age_10_19_by_region@N92000002",
+        "mhclg.council_tax_stock.band_a@E12000001",
+        "mhclg.council_tax_stock.total@E12000007",
+        "welshgov.council_tax_stock.band_a",
+        "ons/female_0_4",
+        "ons/uk_population",
+        "not-a-row",
+    ]
+    london = aligned["rows"][0]
+    assert london["measure"] == london["name"]
+    assert london["contract_target_id"] == "ons.population.age_0_9_by_region"
+    assert london["value"] == 1.0 and london["period"] == 2025
+    # The input is never mutated.
+    assert fixture["rows"][0]["name"] == "ons/london_age_0_9"
+
+
+def _region_tier_control_spec(
+    area: str,
+    value: float,
+    *,
+    ledger_level: str,
+    cross_grain_grain: str | None,
+) -> TargetSpec:
+    metadata = {
+        "contract_target_id": "ons.population.age_0_9_by_region",
+        "ledger_geography_level": ledger_level,
+        "ledger_geography_id": area,
+    }
+    if cross_grain_grain is not None:
+        metadata["cross_grain_grain"] = cross_grain_grain
+    return TargetSpec(
+        name=f"ons.population.age_0_9_by_region@{area}",
+        entity="person",
+        value=value,
+        measure=f"ons.population.age_0_9_by_region@{area}",
+        period=2025,
+        source="synthetic region tier",
+        family="ons_population",
+        metadata=metadata,
+    )
+
+
+def _local_age_spec(area: str, value: float) -> TargetSpec:
+    return TargetSpec(
+        name=f"ons.age.0_10@{area}",
+        entity="person",
+        value=value,
+        measure="age/0_10",
+        period=2025,
+        source="synthetic local age",
+        family="ons_population",
+        metadata={
+            "contract_target_id": "ons.age.0_10",
+            "geography_level": "constituency",
+            "geography_id": area,
+        },
+    )
+
+
+def test_uk_local_target_surface_places_nation_rows_at_the_region_grain() -> None:
+    """Chronicle stamps Wales at ``country``; the stamp must not outrank London."""
+
+    registry = TargetRegistry(
+        [
+            _region_tier_control_spec(
+                "E12000007", 100.0, ledger_level="region", cross_grain_grain="region"
+            ),
+            _region_tier_control_spec(
+                "W92000004", 40.0, ledger_level="country", cross_grain_grain="region"
+            ),
+            _local_age_spec("E14001073", 60.0),
+            _local_age_spec("W07000041", 30.0),
+        ],
+        country="uk",
+    )
+    surface, receipt = uk_local_target_surface(
+        registry,
+        bound_national_target_ids=("ons.population.age_0_9_by_region",),
+        period=2025,
+    )
+    age = surface.loc[surface["metric"] == "age/0_10"]
+    assert age["value"].tolist() == pytest.approx([100.0, 40.0])
+    group = next(
+        group
+        for group in receipt["groups"]
+        if group["bridge_id"] == "national_age_0_9_vs_local_age_0_10"
+    )
+    assert group["winning_grain"] == "region"
+    assert [leg["parent_geography_id"] for leg in group["legs"]] == [
+        "E12000007",
+        "W92000004",
+    ]
+
+
+def test_uk_local_target_surface_reconciles_mixed_country_and_region_tiers() -> None:
+    """A nation row left at Chronicle's country grain still parents its own
+    constituencies: each lower leg takes its nearest covering control."""
+
+    registry = TargetRegistry(
+        [
+            _region_tier_control_spec(
+                "E12000007", 100.0, ledger_level="region", cross_grain_grain="region"
+            ),
+            _region_tier_control_spec(
+                "W92000004", 40.0, ledger_level="country", cross_grain_grain=None
+            ),
+            _local_age_spec("E14001073", 60.0),
+            _local_age_spec("W07000041", 30.0),
+        ],
+        country="uk",
+    )
+    surface, receipt = uk_local_target_surface(
+        registry,
+        bound_national_target_ids=("ons.population.age_0_9_by_region",),
+        period=2025,
+    )
+    age = surface.loc[surface["metric"] == "age/0_10"]
+    assert age["value"].tolist() == pytest.approx([100.0, 40.0])
+    pairs = {
+        group["inconsistency_id"].rsplit(":", 1)[1]
+        for group in receipt["groups"]
+        if group["bridge_id"] == "national_age_0_9_vs_local_age_0_10"
+    }
+    assert pairs == {
+        "country_over_region",
+        "region_over_constituency",
+        "country_over_constituency",
+    }
+    assert {e["parent_geography_id"] for e in receipt["absent_middle_tier_legs"]} == {
+        "W92000004"
+    }
+
+
+def test_voa_region_controls_and_the_scottish_country_control_share_the_surface() -> (
+    None
+):
+    """Vahid's #906 repro: the English VOA band rows at region grain and the
+    Scottish CTAXBASE row at country grain carry one measurement signature;
+    each authority reconciles to the control that covers its leg."""
+
+    rows = [
+        ("country", "S92000003", "scotgov.council_tax_stock.band_a", 40.0),
+        ("region", "E12000007", "mhclg.council_tax_stock.band_a", 100.0),
+        ("region", "E12000001", "mhclg.council_tax_stock.band_a", 50.0),
+        ("la", "E09000001", "mhclg.council_tax_stock.by_area.band_a", 60.0),
+        ("la", "E06000001", "mhclg.council_tax_stock.by_area.band_a", 20.0),
+        ("la", "S12000033", "mhclg.council_tax_stock.by_area.band_a", 30.0),
+    ]
+    surface = pd.DataFrame(
+        rows, columns=["grain", "geography_id", "target_id", "value"]
+    )
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        surface,
+        ("scotgov.council_tax_stock.band_a", "mhclg.council_tax_stock.band_a"),
+    )
+    assert reconciled["value"].tolist() == pytest.approx(
+        [40.0, 100.0, 50.0, 100.0, 50.0, 40.0]
+    )
+    pairs = {
+        group["inconsistency_id"].rsplit(":", 1)[1]: group
+        for group in receipt["groups"]
+    }
+    assert [leg["parent_geography_id"] for leg in pairs["region_over_la"]["legs"]] == [
+        "E12000001",
+        "E12000007",
+    ]
+    assert [leg["parent_geography_id"] for leg in pairs["country_over_la"]["legs"]] == [
+        "S92000003"
+    ]
+    assert receipt["empty_legs_licensed"] == []
+    # Without the Scottish control bound, the Scottish authority has no parent
+    # and the surface refuses rather than borrowing an English region.
+    with pytest.raises(ValueError, match="unparented lower-grain leg"):
+        apply_uk_cross_grain_reconciliation(
+            surface.loc[surface["target_id"] != "scotgov.council_tax_stock.band_a"],
+            ("mhclg.council_tax_stock.band_a",),
+        )
+
+
+def test_uk_local_target_surface_refuses_an_unknown_cross_grain_grain() -> None:
+    registry = TargetRegistry(
+        [
+            _region_tier_control_spec(
+                "E12000007", 100.0, ledger_level="region", cross_grain_grain="itl2"
+            ),
+            _local_age_spec("E14001073", 60.0),
+        ],
+        country="uk",
+    )
+    with pytest.raises(ValueError, match="cross_grain_grain 'itl2'"):
+        uk_local_target_surface(
+            registry,
+            bound_national_target_ids=("ons.population.age_0_9_by_region",),
+            period=2025,
+        )
+
+
+def test_run_ladder_membership_resolves_legs_the_crosswalk_does_not_know() -> None:
+    """A run supplies its own ladder's area -> tier mapping; the crosswalk is the fallback."""
+
+    run_legs = uk_cross_grain_leg_of_area(
+        {"E14000001": "E12000007", "E06000001": "E12000001"}
+    )
+    assert run_legs("E14000001") == "E12000007"
+    assert run_legs("E06000001") == "E12000001"
+    # Tier codes and nations never consult the mapping.
+    assert run_legs("E12000003") == "E12000003"
+    assert run_legs("W07000041") == "W92000004"
+    with pytest.raises(ValueError, match="run's ladder membership"):
+        run_legs("E14001073")
+    # The default resolver reads the committed crosswalk.
+    assert _uk_cross_grain_leg_of_area("E14001073") == "E12000007"
+    with pytest.raises(ValueError, match="local-area crosswalk"):
+        _uk_cross_grain_leg_of_area("E14000001")
+
+    national_id = "ons.population.age_0_9_by_region"
+    surface = pd.DataFrame(
+        [
+            {
+                "grain": "region",
+                "geography_id": "E12000007",
+                "target_id": national_id,
+                "value": 100.0,
+            },
+            {
+                "grain": "constituency",
+                "geography_id": "E14000001",
+                "target_id": "ons.age.0_10",
+                "value": 60.0,
+            },
+        ]
+    )
+    reconciled, receipt = apply_uk_cross_grain_reconciliation(
+        surface, (national_id,), area_region_codes={"E14000001": "E12000007"}
+    )
+    assert reconciled["value"].tolist() == pytest.approx([100.0, 100.0])
+    assert receipt["groups"][0]["legs"][0]["parent_geography_id"] == "E12000007"
+    with pytest.raises(ValueError, match="local-area crosswalk"):
+        apply_uk_cross_grain_reconciliation(surface, (national_id,))
+
+
+_COMPOSITION_IDS = (
+    "ons.household_composition.lone_households_under_65",
+    "ons.household_composition.lone_households_over_65",
+    "ons.household_composition.unrelated_adult_households",
+    "ons.household_composition.couple_no_children_households",
+    "ons.household_composition.couple_under_3_children_households",
+    "ons.household_composition.couple_3_plus_children_households",
+    "ons.household_composition.couple_non_dependent_children_only_households",
+    "ons.household_composition.lone_parent_dependent_children_households",
+    "ons.household_composition.lone_parent_non_dependent_children_households",
+    "ons.household_composition.multi_family_households",
+)
+
+
+def _stock_total_spec(
+    area: str, value: float, *, target_id: str, ledger_level: str, region_grain: bool
+) -> TargetSpec:
+    metadata = {
+        "contract_target_id": target_id,
+        "ledger_geography_level": ledger_level,
+        "ledger_geography_id": area,
+    }
+    if region_grain:
+        metadata["cross_grain_grain"] = "region"
+    name = f"{target_id}@{area}" if region_grain else target_id
+    return TargetSpec(
+        name=name,
+        entity="household",
+        value=value,
+        measure=name,
+        period=2025,
+        source="synthetic stock total",
+        family="council_tax_stock",
+        metadata=metadata,
+    )
+
+
+def test_household_composition_partition_and_stock_totals_reconcile_together() -> None:
+    """Vahid's #906 round-2 surface: the ten composition rows (a UK partition),
+    the English MHCLG stock totals at region grain (microcosm#929) and the Scottish CTAXBASE
+    total at country grain all count households with no band filter. They
+    must not fall into one signature group, or two country controls meet on
+    the Scottish leg and the UK partition would rescale England's stock."""
+
+    specs = [
+        _national_control_spec(
+            f"composition-{index}",
+            value=10.0,
+            target_id=target_id,
+            geography_level="country",
+            geography_id="K02000001",
+        )
+        for index, target_id in enumerate(_COMPOSITION_IDS)
+    ]
+    specs.extend(
+        [
+            _stock_total_spec(
+                "E12000007",
+                100.0,
+                target_id="mhclg.council_tax_stock.total",
+                ledger_level="region",
+                region_grain=True,
+            ),
+            _stock_total_spec(
+                "E12000001",
+                50.0,
+                target_id="mhclg.council_tax_stock.total",
+                ledger_level="region",
+                region_grain=True,
+            ),
+            _stock_total_spec(
+                "S92000003",
+                40.0,
+                target_id="scotgov.council_tax_stock.total",
+                ledger_level="country",
+                region_grain=False,
+            ),
+            _household_spec("E14001073", "constituency", 60.0),
+            _household_spec("W07000041", "constituency", 30.0),
+        ]
+    )
+    surface, receipt = uk_local_target_surface(
+        TargetRegistry(specs, country="uk"),
+        bound_national_target_ids=(
+            *_COMPOSITION_IDS,
+            "mhclg.council_tax_stock.total",
+            "scotgov.council_tax_stock.total",
+        ),
+        period=2025,
+    )
+    # The composition partition (100 households UK-wide) still parents the
+    # census cells; the stock totals never enter that group.
+    households = surface.loc[surface["metric"] == "households", "value"].tolist()
+    assert households == pytest.approx([100.0 * 60.0 / 90.0, 100.0 * 30.0 / 90.0])
+    group_ids = {group["inconsistency_id"] for group in receipt["groups"]}
+    assert all(
+        "uk.household.count" in gid or "national_household" in gid for gid in group_ids
+    )
+    stock_groups = [
+        group
+        for group in receipt["groups"]
+        if any(
+            "council_tax_stock" in target_id
+            for leg in group["legs"]
+            for target_id in leg["higher_target_ids"]
+        )
+    ]
+    assert stock_groups == []
+
+
+def test_leg_licences_follow_the_resolver_the_surface_reconciles_with() -> None:
+    """A run ladder that places a synthetic English authority in London yields
+    a London licence; the committed-crosswalk resolver refuses that code."""
+
+    membership = {
+        "areas_by_geography_level": {"local_authority": ["E06099999", "S12000005"]},
+        "signed_deferrals": [
+            {
+                "target_id": "voa.council_tax_stock.by_area.band_a",
+                "geography_level": "local_authority",
+                "area_ids": ["E06099999"],
+            }
+        ],
+    }
+    run_legs = uk_cross_grain_leg_of_area({"E06099999": "E12000007"})
+    assert _uk_licensed_empty_legs_from_membership(
+        membership, leg_of_area=run_legs
+    ) == {"voa.council_tax_stock.by_area.band_a": frozenset({"E12000007"})}
+    with pytest.raises(ValueError, match="local-area crosswalk"):
+        _uk_licensed_empty_legs_from_membership(membership)
+    # A roster area the run's ladder does not carry can sit on no surface row:
+    # it is skipped under the run resolver, never a refusal.
+    partial = uk_cross_grain_leg_of_area({"E06099998": "E12000001"})
+    assert (
+        _uk_licensed_empty_legs_from_membership(membership, leg_of_area=partial) == {}
+    )

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -161,16 +163,21 @@ def test_uk_spine_graph_contains_manifest_stages_and_named_exclusions() -> None:
     graph = uk_spine_graph(spec)
     ids = {node.id for node in graph.nodes}
 
-    # 28 with the #832 uc_reporter_redraw and #685 uc_deduction_attributes
-    # stages; the two named exclusions are the certified-pair alternatives,
-    # not steps of this pipeline.
-    assert len(expected) == 28
+    # 29 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes and
+    # #791 frs_relationships stages; the two named exclusions are the
+    # certified-pair alternatives, not steps of this pipeline.
+    assert len(expected) == 29
     assert UK_SPINE_EXCLUSIONS == {
         "frs_hmrc_retained_leaves",
         "hmrc_spi_income",
     }
     assert set(expected) <= ids
     assert not (UK_SPINE_EXCLUSIONS & ids)
+    root_dtypes = {
+        (owned.entity, owned.column): owned.dtype
+        for owned in graph.node("create_uk_frs").outputs
+    }
+    assert root_dtypes[("person", "is_uc_claimant")] == "bool"
     assert {
         node.id for node in graph.nodes if node.structural is StructuralDelta.EXPAND
     } == UK_SPINE_STRUCTURAL_STAGES
@@ -229,7 +236,6 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
     assert graph.node("lcfs_consumption").sources == (
         "lcfs_household",
         "lcfs_person",
-        "was",
     )
     assert graph.node("hmrc_spi_income_spine").sources == (
         "spi",
@@ -255,6 +261,75 @@ def test_uk_registry_covers_every_kernel_ref_and_hashes_stage_modules() -> None:
     assert registry.implementation_hash(
         "uk.stage.frs_employment@1"
     ) != registry.implementation_hash("uk.stage.frs_council_tax@1")
+
+
+def test_uc_relationship_helper_changes_affected_kernel_hashes(monkeypatch) -> None:
+    from microcosm.build.uk_runtime import uc_relationships
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    affected_refs = (
+        graph.node("create_uk_frs").kernel,
+        graph.node("uc_reporter_redraw").kernel,
+        graph.node("uc_capital_coherence").kernel,
+    )
+    control_ref = graph.node("frs_council_tax").kernel
+    before = {
+        ref: registry.implementation_hash(ref) for ref in (*affected_refs, control_ref)
+    }
+    helper_path = Path(uc_relationships.__file__).resolve()
+    original_read_bytes = Path.read_bytes
+
+    def changed_helper_bytes(path: Path) -> bytes:
+        content = original_read_bytes(path)
+        if path.resolve() == helper_path:
+            return content + b"\n# A helper-only source change.\n"
+        return content
+
+    monkeypatch.setattr(Path, "read_bytes", changed_helper_bytes)
+
+    for ref in affected_refs:
+        assert registry.implementation_hash(ref) != before[ref]
+    assert registry.implementation_hash(control_ref) == before[control_ref]
+
+
+def test_uk_adapter_source_changes_invalidate_all_consuming_stages(monkeypatch):
+    from microcosm.frame.adapters import policyengine_uk
+
+    graph = uk_spine_graph()
+    registry = uk_registry(graph=graph)
+    stages = (
+        "frs_legacy_proxies",
+        "frs_education_grant_split",
+        "frs_brma",
+        "was_wealth",
+        "lcfs_consumption",
+        "etb_vat",
+        "etb_services",
+        "uc_reporter_redraw",
+    )
+    affected = [graph.node(stage).kernel for stage in stages]
+    controls = [
+        graph.node(stage).kernel
+        for stage in ("frs_council_tax", "uc_capital_coherence")
+    ]
+    before = {ref: registry.implementation_hash(ref) for ref in affected + controls}
+    adapter_path = Path(policyengine_uk.__file__).resolve()
+    original = Path.read_bytes
+
+    def changed_adapter_bytes(path):
+        content = original(path)
+        return (
+            content + b"\n# adapter-only change\n"
+            if path.resolve() == adapter_path
+            else content
+        )
+
+    monkeypatch.setattr(Path, "read_bytes", changed_adapter_bytes)
+    for ref in affected:
+        assert registry.implementation_hash(ref) != before[ref]
+    for ref in controls:
+        assert registry.implementation_hash(ref) == before[ref]
 
 
 def test_uk_graph_json_round_trip_is_canonical() -> None:

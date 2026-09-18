@@ -14,37 +14,63 @@ def _load(name: str) -> dict:
     return json.loads((UK_PACKAGE / name).read_text(encoding="utf-8"))
 
 
-def test_need_energy_targets_shape_and_citations() -> None:
-    payload = _load("need_energy_targets.json")
+def test_ofgem_region_crosswalk_covers_every_frs_region_once() -> None:
+    from microcosm.build.uk_runtime.energy_pricing import load_ofgem_region_crosswalk
+    from microcosm.build.uk_runtime.lcfs_consumption import LCFS_REGIONS
+    from microcosm.build.uk_runtime.ledger_fact_vendoring import load_vendored_resource
 
+    payload = load_ofgem_region_crosswalk()
     assert payload["version"] == 1
     assert payload["country"] == "uk"
-    assert payload["source"]["chronicle_candidate"] is True
-    assert payload["source"]["urls"]
-    assert "NEED 2023" in payload["source"]["citation"]
-    assert len(payload["income_bands"]) == 10
-    assert payload["tenure"]["map"]["OWNED_OUTRIGHT"] == "owner"
-    assert payload["accommodation"]["map"]["FLAT"] == "flat"
-    assert "NORTHERN_IRELAND" not in payload["region"]["gas_kwh"]
+    assert not (UK_PACKAGE / "need_energy_targets.json").exists()
+    mapping = payload["mapping"]
+    assert set(mapping) == set(LCFS_REGIONS.values())
+    ofgem_ids = {
+        row["geography"]["id"]
+        for row in load_vendored_resource("ofgem_price_cap_facts.json")["rows"]
+    }
+    assert set(mapping.values()) <= ofgem_ids
+    assert mapping["NORTHERN_IRELAND"] == payload["gb_geography_id"] == "K03000001"
+    assert all(
+        value.startswith("ofgem:")
+        for region, value in mapping.items()
+        if region != "NORTHERN_IRELAND"
+    )
+    # The QEP price-region and DESNZ subnational-area legs cover the same
+    # twelve FRS regions; QEP ids are the vendored groupby ids, areas the
+    # vendored geography ids (Northern Ireland has no subnational row).
+    qep = payload["qep_price_region_mapping"]
+    assert set(qep) == set(LCFS_REGIONS.values())
+    qep_ids = {
+        row["layout"]["groupby_value_id"]
+        for row in load_vendored_resource("qep_energy_prices.json")["rows"]
+    }
+    assert set(qep.values()) <= qep_ids
+    assert payload["qep_uk_average_id"] in qep_ids
+    areas = payload["subnational_area_mapping"]
+    assert set(areas) == set(LCFS_REGIONS.values())
+    area_ids = {
+        row["geography"]["id"]
+        for row in load_vendored_resource("desnz_domestic_energy_facts.json")["rows"]
+    }
+    assert {a for a in areas.values() if a is not None} <= area_ids
+    assert areas["NORTHERN_IRELAND"] is None
 
 
 def test_policy_anchor_resources_carry_parameter_paths() -> None:
-    lcfs = _load("lcfs_consumption_anchors.json")
     vat = _load("etb_policy_anchors.json")
     services = _load("etb_services_anchors.json")
 
-    assert lcfs["source"]["chronicle_candidate"] is True
-    assert lcfs["source"]["urls"]
+    assert not (UK_PACKAGE / "lcfs_consumption_anchors.json").exists()
     assert vat["source"]["urls"]
     assert services["source"]["urls"]
-    assert lcfs["cpi"]["parameter_path"]
     assert vat["vat"]["standard_rate"]["parameter_path"] == (
         "gov.hmrc.vat.standard_rate"
     )
     assert vat["vat"]["reduced_rate_share"]["value"] == 0.025
-    assert services["rail_fare_index_2023"]["parameter_path"] == (
-        "gov.dft.rail.fare_index"
-    )
+    for key in ("rail_fare_index_2023", "rail_fare_index_2024"):
+        assert services[key]["parameter_path"] == "gov.dft.rail.fare_index"
+    assert services["rail_fare_index_2024"]["period"] == 2024
     assert services["nhs_budget_2025_26"]["value"] == 202_000_000_000
 
 
@@ -67,17 +93,13 @@ def test_policy_anchor_values_lockstep_with_engine_parameter_tree() -> None:
             node = getattr(node, part)
         assert float(node(str(anchor["period"]))) == anchor["value"], name
 
-    services = _load("etb_services_anchors.json")["rail_fare_index_2023"]
-    node = parameters
-    for part in services["parameter_path"].split("."):
-        node = getattr(node, part)
-    assert float(node(str(services["period"]))) == services["value"]
-
-    cpi = _load("lcfs_consumption_anchors.json")["cpi"]
-    node = parameters
-    for part in cpi["parameter_path"].split("."):
-        node = getattr(node, part)
-    assert float(node(str(cpi["start_period"]))) > 0
+    services = _load("etb_services_anchors.json")
+    for key in ("rail_fare_index_2023", "rail_fare_index_2024"):
+        anchor = services[key]
+        node = parameters
+        for part in anchor["parameter_path"].split("."):
+            node = getattr(node, part)
+        assert float(node(str(anchor["period"]))) == anchor["value"], key
 
 
 def test_nhs_consumption_resource_ports_public_csv_rows() -> None:
@@ -102,13 +124,14 @@ def test_e6_support_bounds_resources_are_sha_bound_and_non_placeholder() -> None
     assert lcfs["source"]["person_tab_sha256"] == (
         "f32d54d83cdecf023f0ac73530be3a99372099b596e0106a56eae42a64929e50"
     )
-    assert len(lcfs["bounds"]) == 15
+    # Raked columns (energy and, since microcosm#890, bus fares) carry no bounds.
+    assert len(lcfs["bounds"]) == 14
+    assert "bus_fare_spending" not in lcfs["bounds"]
     assert vat["source"]["tab_sha256"] == (
         "d0e94ebc92e85ca1b9fb3a7353dcaf41db2c5110c9f07c7793dc8c0b695250d8"
     )
     assert set(vat["bounds"]) == {"full_rate_vat_expenditure_rate"}
     assert set(services["bounds"]) == {
-        "bus_subsidy_spending",
         "dfe_education_spending",
         "rail_subsidy_spending",
     }

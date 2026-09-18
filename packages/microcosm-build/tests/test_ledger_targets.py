@@ -12,13 +12,298 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     apply_ledger_target_profile,
     compile_ledger_target_references,
+    hierarchy_seed_from_catalog,
     ledger_target_registry_parity_report,
     period_values_semantically_equal,
     select_ledger_targets,
     select_ledger_targets_from_jsonl,
     target_spec_from_ledger_reference,
 )
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import (
+    CalibrationHierarchySeed,
+    HierarchyCategory,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+)
+
+_FISCAL_MONTHS = [f"2025-{month:02d}" for month in range(4, 13)] + [
+    f"2026-{month:02d}" for month in range(1, 4)
+]
+
+
+def _window_fact_row(month, *, value):
+    row = _monthly_consumer_fact_row(month, value=value)
+    row["source"]["vintage"] = "release_2026_06"
+    row["source"]["source_file"] = "published-monthly-series.csv"
+    row["source_release_key"] = "ledger.source_release.v2:window-fixture"
+    row["source"]["source_sha256"] = "a" * 64
+    return row
+
+
+def _window_reference(**overrides):
+    fields = {
+        "name": "explicit fiscal observation window",
+        "ledger_selector": {
+            "source_name": "cms_medicaid",
+            "period_type": "month",
+            "period_value": _FISCAL_MONTHS,
+        },
+        "value_operation": "monthly_window_average",
+        "period_match_policy": "source_window",
+        "entity": "person",
+        "measure": "enrollment",
+        "period": 2025,
+    }
+    fields.update(overrides)
+    return LedgerTargetReference(**fields)
+
+
+def test_explicit_monthly_window_averages_cross_year_without_restamping_model():
+    rows = [
+        _window_fact_row(month, value=index)
+        for index, month in enumerate(_FISCAL_MONTHS)
+    ]
+    # These observations are deliberately outside the selected window.
+    rows += [
+        _window_fact_row("2025-03", value=1000),
+        _window_fact_row("2026-04", value=1000),
+    ]
+    (target,) = compile_ledger_target_references(
+        rows[::-1], [_window_reference()], country="us"
+    ).specs
+    assert target.period == 2025
+    assert target.value == 5.5  # Mean of the twelve source cells, including zero.
+    assert target.metadata["ledger_member_fact_count"] == "12"
+    assert target.metadata["ledger_fact_period"] == "2026-03"
+    assert target.metadata["ledger_period_match_policy"] == "source_window"
+    assert json.loads(target.metadata["ledger_source_months"]) == _FISCAL_MONTHS
+    assert target.metadata["ledger_source_month_count"] == "12"
+    assert (
+        target.metadata["ledger_source_release_key"]
+        == "ledger.source_release.v2:window-fixture"
+    )
+    assert target.metadata["ledger_source_sha256"] == "a" * 64
+
+
+@pytest.mark.parametrize("defect", ["missing", "duplicate", "other-series"])
+def test_monthly_window_requires_complete_unique_single_series(defect):
+    rows = [_window_fact_row(month, value=1) for month in _FISCAL_MONTHS]
+    if defect == "missing":
+        rows.pop(0)
+    elif defect == "duplicate":
+        rows.append(_window_fact_row(_FISCAL_MONTHS[0], value=2))
+        rows[-1]["aggregate_fact_key"] += "-duplicate"
+    else:
+        rows[0]["layout"]["groupby_value_id"] = "other-enrollment"
+    with pytest.raises(ValueError, match="monthly window"):
+        compile_ledger_target_references(rows, [_window_reference()], country="us")
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"value_operation": "sum"},
+        {"period_match_policy": "latest_not_after"},
+        {"period_match_policy": "exact"},
+        {"period": None},
+        {"ledger_selector": {"period_type": "year", "period_value": _FISCAL_MONTHS}},
+        {"ledger_selector": {"period_type": "month", "period_value": []}},
+        {"ledger_selector": {"period_type": "month", "period_value": "2025-04"}},
+        {"ledger_selector": {"period_type": "month", "period_value": ["2025-4"]}},
+        {"ledger_selector": {"period_type": "month", "period_value": ["2025-13"]}},
+        {
+            "ledger_selector": {
+                "period_type": "month",
+                "period_value": _FISCAL_MONTHS[::-1],
+            }
+        },
+        {
+            "ledger_selector": {
+                "period_type": "month",
+                "period_value": ["2025-04", "2025-04"],
+            }
+        },
+    ],
+)
+def test_monthly_window_requires_paired_policy_and_explicit_ordered_months(fields):
+    with pytest.raises(ValueError):
+        _window_reference(**fields)
+
+
+def test_monthly_window_direct_fact_route_cannot_bypass_coverage_or_selector():
+    reference = _window_reference()
+    with pytest.raises(ValueError, match="monthly window"):
+        target_spec_from_ledger_reference(
+            _window_fact_row("2026-03", value=99), reference
+        )
+    rows = [_window_fact_row(month, value=1) for month in _FISCAL_MONTHS]
+    rows[-1]["period"]["value"] = "2026-04"
+    with pytest.raises(ValueError, match="monthly window"):
+        target_spec_from_ledger_reference(tuple(rows), reference)
+
+
+def test_calendar_average_keeps_same_year_selection_and_future_fact_refusal():
+    reference = _window_reference(
+        value_operation="calendar_year_average", period_match_policy="latest_not_after"
+    )
+    rows = [
+        _window_fact_row(month, value=index)
+        for index, month in enumerate(_FISCAL_MONTHS)
+    ]
+    (target,) = compile_ledger_target_references(rows, [reference], country="us").specs
+    assert target.value == 4  # Existing calendar semantics consume April–December.
+    assert target.metadata["ledger_member_fact_count"] == "9"
+    with pytest.raises(ValueError, match="at or before"):
+        target_spec_from_ledger_reference(rows[-1], reference)
+
+
+def _window_cell_rows():
+    rows = []
+    for index, month in enumerate(_FISCAL_MONTHS):
+        for category, value in (("No", index), ("Yes", index + 20)):
+            row = _window_fact_row(month, value=value)
+            row["aggregate_fact_key"] += category
+            row["legacy_fact_key"] += category
+            row["semantic_fact_key"] += category
+            row["dimensions"] = {"family": "unknown", "entitlement": category}
+            row["source"]["vintage"] = "release_2026_06"
+            row["source"]["source_file"] = "published-joint.csv"
+            rows.append(row)
+    return rows
+
+
+def _sum_window_reference(**overrides):
+    fields = {
+        "value_operation": "monthly_window_sum_average",
+        "value_operands": tuple(
+            {"dimension_values": {"family": "unknown", "entitlement": category}}
+            for category in ("No", "Yes")
+        ),
+    }
+    fields.update(overrides)
+    return _window_reference(**fields)
+
+
+def test_monthly_window_sums_declared_cells_before_averaging_months():
+    (target,) = compile_ledger_target_references(
+        _window_cell_rows()[::-1], [_sum_window_reference()], country="us"
+    ).specs
+    assert target.value == 31  # Mean(index + index + 20), not mean of 24 cells.
+    assert target.metadata["ledger_member_fact_count"] == "24"
+    assert target.metadata["ledger_source_month_count"] == "12"
+    assert target.metadata["ledger_source_cell_count_per_month"] == "2"
+    assert len(json.loads(target.metadata["ledger_member_fact_keys"])) == 24
+
+
+@pytest.mark.parametrize(
+    "defect",
+    [
+        "missing-cell",
+        "duplicate-cell",
+        "extra-cell",
+        "source-release",
+        "measure",
+        "geography",
+        "entity",
+        "source-package",
+        "release-key",
+        "raw-hash",
+        "hidden-universe",
+    ],
+)
+def test_monthly_window_cell_grid_refuses_incomplete_or_incompatible_members(defect):
+    rows = _window_cell_rows()
+    if defect == "missing-cell":
+        rows.pop()
+    elif defect in {"duplicate-cell", "extra-cell"}:
+        row = _window_cell_rows()[0]
+        row["aggregate_fact_key"] += "extra"
+        row["legacy_fact_key"] += "extra"
+        row["semantic_fact_key"] += "extra"
+        if defect == "extra-cell":
+            row["dimensions"]["entitlement"] = "all"
+        rows.append(row)
+    elif defect == "source-release":
+        rows[0]["source"]["vintage"] = "different_release"
+    elif defect == "source-package":
+        rows[0]["layout"]["record_set_id"] = "different_package.2025-04"
+    elif defect == "release-key":
+        rows[0]["source_release_key"] = "other-release"
+    elif defect == "raw-hash":
+        rows[0]["source"]["source_sha256"] = "other-raw-source"
+    elif defect == "hidden-universe":
+        rows[0]["universe_constraints"]["constraints"] = [
+            {"variable": "hidden_subset", "operator": "==", "value": "other"}
+        ]
+    elif defect == "measure":
+        rows[0]["observed_measure"]["source_measure_id"] = "different_measure"
+    elif defect == "geography":
+        rows[0]["geography"]["id"] = "different_geography"
+    else:
+        rows[0]["entity"]["name"] = "different_entity"
+    with pytest.raises(ValueError, match="monthly window"):
+        compile_ledger_target_references(rows, [_sum_window_reference()], country="us")
+
+
+@pytest.mark.parametrize(
+    "operands",
+    [
+        (),
+        ({"dimension_values": {"family": ["single", "couple"]}},),
+        ({"dimension_values": {"family": "single"}},) * 2,
+        (
+            {"dimension_values": {"family": "single"}},
+            {"dimension_values": {"entitlement": "Yes"}},
+        ),
+    ],
+)
+def test_monthly_window_sum_requires_disjoint_complete_scalar_operands(operands):
+    with pytest.raises(ValueError, match="monthly window"):
+        _sum_window_reference(value_operands=operands)
+
+
+def test_monthly_window_does_not_override_projection_policy_or_declared_grid_size():
+    rows = _window_cell_rows()
+    rows[-1]["assertion"] = "source_projection"
+    with pytest.raises(ValueError, match="monthly window"):
+        compile_ledger_target_references(rows, [_sum_window_reference()], country="us")
+    with pytest.raises(ValueError, match="assertion_policy"):
+        target_spec_from_ledger_reference(tuple(rows), _sum_window_reference())
+    (target,) = compile_ledger_target_references(
+        rows,
+        [_sum_window_reference(assertion_policy="allow_source_projection")],
+        country="us",
+    ).specs
+    assert target.value == 31
+    with pytest.raises(ValueError, match="expected_member_count"):
+        compile_ledger_target_references(
+            rows,
+            [
+                _sum_window_reference(
+                    assertion_policy="allow_source_projection", expected_member_count=12
+                )
+            ],
+            country="us",
+        )
+
+
+def test_monthly_window_preserves_distinct_fact_identity_for_each_member():
+    rows = _window_cell_rows()
+    rows[-1]["aggregate_fact_key"] = rows[0]["aggregate_fact_key"]
+    with pytest.raises(ValueError, match="member fact identities"):
+        target_spec_from_ledger_reference(tuple(rows), _sum_window_reference())
+
+
+@pytest.mark.parametrize("field", ["source_release_key", "source_sha256"])
+def test_single_series_monthly_window_refuses_mixed_publications(field):
+    rows = [_window_fact_row(month, value=1) for month in _FISCAL_MONTHS]
+    if field == "source_release_key":
+        rows[0][field] = "other-release"
+    else:
+        rows[0]["source"][field] = "other-raw-hash"
+    with pytest.raises(ValueError, match="source publication"):
+        compile_ledger_target_references(rows, [_window_reference()], country="us")
 
 
 def _ledger_fact(**overrides):
@@ -67,6 +352,7 @@ def _consumer_fact_row(**overrides):
     row = {
         "aggregate_fact_key": "ledger.aggregate_fact.v2:abc123",
         "legacy_fact_key": "ledger.fact.v1:abc123",
+        "label": "United States adjusted gross income",
         "lineage": {
             "source_record_id": "irs_soi.ty2023.table_1_1.all.adjusted_gross_income",
             "source_cell_keys": ["ledger.source_cell.v1:cell"],
@@ -104,11 +390,24 @@ def _consumer_fact_row(**overrides):
             "vintage": "tax_year_2023",
         },
         "dimensions": {"income_range": "all", "filing_status": "all"},
+        "dimension_labels": {
+            "us:statutes/26/62#adjusted_gross_income": ("Adjusted gross income band"),
+            "income_range": "Income range",
+            "filing_status": "Filing status",
+        },
+        "dimension_value_labels": {
+            "us:statutes/26/62#adjusted_gross_income": {
+                "all": "All adjusted gross income returns"
+            },
+            "income_range": {"all": "All income ranges"},
+            "filing_status": {"all": "All filing statuses"},
+        },
         "universe_constraints": {"domain": "all_individual_income_tax_returns"},
         "layout": {
             "record_set_id": "irs_soi.ty2023.table_1_1",
             "groupby_dimension": "us:statutes/26/62#adjusted_gross_income",
             "groupby_value_id": "all",
+            "groupby_value_label": "All adjusted gross income returns",
             "measure_id": "adjusted_gross_income",
         },
     }
@@ -163,6 +462,15 @@ def _exact_agi_reference(**overrides) -> LedgerTargetReference:
         "period": 2023,
         "family": "irs_soi",
         "period_match_policy": "exact",
+        "hierarchy": CalibrationHierarchySeed(
+            provider=HierarchyNode("irs_soi", "IRS Statistics of Income"),
+            category=HierarchyCategory(
+                "irs_soi.adjusted_gross_income",
+                "Adjusted gross income",
+                "irs_soi",
+            ),
+            target_label="Adjusted gross income",
+        ),
     }
     values.update(overrides)
     return LedgerTargetReference(**values)
@@ -392,7 +700,15 @@ def test__given_consumer_contract_row__then_microcosm_target_preserves_lineage()
         == "irs_soi.ty2023.table_1_1.all.adjusted_gross_income"
     )
     assert spec.metadata["ledger_fact_key"] == "ledger.aggregate_fact.v2:abc123"
+    assert spec.metadata["ledger_fact_label"] == ("United States adjusted gross income")
+    assert spec.metadata["diagnostic_target_label"] == (
+        "United States adjusted gross income"
+    )
     assert spec.metadata["ledger_source_concept"] == "irs_soi.adjusted_gross_income"
+    assert (
+        spec.metadata["ledger_layout_groupby_value_label"]
+        == "All adjusted gross income returns"
+    )
 
 
 def test__given_consumer_contract_jsonl__then_microcosm_selects_targets(
@@ -665,6 +981,94 @@ def test__given_selector_matches_multiple_years__then_latest_source_period_is_us
         spec.metadata["ledger_source_record_id"]
         == "irs_soi.ty2023.table_1_1.all.adjusted_gross_income"
     )
+
+
+def _fiscal_year_row(label: int, *, value: float, coverage: bool):
+    row = _consumer_fact_row_for_period(label, value=value)
+    row["period"] = {"type": "fiscal_year", "value": label}
+    if coverage:
+        # DfT labels the reporting year by its March end year: label 2025
+        # covers April 2024 to March 2025.
+        row["period_coverage"] = {
+            "basis": "fiscal",
+            "start_date": f"{label - 1}-04-01",
+            "end_date": f"{label}-03-31",
+            "notes": "DfT labels the reporting year by its March end year.",
+        }
+    return row
+
+
+def test__given_fiscal_year_facts_with_coverage__then_the_start_year_is_compared() -> (
+    None
+):
+    # Given: a closing-year publisher (label 2026 covers FY2025-26) and the
+    # 2025 calibration period.
+    reference = LedgerTargetReference(
+        name="latest SOI AGI total",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+            "layout_groupby_value_id": "all",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2025,
+        family="irs_soi",
+    )
+
+    # When
+    registry = compile_ledger_target_references(
+        [
+            _fiscal_year_row(2025, value=1.0, coverage=True),
+            _fiscal_year_row(2026, value=2.0, coverage=True),
+            _fiscal_year_row(2027, value=3.0, coverage=True),
+        ],
+        [reference],
+        country="us",
+    )
+
+    # Then: the label-2026 fact is FY2025-26, the latest not after 2025.
+    spec = registry.specs[0]
+    assert spec.value == 2.0
+    assert spec.metadata["ledger_fact_period"] == "2025"
+    assert spec.metadata["ledger_fact_period_label"] == "2026"
+
+
+def test__given_fiscal_year_facts_without_coverage__then_the_label_is_compared() -> (
+    None
+):
+    reference = LedgerTargetReference(
+        name="latest SOI AGI total",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": "adjusted_gross_income",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+            "entity_name": "tax_unit",
+            "layout_groupby_value_id": "all",
+        },
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        period=2025,
+        family="irs_soi",
+    )
+
+    registry = compile_ledger_target_references(
+        [
+            _fiscal_year_row(2025, value=1.0, coverage=False),
+            _fiscal_year_row(2026, value=2.0, coverage=False),
+        ],
+        [reference],
+        country="us",
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == 1.0
+    assert spec.metadata["ledger_fact_period"] == "2025"
+    assert "ledger_fact_period_label" not in spec.metadata
 
 
 def test__given_exact_period_policy__then_only_the_target_period_is_used() -> None:
@@ -1055,6 +1459,152 @@ def test__given_academic_year_record_sets__then_latest_source_period_is_used() -
     )
 
     assert registry.specs[0].value == 1_159_761
+
+
+def test__given_year_prefixed_record_sets__then_latest_source_period_is_used() -> None:
+    older = _consumer_fact_row_for_period(2024, value=95_031)
+    newer = _consumer_fact_row_for_period(2025, value=85_629)
+    older["layout"]["record_set_id"] = "dfe.release2026.year2024.early_learning"
+    newer["layout"]["record_set_id"] = "dfe.release2026.year2025.early_learning"
+    reference = LedgerTargetReference(
+        name="latest DfE childcare count",
+        ledger_selector={"source_name": "irs_soi"},
+        entity="person",
+        measure="person_count",
+        period=2025,
+    )
+
+    registry = compile_ledger_target_references(
+        [older, newer], [reference], country="uk"
+    )
+
+    assert registry.specs[0].value == 85_629
+
+
+def test__given_one_difference_fact_per_operand__then_difference_compiles() -> None:
+    minuend = _consumer_fact_row_for_period(2025, value=775_994)
+    subtrahend = _consumer_fact_row_for_period(2025, value=379_029)
+    minuend["dimensions"] = {"entitlement_type": "Universal"}
+    subtrahend["dimensions"] = {"entitlement_type": "Working parents"}
+    reference = LedgerTargetReference(
+        name="universal-only childcare",
+        ledger_selector={"source_name": "irs_soi"},
+        value_operation="difference",
+        value_operands=(
+            {
+                "role": "minuend",
+                "dimension_values": {"entitlement_type": "Universal"},
+            },
+            {
+                "role": "subtrahend",
+                "dimension_values": {"entitlement_type": "Working parents"},
+            },
+        ),
+        entity="person",
+        measure="person_count",
+        period=2025,
+    )
+
+    registry = compile_ledger_target_references(
+        [minuend, subtrahend], [reference], country="uk"
+    )
+
+    assert registry.specs[0].value == 396_965
+    assert registry.specs[0].metadata["ledger_value_formula"] == (
+        "minuend - subtrahend"
+    )
+    assert json.loads(registry.specs[0].metadata["ledger_member_fact_keys"]) == [
+        minuend["aggregate_fact_key"],
+        subtrahend["aggregate_fact_key"],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("minuend_value", "subtrahend_value"),
+    [(1.0, 2.0), (1e308, -1e308)],
+)
+def test__given_invalid_difference__then_compilation_refuses_it(
+    minuend_value: float, subtrahend_value: float
+) -> None:
+    minuend = _consumer_fact_row_for_period(2025, value=minuend_value)
+    subtrahend = _consumer_fact_row_for_period(2025, value=subtrahend_value)
+    minuend["dimensions"] = {"role": "whole"}
+    subtrahend["dimensions"] = {"role": "part"}
+    reference = LedgerTargetReference(
+        name="invalid difference",
+        ledger_selector={"source_name": "irs_soi"},
+        value_operation="difference",
+        value_operands=(
+            {"role": "minuend", "dimension_values": {"role": "whole"}},
+            {"role": "subtrahend", "dimension_values": {"role": "part"}},
+        ),
+        entity="person",
+        measure="person_count",
+        period=2025,
+    )
+
+    with pytest.raises(ValueError, match="difference produced invalid value"):
+        compile_ledger_target_references(
+            [minuend, subtrahend], [reference], country="uk"
+        )
+
+
+def test__given_difference_operands_at_different_periods__then_compilation_fails() -> (
+    None
+):
+    minuend = _consumer_fact_row_for_period(2025, value=10.0)
+    subtrahend = _consumer_fact_row_for_period(2024, value=2.0)
+    minuend["dimensions"] = {"role": "whole"}
+    subtrahend["dimensions"] = {"role": "part"}
+    reference = LedgerTargetReference(
+        name="period-mismatched difference",
+        ledger_selector={"source_name": "irs_soi"},
+        value_operation="difference",
+        value_operands=(
+            {"role": "minuend", "dimension_values": {"role": "whole"}},
+            {"role": "subtrahend", "dimension_values": {"role": "part"}},
+        ),
+        entity="person",
+        measure="person_count",
+        period=2025,
+    )
+
+    with pytest.raises(ValueError, match="same latest period"):
+        compile_ledger_target_references(
+            [minuend, subtrahend], [reference], country="uk"
+        )
+
+
+def test__given_sum_member_shortfall__then_compilation_fails_loudly() -> None:
+    only_member = _consumer_fact_row_for_period(2025, value=10.0)
+    reference = LedgerTargetReference(
+        name="guarded sum",
+        ledger_selector={"source_name": "irs_soi"},
+        value_operation="sum",
+        expected_member_count=2,
+        entity="person",
+        measure="person_count",
+        period=2025,
+    )
+
+    with pytest.raises(ValueError, match="expected 2 members.*resolved 1"):
+        compile_ledger_target_references([only_member], [reference], country="uk")
+
+
+def test__given_identifier_bypasses_selector__then_entity_pin_still_applies() -> None:
+    fact = _consumer_fact_row_for_period(2025, value=10.0)
+    fact["entity"] = {"name": "government"}
+    reference = LedgerTargetReference(
+        name="entity-guarded reference",
+        ledger_fact_key=fact["aggregate_fact_key"],
+        ledger_selector={"entity_name": "person"},
+        entity="person",
+        measure="person_count",
+        period=2025,
+    )
+
+    with pytest.raises(ValueError, match="requires entity_name 'person'"):
+        compile_ledger_target_references([fact], [reference], country="uk")
 
 
 def test__given_selector_matches_future_year__then_latest_eligible_period_is_used() -> (
@@ -2939,3 +3489,908 @@ def test_exact_period_contract_sum_keeps_equivalent_untyped_annual_range_cells()
     ).specs
 
     assert spec.value == 30.0  # Both synthetic cells belong to the same academic year.
+
+
+def test__given_mixed_epoch_fact_feed__then_both_eras_compile_to_targets() -> None:
+    """Ledger-era and chronicle-era rows calibrate side by side.
+
+    During Chronicle's rename cutover a feed carries history under
+    ``ledger.*`` domains beside newly emitted rows under ``chronicle.*``
+    (PolicyEngine/chronicle#143). Keys are opaque to this compiler, so both
+    must select — and each target's name and metadata must carry its own
+    row's key verbatim rather than being normalised onto one epoch.
+    """
+    # Given
+    ledger_era = _consumer_fact_row()
+    chronicle_era = _consumer_fact_row(
+        aggregate_fact_key="chronicle.aggregate_fact.v3:def456",
+        semantic_fact_key="chronicle.semantic_fact.v3:def456",
+        lineage={
+            "source_record_id": "irs_soi.ty2024.table_1_1.all.adjusted_gross_income",
+            "source_cell_keys": ["chronicle.source_cell.v2:cell"],
+            "source_row_keys": [],
+        },
+    )
+    chronicle_era.pop("legacy_fact_key", None)
+    mapping = LedgerTargetMapping(
+        measure_by_concept={
+            "us:statutes/26/62#adjusted_gross_income": "adjusted_gross_income"
+        },
+        entity_by_ledger_entity={"tax_unit": "tax_unit"},
+        filter_by_domain={"all_individual_income_tax_returns": "is_tax_return"},
+    )
+
+    # When
+    selection = select_ledger_targets([ledger_era, chronicle_era], mapping)
+
+    # Then
+    assert not selection.unsupported
+    assert [spec.name for spec in selection.specs] == [
+        "ledger.aggregate_fact.v2:abc123",
+        "chronicle.aggregate_fact.v3:def456",
+    ]
+    chronicle_spec = selection.specs[1]
+    assert (
+        chronicle_spec.metadata["ledger_fact_key"]
+        == "chronicle.aggregate_fact.v3:def456"
+    )
+    # The diagnostic field names stay ledger-era: they are frozen at v1
+    # (microcosm#639) and name a slot, not an epoch.
+    assert (
+        chronicle_spec.metadata["ledger_aggregate_fact_key"]
+        == "chronicle.aggregate_fact.v3:def456"
+    )
+    assert (
+        chronicle_spec.metadata["ledger_semantic_fact_key"]
+        == "chronicle.semantic_fact.v3:def456"
+    )
+
+
+def test__given_chronicle_era_reference_pin__then_it_resolves_against_the_feed() -> (
+    None
+):
+    """A reference pinned to a chronicle-era key resolves without a code change."""
+    # Given
+    reference = LedgerTargetReference(
+        name="nation/irs/adjusted gross income/total",
+        ledger_fact_key="chronicle.aggregate_fact.v3:def456",
+        entity="tax_unit",
+        measure="adjusted_gross_income",
+        filter="is_tax_return",
+        period=2024,
+        source="IRS SOI Table 1.1",
+        family="irs_soi",
+    )
+    fact = _consumer_fact_row(
+        aggregate_fact_key="chronicle.aggregate_fact.v3:def456",
+        semantic_fact_key="chronicle.semantic_fact.v3:def456",
+    )
+    fact.pop("legacy_fact_key", None)
+
+    # When
+    registry = compile_ledger_target_references([fact], [reference], country="us")
+
+    # Then
+    assert [spec.name for spec in registry.specs] == [
+        "nation/irs/adjusted gross income/total"
+    ]
+    assert (
+        registry.specs[0].metadata["ledger_fact_key"]
+        == "chronicle.aggregate_fact.v3:def456"
+    )
+
+
+# Equal missing identities must not count as a known common publication.
+@pytest.mark.parametrize("summed", [False, True])
+@pytest.mark.parametrize("field", ["source_release_key", "source_sha256"])
+@pytest.mark.parametrize("bad_value", [None, "", " ", 1])
+def test_monthly_window_requires_actual_publication_identity(summed, field, bad_value):
+    rows = (
+        _window_cell_rows()
+        if summed
+        else [_window_fact_row(month, value=1) for month in _FISCAL_MONTHS]
+    )
+    reference = _sum_window_reference() if summed else _window_reference()
+    for row in rows:
+        owner = row if field == "source_release_key" else row["source"]
+        if bad_value is None:
+            owner.pop(field)
+        else:
+            owner[field] = bad_value
+    with pytest.raises(ValueError, match="requires nonempty source_release_key"):
+        compile_ledger_target_references(rows, [reference], country="us")
+    # The same authority must run if a caller bypasses selector resolution.
+    with pytest.raises(ValueError, match="requires nonempty source_release_key"):
+        target_spec_from_ledger_reference(tuple(rows), reference)
+
+
+def test_single_fact_hierarchy_inherits_groupby_first_and_exact_dimensions() -> None:
+    groupby_id = "us:statutes/26/62#adjusted_gross_income"
+    fact = _consumer_fact_row(
+        dimensions={groupby_id: "all", "filing_status": "single"},
+        dimension_labels={
+            groupby_id: "Adjusted gross income band",
+            "filing_status": "Filing status",
+        },
+        dimension_value_labels={
+            "filing_status": {"single": "Single return"},
+        },
+    )
+
+    (spec,) = compile_ledger_target_references(
+        [fact], [_exact_agi_reference()], country="us"
+    ).specs
+
+    assert spec.hierarchy is not None
+    assert [dimension.id for dimension in spec.hierarchy.dimensions] == [
+        groupby_id,
+        "filing_status",
+    ]
+    assert spec.hierarchy.dimensions[0].label == "Adjusted gross income band"
+    assert spec.hierarchy.dimensions[0].value_label == (
+        "All adjusted gross income returns"
+    )
+    assert spec.hierarchy.dimensions[1].value_label == "Single return"
+    assert spec.hierarchy.target.label == "United States adjusted gross income"
+
+
+def test_multi_fact_hierarchy_keeps_only_constant_dimensions() -> None:
+    first = _consumer_fact_row(
+        value=10.0,
+        dimensions={"band": "low", "sex": "all"},
+        dimension_labels={
+            "band": "Income band",
+            "sex": "Sex",
+            "us:statutes/26/62#adjusted_gross_income": ("Adjusted gross income band"),
+        },
+        dimension_value_labels={
+            "band": {"low": "Low income"},
+            "sex": {"all": "All people"},
+        },
+    )
+    second = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:second",
+        legacy_fact_key="ledger.fact.v1:second",
+        semantic_fact_key="ledger.semantic_fact.v2:second",
+        lineage={
+            "source_record_id": (
+                "irs_soi.ty2023.table_1_1.second.adjusted_gross_income"
+            ),
+            "source_cell_keys": ["ledger.source_cell.v1:second"],
+            "source_row_keys": [],
+        },
+        value=20.0,
+        dimensions={"band": "high", "sex": "all"},
+        dimension_labels={
+            "band": "Income band",
+            "sex": "Sex",
+            "us:statutes/26/62#adjusted_gross_income": ("Adjusted gross income band"),
+        },
+        dimension_value_labels={
+            "band": {"high": "High income"},
+            "sex": {"all": "All people"},
+        },
+    )
+    reference = _exact_agi_reference(value_operation="sum")
+
+    (spec,) = compile_ledger_target_references(
+        [first, second], [reference], country="us"
+    ).specs
+
+    assert spec.value == 30.0
+    assert spec.hierarchy is not None
+    assert [dimension.id for dimension in spec.hierarchy.dimensions] == [
+        "us:statutes/26/62#adjusted_gross_income",
+        "sex",
+    ]
+    assert spec.metadata["ledger_aggregation_varying_dimensions"] == '["band"]'
+
+
+def test_direct_hierarchy_requires_chronicle_fact_label() -> None:
+    fact = _consumer_fact_row(label="")
+
+    with pytest.raises(ValueError, match="requires a non-empty label"):
+        compile_ledger_target_references([fact], [_exact_agi_reference()], country="us")
+
+
+def test_hierarchy_requires_chronicle_dimension_label() -> None:
+    fact = _consumer_fact_row(
+        dimensions={"filing_status": "single"},
+        dimension_labels={
+            "us:statutes/26/62#adjusted_gross_income": ("Adjusted gross income band")
+        },
+        dimension_value_labels={"filing_status": {"single": "Single return"}},
+    )
+
+    with pytest.raises(ValueError, match="dimension 'filing_status'.*non-empty label"):
+        compile_ledger_target_references([fact], [_exact_agi_reference()], country="us")
+
+
+def test_hierarchy_requires_chronicle_dimension_value_label() -> None:
+    fact = _consumer_fact_row(
+        dimensions={"filing_status": "single"},
+        dimension_labels={
+            "filing_status": "Filing status",
+            "us:statutes/26/62#adjusted_gross_income": ("Adjusted gross income band"),
+        },
+        dimension_value_labels={},
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="dimension 'filing_status' value 'single'.*non-empty label",
+    ):
+        compile_ledger_target_references([fact], [_exact_agi_reference()], country="us")
+
+
+def test_hierarchy_rejects_conflicting_chronicle_dimension_labels() -> None:
+    first = _consumer_fact_row(value=10.0)
+    second = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:second-label",
+        legacy_fact_key="ledger.fact.v1:second-label",
+        semantic_fact_key="ledger.semantic_fact.v2:second-label",
+        lineage={"source_record_id": "irs_soi.second-label"},
+        value=20.0,
+        dimension_labels={
+            "us:statutes/26/62#adjusted_gross_income": "AGI interval",
+            "income_range": "Income range",
+            "filing_status": "Filing status",
+        },
+    )
+
+    with pytest.raises(ValueError, match="has conflicting labels"):
+        compile_ledger_target_references(
+            [first, second],
+            [_exact_agi_reference(value_operation="sum")],
+            country="us",
+        )
+
+
+def test_hierarchy_rejects_conflicting_chronicle_dimension_value_labels() -> None:
+    first = _consumer_fact_row(value=10.0)
+    second_labels = dict(first["dimension_value_labels"])
+    second_labels["income_range"] = {"all": "Every income range"}
+    second = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:second-value-label",
+        legacy_fact_key="ledger.fact.v1:second-value-label",
+        semantic_fact_key="ledger.semantic_fact.v2:second-value-label",
+        lineage={"source_record_id": "irs_soi.second-value-label"},
+        value=20.0,
+        dimension_value_labels=second_labels,
+    )
+
+    with pytest.raises(ValueError, match="value 'all' has conflicting labels"):
+        compile_ledger_target_references(
+            [first, second],
+            [_exact_agi_reference(value_operation="sum")],
+            country="us",
+        )
+
+
+def test_multi_fact_hierarchy_requires_explicit_microcosm_target_label() -> None:
+    first = _consumer_fact_row(value=10.0)
+    second = _consumer_fact_row(
+        aggregate_fact_key="ledger.aggregate_fact.v2:second-target-label",
+        legacy_fact_key="ledger.fact.v1:second-target-label",
+        semantic_fact_key="ledger.semantic_fact.v2:second-target-label",
+        lineage={"source_record_id": "irs_soi.second-target-label"},
+        value=20.0,
+    )
+    seed = _exact_agi_reference().hierarchy
+    assert seed is not None
+    reference = _exact_agi_reference(
+        value_operation="sum",
+        hierarchy=CalibrationHierarchySeed(seed.provider, seed.category),
+    )
+
+    with pytest.raises(ValueError, match="require an explicit Microcosm target label"):
+        compile_ledger_target_references([first, second], [reference], country="us")
+
+
+def test_restamped_hierarchy_requires_explicit_microcosm_target_label() -> None:
+    fact = _consumer_fact_row_for_period(2022, value=100.0)
+    seed = _exact_agi_reference().hierarchy
+    assert seed is not None
+    reference = _exact_agi_reference(
+        period=2023,
+        period_match_policy="latest_not_after",
+        hierarchy=CalibrationHierarchySeed(seed.provider, seed.category),
+    )
+
+    with pytest.raises(ValueError, match="require an explicit Microcosm target label"):
+        compile_ledger_target_references([fact], [reference], country="us")
+
+
+def test_hierarchy_rejects_unlabelled_unknown_geography() -> None:
+    fact = _consumer_fact_row(
+        geography={"level": "country", "id": "unknown-country", "name": ""}
+    )
+
+    with pytest.raises(ValueError, match="authoritative geography catalog"):
+        target_spec_from_ledger_reference(fact, _exact_agi_reference())
+
+
+def test_hierarchy_catalog_rejects_blank_declared_target_label() -> None:
+    hierarchy = {
+        "providers": {"irs": {"label": "Internal Revenue Service"}},
+        "categories": {"irs.income": {"label": "Income", "provider_id": "irs"}},
+        "target_labels": {"irs.agi": ""},
+    }
+
+    with pytest.raises(ValueError, match="has an empty target label"):
+        hierarchy_seed_from_catalog(
+            hierarchy,
+            "irs.income",
+            target_id="irs.agi",
+        )
+
+
+def _linear_combination_fact(
+    *,
+    key: str,
+    value: float,
+    measure_id: str,
+    band: str,
+    geography_id: str = "E92000001",
+    geography_level: str = "country",
+    period: int = 2025,
+):
+    fact = _consumer_fact_row_for_period(period, value=value)
+    fact["aggregate_fact_key"] = f"ledger.aggregate_fact.v2:{key}"
+    fact["semantic_fact_key"] = f"ledger.semantic_fact.v2:{key}"
+    fact["legacy_fact_key"] = f"ledger.fact.v1:{key}"
+    fact["dimensions"] = {"council_tax_band": band}
+    fact["layout"] = {**fact["layout"], "measure_id": measure_id}
+    fact["observed_measure"] = {
+        **fact.get("observed_measure", {}),
+        "source_measure_id": measure_id,
+    }
+    fact["geography"] = {"level": geography_level, "id": geography_id}
+    return fact
+
+
+def _occupied_band_a_reference(**overrides):
+    base = dict(
+        name="occupied band A",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "geography_level": "country",
+            "geography_id": "E92000001",
+        },
+        value_operation="linear_combination",
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A"},
+                "label": "line_07[A]",
+            },
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A-"},
+                "label": "line_07[A-]",
+            },
+            {
+                "weight": -1,
+                "source_measure_id": "line_11",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+            {
+                "weight": -1,
+                "source_measure_id": "line_15",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+        ),
+        entity="household",
+        measure="council_tax/band_a",
+        period=2025,
+    )
+    base.update(overrides)
+    return LedgerTargetReference(**base)
+
+
+def _occupied_band_a_facts():
+    return [
+        _linear_combination_fact(
+            key="l7a", value=6_000, measure_id="line_07", band="A"
+        ),
+        _linear_combination_fact(key="l7am", value=17, measure_id="line_07", band="A-"),
+        _linear_combination_fact(key="l11a", value=60, measure_id="line_11", band="A"),
+        _linear_combination_fact(key="l15a", value=140, measure_id="line_15", band="A"),
+        _linear_combination_fact(
+            key="l7b", value=5_000, measure_id="line_07", band="B"
+        ),
+    ]
+
+
+def test__given_signed_single_fact_operands__then_linear_combination_compiles() -> None:
+    facts = _occupied_band_a_facts()
+    registry = compile_ledger_target_references(
+        facts, [_occupied_band_a_reference()], country="uk"
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == 6_000 + 17 - 60 - 140
+    assert spec.metadata["ledger_value_operation"] == "linear_combination"
+    assert spec.metadata["ledger_value_formula"] == (
+        "+line_07[A] +line_07[A-] -line_11[council_tax_band=A] "
+        "-line_15[council_tax_band=A]"
+    )
+    assert json.loads(spec.metadata["ledger_member_fact_keys"]) == [
+        "ledger.aggregate_fact.v2:l7a",
+        "ledger.aggregate_fact.v2:l7am",
+        "ledger.aggregate_fact.v2:l11a",
+        "ledger.aggregate_fact.v2:l15a",
+    ]
+
+
+def test__given_member_set_operands__then_linear_combination_sums_each_operand() -> (
+    None
+):
+    """A region row composed from its authorities: sum(line 7) - sum(line 11)."""
+
+    authorities = ("E06000001", "E06000002", "E06000003")
+    facts = []
+    for index, code in enumerate(authorities):
+        facts.append(
+            _linear_combination_fact(
+                key=f"l7-{code}",
+                value=1_000 * (index + 1),
+                measure_id="line_07",
+                band="A",
+                geography_id=code,
+                geography_level="local_authority",
+            )
+        )
+        facts.append(
+            _linear_combination_fact(
+                key=f"l11-{code}",
+                value=10 * (index + 1),
+                measure_id="line_11",
+                band="A",
+                geography_id=code,
+                geography_level="local_authority",
+            )
+        )
+    facts.append(
+        _linear_combination_fact(
+            key="l7-other",
+            value=99_999,
+            measure_id="line_07",
+            band="A",
+            geography_id="E06000004",
+            geography_level="local_authority",
+        )
+    )
+    reference = LedgerTargetReference(
+        name="mhclg.council_tax_stock.band_a@E12000001",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "geography_level": "local_authority",
+            "geography_id": list(authorities),
+            "dimension_values": {"council_tax_band": "A"},
+        },
+        value_operation="linear_combination",
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "expected_member_count": 3,
+                "label": "sum(line_07)",
+            },
+            {
+                "weight": -1,
+                "source_measure_id": "line_11",
+                "expected_member_count": 3,
+                "label": "sum(line_11)",
+            },
+        ),
+        entity="household",
+        measure="council_tax/band_a",
+        period=2025,
+    )
+
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+
+    spec = registry.specs[0]
+    assert spec.value == (1_000 + 2_000 + 3_000) - (10 + 20 + 30)
+    assert spec.metadata["ledger_value_formula"] == "+sum(line_07) -sum(line_11)"
+    assert len(json.loads(spec.metadata["ledger_member_fact_keys"])) == 6
+
+
+def test__given_member_set_without_declared_count__then_linear_combination_refuses() -> (
+    None
+):
+    facts = [
+        _linear_combination_fact(
+            key=f"l7-{code}",
+            value=1,
+            measure_id="line_07",
+            band="A",
+            geography_id=code,
+            geography_level="local_authority",
+        )
+        for code in ("E06000001", "E06000002")
+    ]
+    reference = LedgerTargetReference(
+        name="undeclared members",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "geography_level": "local_authority",
+            "geography_id": ["E06000001", "E06000002"],
+        },
+        value_operation="linear_combination",
+        value_operands=({"weight": 1, "source_measure_id": "line_07"},),
+        entity="household",
+        measure="council_tax/band_a",
+        period=2025,
+    )
+
+    with pytest.raises(ValueError, match="declare expected_member_count"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test__given_missing_member__then_linear_combination_refuses() -> None:
+    facts = _occupied_band_a_facts()
+    reference = _occupied_band_a_reference(
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A"},
+                "expected_member_count": 2,
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="expected 2 members"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test__given_operand_without_a_match__then_linear_combination_refuses() -> None:
+    facts = _occupied_band_a_facts()
+    reference = _occupied_band_a_reference(
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+            {
+                "weight": -1,
+                "source_measure_id": "line_99",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="matched no eligible Ledger fact"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test__given_overlapping_operands__then_linear_combination_refuses() -> None:
+    facts = _occupied_band_a_facts()
+    reference = _occupied_band_a_reference(
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+            {
+                "weight": 1,
+                "dimension_values": {"council_tax_band": "A"},
+                "source_measure_id": "line_07",
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="operand selectors must be disjoint"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test__given_operands_at_different_periods__then_linear_combination_refuses() -> (
+    None
+):
+    facts = [
+        _linear_combination_fact(key="l7a", value=100, measure_id="line_07", band="A"),
+        _linear_combination_fact(
+            key="l11a", value=1, measure_id="line_11", band="A", period=2024
+        ),
+    ]
+    reference = _occupied_band_a_reference(
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+            {
+                "weight": -1,
+                "source_measure_id": "line_11",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="same latest period"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test__given_negative_result__then_linear_combination_refuses() -> None:
+    facts = _occupied_band_a_facts()
+    reference = _occupied_band_a_reference(
+        value_operands=(
+            {
+                "weight": 1,
+                "source_measure_id": "line_11",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+            {
+                "weight": -1,
+                "source_measure_id": "line_07",
+                "dimension_values": {"council_tax_band": "A"},
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="produced invalid value"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+@pytest.mark.parametrize(
+    ("operands", "message"),
+    [
+        ((), "at least one weighted operand"),
+        (({"source_measure_id": "line_07"},), "finite nonzero numeric weight"),
+        (
+            ({"weight": 0, "source_measure_id": "line_07"},),
+            "finite nonzero numeric weight",
+        ),
+        (({"weight": 1},), "declares no selector overlay"),
+        (
+            (
+                {
+                    "weight": 1,
+                    "source_measure_id": "line_07",
+                    "expected_member_count": 0,
+                },
+            ),
+            "expected_member_count must be a positive integer",
+        ),
+    ],
+)
+def test__given_malformed_operands__then_linear_combination_reference_refuses(
+    operands, message
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _occupied_band_a_reference(value_operands=operands)
+
+
+def _composed_region_reference(**overrides):
+    seed = _exact_agi_reference().hierarchy
+    assert seed is not None
+    values = dict(
+        name="mhclg.council_tax_stock.band_a@E12000001",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "geography_level": "local_authority",
+            "geography_id": ["E06000001", "E06000002"],
+            "dimension_values": {"council_tax_band": "A"},
+        },
+        value_operation="linear_combination",
+        value_operands=(
+            {"weight": 1, "source_measure_id": "line_07", "expected_member_count": 2},
+            {"weight": -1, "source_measure_id": "line_11", "expected_member_count": 2},
+        ),
+        entity="household",
+        measure="council_tax/band_a",
+        period=2025,
+        metadata={
+            "geography_level": "region",
+            "geography_id": "E12000001",
+            "composed_from_level": "local_authority",
+        },
+        hierarchy=CalibrationHierarchySeed(
+            seed.provider, seed.category, target_label="Band A occupied dwellings"
+        ),
+    )
+    values.update(overrides)
+    return LedgerTargetReference(**values)
+
+
+def _composed_region_facts():
+    facts = []
+    for code, name in (("E06000001", "Hartlepool"), ("E06000002", "Middlesbrough")):
+        for measure_id, value in (("line_07", 1_000), ("line_11", 10)):
+            fact = _linear_combination_fact(
+                key=f"{measure_id}-{code}",
+                value=value,
+                measure_id=measure_id,
+                band="A",
+                geography_id=code,
+                geography_level="local_authority",
+            )
+            fact["geography"]["name"] = name
+            fact["label"] = f"{name} band A {measure_id}"
+            fact["layout"] = {
+                **fact["layout"],
+                "groupby_dimension": "geography",
+                "groupby_dimension_label": "Geography",
+                "groupby_value_id": code.lower(),
+                "groupby_value_label": name,
+            }
+            fact["dimension_labels"] = {
+                "council_tax_band": "Council tax band",
+                "geography": "Geography",
+            }
+            fact["dimension_value_labels"] = {
+                "council_tax_band": {"A": "Band A"},
+                "geography": {code.lower(): name},
+            }
+            facts.append(fact)
+    return facts
+
+
+def test__given_composed_region_row__then_hierarchy_takes_the_declared_geography() -> (
+    None
+):
+    registry = compile_ledger_target_references(
+        _composed_region_facts(), [_composed_region_reference()], country="uk"
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == 2_000 - 20
+    assert spec.hierarchy is not None
+    assert spec.hierarchy.geography.level == "region"
+    assert spec.hierarchy.geography.id == "E12000001"
+    assert spec.hierarchy.geography.label == "North East"
+    assert spec.metadata["ledger_geography_level"] == "region"
+    assert spec.metadata["ledger_geography_id"] == "E12000001"
+    assert spec.metadata["ledger_geography_name"] == "North East"
+    assert spec.metadata["composed_from_level"] == "local_authority"
+
+
+def test__given_composed_row_with_uncatalogued_geography__then_it_refuses() -> None:
+    reference = _composed_region_reference(
+        name="mhclg.council_tax_stock.band_a@E12999999",
+        metadata={
+            "geography_level": "region",
+            "geography_id": "E12999999",
+            "composed_from_level": "local_authority",
+        },
+    )
+
+    with pytest.raises(ValueError, match="authoritative geography catalog"):
+        compile_ledger_target_references(
+            _composed_region_facts(), [reference], country="uk"
+        )
+
+
+def test__given_composed_row_members_at_another_grain__then_it_refuses() -> None:
+    reference = _composed_region_reference(
+        metadata={
+            "geography_level": "region",
+            "geography_id": "E12000001",
+            "composed_from_level": "constituency",
+        },
+    )
+
+    with pytest.raises(ValueError, match="must all sit at 'constituency'"):
+        compile_ledger_target_references(
+            _composed_region_facts(), [reference], country="uk"
+        )
+
+
+@pytest.mark.parametrize(
+    ("record_set_id", "expected"),
+    [
+        (
+            "scotgov.ctaxbase2025.chargeable_dwellings.scotland",
+            "scotgov.ctaxbase.chargeable_dwellings.scotland",
+        ),
+        (
+            "mhclg.ctb2023.line_07.chargeable_dwellings_adjusted_for_disabled_relief",
+            "mhclg.ctb.line_07.chargeable_dwellings_adjusted_for_disabled_relief",
+        ),
+        ("welshgov.ct1.fy2025.a1", "welshgov.ct1.a1"),
+        ("irs_soi.ty2023.table_1_1", "irs_soi.table_1_1"),
+        ("ons.pipr.june2026.average_rent_by_area", "ons.pipr.average_rent_by_area"),
+        # SIC 2007 is a classification revision, not a vintage: it keeps its year.
+        ("dwp.uc_households.sic2007_division", "dwp.uc_households.sic2007_division"),
+        # Successive mid-year-estimate vintages are one series (road-fuel anchors).
+        ("ons.mid2024.population_by_age", "ons.mid.population_by_age"),
+    ],
+)
+def test__given_a_vintage_year_glued_to_a_word__then_the_record_set_id_normalizes(
+    record_set_id: str, expected: str
+) -> None:
+    from microcosm.build.ledger_targets import _normalized_record_set_id
+
+    assert _normalized_record_set_id(record_set_id) == expected
+
+
+def test__given_one_series_published_per_vintage__then_latest_not_after_resolves() -> (
+    None
+):
+    facts = []
+    for year in (2023, 2024, 2025):
+        fact = _consumer_fact_row_for_period(year, value=490_000 + year)
+        fact["period"] = {"type": "month", "value": f"{year}-09"}
+        fact["layout"] = {
+            **fact["layout"],
+            "record_set_id": f"scotgov.ctaxbase{year}.chargeable_dwellings.scotland",
+        }
+        facts.append(fact)
+    reference = LedgerTargetReference(
+        name="scotgov.council_tax_stock.band_a",
+        ledger_selector={"source_name": "irs_soi"},
+        entity="household",
+        measure="council_tax/band_a",
+        period=2025,
+    )
+
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+
+    assert registry.specs[0].value == 490_000 + 2025
+
+
+def test__given_an_aliased_row__then_hierarchy_keeps_the_roster_code_and_the_name() -> (
+    None
+):
+    seed = _exact_agi_reference().hierarchy
+    assert seed is not None
+    fact = _linear_combination_fact(
+        key="l7-barnsley",
+        value=62_000,
+        measure_id="line_07",
+        band="A",
+        geography_id="E08000038",
+        geography_level="local_authority",
+    )
+    fact["geography"]["name"] = "Barnsley"
+    fact["label"] = "Barnsley band A line 7"
+    fact["layout"] = {
+        **fact["layout"],
+        "groupby_dimension": "geography",
+        "groupby_dimension_label": "Geography",
+        "groupby_value_id": "e08000038",
+        "groupby_value_label": "Barnsley",
+    }
+    fact["dimension_labels"] = {
+        "council_tax_band": "Council tax band",
+        "geography": "Geography",
+    }
+    fact["dimension_value_labels"] = {
+        "council_tax_band": {"A": "Band A"},
+        "geography": {"e08000038": "Barnsley"},
+    }
+    reference = LedgerTargetReference(
+        name="mhclg.council_tax_stock.by_area.band_a@E08000016",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "geography_level": "local_authority",
+            "geography_id": ["E08000016", "E08000038"],
+        },
+        entity="household",
+        measure="council_tax/band_a",
+        period=2025,
+        metadata={
+            "geography_level": "local_authority",
+            "geography_id": "E08000016",
+            "geography_id_aliases": "E08000038",
+        },
+        hierarchy=CalibrationHierarchySeed(
+            seed.provider, seed.category, target_label="Band A occupied dwellings"
+        ),
+    )
+
+    registry = compile_ledger_target_references([fact], [reference], country="uk")
+
+    spec = registry.specs[0]
+    assert spec.value == 62_000
+    assert spec.hierarchy is not None
+    assert spec.hierarchy.geography.id == "E08000016"
+    assert spec.hierarchy.geography.label == "Barnsley"
+    assert spec.metadata["ledger_geography_id"] == "E08000038"

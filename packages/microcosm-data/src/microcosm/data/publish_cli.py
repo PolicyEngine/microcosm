@@ -7,7 +7,23 @@ import json
 import sys
 from pathlib import Path
 
-from microcosm.data.release import publish_release
+from microcosm.data.release import prepare_release, publish_release
+
+
+def _non_release_artifact(release_dir: Path) -> bool:
+    """Return whether the manifest explicitly identifies non-release output."""
+
+    path = release_dir / "build_manifest.json"
+    if not path.exists():
+        return False
+    try:
+        manifest = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return False
+    return isinstance(manifest, dict) and (
+        manifest.get("non_release") is True
+        or manifest.get("release_posture") == "non_release_smoke"
+    )
 
 
 def _staging_undelivered(release_dir: Path) -> bool:
@@ -30,9 +46,81 @@ def _staging_undelivered(release_dir: Path) -> bool:
     staging = manifest["staging"]
     if not isinstance(staging, dict) or not staging:
         return True
+    if "contract_version" in staging:
+        return _version_2_staging_undelivered(staging)
     if staging.get("enabled") is False:
-        return False
+        return not bool(staging.get("reason"))
     return not staging.get("uploads_succeeded")
+
+
+def _version_2_staging_undelivered(staging: dict[str, object]) -> bool:
+    """Validate publication-relevant version 2 delivery semantics."""
+
+    required = {
+        "contract_version",
+        "enabled",
+        "mode",
+        "run_id",
+        "configured_repository",
+        "upload_attempts",
+        "upload_successes",
+        "read_back",
+        "last_error_code",
+        "opt_out_reason",
+    }
+    if set(staging) != required or staging.get("contract_version") != 2:
+        return True
+    enabled = staging.get("enabled")
+    mode = staging.get("mode")
+    run_id = staging.get("run_id")
+    repository = staging.get("configured_repository")
+    attempts = staging.get("upload_attempts")
+    successes = staging.get("upload_successes")
+    read_back = staging.get("read_back")
+    error_code = staging.get("last_error_code")
+    reason = staging.get("opt_out_reason")
+    if (
+        not isinstance(enabled, bool)
+        or isinstance(attempts, bool)
+        or not isinstance(attempts, int)
+        or attempts < 0
+        or isinstance(successes, bool)
+        or not isinstance(successes, int)
+        or successes < 0
+        or successes > attempts
+        or read_back not in {"not_requested", "passed", "failed"}
+        or (error_code is not None and not isinstance(error_code, str))
+    ):
+        return True
+    if not enabled:
+        return not (
+            mode == "disabled"
+            and run_id is None
+            and repository is None
+            and attempts == 0
+            and successes == 0
+            and read_back == "not_requested"
+            and error_code is None
+            and isinstance(reason, str)
+            and bool(reason.strip())
+        )
+    if reason is not None or not isinstance(run_id, str) or not run_id:
+        return True
+    if mode == "local_only":
+        return True
+    if (
+        mode != "local_and_remote"
+        or not isinstance(repository, str)
+        or not repository.strip()
+    ):
+        return True
+    if read_back == "passed":
+        return successes == 0 or error_code is not None
+    if read_back == "failed":
+        return True
+    if error_code not in {None, "UPLOAD_FAILED"}:
+        return True
+    return successes == 0
 
 
 def _reform_validation_skipped(release_dir: Path) -> bool:
@@ -67,6 +155,23 @@ def main(argv: list[str] | None = None) -> int:
             "Directory holding root artifacts named by release_manifest.json, "
             "for example populace_us_2024.h5."
         ),
+    )
+    parser.add_argument(
+        "--parent-h5",
+        type=Path,
+        help="Exact certified parent H5 required for source-enrichment publication.",
+    )
+    parser.add_argument(
+        "--compatibility-wheel",
+        action="append",
+        type=Path,
+        default=[],
+        help="Exact installed country/Core/wrapper/calculator wheel; repeat for all four packages. Candidate wheels may be tested before publication.",
+    )
+    parser.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="Run all local publisher guards, including enrichment loader tests, without constructing a Hub client or publishing.",
     )
     parser.add_argument(
         "--create-tag",
@@ -155,6 +260,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.tag_only and not args.create_tag:
         parser.error("--tag-only requires tag creation; remove --no-create-tag.")
 
+    if _non_release_artifact(Path(args.release_dir)):
+        print(
+            "refusing to publish: build_manifest.json identifies this as "
+            "non-release smoke output.",
+            file=sys.stderr,
+        )
+        return 1
+
     if not args.allow_incomplete_reform_validation and _reform_validation_skipped(
         Path(args.release_dir)
     ):
@@ -183,17 +296,45 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1
 
-    pointer = publish_release(
-        Path(args.release_dir),
-        args.repo_id,
+    preparation_options = dict(
         artifact_root=Path(args.artifact_root) if args.artifact_root else None,
+        parent_h5=args.parent_h5,
+        compatibility_wheels=tuple(args.compatibility_wheel),
         create_tag=args.create_tag,
         tag_name=args.tag_name,
         extra_files=tuple(args.extra_file),
-        updated_at=args.updated_at,
         update_latest=not args.no_latest,
         tag_only=args.tag_only,
         evidence=args.evidence,
+    )
+    from microcosm.data.source_enrichment import recorded_narrowed_claims
+
+    # A re-certification that reverted a declared compatibility range to the
+    # exact pin warned in the terminal that ran it, days and an operator ago.
+    # Both paths out of here say so, because publication does not require the
+    # preflight first: tools/publish_release.sh passes its arguments straight
+    # through. stdout carries the machine-readable verdict, stderr the record
+    # for whoever is reading the terminal.
+    narrowed = recorded_narrowed_claims(Path(args.release_dir))
+    if narrowed:
+        print(
+            "note: this release records a compatibility narrowing from an "
+            f"earlier certification: {json.dumps(narrowed)}",
+            file=sys.stderr,
+        )
+    if args.preflight_only:
+        prepare_release(Path(args.release_dir), **preparation_options)
+        preflight = {"valid": True, "published": False}
+        if narrowed:
+            preflight["narrowed_claims"] = narrowed
+        print(json.dumps(preflight))
+        return 0
+
+    pointer = publish_release(
+        Path(args.release_dir),
+        args.repo_id,
+        **preparation_options,
+        updated_at=args.updated_at,
     )
     print(json.dumps(pointer, indent=2))
 

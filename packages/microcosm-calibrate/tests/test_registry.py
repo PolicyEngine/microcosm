@@ -14,11 +14,35 @@ import json
 import pytest
 
 from microcosm.calibrate import (
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyDimension,
+    HierarchyGeography,
+    HierarchyNode,
     TargetRegistry,
     TargetSpec,
     calibrate,
     specs_from_pe_surface,
 )
+
+
+def _hierarchy(name: str = "census/population") -> CalibrationHierarchy:
+    return CalibrationHierarchy(
+        provider=HierarchyNode(id="census", label="US Census Bureau"),
+        category=HierarchyCategory(
+            id="population", label="Population", provider_id="census"
+        ),
+        geography=HierarchyGeography(id="us", label="United States", level="country"),
+        dimensions=(
+            HierarchyDimension(
+                id="sex",
+                label="Sex",
+                value_id="female",
+                value_label="Female",
+            ),
+        ),
+        target=HierarchyNode(id=name, label="Female population"),
+    )
 
 
 def _spec(**overrides) -> TargetSpec:
@@ -80,6 +104,7 @@ class TestTargetSpec:
         target = _spec(
             tolerance=5.0,
             metadata={"kind": "neutralize_variable", "output_variable": "income_tax"},
+            hierarchy=_hierarchy(),
         ).to_target()
         assert target.name == "census/population"
         assert target.value == 1000.0
@@ -89,6 +114,11 @@ class TestTargetSpec:
             "kind": "neutralize_variable",
             "output_variable": "income_tax",
         }
+        assert target.hierarchy == _hierarchy()
+
+    def test_hierarchy_target_id_must_match_spec_name(self) -> None:
+        with pytest.raises(ValueError, match="must equal the spec name"):
+            _spec(hierarchy=_hierarchy("another-target"))
 
     def test_metadata_needs_non_empty_keys_and_values(self) -> None:
         with pytest.raises(ValueError, match="metadata"):
@@ -134,6 +164,7 @@ class TestArtifactRoundTrip:
                     se=12.5,
                     notes="ACS 1-year",
                     metadata={"kind": "neutralize_variable"},
+                    hierarchy=_hierarchy(),
                 ),
                 _spec(
                     name="puf/net_short_term_capital_gains",
@@ -166,13 +197,50 @@ class TestArtifactRoundTrip:
         with pytest.raises(ValueError, match="not a microcosm target registry"):
             TargetRegistry.from_json(path)
 
-    def test_old_registry_format_is_refused(self, tmp_path) -> None:
-        registry = TargetRegistry([_spec()], country="us")
-        path = registry.to_json(tmp_path / "registry.json")
-        payload = json.loads(path.read_text())
-        payload["populace_target_registry"] = 1
+    def test_format_2_registry_is_read(self, tmp_path) -> None:
+        raw_specs = [
+            {
+                "name": "census/population",
+                "entity": "household",
+                "value": 1000.0,
+                "measure": "household_count",
+                "filter": None,
+                "period": 0,
+                "se": None,
+                "source": "Census ACS 2024 table B01003",
+                "family": "census",
+                "signed": False,
+                "tolerance": None,
+                "notes": "",
+                "metadata": {},
+            }
+        ]
+        canonical = json.dumps(
+            {"country": "us", "specs": raw_specs},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        import hashlib
+
+        payload = {
+            "populace_target_registry": 2,
+            "country": "us",
+            "version": hashlib.sha256(canonical.encode()).hexdigest()[:12],
+            "n_specs": 1,
+            "specs": raw_specs,
+        }
+        path = tmp_path / "registry-v2.json"
         path.write_text(json.dumps(payload))
-        with pytest.raises(ValueError, match="format revision 2"):
+
+        loaded = TargetRegistry.from_json(path)
+
+        assert len(loaded) == 1
+        assert loaded.specs[0].hierarchy is None
+
+    def test_unknown_registry_format_is_refused(self, tmp_path) -> None:
+        path = tmp_path / "registry.json"
+        path.write_text(json.dumps({"populace_target_registry": 1}))
+        with pytest.raises(ValueError, match="supported format revisions"):
             TargetRegistry.from_json(path)
 
 

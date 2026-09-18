@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.uk_runtime.graph import uk_spine_graph
+from microcosm.build.uk_runtime.graph_kernels import UKStageKernel
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.spi_support import support_channel_column
 from microcosm.build.uk_runtime.uc_capital_coherence import (
@@ -19,6 +23,8 @@ from microcosm.build.uk_runtime.uc_capital_coherence import (
 )
 from microcosm.frame import WeightKind
 from microcosm.frame.adapters.policyengine_uk import PolicyEngineUKEngine
+from microcosm.graph.executor import _project_context
+from microcosm.graph.population import Population
 
 
 def _stage():
@@ -49,8 +55,35 @@ def _frame():
             "person_benunit_id": [row[1] for row in rows],
             "person_household_id": [row[0] for row in rows],
             "universal_credit_reported": [row[8] for row in rows],
+            "is_benunit_head": True,
+            "is_parent": [row[5] > 0 for row in rows],
         }
     )
+    other_members = []
+    for row in rows:
+        if row[6]:
+            other_members.append(
+                {
+                    "person_id": row[2] + 1,
+                    "person_benunit_id": row[1],
+                    "person_household_id": row[0],
+                    "universal_credit_reported": 0.0,
+                    "is_benunit_head": False,
+                    "is_parent": row[5] > 0,
+                }
+            )
+        for child in range(row[5]):
+            other_members.append(
+                {
+                    "person_id": row[2] + 10 + child,
+                    "person_benunit_id": row[1],
+                    "person_household_id": row[0],
+                    "universal_credit_reported": 0.0,
+                    "is_benunit_head": False,
+                    "is_parent": False,
+                }
+            )
+    person = pd.concat([person, pd.DataFrame(other_members)], ignore_index=True)
     benunit = pd.DataFrame(
         {
             "benunit_id": [row[1] for row in rows],
@@ -83,8 +116,27 @@ def test_manifest_declares_exact_redraw_seed_and_output() -> None:
     assert redraw.parameters["output"] == UC_CAPITAL_REDRAW_OUTPUT
     assert redraw.parameters["seed"] == UC_CAPITAL_REDRAW_SEED
     assert redraw.parameters["salt"] == UC_CAPITAL_REDRAW_SALT
+    assert redraw.parameters["couple_status"] == "is_uc_couple"
     assert stage.outputs == ("uc_reported_capital",)
     assert stage.rewrites == ("frs_benunit_capital", "would_claim_uc")
+
+
+def test_stage_refuses_a_stale_marriage_based_donor_contract():
+    stage = _stage()
+    operations = tuple(
+        replace(
+            operation,
+            parameters={**operation.parameters, "couple_status": "is_married"},
+        )
+        if operation.kind == "redraw_spi_reporter_capital"
+        else operation
+        for operation in stage.operations
+    )
+    transform = UKUCCapitalCoherenceStageTransform(
+        stage=replace(stage, operations=operations)
+    )
+    with pytest.raises(ValueError, match="parameters drifted"):
+        transform(_frame())
 
 
 def test_stage_orders_after_every_universal_credit_report_writer() -> None:
@@ -134,6 +186,59 @@ def test_redraw_is_reporter_conditioned_cell_exact_and_household_weighted() -> N
     assert benunit.loc[1006, "frs_benunit_capital"] == 888_888.0
     assert benunit.loc[401, "frs_benunit_capital"] == 999_999.0
     assert result.redrawn_spi_reporter_count == 2
+
+
+def test_capital_donor_cells_use_claimant_partnership_and_preserve_marital_status():
+    frame = _frame()
+    benunit = frame.table("benunit")
+    # Cohabiting couple and a married claimant whose spouse is not in this
+    # unit must use the couple and single donor cells respectively.
+    benunit.loc[benunit["benunit_id"] == 1007, "is_married"] = False
+    benunit.loc[benunit["benunit_id"] == 1005, "is_married"] = True
+    marital_before = benunit["is_married"].copy()
+
+    result = cohere_uc_capital(frame).frame.table("benunit")
+
+    by_id = result.set_index("benunit_id")
+    assert by_id.loc[1007, "frs_benunit_capital"] == 3_000.0
+    assert by_id.loc[1005, "frs_benunit_capital"] == 200.0
+    pd.testing.assert_series_equal(result["is_married"], marital_before)
+
+
+def test_graph_scoped_capital_redraw_receives_claimant_roles() -> None:
+    """The real node must retain role flags through executor input pruning."""
+
+    frame = _frame()
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    frame.table("household")["region"] = "LONDON"
+    person["age"] = np.where(person["is_benunit_head"] | person["is_parent"], 40, 5)
+    person[support_channel_column("person")] = person["person_benunit_id"].map(
+        benunit.set_index("benunit_id")[support_channel_column("benunit")]
+    )
+    # Legal marriage disagrees with the intended donor cells in both directions.
+    benunit.loc[benunit["benunit_id"] == 1007, "is_married"] = False
+    benunit.loc[benunit["benunit_id"] == 1005, "is_married"] = True
+    node = uk_spine_graph(source_mode="split").node("uc_capital_coherence")
+    context = _project_context(
+        node,
+        Population.from_frame(frame, "capital-input"),
+        key="0" * 64,
+        sources={},
+        tolerances={},
+        numerics={},
+    )
+    transform = UKUCCapitalCoherenceStageTransform(stage=_stage())
+    result = UKStageKernel("uc_capital_coherence", transform).run(context)
+
+    capital = result.columns[("benunit", "frs_benunit_capital")]
+    assert capital.loc[1005] == 200.0
+    assert capital.loc[1007] == 3_000.0
+    assert capital.loc[1006] == 888_888.0  # A non-reporter is unchanged.
+    assert result.columns[("benunit", "would_claim_uc")].loc[1007]
+    assert (
+        transform.checkpoint_metadata()["evidence"]["redrawn_spi_reporter_count"] == 2
+    )
 
 
 def test_transform_is_deterministic_and_idempotent() -> None:
@@ -197,7 +302,7 @@ def test_redraw_is_stable_under_input_row_permutation() -> None:
     expected = redraw_tables(person, benunit, household, weights)
     order = np.asarray([7, 2, 5, 0, 6, 1, 4, 3])
     actual = redraw_tables(
-        person.iloc[order].reset_index(drop=True),
+        person.sample(frac=1.0, random_state=91).reset_index(drop=True),
         benunit.iloc[order].reset_index(drop=True),
         household.iloc[order].reset_index(drop=True),
         weights[order],

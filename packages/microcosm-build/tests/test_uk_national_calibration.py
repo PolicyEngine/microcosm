@@ -41,7 +41,7 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
-ACTIVE_REFERENCE_COUNT = 408
+ACTIVE_REFERENCE_COUNT = 631
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
@@ -69,10 +69,16 @@ def _fact(
     value: float = 30.0,
 ) -> dict:
     return {
+        "label": "Test Universal Credit fact",
         "aggregate_fact_key": "ledger.aggregate_fact.v2:uc-fixture",
         "aggregation": {"method": "sum"},
         "assertion": "observation",
-        "geography": {"level": "country", "id": "K02000001"},
+        "entity": {"name": "person"},
+        "geography": {
+            "level": "country",
+            "id": "K02000001",
+            "name": "United Kingdom",
+        },
         "observed_measure": {
             "source_name": source_name,
             "source_concept": concept,
@@ -115,7 +121,7 @@ def _frame() -> Frame:
             "benunit": pd.DataFrame(
                 {"benunit_id": ids, "universal_credit": [1.0, 1.0, 0.0, 0.0]}
             ),
-            "household": pd.DataFrame({"household_id": ids}),
+            "household": pd.DataFrame({"household_id": ids, "region": "LONDON"}),
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(np.full(4, 10.0), WeightKind.DESIGN)},
@@ -166,23 +172,28 @@ class StubMeasureResolver:
 
 
 class StubCrosstabResolver:
-    """Supplies the household-grain affected flag, as production does.
+    """Supply separate prepared benefit-unit flags and affected-child counts.
 
-    ``uc_is_child_limit_affected`` is person-native in policyengine-uk, and
-    the Frame's global column-uniqueness rule forbids the same name on two
-    entity tables — so the household-grain flag can only ever arrive as a
-    table-scoped adapter injection. That is the production route, and it is
-    the route exercised here.
+    The national stage must inject both measurements temporarily, materialize
+    the target count, then remove the scratch inputs from the returned frame.
     """
 
     contract_targets = None
+    measures = {
+        "uc_tcl_affected_benunit_proxy": np.array([True, False, True]),
+        "uc_tcl_affected_child_count_proxy": np.array([2.0, 0.0, 3.0]),
+    }
 
     def knows(self, entity, variable):
-        return (entity, variable) == ("household", "uc_is_child_limit_affected")
+        return (entity, variable) == ("person", "cgt_2024_gains") or (
+            entity == "benunit" and variable in self.measures
+        )
 
     def compute(self, entity, variable):
-        assert (entity, variable) == ("household", "uc_is_child_limit_affected")
-        return np.array([1.0, 0.0, 1.0]), "stub_any_collapse_person_to_household"
+        if (entity, variable) == ("person", "cgt_2024_gains"):
+            return np.array([0.0, 7000.0, 12000.0, 500.0, 0.0, 0.0]), "stub_engine_year"
+        assert self.knows(entity, variable)
+        return self.measures[variable].copy(), "stub_benunit_tcl_measure"
 
     def receipt(self):
         return {"provider": "stub_crosstab_flag"}
@@ -204,7 +215,9 @@ def _nested_frame() -> Frame:
                     "universal_credit": [1.0, 0.0, 1.0, 1.0],
                 }
             ),
-            "household": pd.DataFrame({"household_id": np.arange(3, dtype="int64")}),
+            "household": pd.DataFrame(
+                {"household_id": np.arange(3, dtype="int64"), "region": "LONDON"}
+            ),
         },
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(np.array([10.0, 20.0, 30.0]), WeightKind.DESIGN)},
@@ -228,24 +241,95 @@ def _fact_for_reference(
 ) -> dict:
     selector = dict(reference.ledger_selector)
     dimensions = dict(selector.get("dimension_values", {}))
+    layout = {
+        key: selector[key]
+        for key in (
+            "groupby_dimension",
+            "groupby_value_id",
+            "record_set_spec_id",
+        )
+        if key in selector
+    }
+    groupby_dimension = str(layout.get("groupby_dimension") or "")
+    groupby_value_id = str(layout.get("groupby_value_id") or "")
+    hierarchy_dimensions = dict(dimensions)
+    if groupby_dimension:
+        hierarchy_dimensions.setdefault(groupby_dimension, groupby_value_id)
+    dimension_labels = {
+        dimension_id: f"Test dimension {dimension_id}"
+        for dimension_id in hierarchy_dimensions
+    }
+    dimension_value_labels = {
+        dimension_id: {
+            str(dimension_value): f"Test value {dimension_id}={dimension_value}"
+        }
+        for dimension_id, dimension_value in hierarchy_dimensions.items()
+    }
+    if groupby_dimension:
+        layout["groupby_dimension_label"] = dimension_labels[groupby_dimension]
+        if groupby_value_id:
+            layout["groupby_value_label"] = dimension_value_labels[groupby_dimension][
+                groupby_value_id
+            ]
     return {
-        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{reference.name}",
+        "label": f"Test label for {reference.name}",
+        "aggregate_fact_key": selector.get(
+            "aggregate_fact_key", f"ledger.aggregate_fact.v2:{reference.name}"
+        ),
         "aggregation": {"method": "sum"},
         "assertion": "observation",
+        "entity": {"name": selector.get("entity_name", reference.entity)},
         "dimensions": dimensions,
+        "dimension_labels": dimension_labels,
+        "dimension_value_labels": dimension_value_labels,
         "geography": {
             "level": selector.get("geography_level", "country"),
             "id": selector.get("geography_id", "K02000001"),
+            "name": "United Kingdom",
         },
+        "layout": layout,
         "observed_measure": {
             "source_name": selector["source_name"],
             "source_concept": selector["source_concept"],
-            "source_measure_id": "value",
+            "source_measure_id": selector.get("source_measure_id", "value"),
             "unit": "gbp",
         },
-        "period": {"type": "month", "value": f"{reference.period}-12"},
+        "period": {"type": "tax_year", "value": 2024}
+        if reference.name.startswith("hmrc.cgt.")
+        else {"type": "month", "value": f"{reference.period}-12"},
         "value": value,
     }
+
+
+def _facts_for_reference(reference: LedgerTargetReference, value: float) -> list[dict]:
+    """Expand the paid headline into its declared synthetic month/cell grid."""
+    if reference.name != "dwp.uc.households":
+        return [_fact_for_reference(reference, value)]
+
+    facts = []
+    for month in reference.ledger_selector["period_value"]:
+        for cell, operand in enumerate(reference.value_operands):
+            fact = _fact_for_reference(reference, value / len(reference.value_operands))
+            fact["aggregate_fact_key"] += f":{month}:{cell}"
+            fact["dimensions"] = dict(operand["dimension_values"])
+            fact["dimension_labels"] = {
+                dimension_id: f"Test dimension {dimension_id}"
+                for dimension_id in fact["dimensions"]
+            }
+            fact["dimension_value_labels"] = {
+                dimension_id: {
+                    str(dimension_value): (
+                        f"Test value {dimension_id}={dimension_value}"
+                    )
+                }
+                for dimension_id, dimension_value in fact["dimensions"].items()
+            }
+            fact["period"] = {"type": "month", "value": month}
+            fact["source_release_key"] = "ledger.source_release.v2:uc-paid-fixture"
+            fact["source"] = {"source_sha256": "a" * 64}
+            fact["observed_measure"]["unit"] = "count"
+            facts.append(fact)
+    return facts
 
 
 def _materialization_binding_frame(
@@ -255,6 +339,7 @@ def _materialization_binding_frame(
     household = pd.DataFrame(
         {
             "household_id": np.arange(3, dtype="int64"),
+            "region": "LONDON",
             "esa_income": [10.0, 20.0, 0.0],
             "esa_contrib": [1.0, 2.0, 0.0],
         }
@@ -320,6 +405,44 @@ def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None
     assert stage.manifest["solve"]["n_households"] == 4
 
 
+def test_stage_forwards_solver_progress_and_complete_lifecycle() -> None:
+    progress: list[dict[str, object]] = []
+    stages: list[tuple[str, str, dict[str, object]]] = []
+    stage = UKNationalCalibrationStage(
+        _registry(),
+        band_edge_registry=_registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
+        progress_callback=progress.append,
+        stage_callback=lambda stage_id, status, details: stages.append(
+            (stage_id, status, dict(details))
+        ),
+    )
+
+    stage(_frame())
+
+    assert progress
+    assert all(event["kind"] == "calibration_epoch" for event in progress)
+    assert [(stage_id, status) for stage_id, status, _details in stages] == [
+        ("calibration_input_validation", "started"),
+        ("calibration_input_validation", "completed"),
+        ("measure_resolution", "started"),
+        ("measure_resolution", "completed"),
+        ("target_materialization", "started"),
+        ("target_materialization", "completed"),
+        ("solver_preparation", "started"),
+        ("solver_preparation", "completed"),
+        ("solver_execution", "started"),
+        ("solver_execution", "completed"),
+        ("calibration_result_validation", "started"),
+        ("calibration_result_validation", "completed"),
+        ("calibration_evidence_construction", "started"),
+        ("calibration_evidence_construction", "completed"),
+    ]
+    assert stages[-1][2]["diagnostic_count"] == 1
+    assert all(details["elapsed_seconds"] >= 0 for _, _, details in stages)
+
+
 def test_uc_calibration_stage_accepts_benunit_grain_reference_on_nested_frame() -> None:
     frame = _nested_frame()
     stage = UKNationalCalibrationStage(
@@ -342,7 +465,9 @@ def test_uc_calibration_stage_accepts_benunit_grain_reference_on_nested_frame() 
 def test_stage_measure_resolver_injects_columns_then_restores_pristine_output() -> None:
     frame = _frame_without_uc_column()
     resolver = StubMeasureResolver()
-    original_columns = {entity: set(frame.table(entity).columns) for entity in frame.entities}
+    original_columns = {
+        entity: set(frame.table(entity).columns) for entity in frame.entities
+    }
     stage = UKNationalCalibrationStage(
         _registry(),
         band_edge_registry=_registry(),
@@ -454,7 +579,29 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
         for reference in spec.target_references
         if reference.name == "dwp.uc.households"
     )
-    assert uc_reference.value_operation == "calendar_year_average"
+    assert uc_reference.value_operation == "monthly_window_sum_average"
+    assert uc_reference.period_match_policy == "source_window"
+    assert uc_reference.ledger_selector["period_value"] == [
+        f"2025-{month:02d}" for month in range(1, 13)
+    ]
+    assert len(uc_reference.value_operands) == 10
+    assert {
+        tuple(
+            operand["dimension_values"][key]
+            for key in ("family_type", "payment_indicator", "child_entitlement")
+        )
+        for operand in uc_reference.value_operands
+    } == {
+        (family, "Yes", entitled)
+        for family in (
+            "Single, no children",
+            "Single, with children",
+            "Couple, no children",
+            "Couple, with children",
+            "Unknown or missing family type",
+        )
+        for entitled in ("No", "Yes")
+    }
 
     references = tuple(
         reference
@@ -486,12 +633,13 @@ def test_packaged_binding_classes_materialize_through_national_stage() -> None:
     )
     references = tuple(_reference_by_name(name) for name in selected_names)
     facts = [
-        _fact_for_reference(reference, value)
+        fact
         for reference, value in zip(
             references,
             (20.0, 33.0, 2.0, 5.0, 3.0),
             strict=True,
         )
+        for fact in _facts_for_reference(reference, value)
     ]
     from microcosm.build.ledger_targets import compile_ledger_target_references
     from microcosm.build.uk_runtime.ledger_targets import (
@@ -500,6 +648,9 @@ def test_packaged_binding_classes_materialize_through_national_stage() -> None:
     )
 
     registry = compile_ledger_target_references(facts, references, country="uk")
+    headline = next(spec for spec in registry.specs if spec.name == "dwp.uc.households")
+    assert headline.value == 20.0
+    assert headline.metadata["ledger_member_fact_count"] == "120"
     resolver = StubCrosstabResolver()
     resolver.contract_targets = _uk_contract_targets()
     stage = UKNationalCalibrationStage(
@@ -530,17 +681,19 @@ def test_packaged_binding_classes_materialize_through_national_stage() -> None:
     # The binding classes produce the right prepared values on the adapter…
     adapter = UKFrameTargetAdapter(_materialization_binding_frame())
     # The same table-scoped injection the resolution loop performs.
-    adapter.tables["household"]["uc_is_child_limit_affected"] = np.array(
-        [1.0, 0.0, 1.0]
+    for variable, values in resolver.measures.items():
+        adapter.tables["benunit"][variable] = values.copy()
+    adapter.tables["person"]["cgt_2024_gains"] = np.array(
+        [0.0, 7000.0, 12000.0, 500.0, 0.0, 0.0]
     )
     materialize_uk_ledger_targets(adapter, registry, period=2025)
     materialized = {
         ("benunit", "dwp/uc/households"): [1.0, 0.0, 1.0],
         ("household", "obr/esa"): [11.0, 22.0, 0.0],
         ("person", "hmrc/cgt_taxpayers"): [0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
-        # Counts of flagged children, reduced from the person rows — not the
-        # household indicator [1.0, 0.0, 1.0] a same-grain boolean read gives.
-        ("household", "dwp/uc/two_child_limit/children_affected"): [2.0, 0.0, 3.0],
+        # The prepared affected-child counts stay distinct from the claim
+        # indicator [1.0, 0.0, 1.0] and legacy person-native entitlement flags.
+        ("benunit", "dwp/uc/two_child_limit/children_affected"): [2.0, 0.0, 3.0],
         ("person", "hmrc/salary_sacrifice_it_relief_basic_rate"): [
             1.0,
             2.0,
@@ -865,9 +1018,7 @@ def test_measure_resolution_never_touches_the_source_frame() -> None:
     from microcosm.build.uk_runtime.ledger_targets import UKFrameTargetAdapter
 
     frame = _materialization_binding_frame()
-    before = {
-        entity: list(frame.table(entity).columns) for entity in frame.entities
-    }
+    before = {entity: list(frame.table(entity).columns) for entity in frame.entities}
 
     class ProbeResolver:
         contract_targets = {
@@ -968,3 +1119,55 @@ def test_unmapped_household_reduction_names_the_published_reducer():
                 "value": 1,
             }
         )
+
+
+@pytest.mark.parametrize("defect", ["missing", "duplicate"])
+def test_packaged_uc_headline_refuses_incomplete_month_cell_fixture(defect) -> None:
+    from microcosm.build.ledger_targets import compile_ledger_target_references
+
+    reference = _reference_by_name("dwp.uc.households")
+    facts = _facts_for_reference(reference, 20.0)
+    if defect == "missing":
+        # Keep every month represented but omit one paid/entitlement cell.
+        facts.pop(0)
+    else:
+        # Keep the expected total size and unique IDs; repeat a cell instead.
+        facts[0]["dimensions"] = dict(facts[1]["dimensions"])
+
+    with pytest.raises(ValueError, match="monthly window"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test_stage_attributes_failure_to_the_operation_actually_executing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stages: list[tuple[str, str]] = []
+    stage = UKNationalCalibrationStage(
+        _registry(),
+        band_edge_registry=_registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
+        stage_callback=lambda stage_id, status, details: stages.append(
+            (stage_id, status)
+        ),
+    )
+
+    def fail_materialization(*args, **kwargs):
+        raise RuntimeError("materialization failed")
+
+    monkeypatch.setattr(
+        "microcosm.build.uk_runtime.national_calibration.materialize_uk_ledger_targets",
+        fail_materialization,
+    )
+
+    with pytest.raises(RuntimeError, match="materialization failed"):
+        stage(_frame())
+
+    assert stages == [
+        ("calibration_input_validation", "started"),
+        ("calibration_input_validation", "completed"),
+        ("measure_resolution", "started"),
+        ("measure_resolution", "completed"),
+        ("target_materialization", "started"),
+        ("target_materialization", "failed"),
+    ]

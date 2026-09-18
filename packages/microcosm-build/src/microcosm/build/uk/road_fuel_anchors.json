@@ -1,0 +1,3140 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "road_fuel_anchors.json",
+  "purpose": "HMRC Hydrocarbon Oils Bulletin petrol and diesel quantities released for consumption by fiscal year; DESNZ annual average ULSP and ULSD pump prices; OBR fuel duty receipts by vehicle category; ONS mid-year UK population totals. Consumed by the LCFS donor litre-proxy uprating and the household-incidence fuel diagnostics.",
+  "consumers": [
+    "uk_runtime.lcfs_consumption"
+  ],
+  "planned_consumers": [
+    "uk_aggregate_admin"
+  ],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "ec200856c4e40e0d3fe97c4e17049cb48de02b85",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 275698,
+    "facts_sha256": "47612c481d9917c5f92ba50389c67e8d6a80b525ba06a8c64cbc0ce83ae81412",
+    "manifest_sha256": "c91fa9ff735ea83271e93de7a725fdcdfb65a664c4868412e374a795b8cc65c3"
+  },
+  "selections": [
+    {
+      "label": "hmrc_road_fuel_quantities_fiscal_year",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": [
+          "hmrc.hydrocarbon_oils.total_petrol_quantity",
+          "hmrc.hydrocarbon_oils.total_diesel_quantity"
+        ],
+        "period_type": "fiscal_year"
+      },
+      "row_count": 12
+    },
+    {
+      "label": "desnz_annual_pump_prices",
+      "selector": {
+        "source_name": "desnz",
+        "source_concept": [
+          "desnz.road_fuel.annual_ulsp_pump_price",
+          "desnz.road_fuel.annual_ulsd_pump_price"
+        ],
+        "period_type": "calendar_year"
+      },
+      "row_count": 6
+    },
+    {
+      "label": "obr_fuel_duty_receipts_by_vehicle_category",
+      "selector": {
+        "source_name": "obr",
+        "source_concept": "obr.fuel_duty.receipts",
+        "period_type": "fiscal_year"
+      },
+      "row_count": 49
+    },
+    {
+      "label": "ons_mid_year_population_uk_total",
+      "selector": {
+        "source_name": "ons",
+        "source_concept": "ons.mid_year_population_estimate",
+        "geography_id": "K02000001",
+        "dimensions": []
+      },
+      "row_count": 2
+    }
+  ],
+  "row_count": 69,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_798730cf567dc462834413e1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_820771bf2fc2e2faad89d785",
+      "source_record_id": "desnz.annual_road_fuel_prices.cy2023.united_kingdom.ulsd_price",
+      "concept": "desnz.road_fuel.annual_ulsd_pump_price",
+      "measure_id": "ulsd_price",
+      "unit": "pence_per_litre",
+      "aggregation": "mean",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.annual_road_fuel_prices.cy2023",
+        "groupby_dimension": "desnz.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Digest of UK Energy Statistics tables 4.1.1 to 4.1.3 workbook; emitted sheets 4.1.1 and 4.1.2",
+        "source_file": "table_411_413.xlsx",
+        "source_sha256": "30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f",
+        "vintage": "august_2026",
+        "raw_r2_key": "raw/uk/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
+      },
+      "value": 158.18871125
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6b08c25025fd045e6b26cec2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6befd685ffc73aa2354dd55a",
+      "source_record_id": "desnz.annual_road_fuel_prices.cy2024.united_kingdom.ulsd_price",
+      "concept": "desnz.road_fuel.annual_ulsd_pump_price",
+      "measure_id": "ulsd_price",
+      "unit": "pence_per_litre",
+      "aggregation": "mean",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.annual_road_fuel_prices.cy2024",
+        "groupby_dimension": "desnz.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Digest of UK Energy Statistics tables 4.1.1 to 4.1.3 workbook; emitted sheets 4.1.1 and 4.1.2",
+        "source_file": "table_411_413.xlsx",
+        "source_sha256": "30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f",
+        "vintage": "august_2026",
+        "raw_r2_key": "raw/uk/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
+      },
+      "value": 148.32888483333338
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4fd808191e64dc65a99d48e2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f1aee4b5076694bca92abc24",
+      "source_record_id": "desnz.annual_road_fuel_prices.cy2025.united_kingdom.ulsd_price",
+      "concept": "desnz.road_fuel.annual_ulsd_pump_price",
+      "measure_id": "ulsd_price",
+      "unit": "pence_per_litre",
+      "aggregation": "mean",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.annual_road_fuel_prices.cy2025",
+        "groupby_dimension": "desnz.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Digest of UK Energy Statistics tables 4.1.1 to 4.1.3 workbook; emitted sheets 4.1.1 and 4.1.2",
+        "source_file": "table_411_413.xlsx",
+        "source_sha256": "30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f",
+        "vintage": "august_2026",
+        "raw_r2_key": "raw/uk/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
+      },
+      "value": 142.54857508333336
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_30ba42e784bb76ba7b95c448",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e48615c5572de6494c4aaa93",
+      "source_record_id": "desnz.annual_road_fuel_prices.cy2023.united_kingdom.ulsp_price",
+      "concept": "desnz.road_fuel.annual_ulsp_pump_price",
+      "measure_id": "ulsp_price",
+      "unit": "pence_per_litre",
+      "aggregation": "mean",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-01-01",
+        "end_date": "2023-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.annual_road_fuel_prices.cy2023",
+        "groupby_dimension": "desnz.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Digest of UK Energy Statistics tables 4.1.1 to 4.1.3 workbook; emitted sheets 4.1.1 and 4.1.2",
+        "source_file": "table_411_413.xlsx",
+        "source_sha256": "30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f",
+        "vintage": "august_2026",
+        "raw_r2_key": "raw/uk/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
+      },
+      "value": 147.7463336284925
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_424390bc10f089d5804c7d67",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ff8030acb904adf6150b7064",
+      "source_record_id": "desnz.annual_road_fuel_prices.cy2024.united_kingdom.ulsp_price",
+      "concept": "desnz.road_fuel.annual_ulsp_pump_price",
+      "measure_id": "ulsp_price",
+      "unit": "pence_per_litre",
+      "aggregation": "mean",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-01-01",
+        "end_date": "2024-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.annual_road_fuel_prices.cy2024",
+        "groupby_dimension": "desnz.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Digest of UK Energy Statistics tables 4.1.1 to 4.1.3 workbook; emitted sheets 4.1.1 and 4.1.2",
+        "source_file": "table_411_413.xlsx",
+        "source_sha256": "30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f",
+        "vintage": "august_2026",
+        "raw_r2_key": "raw/uk/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
+      },
+      "value": 141.47766540670264
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c7194bde6e6b36446b3cfd27",
+      "semantic_fact_key": "ledger_semantic_fact_v2_91048ff4a6c7b325f5a8c3cb",
+      "source_record_id": "desnz.annual_road_fuel_prices.cy2025.united_kingdom.ulsp_price",
+      "concept": "desnz.road_fuel.annual_ulsp_pump_price",
+      "measure_id": "ulsp_price",
+      "unit": "pence_per_litre",
+      "aggregation": "mean",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-12-31",
+        "basis": "calendar"
+      },
+      "layout": {
+        "record_set_id": "desnz.annual_road_fuel_prices.cy2025",
+        "groupby_dimension": "desnz.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "desnz",
+        "source_table": "Digest of UK Energy Statistics tables 4.1.1 to 4.1.3 workbook; emitted sheets 4.1.1 and 4.1.2",
+        "source_file": "table_411_413.xlsx",
+        "source_sha256": "30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f",
+        "vintage": "august_2026",
+        "raw_r2_key": "raw/uk/desnz/desnz-monthly-annual-road-fuel-prices-august-2026/2026/30b19fdfda95adcf73ef4cdb5ab9993223595ebd3c0284d76a86210264dd358f/table_411_413.xlsx"
+      },
+      "value": 135.07221037199108
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_994e80ad9a799096a1a7bffc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d97d48e3ad5d0edd3348dfe6",
+      "source_record_id": "hmrc.hydrocarbon_oils.table_2a.fy2020.united_kingdom.diesel_quantity",
+      "concept": "hmrc.hydrocarbon_oils.total_diesel_quantity",
+      "measure_id": "diesel_quantity",
+      "unit": "litre",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.hydrocarbon_oils.table_2a.fy2020",
+        "groupby_dimension": "hmrc.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Hydrocarbon Oils Bulletin tables 2a and 2c",
+        "source_file": "Oils_Tab_Jun_26.ods",
+        "source_sha256": "a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97",
+        "vintage": "june_2026",
+        "raw_r2_key": "raw/hmrc/hmrc-hydrocarbon-oils-quantities-june-2026/2026/a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97/Oils_Tab_Jun_26.ods"
+      },
+      "value": 23619001624.1587
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5394eab455ac12a055d354b6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f350fbe01ed60c729c3afb86",
+      "source_record_id": "hmrc.hydrocarbon_oils.table_2a.fy2021.united_kingdom.diesel_quantity",
+      "concept": "hmrc.hydrocarbon_oils.total_diesel_quantity",
+      "measure_id": "diesel_quantity",
+      "unit": "litre",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.hydrocarbon_oils.table_2a.fy2021",
+        "groupby_dimension": "hmrc.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Hydrocarbon Oils Bulletin tables 2a and 2c",
+        "source_file": "Oils_Tab_Jun_26.ods",
+        "source_sha256": "a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97",
+        "vintage": "june_2026",
+        "raw_r2_key": "raw/hmrc/hmrc-hydrocarbon-oils-quantities-june-2026/2026/a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97/Oils_Tab_Jun_26.ods"
+      },
+      "value": 28018319597.4431
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6250e8a34b06fd5077edea35",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7d66eafd96969b278bc8ef42",
+      "source_record_id": "hmrc.hydrocarbon_oils.table_2a.fy2022.united_kingdom.diesel_quantity",
+      "concept": "hmrc.hydrocarbon_oils.total_diesel_quantity",
+      "measure_id": "diesel_quantity",
+      "unit": "litre",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.hydrocarbon_oils.table_2a.fy2022",
+        "groupby_dimension": "hmrc.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Hydrocarbon Oils Bulletin tables 2a and 2c",
+        "source_file": "Oils_Tab_Jun_26.ods",
+        "source_sha256": "a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97",
+        "vintage": "june_2026",
+        "raw_r2_key": "raw/hmrc/hmrc-hydrocarbon-oils-quantities-june-2026/2026/a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97/Oils_Tab_Jun_26.ods"
+      },
+      "value": 30074953700.9632
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_883faa9f932d18f0dce1b63c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e86f87edf2871904a0611702",
+      "source_record_id": "hmrc.hydrocarbon_oils.table_2a.fy2023.united_kingdom.diesel_quantity",
+      "concept": "hmrc.hydrocarbon_oils.total_diesel_quantity",
+      "measure_id": "diesel_quantity",
+      "unit": "litre",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.hydrocarbon_oils.table_2a.fy2023",
+        "groupby_dimension": "hmrc.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Hydrocarbon Oils Bulletin tables 2a and 2c",
+        "source_file": "Oils_Tab_Jun_26.ods",
+        "source_sha256": "a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97",
+        "vintage": "june_2026",
+        "raw_r2_key": "raw/hmrc/hmrc-hydrocarbon-oils-quantities-june-2026/2026/a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97/Oils_Tab_Jun_26.ods"
+      },
+      "value": 29104474638.6213
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8939f4220030069eb651ad9e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_08c701605897efc1d4f17af8",
+      "source_record_id": "hmrc.hydrocarbon_oils.table_2a.fy2024.united_kingdom.diesel_quantity",
+      "concept": "hmrc.hydrocarbon_oils.total_diesel_quantity",
+      "measure_id": "diesel_quantity",
+      "unit": "litre",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.hydrocarbon_oils.table_2a.fy2024",
+        "groupby_dimension": "hmrc.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Hydrocarbon Oils Bulletin tables 2a and 2c",
+        "source_file": "Oils_Tab_Jun_26.ods",
+        "source_sha256": "a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97",
+        "vintage": "june_2026",
+        "raw_r2_key": "raw/hmrc/hmrc-hydrocarbon-oils-quantities-june-2026/2026/a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97/Oils_Tab_Jun_26.ods"
+      },
+      "value": 28293387325.1369
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_753bd80e77cc7ea4594c0863",
+      "semantic_fact_key": "ledger_semantic_fact_v2_18909f80bbc0525a967c2811",
+      "source_record_id": "hmrc.hydrocarbon_oils.table_2a.fy2025.united_kingdom.diesel_quantity",
+      "concept": "hmrc.hydrocarbon_oils.total_diesel_quantity",
+      "measure_id": "diesel_quantity",
+      "unit": "litre",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.hydrocarbon_oils.table_2a.fy2025",
+        "groupby_dimension": "hmrc.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Hydrocarbon Oils Bulletin tables 2a and 2c",
+        "source_file": "Oils_Tab_Jun_26.ods",
+        "source_sha256": "a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97",
+        "vintage": "june_2026",
+        "raw_r2_key": "raw/hmrc/hmrc-hydrocarbon-oils-quantities-june-2026/2026/a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97/Oils_Tab_Jun_26.ods"
+      },
+      "value": 27315460842.3607
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3c1032efc21962dec39dc64f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0b36cc69b686ca26ac345277",
+      "source_record_id": "hmrc.hydrocarbon_oils.table_2a.fy2020.united_kingdom.petrol_quantity",
+      "concept": "hmrc.hydrocarbon_oils.total_petrol_quantity",
+      "measure_id": "petrol_quantity",
+      "unit": "litre",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.hydrocarbon_oils.table_2a.fy2020",
+        "groupby_dimension": "hmrc.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Hydrocarbon Oils Bulletin tables 2a and 2c",
+        "source_file": "Oils_Tab_Jun_26.ods",
+        "source_sha256": "a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97",
+        "vintage": "june_2026",
+        "raw_r2_key": "raw/hmrc/hmrc-hydrocarbon-oils-quantities-june-2026/2026/a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97/Oils_Tab_Jun_26.ods"
+      },
+      "value": 11670759532.8041
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9167321d89a0f746f8237198",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bab243ca60e49dd1dd69d1a2",
+      "source_record_id": "hmrc.hydrocarbon_oils.table_2a.fy2021.united_kingdom.petrol_quantity",
+      "concept": "hmrc.hydrocarbon_oils.total_petrol_quantity",
+      "measure_id": "petrol_quantity",
+      "unit": "litre",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.hydrocarbon_oils.table_2a.fy2021",
+        "groupby_dimension": "hmrc.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Hydrocarbon Oils Bulletin tables 2a and 2c",
+        "source_file": "Oils_Tab_Jun_26.ods",
+        "source_sha256": "a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97",
+        "vintage": "june_2026",
+        "raw_r2_key": "raw/hmrc/hmrc-hydrocarbon-oils-quantities-june-2026/2026/a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97/Oils_Tab_Jun_26.ods"
+      },
+      "value": 15888588021.5339
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4b348825489956c82e30c933",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e5b55fd600f7d11f1d269090",
+      "source_record_id": "hmrc.hydrocarbon_oils.table_2a.fy2022.united_kingdom.petrol_quantity",
+      "concept": "hmrc.hydrocarbon_oils.total_petrol_quantity",
+      "measure_id": "petrol_quantity",
+      "unit": "litre",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.hydrocarbon_oils.table_2a.fy2022",
+        "groupby_dimension": "hmrc.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Hydrocarbon Oils Bulletin tables 2a and 2c",
+        "source_file": "Oils_Tab_Jun_26.ods",
+        "source_sha256": "a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97",
+        "vintage": "june_2026",
+        "raw_r2_key": "raw/hmrc/hmrc-hydrocarbon-oils-quantities-june-2026/2026/a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97/Oils_Tab_Jun_26.ods"
+      },
+      "value": 16578999799.6789
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a563687c5155e84fc74b2a45",
+      "semantic_fact_key": "ledger_semantic_fact_v2_28e3faade4712f94709f3af0",
+      "source_record_id": "hmrc.hydrocarbon_oils.table_2a.fy2023.united_kingdom.petrol_quantity",
+      "concept": "hmrc.hydrocarbon_oils.total_petrol_quantity",
+      "measure_id": "petrol_quantity",
+      "unit": "litre",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.hydrocarbon_oils.table_2a.fy2023",
+        "groupby_dimension": "hmrc.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Hydrocarbon Oils Bulletin tables 2a and 2c",
+        "source_file": "Oils_Tab_Jun_26.ods",
+        "source_sha256": "a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97",
+        "vintage": "june_2026",
+        "raw_r2_key": "raw/hmrc/hmrc-hydrocarbon-oils-quantities-june-2026/2026/a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97/Oils_Tab_Jun_26.ods"
+      },
+      "value": 17282267199.0557
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d2326b29bff4c828039867ca",
+      "semantic_fact_key": "ledger_semantic_fact_v2_642d94f9e423ab2bb363c056",
+      "source_record_id": "hmrc.hydrocarbon_oils.table_2a.fy2024.united_kingdom.petrol_quantity",
+      "concept": "hmrc.hydrocarbon_oils.total_petrol_quantity",
+      "measure_id": "petrol_quantity",
+      "unit": "litre",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.hydrocarbon_oils.table_2a.fy2024",
+        "groupby_dimension": "hmrc.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Hydrocarbon Oils Bulletin tables 2a and 2c",
+        "source_file": "Oils_Tab_Jun_26.ods",
+        "source_sha256": "a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97",
+        "vintage": "june_2026",
+        "raw_r2_key": "raw/hmrc/hmrc-hydrocarbon-oils-quantities-june-2026/2026/a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97/Oils_Tab_Jun_26.ods"
+      },
+      "value": 18033709745.3447
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_364908de970d587f0e6f7ce7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2484b871bce4eac646df85a2",
+      "source_record_id": "hmrc.hydrocarbon_oils.table_2a.fy2025.united_kingdom.petrol_quantity",
+      "concept": "hmrc.hydrocarbon_oils.total_petrol_quantity",
+      "measure_id": "petrol_quantity",
+      "unit": "litre",
+      "aggregation": "sum",
+      "entity": {
+        "name": "institutional_sector",
+        "role": "road_fuel_market"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "hmrc.hydrocarbon_oils.table_2a.fy2025",
+        "groupby_dimension": "hmrc.road_fuel_scope",
+        "groupby_value_id": "united_kingdom",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Hydrocarbon Oils Bulletin tables 2a and 2c",
+        "source_file": "Oils_Tab_Jun_26.ods",
+        "source_sha256": "a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97",
+        "vintage": "june_2026",
+        "raw_r2_key": "raw/hmrc/hmrc-hydrocarbon-oils-quantities-june-2026/2026/a8c237fb4adc7a0b9bcb76c1c1737deb567a288c0bad56c2ffb8c35e9c861b97/Oils_Tab_Jun_26.ods"
+      },
+      "value": 18407882157.141003
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6bef81dde404159112b6783f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e6f062baa4557d06c7fcbde0",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2022.cars.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2022",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "cars"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 14400000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_31958ec0ce31c2e6703a4c1a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_67bc71014782b679d3954b68",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2022.heavy_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2022",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "heavy_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "heavy_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 4300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e822b674573d0b983a836238",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7325444e866e3e2de3759507",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2022.light_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2022",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "light_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "light_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 4300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_529d434baa9b268ad795ede1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_31f1314dd50612156e36c0e4",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2022.other_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2022",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f0af0edc9a926fcee8bd99f4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_36f8c1c1dd52805d488c084c",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2022.other_petrol_diesel.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2022",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_petrol_diesel",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_petrol_diesel"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 1800000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_12b1d2aeaf0575ef64fee365",
+      "semantic_fact_key": "ledger_semantic_fact_v2_07ea546cb33d744a288d0f90",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2022.road_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2022",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "road_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "road_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 24800000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b5b446b60947352a1014c6c4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_964e585b3e3d422811be27fa",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2022.total.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2022",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "vehicle_category": "total"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 25100000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_96fbe943a6034e160a2ea7a7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c25b03e600752a52fa217389",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2023.cars.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2023",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "cars"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 14200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bce860353247bb3590f9b01c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_73ab6d449246622a9c0bab8d",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2023.heavy_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2023",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "heavy_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "heavy_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 4200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_62acaa7e61d4d708f2853022",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c70e25da34fddb4f04e91e10",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2023.light_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2023",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "light_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "light_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 4400000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3e1fa1f60e6a97b47fab7e2f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0be42574b4d2bcd7475053f8",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2023.other_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2023",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_66606ec76005b15debdf8714",
+      "semantic_fact_key": "ledger_semantic_fact_v2_44d89e376bdf29545f71c7f0",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2023.other_petrol_diesel.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2023",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_petrol_diesel",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_petrol_diesel"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 1700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3187a8a6e1f913e00efb2354",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7726c73a6aed5b34900e4ef4",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2023.road_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2023",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "road_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "road_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 24400000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7d61b2ca796260653c6dd25b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7a0cafce56fed7dd43527be5",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2023.total.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2023",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "vehicle_category": "total"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 24600000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_de6554fe8ab7b481035a432a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6d2dae8744f2adb99ee5d70b",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2024.cars.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2024",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "cars"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 14400000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e6ae3d0a0fc1eb4194ef3dff",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3bb3c20fa82f17b5e9678bb5",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2024.heavy_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2024",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "heavy_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "heavy_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 4200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0a51a2196b834b2bbe4f450f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6fdef140ce1eada8e6dd4c87",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2024.light_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2024",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "light_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "light_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 4500000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c7362df1f96b6885a7b05164",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8d428d4e925991476f7ce1ea",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2024.other_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2024",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1987df01b972464cb7c6efa9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f6c7b19766ad081d930fbb54",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2024.other_petrol_diesel.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2024",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_petrol_diesel",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_petrol_diesel"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 1400000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_358a3a0686ee8d955e278dda",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7ae21ab132602a6124930cdb",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2024.road_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2024",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "road_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "road_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 24500000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_acc55aa9ab611aaadbfcdd52",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6fbf5ba3129cfc0804064773",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2024.total.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2024",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "vehicle_category": "total"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 24700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e67ab63ef45a3912ba9524e2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d97e745075e087900cb7333f",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2025.cars.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2025",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "cars"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 15900000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0782d0a9205d472f9dea9fc3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_67e31c559f6ecffd1318d435",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2025.heavy_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2025",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "heavy_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "heavy_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 4600000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a7ba4185fb039d41ac74f12b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2871ffd472e0d554afff06a5",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2025.light_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2025",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "light_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "light_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 5100000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4dcda5bb13f3a242eb800cc7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e5d7a0fc622d9bebd5316266",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2025.other_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2025",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_04c3d02d6d93b7f1603adbc8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cf67672a619c789e8f5d840e",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2025.other_petrol_diesel.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2025",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_petrol_diesel",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_petrol_diesel"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 1500000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_acd30067838888fbd686e377",
+      "semantic_fact_key": "ledger_semantic_fact_v2_326a2caaf2356feb7259f661",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2025.road_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2025",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "road_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "road_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 27000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7ae930eac12d48a59b697942",
+      "semantic_fact_key": "ledger_semantic_fact_v2_69e4b725f195f72639cef5b8",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2025.total.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": "2025-04-01",
+        "end_date": "2026-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2025",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "vehicle_category": "total"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 27300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_af4e4d4f09db3ca740d9b10d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e139e55cad4c3efa61cb43c3",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2026.cars.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": "2026-04-01",
+        "end_date": "2027-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2026",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "cars"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 16000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6afb8b2e87958c4018969ba5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bd29e9595849b2702dc7b5ac",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2026.heavy_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": "2026-04-01",
+        "end_date": "2027-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2026",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "heavy_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "heavy_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 4600000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_307190fc086d2cf31f6b3b1b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_041ff82c31d9e2735482fc51",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2026.light_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": "2026-04-01",
+        "end_date": "2027-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2026",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "light_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "light_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 5200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bc5625418b0df57de1294a0c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_00b4cfb249f0b78dcfad05fa",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2026.other_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": "2026-04-01",
+        "end_date": "2027-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2026",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c3345136dde2f6de3810e9d2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_da2a59e10dfc4850558a8db5",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2026.other_petrol_diesel.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": "2026-04-01",
+        "end_date": "2027-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2026",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_petrol_diesel",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_petrol_diesel"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 1500000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_457b8e868c9eafb72bab5d37",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f080505236b33061ee22002a",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2026.road_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": "2026-04-01",
+        "end_date": "2027-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2026",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "road_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "road_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 27400000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0a75f74b174f21e21f5d155e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_fe7db1b6bc675832049b2b7c",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2026.total.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": "2026-04-01",
+        "end_date": "2027-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2026",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "vehicle_category": "total"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 27600000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d22675b1dce8ffd6b1d85bed",
+      "semantic_fact_key": "ledger_semantic_fact_v2_91abb5230a177109a3d1ffbb",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2027.cars.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2027
+      },
+      "period_coverage": {
+        "start_date": "2027-04-01",
+        "end_date": "2028-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2027",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "cars"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 16100000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_34ef7f0d2aec66e620f0825b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_796e04b6bb958956ef62ab64",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2027.heavy_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2027
+      },
+      "period_coverage": {
+        "start_date": "2027-04-01",
+        "end_date": "2028-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2027",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "heavy_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "heavy_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 4700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dfbb1618f4bb69f3c0d1ead2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_60723ce957c3b8daa3f97c36",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2027.light_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2027
+      },
+      "period_coverage": {
+        "start_date": "2027-04-01",
+        "end_date": "2028-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2027",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "light_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "light_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 5500000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ab22ed90b630cd560946b534",
+      "semantic_fact_key": "ledger_semantic_fact_v2_da242bb2c1251a62c0152fdd",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2027.other_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2027
+      },
+      "period_coverage": {
+        "start_date": "2027-04-01",
+        "end_date": "2028-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2027",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fd267658360aa4ebfed63cc3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6f0cea2584efd1d8f2eb4da9",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2027.other_petrol_diesel.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2027
+      },
+      "period_coverage": {
+        "start_date": "2027-04-01",
+        "end_date": "2028-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2027",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_petrol_diesel",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_petrol_diesel"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 1500000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_df17b86a69b02ea0a3585a11",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0f1edfb1d9c68e42b2b5acdf",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2027.road_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2027
+      },
+      "period_coverage": {
+        "start_date": "2027-04-01",
+        "end_date": "2028-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2027",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "road_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "road_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 27800000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8c34521587b6bdf36ab05eed",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6352d2d4ec2372646d54b994",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2027.total.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2027
+      },
+      "period_coverage": {
+        "start_date": "2027-04-01",
+        "end_date": "2028-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2027",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "vehicle_category": "total"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 28000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e64e5400081db26e194918c2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c2c4121b32045a58cae4b6cc",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2028.cars.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2028",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "cars",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "cars"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 16000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7971f4a231c65856c37e8c48",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0eef5ba56dd2855225b995ac",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2028.heavy_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2028",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "heavy_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "heavy_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 4800000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f4d534dbb64f2f1762feb252",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bede69aa8384a7cd28e8dfef",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2028.light_goods_vehicles.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2028",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "light_goods_vehicles",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "light_goods_vehicles"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 5700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_894e64ef996cb949981337a7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cf0245c1043ccd0b67f12718",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2028.other_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2028",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_187f17fefbaf56eb34f7ee6a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3cf616b89be7bd38e9b8613b",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2028.other_petrol_diesel.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2028",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "other_petrol_diesel",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "other_petrol_diesel"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 1400000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_321c40f8a85036feaf0031dd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c7fdfcb914a922459d2d5496",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2028.road_fuels.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2028",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "road_fuels",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "vehicle_category": "road_fuels"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 27900000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7a5a32cf303e35399bc3a18b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_81b71afa26a658c7061b6a70",
+      "source_record_id": "obr.fuel_duty_receipts_by_vehicle.fy2028.total.receipts",
+      "concept": "obr.fuel_duty.receipts",
+      "measure_id": "receipts",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "government",
+        "role": "central_government"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2028
+      },
+      "period_coverage": {
+        "start_date": "2028-04-01",
+        "end_date": "2029-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "obr.fuel_duty_receipts_by_vehicle.fy2028",
+        "groupby_dimension": "obr.vehicle_category",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "vehicle_category": "total"
+      },
+      "source": {
+        "source_name": "obr",
+        "source_table": "Fuel duty supplementary release: receipts by vehicle type",
+        "source_file": "fuel-duty-receipts-by-vehicle-type.pdf",
+        "source_sha256": "4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018",
+        "vintage": "april_2024",
+        "raw_r2_key": "raw/obr/obr-fuel-duty-receipts-by-vehicle-april-2024/2024/4c5a65745550fbc62fb281c43dbde602a64f465b6095e3383e0473d66b31f018/fuel-duty-receipts-by-vehicle-type.pdf"
+      },
+      "value": 28200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ed134450bebb0e771ad09459",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ea26a31f63f4803bfc8ed989",
+      "source_record_id": "ons.mid2023.mye2_persons.uk_countries.all_ages.uk.population",
+      "concept": "ons.mid_year_population_estimate",
+      "measure_id": "population",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "gss_2023"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.mid2023.mye2_persons.uk_countries.all_ages",
+        "groupby_dimension": "age",
+        "groupby_value_id": "uk",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "ons",
+        "source_table": "Mid-2023 population estimates, UK and constituent countries, by single year of age and sex (MYE2)",
+        "source_file": "mye23tablesuk.xlsx",
+        "source_sha256": "7ee5724ecf71abc3d811c89174cdddf1bce7f07d3eefc8b69b15ee8371414b16",
+        "vintage": "mid_2023",
+        "raw_r2_key": "raw/ons/ons-mye-2023-uk-countries/2023/7ee5724ecf71abc3d811c89174cdddf1bce7f07d3eefc8b69b15ee8371414b16/mye23tablesuk.xlsx"
+      },
+      "value": 68265209
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6c212695ea75be0d2a635e9b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_065ea5242b0c7b9f810a9ce6",
+      "source_record_id": "ons.mid2024.mye2_persons.uk.all_ages.uk.population",
+      "concept": "ons.mid_year_population_estimate",
+      "measure_id": "population",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "resident_population"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "gss_2024"
+      },
+      "period": {
+        "type": "calendar_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "ons.mid2024.mye2_persons.uk.all_ages",
+        "groupby_dimension": "age",
+        "groupby_value_id": "uk",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "ons",
+        "source_table": "Mid-2024 population estimates, UK: countries and regions by single year of age and sex (MYE2)",
+        "source_file": "mye24tablesuk.xlsx",
+        "source_sha256": "f78d50e8d77fe5ed9d04667d6875aefcf62b56380af7aceb2e90dce067981526",
+        "vintage": "mid_2024",
+        "raw_r2_key": "raw/ons/ons-mye-2024-uk/2024/f78d50e8d77fe5ed9d04667d6875aefcf62b56380af7aceb2e90dce067981526/mye24tablesuk.xlsx"
+      },
+      "value": 69281437
+    }
+  ]
+}

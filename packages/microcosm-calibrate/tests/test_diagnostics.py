@@ -21,6 +21,11 @@ from microcosm.calibrate import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     TARGET_LOSS_ATTRIBUTION_WARNING_CODES,
     TARGET_LOSS_BASIS_HASH_ALGORITHM,
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyDimension,
+    HierarchyGeography,
+    HierarchyNode,
     Target,
     TargetDiagnostic,
     TargetRegistry,
@@ -34,6 +39,12 @@ from microcosm.calibrate import (
     write_calibration_diagnostics,
 )
 from microcosm.calibrate._target_loss_attribution import target_loss_basis_hash
+from microcosm.calibrate.geography_constants import (
+    UK_GEOGRAPHY_ID_TO_LABEL,
+    US_STATE_FIPS_TO_POSTAL,
+    US_STATE_NUMERIC_FIPS_TO_POSTAL,
+    US_STATE_POSTAL_TO_NUMERIC_FIPS,
+)
 
 _ATTRIBUTION_ROW_FIELDS = {
     "target_loss_weight",
@@ -45,6 +56,58 @@ _ATTRIBUTION_ROW_FIELDS = {
 _ATTRIBUTION_FIXTURE_DIR = (
     Path(__file__).parent / "fixtures" / "target_loss_attribution"
 )
+
+
+def test_shared_geography_constant_views_are_consistent() -> None:
+    assert dict(UK_GEOGRAPHY_ID_TO_LABEL) == {
+        "K02000001": "United Kingdom",
+        "K03000001": "Great Britain",
+        "E92000001": "England",
+        "W92000004": "Wales",
+        "S92000003": "Scotland",
+        "N92000002": "Northern Ireland",
+        "E12000001": "North East",
+        "E12000002": "North West",
+        "E12000003": "Yorkshire and The Humber",
+        "E12000004": "East Midlands",
+        "E12000005": "West Midlands",
+        "E12000006": "East of England",
+        "E12000007": "London",
+        "E12000008": "South East",
+        "E12000009": "South West",
+    }
+    assert len(US_STATE_FIPS_TO_POSTAL) == 51
+    assert US_STATE_FIPS_TO_POSTAL["01"] == "AL"
+    assert US_STATE_FIPS_TO_POSTAL["11"] == "DC"
+    assert US_STATE_FIPS_TO_POSTAL["56"] == "WY"
+    assert dict(US_STATE_NUMERIC_FIPS_TO_POSTAL) == {
+        int(fips): postal for fips, postal in US_STATE_FIPS_TO_POSTAL.items()
+    }
+    assert dict(US_STATE_POSTAL_TO_NUMERIC_FIPS) == {
+        postal: int(fips) for fips, postal in US_STATE_FIPS_TO_POSTAL.items()
+    }
+
+
+def _hierarchy(
+    name: str,
+    *,
+    provider_id: str,
+    provider_label: str,
+    category_id: str,
+    category_label: str,
+    geography_id: str,
+    geography_label: str,
+    geography_level: str,
+    dimensions: tuple[HierarchyDimension, ...] = (),
+    target_label: str | None = None,
+) -> CalibrationHierarchy:
+    return CalibrationHierarchy(
+        provider=HierarchyNode(provider_id, provider_label),
+        category=HierarchyCategory(category_id, category_label, provider_id),
+        geography=HierarchyGeography(geography_id, geography_label, geography_level),
+        dimensions=dimensions,
+        target=HierarchyNode(name, target_label or name.capitalize()),
+    )
 
 
 def _result(feasible_frame, *, with_skip: bool = False, epochs: int = 120):
@@ -80,7 +143,7 @@ def test_payload_carries_full_evidence(feasible_frame) -> None:
     result = _result(feasible_frame, epochs=120)
     payload = diagnostics_payload(result)
 
-    assert payload["schema_version"] == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    assert payload["schema_version"] == 6
     assert payload["weight_entity"] == "household"
     assert payload["target_surface"]["n_targets"] == len(result.diagnostics)
     assert len(payload["target_surface"]["sha256"]) == 64
@@ -107,6 +170,95 @@ def test_payload_carries_full_evidence(feasible_frame) -> None:
         row for row in payload["targets"] if row["name"].startswith("population")
     )
     assert population["within_tolerance"] is None  # no tolerance declared
+
+
+def test_payload_uses_compiled_target_hierarchy_without_registry(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame()
+    hierarchy = _hierarchy(
+        "population",
+        provider_id="census_pep",
+        provider_label="Census Population Estimates Program",
+        category_id="census_pep.population",
+        category_label="Population",
+        geography_id="0100000US",
+        geography_label="United States",
+        geography_level="country",
+    )
+    result = score_targets(
+        frame,
+        TargetSet(
+            (
+                Target(
+                    name="population",
+                    entity="household",
+                    value=truths["population"],
+                    measure="household_count",
+                    source="Census PEP fixture",
+                    hierarchy=hierarchy,
+                ),
+            )
+        ),
+    )
+
+    payload = diagnostics_payload(result)
+
+    assert payload["schema_version"] == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    assert payload["targets"][0]["hierarchy"] == {
+        "provider": {
+            "id": "census_pep",
+            "label": "Census Population Estimates Program",
+        },
+        "category": {
+            "id": "census_pep.population",
+            "label": "Population",
+            "provider_id": "census_pep",
+        },
+        "geography": {
+            "id": "0100000US",
+            "label": "United States",
+            "level": "country",
+        },
+        "dimensions": [],
+        "target": {"id": "population", "label": "Population"},
+    }
+
+
+def test_payload_rejects_mixed_hierarchy_coverage(feasible_frame) -> None:
+    frame, truths = feasible_frame()
+    result = score_targets(
+        frame,
+        TargetSet(
+            (
+                Target(
+                    name="population",
+                    entity="household",
+                    value=truths["population"],
+                    measure="household_count",
+                    hierarchy=_hierarchy(
+                        "population",
+                        provider_id="census_pep",
+                        provider_label="Census Population Estimates Program",
+                        category_id="census_pep.population",
+                        category_label="Population",
+                        geography_id="0100000US",
+                        geography_label="United States",
+                        geography_level="country",
+                    ),
+                ),
+                Target(
+                    name="income",
+                    entity="household",
+                    value=truths["income"],
+                    measure="income",
+                ),
+            )
+        ),
+    )
+
+    with pytest.raises(ValueError, match="cannot mix targets"):
+        diagnostics_payload(result)
 
 
 def test_payload_reports_complete_uniform_final_loss_attribution(
@@ -400,7 +552,7 @@ def test_writer_round_trips(feasible_frame, tmp_path: Path) -> None:
     )
     loaded = json.loads(path.read_text())
     assert loaded == diagnostics_payload(result)
-    assert loaded["schema_version"] == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    assert loaded["schema_version"] == 6
 
 
 def test_writer_does_not_suppress_unrelated_output_failures(
@@ -428,6 +580,16 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
                 period=2024,
                 source="Census PEP 2024",
                 family="census_population",
+                hierarchy=_hierarchy(
+                    "population",
+                    provider_id="census_pep",
+                    provider_label="Census Population Estimates Program",
+                    category_id="census.population",
+                    category_label="Population",
+                    geography_id="0100000US",
+                    geography_label="United States",
+                    geography_level="country",
+                ),
             ),
             TargetSpec(
                 name="income",
@@ -437,6 +599,37 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
                 period=2024,
                 source="IRS SOI 2024",
                 family="irs_soi",
+                metadata={
+                    "ledger_selector_source_name": "irs_soi",
+                    "ledger_measure_concept": "irs_soi.adjusted_gross_income",
+                    "ledger_measure_unit": "usd",
+                    "ledger_geography_level": "state",
+                    "ledger_geography_id": "0400000US06",
+                    "ledger_layout_groupby_dimension": "filing_status",
+                    "ledger_layout_groupby_value_id": "single",
+                    "ledger_layout_groupby_value_label": "Single return",
+                    "ledger_filter_filing_status": "single",
+                    "diagnostic_target_label": "California adjusted gross income",
+                },
+                hierarchy=_hierarchy(
+                    "income",
+                    provider_id="irs_soi",
+                    provider_label="IRS Statistics of Income",
+                    category_id="irs_soi.adjusted_gross_income",
+                    category_label="Adjusted gross income",
+                    geography_id="0400000US06",
+                    geography_label="California",
+                    geography_level="state",
+                    dimensions=(
+                        HierarchyDimension(
+                            "filing_status",
+                            "Filing status",
+                            "single",
+                            "Single return",
+                        ),
+                    ),
+                    target_label="California adjusted gross income",
+                ),
             ),
         ),
         country="us",
@@ -452,7 +645,234 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
     income = next(row for row in payload["targets"] if row["target_name"] == "income")
     assert income["period"] == 2024
     assert income["source"] == "IRS SOI 2024"
+    assert income["hierarchy"] == {
+        "provider": {"id": "irs_soi", "label": "IRS Statistics of Income"},
+        "category": {
+            "id": "irs_soi.adjusted_gross_income",
+            "label": "Adjusted gross income",
+            "provider_id": "irs_soi",
+        },
+        "geography": {
+            "id": "0400000US06",
+            "label": "California",
+            "level": "state",
+        },
+        "dimensions": [
+            {
+                "id": "filing_status",
+                "label": "Filing status",
+                "value_id": "single",
+                "value_label": "Single return",
+            }
+        ],
+        "target": {"id": "income", "label": "California adjusted gross income"},
+    }
+    assert "dimensions" not in payload
     assert income["registry"]["family"] == "irs_soi"
+
+
+def test_registry_diagnostics_publish_uk_geography_and_all_ledger_dimensions(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame()
+    geographies = {
+        "K02000001": "United Kingdom",
+        "K03000001": "Great Britain",
+        "E92000001": "England",
+        "S92000003": "Scotland",
+    }
+    registry = TargetRegistry(
+        tuple(
+            TargetSpec(
+                name=f"population_female_{geography_id}",
+                entity="household",
+                measure="household_count",
+                value=truths["population"],
+                period=2025,
+                source="ons | Population table | https://example.test/ons",
+                family="ons_population",
+                metadata={
+                    "ledger_selector_source_name": "ons",
+                    "ledger_measure_concept": "ons.population",
+                    "ledger_measure_unit": "count",
+                    "ledger_geography_level": "country",
+                    "ledger_geography_id": geography_id,
+                    "ledger_layout_groupby_dimension": "age_band",
+                    "ledger_layout_groupby_value_id": "18_64",
+                    "ledger_layout_groupby_value_label": "Aged 18 to 64",
+                    "ledger_filter_sex": "female",
+                },
+                hierarchy=_hierarchy(
+                    f"population_female_{geography_id}",
+                    provider_id="ons",
+                    provider_label="Office for National Statistics",
+                    category_id="ons.population",
+                    category_label="Population",
+                    geography_id=geography_id,
+                    geography_label=geography_label,
+                    geography_level="country",
+                    dimensions=(
+                        HierarchyDimension(
+                            "age_band", "Age band", "18_64", "Aged 18 to 64"
+                        ),
+                        HierarchyDimension("sex", "Sex", "female", "Female"),
+                    ),
+                ),
+            )
+            for geography_id, geography_label in geographies.items()
+        ),
+        country="uk",
+    )
+    result = score_targets(frame, registry.to_target_set())
+
+    payload = diagnostics_payload(result, target_registry=registry)
+
+    hierarchy = payload["targets"][2]["hierarchy"]
+    assert hierarchy["provider"] == {
+        "id": "ons",
+        "label": "Office for National Statistics",
+    }
+    assert hierarchy["category"]["id"] == "ons.population"
+    assert hierarchy["geography"] == {
+        "id": "E92000001",
+        "label": "England",
+        "level": "country",
+    }
+    assert [dimension["id"] for dimension in hierarchy["dimensions"]] == [
+        "age_band",
+        "sex",
+    ]
+
+
+def test_registry_diagnostics_separate_measure_from_variable_category(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="employment_income_amount_band_100000",
+                entity="household",
+                measure="income",
+                value=truths["income"],
+                period=2025,
+                source="HMRC SPI",
+                family="hmrc",
+                metadata={
+                    "ledger_selector_source_name": "hmrc",
+                    "ledger_measure_concept": "hmrc.spi_employment_income_amount",
+                    "ledger_measure_unit": "gbp",
+                    "ledger_filter_total_income_lower_bound": "100000",
+                },
+                hierarchy=_hierarchy(
+                    "employment_income_amount_band_100000",
+                    provider_id="hmrc",
+                    provider_label="HM Revenue and Customs",
+                    category_id="hmrc.survey_of_personal_incomes",
+                    category_label="Survey of Personal Incomes",
+                    geography_id="K02000001",
+                    geography_label="United Kingdom",
+                    geography_level="country",
+                    dimensions=(
+                        HierarchyDimension(
+                            "total_income_lower_bound",
+                            "Total income lower bound",
+                            "100000",
+                            "100000",
+                        ),
+                    ),
+                ),
+            ),
+            TargetSpec(
+                name="employment_income_count_band_100000",
+                entity="household",
+                measure="household_count",
+                value=truths["population"],
+                period=2025,
+                source="HMRC SPI",
+                family="hmrc",
+                metadata={
+                    "ledger_selector_source_name": "hmrc",
+                    "ledger_measure_concept": "hmrc.spi_employment_income_count",
+                    "ledger_measure_unit": "count",
+                    "ledger_filter_total_income_lower_bound": "100000",
+                },
+                hierarchy=_hierarchy(
+                    "employment_income_count_band_100000",
+                    provider_id="hmrc",
+                    provider_label="HM Revenue and Customs",
+                    category_id="hmrc.survey_of_personal_incomes",
+                    category_label="Survey of Personal Incomes",
+                    geography_id="K02000001",
+                    geography_label="United Kingdom",
+                    geography_level="country",
+                    dimensions=(
+                        HierarchyDimension(
+                            "total_income_lower_bound",
+                            "Total income lower bound",
+                            "100000",
+                            "100000",
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        country="uk",
+    )
+    result = score_targets(frame, registry.to_target_set())
+
+    payload = diagnostics_payload(result, target_registry=registry)
+
+    categories = [row["hierarchy"]["category"] for row in payload["targets"]]
+    assert categories[0] == categories[1]
+    assert categories[0]["id"] == "hmrc.survey_of_personal_incomes"
+    assert all(
+        row["hierarchy"]["dimensions"][0]["id"] == "total_income_lower_bound"
+        for row in payload["targets"]
+    )
+
+
+def test_registry_diagnostics_reject_missing_compiled_target_identity(
+    feasible_frame,
+) -> None:
+    result = _result(feasible_frame, epochs=1)
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="different",
+                entity="household",
+                measure="household_count",
+                value=1.0,
+                source="Fixture",
+            ),
+        ),
+        country="us",
+    )
+
+    with pytest.raises(ValueError, match="does not contain compiled target row"):
+        diagnostics_payload(result, target_registry=registry)
+
+
+def test_registry_diagnostics_require_hierarchy_for_every_target(
+    feasible_frame,
+) -> None:
+    frame, truths = feasible_frame()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="population",
+                entity="household",
+                measure="household_count",
+                value=truths["population"],
+                source="Fixture",
+            ),
+        ),
+        country="us",
+    )
+    result = score_targets(frame, registry.to_target_set())
+
+    with pytest.raises(ValueError, match="hierarchy for every registry-backed"):
+        diagnostics_payload(result, target_registry=registry)
 
 
 def test_payload_reports_weight_concentration(feasible_frame) -> None:

@@ -19,6 +19,7 @@ import pytest
 from microcosm.data import (
     EVIDENCE_RELEASE_ID_SEGMENT,
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+    PUBLISHER_CLAIM_BASIS,
     RELEASE_MANIFEST_SCHEMA_VERSION,
     US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
     ReleaseContractError,
@@ -137,16 +138,16 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "f7e2cf43fc2dd18a3d1add2965bb67e4faf21299678838ee0ac43694bb498a34"
+    "4456fa0956cde418ae23a60fe72a414428eefab446fd044aa14adf1b6e084fcd"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "a787221b57af1c0d8c653ee652597fe3f79d5ff3ba8c58f6c16ee7a3ce755ea8"
+    "ff27efe67f3cdb8292dfe8da20a6a98cc20f4e1f77ba61eff2ba206b8eb2fc19"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "b7fa1a0e7d242f474ac5746de0f0115a96b935dbbcce57f4cdbbc955d0f9a0b9"
+    "61758f1d9700dd94564d592fafe36b4fc4881b8b77c785349d1756da0df2b0d4"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
-    "d0d024043132fa07c378c393dbe2b24fe99bf19e876bcc39997d2c80cc9bd4f6"
+    "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
     "c9211cbb923e13f4850b834b5bdb1ff1de87fe9237c332b5de63f01ed417aa2d"
@@ -176,6 +177,7 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
+    "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred", None),
     "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
     "uk_stage_etb_services_support": ("stage_health", "transferred", None),
     "uk_stage_frs_hmrc_spine_leaves_signal": (
@@ -219,6 +221,7 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_age_tail_targets": ("stage_health", "assembled", None),
+    "uk_stage_frs_relationships_composition": ("stage_health", "assembled", None),
     "uk_ledger_compile_parity_local_incumbent_2025": (
         "ledger_compile_parity",
         "preflight",
@@ -258,6 +261,7 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_export_surface": ("export_surface", "terminal", "export_surface"),
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled", "enum_domain"),
+    "uk_ons_household_type_enum_domain": ("enum_domain", "assembled", "enum_domain"),
     "uk_uc_deduction_combination_enum_domain": (
         "enum_domain",
         "terminal",
@@ -888,6 +892,12 @@ def _terminal_gate_details(name: str) -> dict:
             "targets_checked": TARGET_COUNT,
             "max_abs_relative_error": 0.25,
             "failing_targets": {},
+            "reviewed_exclusions": {},
+            "stale_exclusions": [],
+            "dormant_exclusions": [],
+            "expired_exclusions": [],
+            "premature_exclusions": [],
+            "exclusions_evaluated_on": "2026-08-30",
         }
     if name == "input_mass_parity":
         return {
@@ -1173,6 +1183,7 @@ def _gate_battery_payload(
         "uk_stage_was_wealth_support": "was_wealth",
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_energy_rake": "lcfs_consumption",
         "uk_stage_etb_vat_support": "etb_vat",
         "uk_stage_etb_services_support": "etb_services",
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
@@ -1184,6 +1195,7 @@ def _gate_battery_payload(
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
         "uk_stage_age_tail_targets": "age_tail",
+        "uk_stage_frs_relationships_composition": "frs_relationships",
     }
     gates: dict[str, dict] = {}
     for entry_id, (gate, phase, detail_name) in UK_GATE_BATTERY_ENTRIES.items():
@@ -1240,17 +1252,9 @@ def _gate_battery_payload(
         gates[entry_id] = {
             "gate": gate,
             "phase": phase,
-            "criticality": (
-                "diagnostic"
-                if entry_id
-                in {
-                    "uk_local_target_fit",
-                    "uk_local_per_family_fit",
-                    "uk_local_weight_ratio",
-                    "uk_local_weight_ess",
-                }
-                else "release_blocking"
-            ),
+            # PR #870 review: every entry is release-blocking, the local fit and
+            # weight gates included.
+            "criticality": "release_blocking",
             "status": "passed",
             "failures": [],
             "details": details,
@@ -2354,7 +2358,7 @@ def test_legacy_diagnostics_exemption_is_scoped_to_the_exact_june_id(
         payload=diagnostics,
     )
 
-    with pytest.raises(ReleaseContractError, match="publishes version 6"):
+    with pytest.raises(ReleaseContractError, match="publishes version 8"):
         validate_release_dir(directory)
 
 
@@ -3561,6 +3565,207 @@ def test_malformed_calibration_diagnostics_is_rejected(
     assert "targets" in failures
 
 
+def test_schema_7_structured_calibration_diagnostics_are_accepted(
+    release_dir: Path,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 7
+    diagnostics["dimensions"] = {
+        "geography_country": {
+            "label": "Country",
+            "role": "geography",
+            "level": "country",
+            "values": {"0100000US": "United States"},
+            "order": ["0100000US"],
+        }
+    }
+    for row in diagnostics["targets"]:
+        row["label"] = "Fixture target"
+        row["source"] = {
+            "id": "fixture",
+            "label": "Fixture provider",
+            "citation": row["source"],
+        }
+        row["variable"] = {
+            "id": row["target_name"],
+            "label": "Fixture statistic",
+        }
+        row["dimensions"] = {"geography_country": "0100000US"}
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    validate_release_dir(release_dir)
+
+
+def test_schema_8_calibration_hierarchy_is_accepted(release_dir: Path) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 8
+    for row in diagnostics["targets"]:
+        row["hierarchy"] = {
+            "provider": {"id": "fixture", "label": "Fixture provider"},
+            "category": {
+                "id": "fixture.population",
+                "label": "Population",
+                "provider_id": "fixture",
+            },
+            "geography": {
+                "id": "0100000US",
+                "label": "United States",
+                "level": "country",
+            },
+            "dimensions": [
+                {
+                    "id": "sex",
+                    "label": "Sex",
+                    "value_id": "female",
+                    "value_label": "Female",
+                }
+            ],
+            "target": {
+                "id": row["target_name"],
+                "label": "Fixture target",
+            },
+        }
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    validate_release_dir(release_dir)
+
+
+def test_schema_8_rejects_incomplete_hierarchy(release_dir: Path) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 8
+    for row in diagnostics["targets"]:
+        row["hierarchy"] = {
+            "provider": {"id": "fixture", "label": "Fixture provider"},
+            "category": {
+                "id": "fixture.population",
+                "label": "",
+                "provider_id": "another-provider",
+            },
+            "geography": {
+                "id": "0100000US",
+                "label": "United States",
+                "level": "country",
+            },
+            "dimensions": [],
+            "target": {"id": "wrong", "label": "Fixture target"},
+        }
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "hierarchy.category.label must be a non-empty string" in failures
+    assert "hierarchy.category.provider_id must equal" in failures
+    assert "hierarchy.target.id must equal" in failures
+
+
+def test_schema_7_rejects_an_empty_target_label(release_dir: Path) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 7
+    diagnostics["dimensions"] = {}
+    for row in diagnostics["targets"]:
+        row["label"] = " "
+        row["source"] = {"id": "fixture"}
+        row["variable"] = {"id": row["target_name"]}
+        row["dimensions"] = {}
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "schema 7 requires a non-empty string 'label'" in failures
+
+
+@pytest.mark.parametrize("field", ["source", "variable"])
+def test_schema_7_rejects_an_empty_identity_label(
+    release_dir: Path,
+    field: str,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 7
+    diagnostics["dimensions"] = {}
+    for row in diagnostics["targets"]:
+        row["source"] = {"id": "fixture"}
+        row["variable"] = {"id": row["target_name"]}
+        row[field]["label"] = " "
+        row["dimensions"] = {}
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert f"{field} 'label' must be a non-empty string" in failures
+
+
+def test_schema_7_rejects_partial_identity_and_multiple_geographies(
+    release_dir: Path,
+) -> None:
+    diagnostics = _calibration_diagnostics()
+    diagnostics["schema_version"] = 7
+    diagnostics["dimensions"] = {
+        "geography_country": {
+            "label": "Country",
+            "role": "geography",
+            "level": "country",
+            "values": {"0100000US": "United States"},
+        },
+        "geography_state": {
+            "label": "State",
+            "role": "geography",
+            "level": "state",
+            "values": {"0400000US06": "CA"},
+        },
+    }
+    for row in diagnostics["targets"]:
+        row["source"] = {"id": "fixture"}
+        row["variable"] = {"label": "Missing id"}
+        row["dimensions"] = {
+            "geography_country": "0100000US",
+            "geography_state": "0400000US06",
+        }
+    _write_json_and_refresh_manifest_hash(
+        release_dir,
+        filename="calibration_diagnostics.json",
+        artifact_key="calibration_diagnostics",
+        payload=diagnostics,
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    failures = "\n".join(excinfo.value.failures)
+    assert "'variable' to be an object with a non-empty string 'id'" in failures
+    assert "at most one geography-role dimension" in failures
+
+
 def test_malformed_us_source_coverage_diagnostics_is_rejected(
     release_dir: Path,
 ) -> None:
@@ -3775,6 +3980,91 @@ def test_release_manifest_compatible_specifier_must_be_valid(
 
     failures = "\n".join(excinfo.value.failures)
     assert "valid PEP 440 specifier" in failures
+
+
+def _declare_model_claim(release_dir: Path, entry: dict) -> None:
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["compatible_model_packages"] = [entry]
+    manifest_path.write_text(json.dumps(manifest))
+
+
+def test_release_manifest_accepts_a_declared_publisher_compatibility_range(
+    release_dir: Path,
+) -> None:
+    _declare_model_claim(
+        release_dir,
+        {
+            "name": "policyengine-us",
+            "specifier": ">=1.729.0,<1.730",
+            "basis": PUBLISHER_CLAIM_BASIS,
+            "declared_by": "PolicyEngine data release owner",
+        },
+    )
+
+    validate_release_dir(release_dir)
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        (
+            {"basis": "vibes", "declared_by": "someone"},
+            "is not a recognised compatibility basis",
+        ),
+        ({"basis": PUBLISHER_CLAIM_BASIS}, "declared_by is required"),
+        (
+            {"basis": PUBLISHER_CLAIM_BASIS, "declared_by": "  "},
+            "declared_by is required",
+        ),
+        ({"declared_by": "someone"}, "declared_by needs the matching"),
+    ],
+)
+def test_release_manifest_rejects_an_unattributed_compatibility_claim(
+    release_dir: Path, entry: dict, message: str
+) -> None:
+    _declare_model_claim(
+        release_dir,
+        {"name": "policyengine-us", "specifier": ">=1.729.0,<1.730", **entry},
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    assert message in "\n".join(excinfo.value.failures)
+
+
+@pytest.mark.parametrize(
+    ("declared_by", "message"),
+    [
+        ("x" * 201, "at most 200 characters"),
+        ("two\nlines", "printable"),
+        (" padded ", "whitespace"),
+    ],
+)
+def test_release_manifest_rejects_a_declarer_the_producer_would_refuse(
+    release_dir: Path, declared_by: str, message: str
+) -> None:
+    """Both layers apply one declarer rule, so neither can admit the other's junk.
+
+    ``check_compatibility_claim_declarer`` refuses these at certification. A
+    bundle carrying one reached this contract from somewhere other than the
+    producer, and the contract is where publication reads it.
+    """
+    _declare_model_claim(
+        release_dir,
+        {
+            "name": "policyengine-us",
+            "specifier": ">=1.729.0,<1.730",
+            "basis": PUBLISHER_CLAIM_BASIS,
+            "declared_by": declared_by,
+        },
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    assert message in "\n".join(excinfo.value.failures)
 
 
 def test_release_manifest_compatible_model_package_must_cover_build_version(

@@ -675,6 +675,46 @@ def clone_uk_dataset_with_rowwise_geography(
     )
 
 
+def load_uk_rowwise_dataset(path: str | Path):
+    """Load a written rowwise (ladder-cloned) UK H5 back into a Frame.
+
+    The export boundary renames every entity's in-memory clone-index column
+    to the artifact's single ``clone_index`` name; the Frame's flattening
+    rule refuses that name on three tables, so the compact national loader
+    cannot open a rowwise artifact. This reader is the inverse of the
+    writer's rename: ``clone_index`` becomes ``<entity>_clone_index`` on each
+    table before the Frame is assembled and validated exactly as the
+    national loader does. Returns ``(frame, provenance)``.
+    """
+
+    from microcosm.build.uk_runtime.national_frame import (
+        UKStagingProvenance,
+        _read_uk_national_tables,
+        uk_national_frame,
+        validate_uk_national_frame,
+    )
+
+    payload, fingerprint, input_path = _read_uk_national_tables(path)
+    tables = {}
+    for entity in ("person", "benunit", "household"):
+        table = payload[entity]
+        if ARTIFACT_CLONE_INDEX_COLUMN in table.columns:
+            table = table.rename(
+                columns={ARTIFACT_CLONE_INDEX_COLUMN: ladder_clone_index_column(entity)}
+            )
+        tables[entity] = table
+    frame = uk_national_frame(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        time_period=payload["time_period"],
+        weight_kind=payload["household_weight_kind"],
+        mass_log=payload["mass_log"],
+    )
+    validate_uk_national_frame(frame)
+    return frame, UKStagingProvenance(source_h5=input_path, fingerprint=fingerprint)
+
+
 def write_uk_rowwise_dataset(
     result: UKRowwiseDatasetResult | UKLadderRowwiseDatasetResult,
     output_path: str | Path,

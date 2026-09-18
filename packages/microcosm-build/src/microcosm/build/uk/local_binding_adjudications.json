@@ -3,11 +3,46 @@
   "description": "Reviewed adjudications of the UK local binding fences (uk_local_target_census.json binding_fences). Binding a target family whose fence has no in-force entry here fails in the rowwise doctrine solve before any solve runs. Keys are fence ids; the reason states the ruling (accept the stated basis, or replace it with the named alternative) and cites the evidence.",
   "exclusions": {
     "census_disclosure_control_noise": {
-      "reason": "Accept the stated basis: constituency household counts bind to the published disclosure-controlled census values as-is — ONS/NRS cell-key perturbation and NISRA flexible-table-builder noise is documented, and the measured cross-grain deltas at review (constituency sums vs national totals: E&W +105, Scotland -554, NI +3) are accepted. When a national same-concept control is bound in the same solve, the standing cross-grain rule rescales the constituency values to it before calibration; country is the winning grain. The rule and bridges are declared in microcosm.build.uk_runtime.ledger_targets and implemented by microcosm.build.cross_grain; rationale and evidence are recorded in docs/uk-local-cross-grain-reconciliation-802.md. Fence evidence: uk_local_target_census.json#/binding_fences/census_disclosure_control_noise.",
+      "reason": "Accept the stated basis: constituency and local-authority household counts bind to the published disclosure-controlled census values compiled from the pinned Chronicle feed (ons.census.households: ONS TS041 PCON24/LAD, NRS UV404 UKPC24 and council all-occupied totals, NISRA PCON24/LGD14). Per-area dispersion of the retired OA-ladder sums against the published cells at review: England mean 7.4 / max 29, Wales 6.4 / 15, Scotland net −557 (NRS applies disclosure control per output level; same shortfall at both grains), Northern Ireland mean 7 / max 16 after the NI constituency leg moved to NISRA's published DZ2021→PARLCON24 lookup (the earlier postcode inference was a mapping defect of 10 Data Zones, max 694, not perturbation). When a same-concept control is bound above them, the standing cross-grain rule declared in uk_runtime.ledger_targets reconciles each leg to its nearest covering control (country or region since microcosm#905). The census cells count the occupied-household universe and pair only through the household-composition bridge, never with dwelling stock; that cross-grain rescale applies once the bridge is bound. Bound from microcosm#791 (2026-09-11): the three ONS household-composition cells that held the bridge reviewed-unbound now bind on the frs_relationships household type, so the cross-grain rescale runs on the A15-uprated cells; the ten-cell partition and the A15 control are both ons.households_total, so the declared factor is 1 by closure and the receipt records the bridge as bound. Fence evidence: uk_local_target_census.json#/binding_fences/census_disclosure_control_noise; the published cells preserve the source cell-key controls. Re-worded 2026-09-10 (microcosm#887 review round 1); re-worded 2026-09-11 (microcosm#791: the three composition cells re-bound, bridge bound). Re-worded 2026-09-15 (microcosm#929: region controls).",
       "approved_by": "juaristi22",
       "adjudication": "microcosm#802",
       "approved_on": "2026-08-31",
       "expires_on": "2026-11-30"
+    },
+    "hmrc_spi_frame_model_proxy": {
+      "reason": "Accept the stated basis: the constituency and local-authority HMRC families bind on the modeled income_tax > 0 frame, the same SPI-frame proxy the national hmrc.* surface binds through (uk_population_targets.json bindings), so both grains share one frame and the standing cross-grain rule can reconcile them. The proxy's known biases (zero-liability taxpayers excluded; modeled liabilities the SPI would not observe included) are accepted for the first candidate and re-measured per family in the microcosm#762 receipts. Fence evidence: uk_local_target_census.json#/binding_fences/hmrc_spi_frame_model_proxy.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A1, rulings 2026-09-02)",
+      "approved_on": "2026-09-02",
+      "expires_on": "2026-12-02"
+    },
+    "full_frs_tei_band_unavailable": {
+      "reason": "Accept the stated basis: the hmrc_income_by_area family binds only the unbanded per-area employment and self-employment amount/count references (count_x_mean over the SPI by-area record sets); the published by-area SPI facts carry no total-income band dimension, so no Total-Income-banded local reference exists or may be minted while the 208 national banded facts remain fenced exclusions of the HMRC replay classification. Fence evidence: uk_local_target_census.json#/binding_fences/full_frs_tei_band_unavailable; membership: local_target_reference_membership.json (no banded target ids).",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A1, rulings 2026-09-02)",
+      "approved_on": "2026-09-02",
+      "expires_on": "2026-12-02"
+    },
+    "population_universe_private_households": {
+      "reason": "Accept the stated basis: age-structure targets at constituency and local-authority grain bind the ONS mid-2024 total-usual-resident universe as published, the same universe the national ons.population.age_*_by_region controls bind, so any cross-grain reconciliation happens on one universe. The private-household vs communal-establishment gap (about 1.8% of population in Census 2021, concentrated in the 20-29 and 80+ bands) is recorded as the expected direction of residual error and is not rescaled locally; a declared communal-establishment adjustment would be a chronicle fact request, never a runtime correction. Fence evidence: uk_local_target_census.json#/binding_fences/population_universe_private_households.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A1, rulings 2026-09-02)",
+      "approved_on": "2026-09-02",
+      "expires_on": "2026-12-02"
+    },
+    "uc_unit_vs_household_grain": {
+      "reason": "Replace the stated basis with the named alternative: the uc_households family binds at benefit-unit grain. uc_households per area counts UC benefit units mapped to their households (the DWP claim-household definition) and the four children bands classify each UC benefit unit by its own num_children (benunit-to-household sum), matching the national dwp.uc.households* re-bind of PR #813; the household-children basis is retired. Fence evidence: uk_local_target_census.json#/binding_fences/uc_unit_vs_household_grain; runtime: microcosm.build.uk_runtime.local_targets.compute_household_metrics.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#762 (A1, rulings 2026-09-02)",
+      "approved_on": "2026-09-02",
+      "expires_on": "2026-12-02"
+    },
+    "voa_dwellings_vs_household_frame": {
+      "reason": "Re-adjudicated onto the councils' taxbase returns (microcosm#929, plan approved 2026-09-15): the band cells bind the dwellings the councils charge, not the VOA valuation-list stock. England binds MHCLG CTB line 7 minus lines 11 and 15 (chargeable dwellings after the disabled-relief adjustment, less second homes and empty dwellings; band A adds the A- column) per billing authority; Wales binds StatsWales CT1 a1 minus h7 minus h8 by band A-I; Scotland binds CTAXBASE chargeable dwellings per council, the concept its country rows already bound. Measured before the change on the 10 September dense rebuild, the VOA basis ran 6.3 % over the England household rows (0.97-1.20x per authority, median 1.05x) and 6.6 % over Wales, which is where the family's uniform negative bias came from; the taxbase basis leaves England and Wales within about 1 % of the occupied-household frame and Scotland at +1.2 % (chargeable dwellings include some without a resident household). That residual is the expected gap this fence licenses; a country or region control of the same basis reconciles each leg under the standing cross-grain rule. Fence evidence: uk_local_target_census.json#/binding_fences/voa_dwellings_vs_household_frame; lineage: uk-data#371, uk-data#457, microcosm#147 A3, microcosm#762 A1.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#929 (basis ruling 2026-09-15, replacing microcosm#762 A1 of 2026-09-02)",
+      "approved_on": "2026-09-15",
+      "expires_on": "2026-12-15"
     }
   }
 }

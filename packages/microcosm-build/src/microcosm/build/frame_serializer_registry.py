@@ -149,6 +149,17 @@ FRAME_TABLE_SERIALIZERS = (
 
 HDF_WRITE_EXCLUSIONS = (
     HdfWriteExclusion(
+        exclusion_id="native_spm_role_raw_enrichment",
+        writer=HdfWriteSite(
+            "packages/microcosm-data/src/microcosm/data/h5_enrichment.py",
+            "append_native_spm_role",
+        ),
+        reason=(
+            "Copies existing HDF compound-record bytes and appends one validated "
+            "non-nullable Boolean array; accepts no Frame or table collection."
+        ),
+    ),
+    HdfWriteExclusion(
         exclusion_id="l0_refit_root_attrs",
         writer=HdfWriteSite(
             "packages/microcosm-build/src/microcosm/build/us_runtime/"
@@ -181,6 +192,14 @@ HDF_WRITE_EXCLUSIONS = (
             "_write_weight_metadata",
         ),
         reason="Adds weight-kind and mass-log root attributes only.",
+    ),
+    HdfWriteExclusion(
+        exclusion_id="uk_smoke_non_release_root_attrs",
+        writer=HdfWriteSite(
+            "tools/build_uk_frs_spine.py",
+            "_mark_non_release_h5",
+        ),
+        reason="Adds non-release smoke metadata to existing root attributes only.",
     ),
     HdfWriteExclusion(
         exclusion_id="puf_equivalence_raw_draw_observer",

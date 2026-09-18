@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from copy import deepcopy
+from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +15,7 @@ from microcosm.build.spec_engine.compiler_ir import CompiledSpecIR, compile_spec
 from microcosm.build.spec_engine.legacy_adapter import compile_to_legacy_payload
 from microcosm.build.spec_engine.loader import load_bundle
 from microcosm.build.spec_engine.model import ResolvedSpec
+from microcosm.build.us_runtime import worker_identity as worker_identity_module
 from tools.spec_engine_coverage import (
     DEFAULT_REPORT_PATH,
     CoverageError,
@@ -26,6 +29,39 @@ pytest.importorskip(
     reason="live-engine oracle: the wheels gate's venv installs no engine",
     exc_type=ModuleNotFoundError,
 )
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _reuse_real_worker_binding_for_pin_checks() -> object:
+    """Reuse one real operational binding while testing digests that strip it."""
+
+    original = worker_identity_module.primary_qrf_worker_execution_binding
+
+    @cache
+    def cached(
+        _fit_jobs: str | None,
+        _predict_workers: str | None,
+        _cpu_count: int | None,
+    ) -> dict[str, object]:
+        return original()
+
+    def binding() -> dict[str, object]:
+        return deepcopy(
+            cached(
+                os.environ.get("POPULACE_FIT_N_JOBS"),
+                os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
+                os.cpu_count(),
+            )
+        )
+
+    patcher = pytest.MonkeyPatch()
+    patcher.setattr(
+        worker_identity_module,
+        "primary_qrf_worker_execution_binding",
+        binding,
+    )
+    yield
+    patcher.undo()
 
 
 @pytest.fixture(scope="module")
@@ -52,22 +88,22 @@ def test_us_coverage_is_exact_complete_and_honest(
     assert_coverage_complete(coverage_report)
     assert coverage_report["status"] == "pass"
     fields = coverage_report["field_usage"]
-    assert fields["configuration_field_count"] == 42_538
-    assert fields["authored_normative_field_count"] == 32_521
-    assert fields["resolved_binding_field_count"] == 10_017
-    assert fields["consumed_field_count"] == 42_538
+    assert fields["configuration_field_count"] == 42_156
+    assert fields["authored_normative_field_count"] == 32_384
+    assert fields["resolved_binding_field_count"] == 9_772
+    assert fields["consumed_field_count"] == 42_156
     assert fields["unused_field_count"] == 0
     assert fields["multiple_primary_use_field_count"] == 0
     assert fields["claim_count"] == 49
     assert fields["mode_counts"] == {
-        "legacy_behavior": 14_020,
-        "compiler_semantic": 28_067,
+        "legacy_behavior": 13_988,
+        "compiler_semantic": 27_717,
         "front_end_validation": 348,
         "identity_only": 103,
     }
     assert fields["generation0_effect_counts"] == {
-        "legacy_behavior": 38_574,
-        "no_generation0_effect": 3_964,
+        "legacy_behavior": 38_476,
+        "no_generation0_effect": 3_680,
     }
 
     inventory = coverage_report["inventory_coverage"]

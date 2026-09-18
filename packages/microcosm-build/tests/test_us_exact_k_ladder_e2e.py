@@ -18,13 +18,41 @@ from microcosm.build.us_runtime.h5_io import (
     load_simulation_ready_us_multispine_pool,
     write_nullable_us_h5,
 )
-from microcosm.calibrate import TargetRegistry, TargetSpec
+from microcosm.calibrate import (
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyGeography,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+)
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 # This minimal downstream-consumer fixture intentionally models the preserved
 # pre-stacked publication envelope, not a schema-6 stacked artifact without its
 # required DAG authority fields.
 _LEGACY_POOL_MANIFEST_SCHEMA_VERSION = 4
+
+
+def _fixture_hierarchy() -> CalibrationHierarchy:
+    return CalibrationHierarchy(
+        provider=HierarchyNode(id="fixture", label="Fixture provider"),
+        category=HierarchyCategory(
+            id="fixture.measure",
+            label="Fixture measures",
+            provider_id="fixture",
+        ),
+        geography=HierarchyGeography(
+            id="0100000US",
+            label="United States",
+            level="country",
+        ),
+        dimensions=(),
+        target=HierarchyNode(
+            id="fixture_measure",
+            label="Fixture measure",
+        ),
+    )
 
 
 def _builder_module():
@@ -199,6 +227,7 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
         period=2024,
         source="fixture frozen register",
         family="fixture",
+        hierarchy=_fixture_hierarchy(),
     )
     registry = TargetRegistry((target,), country="us")
     outcome = calibrate_exact_k_ladder(

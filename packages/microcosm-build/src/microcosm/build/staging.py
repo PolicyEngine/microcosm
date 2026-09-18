@@ -20,6 +20,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.staging_storage import (
+    BestEffortUploadSession,
+    HuggingFaceDatasetStorage,
+)
+
 STAGING_SCHEMA_VERSION = 1
 LATEST_STAGING_POINTER = "latest_staging.json"
 RUNS_INDEX = "runs.json"
@@ -90,6 +95,14 @@ class StagingTelemetry:
         self._last_upload_at = 0.0
         self._upload_failures = 0
         self._upload_successes = 0
+        self._storage = (
+            HuggingFaceDatasetStorage(self.repo_id, api=self.api)
+            if self.repo_id
+            else None
+        )
+        self._upload_session = (
+            BestEffortUploadSession(self._storage) if self._storage else None
+        )
         self._calibration_events: list[dict[str, Any]] = []
         self._artifacts: dict[str, dict[str, Any]] = {}
         self._progress: dict[str, Any] = {
@@ -123,39 +136,21 @@ class StagingTelemetry:
 
         return self._upload_successes
 
-    def _api(self):
-        if self.api is not None:
-            return self.api
-        if not self.repo_id:
-            return None
-        from huggingface_hub import HfApi
-
-        self.api = HfApi()
-        return self.api
-
     def _upload_file(self, local: Path, path_in_repo: str) -> None:
-        api = self._api()
-        if api is None or not self.repo_id:
+        if self._upload_session is None or not self.repo_id:
             return
         # Best-effort: staging telemetry must never fail (or stall) a build.
         # After three consecutive failures — e.g. no write token — stop trying
         # for the rest of the run; local staging artifacts are still written.
-        try:
-            api.upload_file(
-                path_or_fileobj=str(local),
-                path_in_repo=path_in_repo,
-                repo_id=self.repo_id,
-                repo_type="dataset",
-            )
-            self._upload_failures = 0
-            self._upload_successes += 1
-        except Exception as exc:
-            self._upload_failures += 1
+        result = self._upload_session.upload(local, path_in_repo)
+        self._upload_failures = self._upload_session.consecutive_failures
+        self._upload_successes = self._upload_session.successes
+        if not result.succeeded:
             print(
-                f"warning: staging upload of {path_in_repo} failed: {exc}",
+                f"warning: staging upload of {path_in_repo} failed: {result.error}",
                 file=sys.stderr,
             )
-            if self._upload_failures >= 3:
+            if result.became_disabled:
                 print(
                     "warning: disabling staging uploads for this run after "
                     "three consecutive failures; local staging artifacts are "
@@ -204,23 +199,10 @@ class StagingTelemetry:
 
     def _existing_runs(self) -> list[dict[str, Any]]:
         """Best-effort fetch of the runs index already in the repo."""
-        api = self._api()
-        if api is None or not self.repo_id:
+        if self._storage is None or not self.repo_id:
             return []
-        download = getattr(api, "hf_hub_download", None)
-        if download is None:
-            try:
-                from huggingface_hub import hf_hub_download as download
-            except Exception:
-                return []
         try:
-            local = download(
-                repo_id=self.repo_id,
-                filename=RUNS_INDEX,
-                repo_type="dataset",
-                force_download=True,
-            )
-            data = json.loads(Path(local).read_text())
+            data = json.loads(self._storage.download(RUNS_INDEX))
         except Exception:
             # Index missing (first run) or unreadable; start from scratch.
             return []

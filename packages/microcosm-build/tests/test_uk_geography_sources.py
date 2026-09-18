@@ -15,7 +15,7 @@ from microcosm.build.uk_runtime import (
     build_official_uk_geography_crosswalk,
     build_scotland_crosswalk,
     geography_coverage_summary,
-    infer_ni_dz_constituencies_from_postcodes,
+    load_ni_dz_parlcon24_lookup,
     load_scotland_oa_constituencies,
     load_scotland_oa_lau_lookup,
     update_england_wales_lad_codes,
@@ -68,6 +68,47 @@ def ni_population() -> pd.DataFrame:
             "Count": [738, 331],
         }
     )
+
+
+def ni_lookup_workbook_bytes(
+    *,
+    missing_column: str | None = None,
+    bad_constituency: str | None = None,
+    duplicate_dz: bool = False,
+    missing_constituency: bool = False,
+) -> bytes:
+    openpyxl = pytest.importorskip("openpyxl")
+    workbook = openpyxl.Workbook()
+    sheet = workbook.active
+    sheet.title = "DZ2021_Admin_geog_lookup"
+    headers = [
+        "DZ2021_code",
+        "PARLCON2024_code",
+        "SDZ2021_code",
+        "LGD2014_code",
+        "DEA2014_code",
+    ]
+    if missing_column is not None:
+        headers.remove(missing_column)
+    sheet.append(headers)
+    for index in range(1, 19):
+        values = {
+            "DZ2021_code": f"N200000{index:02d}",
+            "PARLCON2024_code": f"N050000{index:02d}",
+            "SDZ2021_code": f"N210000{index:02d}",
+            "LGD2014_code": "N09000001",
+            "DEA2014_code": f"N100000{index:02d}",
+        }
+        if duplicate_dz and index == 18:
+            values["DZ2021_code"] = "N20000001"
+        if bad_constituency is not None and index == 1:
+            values["PARLCON2024_code"] = bad_constituency
+        if missing_constituency and index == 18:
+            values["PARLCON2024_code"] = "N05000017"
+        sheet.append([values[header] for header in headers])
+    output = io.BytesIO()
+    workbook.save(output)
+    return output.getvalue()
 
 
 def ew_hierarchy() -> pd.DataFrame:
@@ -462,78 +503,59 @@ def test_update_england_wales_lad_codes_rejects_blank_lad23_codes() -> None:
         )
 
 
-def test_infer_ni_dz_constituencies_from_active_postcode_mode() -> None:
-    postcode_oa = pd.DataFrame(
-        {
-            "pcds": ["BT1 1AA", "BT1 1AB", "BT1 1AC", "BT2 2AA", "BT2 2AB"],
-            "doterm": [pd.NA, "", "202401", " ", pd.NA],
-            "oa21cd": [
-                "N20000001",
-                "N20000001",
-                "N20000001",
-                "N20000002",
-                "N20000002",
-            ],
-        }
-    )
-    postcode_constituency = pd.DataFrame(
-        {
-            "pcd": ["BT1 1AA", "BT1 1AB", "BT1 1AC", "BT2 2AA", "BT2 2AB"],
-            "pconcd": [
-                "N05000014",
-                "N05000014",
-                "N05000001",
-                "N05000002",
-                "N05000003",
-            ],
-        }
+def test_load_ni_dz_parlcon24_lookup(monkeypatch) -> None:
+    # The loader imports openpyxl before reading any bytes; the wheels lane
+    # installs no dev group, so skip there rather than fail on the import.
+    pytest.importorskip("openpyxl")
+    monkeypatch.setattr(geography_sources, "NI_DZ2021_COUNT", 18)
+    monkeypatch.setattr(
+        geography_sources,
+        "_read_url_bytes",
+        lambda _url: ni_lookup_workbook_bytes(),
     )
 
-    inferred = infer_ni_dz_constituencies_from_postcodes(
-        postcode_oa,
-        postcode_constituency,
+    lookup = load_ni_dz_parlcon24_lookup("memory://nisra.xlsx")
+
+    assert list(lookup.columns) == [
+        "oa_code",
+        "constituency_code",
+        "msoa_code",
+        "la_code",
+        "ward_code",
+    ]
+    assert len(lookup) == 18
+    assert lookup.iloc[0].to_dict() == {
+        "oa_code": "N20000001",
+        "constituency_code": "N05000001",
+        "msoa_code": "N21000001",
+        "la_code": "N09000001",
+        "ward_code": "N10000001",
+    }
+
+
+@pytest.mark.parametrize(
+    ("workbook_kwargs", "message"),
+    [
+        ({"missing_column": "PARLCON2024_code"}, "missing column"),
+        ({"bad_constituency": "E14000001"}, "constituency set"),
+        ({"duplicate_dz": True}, "unique"),
+        ({"missing_constituency": True}, "constituency set"),
+    ],
+)
+def test_load_ni_dz_parlcon24_lookup_refuses_invalid_rows(
+    monkeypatch,
+    workbook_kwargs,
+    message,
+) -> None:
+    pytest.importorskip("openpyxl")
+    monkeypatch.setattr(geography_sources, "NI_DZ2021_COUNT", 18)
+    monkeypatch.setattr(
+        geography_sources,
+        "_read_url_bytes",
+        lambda _url: ni_lookup_workbook_bytes(**workbook_kwargs),
     )
-
-    assert inferred["oa_code"].tolist() == ["N20000001", "N20000002"]
-    assert inferred["constituency_code"].tolist() == ["N05000014", "N05000002"]
-    assert inferred["postcode_count"].tolist() == [2, 1]
-
-
-def test_infer_ni_dz_constituencies_reports_unmatched_postcodes() -> None:
-    inferred = infer_ni_dz_constituencies_from_postcodes(
-        pd.DataFrame(
-            {
-                "pcds": ["BT1 1AA", "BT1 1AB", "BT2 2AA"],
-                "doterm": [pd.NA, pd.NA, pd.NA],
-                "oa21cd": ["N20000001", "N20000001", "N20000002"],
-            }
-        ),
-        pd.DataFrame(
-            {
-                "pcd": ["BT1 1AA", "BT2 2AA"],
-                "pconcd": ["N05000014", "N05000002"],
-            }
-        ),
-        max_unmatched_active_postcode_share=0.5,
-    )
-
-    assert inferred.attrs["active_ni_postcode_count"] == 3
-    assert inferred.attrs["unmatched_active_ni_postcode_count"] == 1
-
-
-def test_infer_ni_dz_constituencies_rejects_excess_unmatched_postcodes() -> None:
-    with pytest.raises(ValueError, match="missing too many active NI postcodes"):
-        infer_ni_dz_constituencies_from_postcodes(
-            pd.DataFrame(
-                {
-                    "pcds": ["BT1 1AA", "BT1 1AB"],
-                    "doterm": [pd.NA, pd.NA],
-                    "oa21cd": ["N20000001", "N20000001"],
-                }
-            ),
-            pd.DataFrame({"pcd": ["BT1 1AA"], "pconcd": ["N05000014"]}),
-            max_unmatched_active_postcode_share=0.1,
-        )
+    with pytest.raises(ValueError, match=message):
+        load_ni_dz_parlcon24_lookup("memory://nisra.xlsx")
 
 
 def test_build_northern_ireland_crosswalk_rows() -> None:
@@ -553,6 +575,29 @@ def test_build_northern_ireland_crosswalk_rows() -> None:
     assert ni["country"].unique().tolist() == ["Northern Ireland"]
     assert ni["region_code"].unique().tolist() == ["N99999999"]
     assert ni["population"].tolist() == [738, 331]
+
+
+def test_build_northern_ireland_crosswalk_rejects_lookup_nesting_mismatch() -> None:
+    hierarchy = ni_hierarchy().assign(
+        ward_code=["N10000104", "N10000105"],
+    )
+    lookup = pd.DataFrame(
+        {
+            "oa_code": ["N20000001", "N20000002"],
+            "constituency_code": ["N05000014", "N05000002"],
+            "msoa_code": ["N21009999", "N21000001"],
+            "la_code": ["N09009999", "N09000002"],
+            "ward_code": ["N10999999", "N10000105"],
+        }
+    )
+
+    with pytest.raises(ValueError, match="nesting disagrees"):
+        build_northern_ireland_crosswalk(
+            hierarchy,
+            ni_population(),
+            lookup,
+            expected_dz_count=None,
+        )
 
 
 def test_build_complete_crosswalk_validates_targets() -> None:

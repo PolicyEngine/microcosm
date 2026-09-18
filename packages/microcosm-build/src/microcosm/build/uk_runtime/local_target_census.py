@@ -43,6 +43,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
+from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
 from microcosm.build.uk_runtime.hmrc_income import HMRC_SPI_TARGET_RECORD_COUNT
 from microcosm.build.uk_runtime.hmrc_replay import FULL_FRS_TI_BAND_FENCE_ID
 from microcosm.build.uk_runtime.local_targets import AREA_TYPES, metric_names
@@ -55,7 +56,6 @@ __all__ = [
     "METRIC_STATUS_BOUND_IN_CODE",
     "SOURCE_STATUS_DOCUMENTED_UNPINNED",
     "SOURCE_STATUS_PINNED_IN_LEDGER_FACTS",
-    "SOURCE_STATUS_PINNED_IN_LADDER",
     "SOURCE_STATUS_SIGNED_DEFERRED",
     "assert_uk_local_target_census_current",
     "build_uk_local_target_census",
@@ -71,7 +71,6 @@ CENSUS_RESOURCE = "uk_local_target_census.json"
 METRIC_STATUS_BOUND_IN_CODE = "bound_in_code"
 SOURCE_STATUS_DOCUMENTED_UNPINNED = "documented_unpinned"
 SOURCE_STATUS_PINNED_IN_LEDGER_FACTS = "pinned_in_ledger_facts"
-SOURCE_STATUS_PINNED_IN_LADDER = "pinned_in_ladder"
 SOURCE_STATUS_SIGNED_DEFERRED = "signed_deferred"
 FENCE_ENFORCEMENT_REVIEW = "review_required_before_binding"
 
@@ -79,16 +78,29 @@ FENCE_ENFORCEMENT_REVIEW = "review_required_before_binding"
 #: product description checked on this date (microcosm#495 scoping).
 _SOURCES_VERIFIED_ON = "2026-07-22"
 
-_LEDGER_FACT_FEED_PIN: dict[str, str] = {
-    "artifact": ".codex-work/consumer_facts_uk.jsonl",
-    "manifest": ".codex-work/consumer_facts_uk_manifest.json",
-    "facts_sha256": (
-        "4395a4e76a75332cc77a7dc1ea5d3c49b36e0d268c8449474bc129aa24e38c48"
-    ),
-    "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "33ca98a",
-    "build": "build-bundle --suite uk -> build-consumer-artifact",
-}
+
+def _ledger_fact_feed_pin() -> dict[str, str | int]:
+    """The local census reads the one UK Chronicle pin (``uk/chronicle_feed.json``).
+
+    The national and local surfaces share a single reviewed artifact identity;
+    the census restates it here with the default untracked artifact location so
+    the committed JSON carries the digest a reader can verify.
+    """
+
+    pin = load_uk_chronicle_feed()
+    return {
+        "artifact": ".codex-work/consumer_facts_uk.jsonl",
+        "manifest": ".codex-work/consumer_facts_uk_manifest.json",
+        "facts_sha256": pin.facts_sha256,
+        "manifest_sha256": pin.manifest_sha256,
+        "fact_row_count": pin.fact_row_count,
+        "source_repo": pin.source_repo,
+        "source_commit": pin.source_commit,
+        "build": pin.build,
+    }
+
+
+_LEDGER_FACT_FEED_PIN: dict[str, str | int] = _ledger_fact_feed_pin()
 
 _SPI_FRAME_PROXY_FENCE_ID = "hmrc_spi_frame_model_proxy"
 _FRS_CIRCULARITY_FENCE_ID = "frs_model_based_target_circularity"
@@ -108,8 +120,8 @@ _EXACT_FAMILY_RULES: dict[str, str] = {
 
 #: Metric-name prefixes mapping to a census family. Every prefix ends at a
 #: separator so it cannot swallow near-miss sibling names.
-#: Exact names continued: the census household-count family is bound via
-#: the ladder artifact rather than an in-code engine metric alone.
+#: Exact names continued: Chronicle census household counts bind the local
+#: household denominator at both supported grains.
 _EXACT_FAMILY_RULES["households"] = "census_households"
 
 _PREFIX_FAMILY_RULES: tuple[tuple[str, str], ...] = (
@@ -146,26 +158,23 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
     {
         "family": "census_households",
         "description": (
-            "Weighted household counts by area, bound to census occupied-"
-            "household totals summed from the sha-pinned UK OA ladder "
-            "artifact (constituency_household_targets / "
-            "local_authority_household_targets). Universe-compatible with "
-            "the FRS instrument: census occupied households match the "
-            "survey's own household frame, so the person-universe "
+            "Weighted household counts by area, compiled from Chronicle's "
+            "sha-pinned Census 2021 and 2022 household facts. Census occupied "
+            "households match the FRS household frame, so the person-universe "
             "adjudication does not bind here."
         ),
         "sources": [
-            "nomis_ts041_ew_oa_households",
-            "nrs_census_2022_index",
-            "nisra_dz21_households",
+            "ons_census2021_ts041_households",
+            "nrs_census2022_uv404_households",
+            "nisra_census2021_households",
         ],
         "adjudications": [_CENSUS_DISCLOSURE_FENCE_ID],
     },
     {
         "family": "uc_households",
         "description": (
-            "Households on Universal Credit, and (constituency only, in code "
-            "today) the split by number of children."
+            "Universal Credit benefit units summed onto household rows, and "
+            "(constituency only) their split by benefit-unit num_children."
         ),
         "sources": ["dwp_stat_xplore_uc"],
         "adjudications": [_UC_GRAIN_FENCE_ID],
@@ -197,11 +206,53 @@ _FAMILIES: tuple[dict[str, Any], ...] = (
     {
         "family": "council_tax",
         "description": (
-            "Chargeable dwelling stock by council-tax band A-H at local-"
-            "authority grain, represented on the household frame."
+            "Dwellings charged council tax by band at local-authority grain, "
+            "from the councils' taxbase returns (England A-H, Wales A-I, "
+            "Scotland A-H), represented on the household frame (microcosm#929). "
+            "The nine composed English region controls sum all 296 authority "
+            "facts, including the two support-floor-deferred authorities "
+            "(Isles of Scilly in the South West, City of London in London), so "
+            "the cross-grain operator rescales those regions' bound cells by "
+            "the whole-region sum over the bound sum: about a thousand "
+            "dwellings on the South West's band A, the same shape the VOA "
+            "basis had."
         ),
-        "sources": ["voa_council_tax_stock_la"],
+        "sources": [
+            "mhclg_council_taxbase_la",
+            "welshgov_council_tax_dwellings_la",
+            "scotgov_ctaxbase_chargeable_dwellings_la",
+        ],
         "adjudications": [_COUNCIL_TAX_UNIVERSE_FENCE_ID],
+        "retired_deferrals": [
+            {
+                "reason_id": reason_id,
+                "retired_on": "2026-09-15",
+                "approved_by": "juaristi22",
+                "adjudication": (
+                    "microcosm#929 plan approved by María on 2026-09-15 (the "
+                    "taxbase basis binds Wales and Scotland from their own returns)"
+                ),
+                "rationale": rationale,
+            }
+            for reason_id, rationale in (
+                (
+                    "council_tax_voa_scotland_absent",
+                    "The 32 Scottish councils bind CTAXBASE chargeable dwellings by band (chronicle#264); the VOA local feed's absence no longer applies.",
+                ),
+                (
+                    "council_tax_wales_country_control_absent",
+                    "The 22 Welsh authorities bind StatsWales CT1 chargeable dwellings by band A-I with the Wales row as their country control; the premise (no Wales country fact) was stale, since Chronicle carried the VOA Wales row in every pin.",
+                ),
+                (
+                    "council_tax_ni_domestic_rates",
+                    "Northern Ireland is outside every family's area_scope roster (domestic rates, no council tax bands), so no cell exists to defer.",
+                ),
+                (
+                    "council_tax_city_of_london_band_a_suppressed",
+                    "MHCLG publishes the City of London's band A in the taxbase return; the VOA suppression no longer applies. The City's cells stay under the local-authority support floor.",
+                ),
+            )
+        ],
     },
 )
 
@@ -284,55 +335,66 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         ),
     },
     {
-        "source_id": "nomis_ts041_ew_oa_households",
+        "source_id": "ons_census2021_ts041_households",
         "publisher": "Office for National Statistics (via Nomis)",
         "product": (
-            "Census 2021 table TS041 (number of households), England and "
-            "Wales, output-area grain — the E&W leg of the ladder's "
-            "household counts."
+            "Nomis NM_2059_1 Census 2021 TS041 household counts at TYPE172 "
+            "(Westminster Parliamentary Constituencies, July 2024) and "
+            "TYPE424 (local authority districts, April 2023), compiled by "
+            "Chronicle."
         ),
-        "url": "https://www.nomisweb.co.uk/output/census/2021/census2021-ts041.zip",
+        "url": (
+            "https://www.nomisweb.co.uk/api/v01/dataset/NM_2059_1.data.csv?"
+            "geography=TYPE172&date=latest&c2021_hh_1=0&measures=20100&"
+            "select=geography_name,geography_code,c2021_hh_1_name,"
+            "measures_name,obs_value"
+        ),
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2021-03-21",
-        "status": SOURCE_STATUS_PINNED_IN_LADDER,
-        "verified_on": _SOURCES_VERIFIED_ON,
-        "notes": (
-            "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py "
-            "(recorded in the artifact's source_files map)."
-        ),
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": "2026-09-09",
+        "notes": ("The pinned Ledger fact feed carries the compiled household cells."),
     },
     {
-        "source_id": "nrs_census_2022_index",
+        "source_id": "nrs_census2022_uv404_households",
         "publisher": "National Records of Scotland",
         "product": (
-            "Census 2022 index zip: Postcode_To_OA.csv census occupied "
-            "household counts (cell-key perturbed), summed by OA2022 — the "
-            "Scotland leg of the ladder's household counts."
+            "NRS Census 2022 UV404 tenure-household CSVs for United Kingdom "
+            "Parliamentary Constituency 2024 and Local_authority, hosted by "
+            "the UKDS CKAN archive and compiled by Chronicle."
         ),
-        "url": "https://www.nrscotland.gov.uk/media/utrbt5ze/census_2022_index.zip",
+        "url": (
+            "https://ukds-ckan.s3.eu-west-1.amazonaws.com/2022/NRS/UV404/"
+            "Census_2022_UV404_Tenure_Households_United_Kingdom_"
+            "Parliamentary_Constituency_2024.csv"
+        ),
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2022-03-20",
-        "status": SOURCE_STATUS_PINNED_IN_LADDER,
-        "verified_on": _SOURCES_VERIFIED_ON,
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": "2026-09-09",
         "notes": (
-            "Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py; "
-            "the in-zip specification defines HouseholdCount as the 2022 "
-            "Census occupied household count."
+            "The pinned Ledger fact feed carries the compiled household cells; "
+            "the source specification defines HouseholdCount as occupied households."
         ),
     },
     {
-        "source_id": "nisra_dz21_households",
+        "source_id": "nisra_census2021_households",
         "publisher": "Northern Ireland Statistics and Research Agency",
         "product": (
-            "Census 2021 table-builder HOUSEHOLD dataset at DZ21 grain — "
-            "the NI leg of the ladder's household counts."
+            "NISRA Census 2021 table-builder HOUSEHOLD tables at PARLCON24 "
+            "and LGD14, compiled by Chronicle."
         ),
-        "url": "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=DZ21",
+        "url": (
+            "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=PARLCON24"
+        ),
         "geographies": ["constituency", "la"],
         "latest_vintage": "Census Day 2021-03-21",
-        "status": SOURCE_STATUS_PINNED_IN_LADDER,
-        "verified_on": _SOURCES_VERIFIED_ON,
-        "notes": ("Sha-pinned per build by tools/build_uk_oa_ladder_artifact.py."),
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": "2026-09-09",
+        "notes": "The pinned Ledger fact feed carries the compiled household cells.",
     },
     {
         "source_id": "dwp_stat_xplore_uc",
@@ -434,50 +496,102 @@ _SOURCES: tuple[dict[str, Any], ...] = (
         "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "signed_reason_id": "private_rent_pipr_partial_coverage_2025",
         "signed_rationale": (
-            "The pinned Ledger fact feed carries one PIPR period, 2026-06, "
-            "with 348 facts: 314 crosswalk England/Wales LA rows, two English "
-            "LA ids outside the crosswalk, 18 Scottish BRMA rows, nine region "
-            "rows, and five country rows. None is at or before the 2025 target "
-            "period; four English crosswalk authorities are absent, Scotland "
-            "has no LA rows, and Northern Ireland has no rows at any grain."
+            "The pinned Ledger fact feed carries 2025 PIPR months; compiled "
+            "rows resolve at 2025-12 with 36 facts at or before the target "
+            "period. Four English crosswalk authorities are absent, Scotland "
+            "has no LA rows, and Northern Ireland has no rows at any grain. "
+            "The bound price level is composed as 12 months times the mean "
+            "times A17-uprated private-renter households under microcosm#355 "
+            "(ruling 2026-09-08)."
         ),
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
             "PIPR publishes average rent price levels, not additive rent "
-            "totals. All 361 local-authority cells remain signed deferred for "
-            "the 2025 compile: 314 are after-period, four English cells have "
-            "no matching LA id, 32 Scottish cells are represented only at "
-            "BRMA grain without a signed translation, and 11 Northern Ireland "
-            "cells are absent."
+            "totals; a bound cell composes the level into a total (see the "
+            "signed rationale). Of the 361 local-authority cells, 314 bind "
+            "for the 2025 compile and 47 remain signed deferred: four English "
+            "cells have no matching LA id, 32 Scottish cells are represented "
+            "only at BRMA grain without a signed translation, and 11 Northern "
+            "Ireland cells are absent."
         ),
     },
     {
-        "source_id": "voa_council_tax_stock_la",
-        "publisher": "Valuation Office Agency",
+        "source_id": "mhclg_council_taxbase_la",
+        "publisher": "Ministry of Housing, Communities and Local Government",
         "product": (
-            "Council Tax stock of properties, 2025: local-authority counts "
-            "by valuation band."
+            "Council Taxbase 2025 in England: local-authority level data, CTB "
+            "lines by valuation band (chronicle#262 / #264)."
         ),
         "url": (
-            "https://www.gov.uk/government/statistics/council-tax-stock-of-"
-            "properties-2025"
+            "https://www.gov.uk/government/statistics/council-taxbase-2025-in-england"
         ),
         "geographies": ["la"],
-        "latest_vintage": "2025",
+        "latest_vintage": "2025-10",
         "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
         "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
         "verified_on": _SOURCES_VERIFIED_ON,
         "notes": (
-            "The pinned feed record-set spec "
-            "uk.local_geography.council_tax_stock.by_local_authority.v1 "
-            "supplies 2,541 active band cells: bands B-G cover all 318 "
-            "England/Wales crosswalk authorities, band A covers 317 because "
-            "E09000001 is suppressed, and band H covers 316 because "
-            "W06000019 and W06000024 are absent. Scotland's 32 authorities "
-            "have no VOA band-count rows and Northern Ireland's 11 LGDs use "
-            "domestic rates; all 347 absent cells are signed deferrals. The "
-            "feed has no comparable 2025 LA net series across the roster, so "
-            "council_tax/net is not declared."
+            "The pinned feed record-set specs uk.local_geography.council_tax."
+            "england_ctb.line_07_chargeable_dwellings_adjusted_for_disabled_"
+            "relief.v1, line_11_second_homes.v1 and line_15_empty_dwellings.v1 "
+            "supply the 296 English billing authorities by band A-, A-H at the "
+            "October 2025 count. Each cell binds line 7 minus line 11 minus "
+            "line 15 (band A adds line 7's A- column): the dwellings charged as "
+            "someone's sole or main residence, the universe a household frame "
+            "carries. Bands A-G bind 294 authorities after E06000053 and "
+            "E09000001 are support-floor excluded; the 296-cell band H family "
+            "stays signed deferred on spine support (microcosm#762 A14). "
+            "Barnsley and Sheffield bind through the crosswalk's declared "
+            "aliases of their April 2025 codes. The family is scoped to the "
+            "296 English authorities: Wales and Scotland bind their own "
+            "returns below and Northern Ireland levies domestic rates."
+        ),
+    },
+    {
+        "source_id": "welshgov_council_tax_dwellings_la",
+        "publisher": "Welsh Government (StatsWales)",
+        "product": (
+            "Council tax dwellings by authority and band (CT1 returns), "
+            "FY2023-24 to FY2026-27 (chronicle#262 / #264)."
+        ),
+        "url": "https://stats.gov.wales/en-GB/062488e2-3fd6-4755-9b0b-a64547fc570f/start",
+        "geographies": ["la"],
+        "latest_vintage": "2026-27",
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "The pinned feed record-set specs uk.local_geography.council_tax."
+            "wales_ct1.a1_all_chargeable_dwellings.v1, h7_total_chargeable_"
+            "empty_properties.v1 and h8_total_chargeable_second_homes.v1 "
+            "supply the 22 Welsh authorities by band A-I per financial year. "
+            "Each cell binds a1 minus h7 minus h8 on the 2025-26 row (the "
+            "taxbase set for that year, counted on the 31 October 2024 list, "
+            "one count-year behind England and Scotland by ruling of "
+            "2026-09-15); all 198 cells bind, band I included."
+        ),
+    },
+    {
+        "source_id": "scotgov_ctaxbase_chargeable_dwellings_la",
+        "publisher": "Scottish Government",
+        "product": (
+            "Number of chargeable dwellings, September 2025 (CTAXBASE 2025): "
+            "council-area rows (chronicle#262 / #264)."
+        ),
+        "url": "https://www.gov.scot/publications/council-tax-datasets/",
+        "geographies": ["la"],
+        "latest_vintage": "2025-09",
+        "status": SOURCE_STATUS_PINNED_IN_LEDGER_FACTS,
+        "ledger_fact_pin": _LEDGER_FACT_FEED_PIN,
+        "verified_on": _SOURCES_VERIFIED_ON,
+        "notes": (
+            "The pinned feed record-set spec uk.local_geography.council_tax_"
+            "stock.scotland_ctaxbase_chargeable_dwellings.by_council_area.v1 "
+            "supplies the 32 councils by band A-H, the concept the "
+            "scotgov.council_tax_stock country rows already bind; 255 cells "
+            "bind and Shetland band H is signed deferred (no band-H clone at "
+            "K=15). Chargeable dwellings run about 1 % above the household "
+            "frame nationally, the residual the universe fence records."
         ),
     },
 )
@@ -558,13 +672,13 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "fenced_fact_count": None,
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
-            "The runtime maps benefit-unit-level UC receipt to household "
-            "grain: a physical household containing two UC benefit units "
-            "contributes 2 to uc_households but 1 to a child band. DWP UC "
-            "statistics count UC claim households, which align with benefit "
-            "units rather than physical FRS households. Binding must "
-            "declare the grain crosswalk (or change the runtime metric) "
-            "before either UC family enters a solve."
+            "The runtime maps benefit-unit-level UC receipt and each UC "
+            "benefit unit's num_children band onto household rows by sum: a "
+            "physical household containing two UC benefit units contributes "
+            "2 to uc_households and one contribution to each unit's child "
+            "band. This aligns the runtime with DWP UC claim households, "
+            "which correspond to benefit units rather than physical FRS "
+            "households; binding must preserve this reviewed grain crosswalk."
         ),
         "authority": (
             "DWP Universal Credit official statistics Stat-Xplore user "
@@ -580,16 +694,26 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
             "All three census household-count legs are disclosure-controlled "
-            "(ONS/NRS cell-key perturbation; NISRA flexible-table-builder "
-            "controls), so area counts carry small deliberate noise and do "
-            "not add exactly across grains (measured constituency-sum vs "
-            "national-total deltas at review: E&W +105, Scotland -554, NI "
-            "+3). Binding treats the published counts as the target values "
-            "with that noise documented — never as exact controls — and any "
-            "cross-grain reconciliation applies the standing cross-grain rule "
-            "declared in uk_runtime.ledger_targets: country wins, so a bound "
-            "national same-concept control rescales the constituency values "
-            "before the solve."
+            "(ONS/NRS cell-key perturbation; NISRA table-builder controls). "
+            "Per-area dispersion of the retired OA-ladder sums against the "
+            "published cells at review: England mean 7.4 / max 29, Wales 6.4 / "
+            "15, Scotland net −557 (NRS applies disclosure control per output "
+            "level; same shortfall at both grains), Northern Ireland mean 7 / "
+            "max 16 after the NI constituency leg moved to NISRA's published "
+            "DZ2021→PARLCON24 lookup (the earlier postcode inference was a "
+            "mapping defect of 10 Data Zones, max 694, not perturbation). When "
+            "a national same-concept control is bound, the standing cross-grain "
+            "rule declared in uk_runtime.ledger_targets rescales both grains; "
+            "country wins. The census cells count the occupied-household "
+            "universe and pair only through the household-composition bridge, "
+            "never with dwelling stock; that cross-grain rescale applies once "
+            "the bridge is bound. Bound from microcosm#791 (2026-09-11): the "
+            "three ONS household-composition cells that held the bridge "
+            "reviewed-unbound now bind on the frs_relationships household "
+            "type, so the cross-grain rescale runs on the A15-uprated cells; "
+            "the ten-cell partition and the A15 control are both "
+            "ons.households_total, so the declared factor is 1 by closure and "
+            "the receipt records the bridge as bound."
         ),
         "authority": (
             "ONS/NRS/NISRA statistical disclosure control documentation; "
@@ -620,17 +744,21 @@ _BINDING_FENCES: tuple[dict[str, Any], ...] = (
         "fenced_fact_count": None,
         "enforcement": FENCE_ENFORCEMENT_REVIEW,
         "rule": (
-            "VOA council-tax stock counts chargeable dwellings, including "
-            "empty properties, second homes, and other dwellings that need "
-            "not correspond one-for-one with occupied private households in "
-            "the FRS frame. Binding the band-count family requires an explicit "
-            "adjudication accepting the household proxy or a source-faithful "
-            "dwelling representation."
+            "Council-tax stock targets count dwellings, not households. The "
+            "family binds the councils' taxbase returns, which count the "
+            "dwellings charged as a sole or main residence once second homes "
+            "and empty dwellings are taken out (England, Wales) or the "
+            "chargeable dwellings (Scotland); the VOA valuation-list stock, "
+            "which also carries exempt, empty and second-home dwellings, ran "
+            "6 % over the household frame and is not bound. The residual "
+            "between the taxbase universe and occupied private households in "
+            "the FRS frame needs an explicit adjudication naming it."
         ),
         "authority": (
             "uk-data targets/sources/la_council_tax.py lineage doctrine and "
             "datasets/local_areas/local_authorities/loss.py; uk-data#371; "
-            "microcosm#147 adjudication A3."
+            "uk-data#457; microcosm#147 adjudication A3; microcosm#929 basis "
+            "ruling 2026-09-15."
         ),
     },
 )
@@ -648,12 +776,6 @@ _STATUS_DEFINITIONS: dict[str, str] = {
     SOURCE_STATUS_PINNED_IN_LEDGER_FACTS: (
         "The official product's target facts are present in the sha-pinned "
         "Ledger consumer fact feed recorded on the source row."
-    ),
-    SOURCE_STATUS_PINNED_IN_LADDER: (
-        "The product is downloaded and sha-pinned per build by the UK OA "
-        "ladder artifact tool, which records every source hash in the "
-        "artifact metadata; target values derive from the artifact's own "
-        "sums."
     ),
     SOURCE_STATUS_SIGNED_DEFERRED: (
         "The official product is present or documented, but this target "
@@ -679,10 +801,12 @@ _SCOPE_NOTE = (
 _DOCTRINE: dict[str, Any] = {
     "masked_missing": {
         "rule": (
-            "A missing local target is represented at compile time by an "
-            "AreaSignedDeferral carrying a signed reason and explicit area ids. "
-            "Unsigned absence raises, and a deferral becomes stale and raises "
-            "as soon as the pinned feed can compile that cell."
+            "A local target excluded at compile time is represented by an "
+            "AreaSignedDeferral carrying a signed reason and explicit area "
+            "ids. Unsigned absence raises, and a missing-data deferral becomes "
+            "stale and raises as soon as the pinned feed can compile that "
+            "cell. A separate adjudication may defer a compilable lower-grain "
+            "fact only through the explicit defer_if_compiles opt-in."
         ),
         "enforcement_point": (
             "Both refusals fire inside the reference compiler, which runs only "
@@ -731,7 +855,8 @@ _DOCTRINE: dict[str, Any] = {
         "every_target_accounted": (
             "The local target compiler requires a compiled reference or an "
             "AreaSignedDeferral for every metric-by-area cell; unsigned and "
-            "stale deferrals raise."
+            "stale missing-data deferrals raise, while a separately "
+            "adjudicated compilable deferral requires an explicit opt-in."
         ),
         "missing_cells_masked_deliberately": (
             "AreaSignedDeferral is the deliberate compile-time mask; the solve "

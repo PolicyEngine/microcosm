@@ -800,7 +800,7 @@ def test_canonical_us_late_schedule_is_import_validated_and_byte_stable() -> Non
         "transition_authority": {
             "authority_id": "us_stacked_late_producer_transition",
             "metadata_key": "us_late_producer_transition_authority",
-            "version": 1,
+            "version": 2,
             "independent_digest_required": True,
         },
     }

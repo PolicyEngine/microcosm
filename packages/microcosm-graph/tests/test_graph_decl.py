@@ -11,6 +11,9 @@ from __future__ import annotations
 import pytest
 
 from microcosm.graph import (
+    ArtifactInput,
+    ArtifactOutput,
+    ArtifactType,
     Graph,
     GraphError,
     Node,
@@ -349,3 +352,128 @@ def test_every_declared_name_channel_refuses_dots() -> None:
         WeightTransition("house.hold", "design", "importance")
     with pytest.raises(GraphError, match="may not contain '.'"):
         Graph("toy", (), (), mass_partition=("person", "per.iod"))
+
+
+ARTIFACT = ArtifactType("qrf.forest", 1)
+
+
+def _producer(
+    node_id: str = "fit", *, outputs: tuple[ArtifactOutput, ...] = ()
+) -> Node:
+    return Node(
+        node_id,
+        "fit.train@1",
+        inputs=(Slice("person", ("age",)),),
+        artifact_outputs=outputs or (ArtifactOutput("forest", ARTIFACT),),
+    )
+
+
+def _consumer(binding: ArtifactInput, node_id: str = "draw") -> Node:
+    return Node(
+        node_id,
+        "fit.draw@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "drawn", "float64"),),
+        artifact_inputs=(binding,),
+    )
+
+
+def test_an_artifact_edge_makes_its_producer_a_predecessor() -> None:
+    """Amendment 19: a typed byte edge orders the graph without owning a cell."""
+    compiled = compile_graph(
+        Graph(
+            "toy",
+            (SRC,),
+            (
+                _consumer(ArtifactInput("donor", "fit", "forest", ARTIFACT)),
+                _producer(),
+                CREATE,
+            ),
+        )
+    )
+    assert "fit" in compiled.predecessors["draw"]
+    assert compiled.order.index("fit") < compiled.order.index("draw")
+    # The producer owns no cell of the consumer's outputs.
+    assert compiled.owners[("survey", "person", "drawn")] == "draw"
+
+
+def test_an_artifact_edge_is_refused_when_it_does_not_resolve() -> None:
+    """Amendment 19: producer, output name, and exact type all have to match."""
+    with pytest.raises(GraphError, match="unknown artifact producer"):
+        compile_graph(
+            Graph(
+                "toy",
+                (SRC,),
+                (
+                    _consumer(ArtifactInput("donor", "absent", "forest", ARTIFACT)),
+                    CREATE,
+                ),
+            )
+        )
+    with pytest.raises(GraphError, match="no declared artifact"):
+        compile_graph(
+            Graph(
+                "toy",
+                (SRC,),
+                (
+                    _consumer(ArtifactInput("donor", "fit", "other", ARTIFACT)),
+                    _producer(),
+                    CREATE,
+                ),
+            )
+        )
+    with pytest.raises(GraphError, match="type does not match its producer"):
+        compile_graph(
+            Graph(
+                "toy",
+                (SRC,),
+                (
+                    _consumer(
+                        ArtifactInput(
+                            "donor", "fit", "forest", ArtifactType("qrf.forest", 2)
+                        )
+                    ),
+                    _producer(),
+                    CREATE,
+                ),
+            )
+        )
+    with pytest.raises(GraphError, match="depends on itself through an artifact"):
+        compile_graph(
+            Graph(
+                "toy",
+                (SRC,),
+                (
+                    Node(
+                        "fit",
+                        "fit.train@1",
+                        inputs=(Slice("person", ("age",)),),
+                        artifact_outputs=(ArtifactOutput("forest", ARTIFACT),),
+                        artifact_inputs=(
+                            ArtifactInput("self", "fit", "forest", ARTIFACT),
+                        ),
+                    ),
+                    CREATE,
+                ),
+            )
+        )
+
+
+def test_an_artifact_cycle_is_refused_like_any_other_cycle() -> None:
+    """Amendment 19: byte edges join the same depth computation as cell edges."""
+    first = Node(
+        "first",
+        "fit.train@1",
+        inputs=(Slice("person", ("age",)),),
+        artifact_outputs=(ArtifactOutput("forest", ARTIFACT),),
+        artifact_inputs=(ArtifactInput("other", "second", "forest", ARTIFACT),),
+    )
+    second = Node(
+        "second",
+        "fit.train@1",
+        inputs=(Slice("person", ("age",)),),
+        artifact_outputs=(ArtifactOutput("forest", ARTIFACT),),
+        artifact_inputs=(ArtifactInput("other", "first", "forest", ARTIFACT),),
+    )
+    with pytest.raises(GraphError, match="[Cc]ycle"):
+        compile_graph(Graph("toy", (SRC,), (first, second, CREATE)))

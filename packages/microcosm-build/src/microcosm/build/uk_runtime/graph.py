@@ -101,12 +101,13 @@ _READER_ISOLATION_BOUNDARIES = frozenset(
 
 _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_spine": ("frs",),
+    "frs_relationships": ("frs",),
     "frs_employment": ("frs",),
     "frs_council_tax": ("frs",),
     "frs_education": ("frs",),
     "frs_legacy_proxies": ("frs",),
     "was_wealth": ("was",),
-    "lcfs_consumption": ("lcfs_household", "lcfs_person", "was"),
+    "lcfs_consumption": ("lcfs_household", "lcfs_person"),
     "etb_vat": ("etb",),
     "etb_services": ("etb",),
     "frs_hmrc_spine_leaves": ("frs",),
@@ -131,6 +132,12 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
 # memberships, weights, and strata are executor-carried context rather than
 # ordinary owned cells.
 _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
+    # The relationship grid is re-read from the pinned adult/child tabs; the
+    # frame reads are the disaggregated age (#785 contract) and the HRP flag
+    # the derivation must agree with.
+    "frs_relationships": frozenset(
+        {("person", "age"), ("person", "is_household_head")}
+    ),
     "frs_employment": frozenset(),
     "frs_council_tax": frozenset(),
     "frs_disability": frozenset(
@@ -168,8 +175,12 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "child_benefit_reported",
             "pension_credit_reported",
             "universal_credit_reported",
+            # The Universal Credit draw's population: units with an adult
+            # under State Pension age (#882).
+            "age",
         )
-    ),
+    )
+    | frozenset({("benunit", "is_married")}),
     "frs_person_draws": frozenset({("person", "age")}),
     "frs_household_draws": frozenset(),
     "frs_brma": None,
@@ -192,6 +203,8 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "uc_reporter_redraw": None,
     "uc_capital_coherence": frozenset(
         {
+            ("person", "is_benunit_head"),
+            ("person", "is_parent"),
             ("person", "person_support_channel"),
             ("person", "universal_credit_reported"),
             ("benunit", "benunit_support_channel"),
@@ -264,7 +277,13 @@ class _Cell:
 
 
 _ROOT_PERSON_STRING = {"gender", "marital_status"}
-_ROOT_PERSON_BOOL = {"is_household_head", "is_benunit_head", "is_parent"}
+_ROOT_PERSON_BOOL = {
+    "is_household_head",
+    "is_benunit_head",
+    "is_parent",
+    "is_uc_claimant",
+    "would_claim_carers_allowance",
+}
 _ROOT_PERSON_INT = {"age"}
 _ROOT_PERSON_FLOAT: set[str] = set()
 _ROOT_BENUNIT_TYPES = {
@@ -344,6 +363,12 @@ def _cells(
 
 
 _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
+    "frs_relationships": (
+        _Cell("person", "relationship_to_head", "string"),
+        _Cell("person", "ons_family_role", "string"),
+        _Cell("person", "ons_family_index", "int64"),
+        _Cell("household", "ons_household_type", "string"),
+    ),
     "frs_employment": (
         _Cell("person", "employment_status", "string"),
         _Cell("person", "employment_sector", "string"),
@@ -416,6 +441,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "would_claim_extended_childcare",
                 "would_claim_universal_childcare",
                 "would_claim_targeted_childcare",
+                "would_claim_uc_childcare",
             ),
             "bool",
         ),
@@ -425,6 +451,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "would_claim_marriage_allowance", "bool"),
         _Cell("person", "would_claim_scp", "bool"),
         _Cell("person", "attends_private_school_random_draw", "float64"),
+        _Cell("person", "tax_free_childcare_spend_routed_share", "float64"),
     ),
     "frs_household_draws": _cells(
         "household",
@@ -634,6 +661,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
     "is_severely_disabled_for_benefits",
+    # #882: the carer take-up flag follows the refilled Carer's Allowance
+    # receipt on the SPI-redrawn rows.
+    "would_claim_carers_allowance",
 )
 _STAGE_CELLS = {
     **_STAGE_CELLS,

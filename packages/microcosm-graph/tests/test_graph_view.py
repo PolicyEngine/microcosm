@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from microcosm.graph.decl import (
+    ArtifactInput,
+    ArtifactOutput,
+    ArtifactType,
     Graph,
     Node,
     Owned,
@@ -85,3 +88,38 @@ def test_describe_graph_alone_marks_runtime_facts_unavailable() -> None:
     assert "<available at run time>" in rendered
     assert "seed\\0" in rendered
     assert "Store:" not in rendered
+
+
+def test_describe_shows_declared_artifact_edges_on_one_screen() -> None:
+    """Amendment 19: byte edges are legible from the graph alone (charter G1)."""
+    forest = ArtifactType("qrf.forest", 2)
+    create = Node(
+        "survey",
+        "source.frame@1",
+        sources=("survey",),
+        outputs=(Owned("person", "age", "int64"),),
+        structural=StructuralDelta.CREATE,
+    )
+    fit = Node(
+        "fit",
+        "toy.fit@1",
+        inputs=(Slice("person", ("age",)),),
+        artifact_outputs=(ArtifactOutput("forest", forest),),
+    )
+    draw = Node(
+        "draw",
+        "toy.model@1",
+        inputs=(Slice("person", ("age",)),),
+        outputs=(Owned("person", "income", "float64"),),
+        artifact_inputs=(ArtifactInput("donor", "fit", "forest", forest),),
+    )
+    compiled = compile_graph(
+        Graph("toy", (SourceRef("survey", "csv-tables"),), (create, fit, draw))
+    )
+    producer = describe(compiled, "fit")
+    consumer = describe(compiled, "draw")
+    assert "Artifact outputs: forest (qrf.forest@2)" in producer
+    assert "Artifact inputs: donor <- fit.forest (qrf.forest@2)" in consumer
+    assert len(consumer.splitlines()) < 40
+    # A node declaring none says nothing about artifacts.
+    assert "Artifact" not in describe(compiled, "survey")

@@ -39,6 +39,10 @@ shard's real wheel, install into a clean uv-export-constrained venv, assert
 the wheel/import boundary and spec digests, and run the suite against installed
 wheels.
 
+New commits to a PR cancel older unfinished CI runs for that same PR.
+Each main-push run has a unique concurrency group, so all main-push runs
+remain independent and can finish validating their merged changes.
+
 `requires_us` and `requires_uk` are registered pytest markers. Mark new tests
 that need a live PolicyEngine engine with the appropriate marker; the root
 collection hook skips them when that engine is absent, and the marker also
@@ -66,6 +70,24 @@ module or dependency. CI tests the merge ref, so merge main and re-pin rather
 than hunting for an environment leak. Editable installs hide packaging breaks;
 if you touch packaging, build wheels locally before pushing.
 
+The separate `.github/workflows/integration-tests.yml` workflow runs integration
+coverage on every pull request to `main` and on manual dispatch. Its current UK
+job runs the real spine command against the complete committed synthetic fixture
+with seed 42, uses `--smoke --staging-local-only`, writes only under the runner's
+temporary directory, and is not part of
+`ci-ok`. The job has `contents: read`, does not persist checkout credentials,
+does not reference a protected GitHub environment, and receives no external
+writer credential. Fork pull requests run the synthetic test without secrets.
+An optional repository-level `HF_STAGING_READ_TOKEN` permits a separate
+private-repository access check. The workflow invokes
+`tools/run_integration_tests.sh` so
+its shell logic remains locally executable. Run it locally without the optional
+repository access check with:
+
+```bash
+HF_STAGING_READ_TOKEN= bash tools/run_integration_tests.sh
+```
+
 ## The PR-CI / certification boundary
 
 PR CI is secrets-free and never touches restricted microdata. Green PR checks
@@ -78,7 +100,30 @@ see README "Releasing & alerts". Publication also refuses a release whose
 build recorded staging telemetry that never reached its repo
 (`--allow-missing-staging` overrides); a build that declared `--no-staging`
 publishes without the flag. Never publish or promote artifacts as a side
-effect of another task.
+effect of another task. A UK rowwise run's **staged** bundle
+(`staged/<run_id>/` in the private repository, written by the build itself)
+is inspection evidence, not a release: it never moves `releases/` or
+`latest.json` and is not loadable through the certified loader. The build's
+default is to upload that bundle (hundreds of megabytes of licensed microdata)
+to the private repository; when you run `tools/build_uk_rowwise_candidate.py`
+yourself, pass `--staging-local-only` unless the operator asked for a staged
+upload.
+
+The US native-SPM-role source-enrichment lane is a separate release type:
+`tools/build_us_spm_role_enrichment.py` creates a local candidate from the exact
+reviewed BuildP parent, preserving original variables and inherited schema-5
+calibration evidence. It does not run calibration or relax schema 6 for ordinary
+releases. `microcosm.data.source_enrichment` validates candidates and records
+actual native-loader compatibility in a separate bundle. The regular publisher
+requires `--parent-h5` and the four tested country/Core/wrapper/calculator wheels; `--preflight-only`
+runs the same contract and local publisher preparation (file paths, artifact
+hashes, revision/tag pins and latest-pointer eligibility), without constructing
+a Hub client or publishing. Supplying `--parent-h5` or `--compatibility-wheel`
+for a release that is not a source enrichment is an error, including preflight
+and evidence-tier requests. See
+[the source-enrichment runbook](docs/us-native-spm-role-source-enrichment.md).
+Root's canonical-model acceptance and publication authorization remain separate
+from this producer-native-input receipt.
 
 A US release or release-gate preflight that receives a multispine pool through
 `--base-h5` must authenticate its sibling terminal manifest. A current stacked
@@ -101,8 +146,22 @@ historicize any currency claims in it ("nothing was pushed", "do not merge",
 readers. Adjudicated verdicts belong in `experiments/` or the tracking issue,
 with the journal pointing to them.
 
+## Shared constants
+
+Before adding a module-local mapping, enumeration, identifier, or display
+label, search for an existing definition and follow
+[`docs/shared-constants.md`](docs/shared-constants.md). Human contributors and
+AI assistants must import shared static data from its domain-specific constants
+module instead of copying it or reconstructing alternate views in consumers.
+
 ## Review this file
 
 Update this guide in the same PR whenever the workspace layout, test
 commands, or release flow change. If you find it contradicting the repo,
 trust the repo and fix this file.
+
+UK size experiments use `tools/build_uk_rowwise_candidate.py --dataset-households`
+with the same pool inputs as the dense candidate. The flag changes exported
+support, not clone K. Sizes remain candidate-only until their matched comparison
+and promotion scorecard are adjudicated; see
+[the size plan](docs/uk-dataset-size-plan-355.md).

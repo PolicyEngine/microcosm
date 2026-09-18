@@ -66,6 +66,11 @@ NI_DZ_POPULATION_CSV_URL = (
 NI_DZ_HOUSEHOLDS_CSV_URL = (
     "https://build.nisra.gov.uk/en/custom/table.csv?d=HOUSEHOLD&v=DZ21"
 )
+NI_DZ_PARLCON24_LOOKUP_XLSX_URL = (
+    "https://www.nisra.gov.uk/files/nisra/documents/2025-04/"
+    "geography-data-zone-and-super-data-zone-lookups-v3.xlsx"
+)
+NI_DZ_LOOKUP_SHEET = "DZ2021_Admin_geog_lookup"
 
 #: NRS Census 2022 index (2022 Census Geography Products register). One zip
 #: carries both Scotland OA-ladder layers: OA_TO_HIGHER_AREAS.csv maps every
@@ -75,15 +80,6 @@ NI_DZ_HOUSEHOLDS_CSV_URL = (
 #: perturbed), summed to the OA for the ladder's stage-one draw weight.
 SCOTLAND_CENSUS_INDEX_ZIP_URL = (
     "https://www.nrscotland.gov.uk/media/utrbt5ze/census_2022_index.zip"
-)
-
-UK_POSTCODE_OA_MAY25_ZIP_URL = (
-    "https://www.arcgis.com/sharing/rest/content/items/"
-    "7fc55d71a09d4dcfa1fd6473138aacc3/data"
-)
-UK_POSTCODE_PCON_MAY24_ZIP_URL = (
-    "https://www.arcgis.com/sharing/rest/content/items/"
-    "6f2f35a9a0b94e7e949eeba7785911d4/data"
 )
 
 # OA-ladder-only sources (microcosm #349). The stage-one constituency draw is
@@ -111,7 +107,7 @@ LAD23_ITL_URL = (
 ENGLAND_WALES_OA2021_COUNT = 188_880
 SCOTLAND_OA2022_COUNT = 46_363
 NI_DZ2021_COUNT = 3_780
-MAX_UNMATCHED_ACTIVE_NI_POSTCODE_SHARE = 0.01
+NI_PARLCON24_COUNT = 18
 
 
 def load_england_wales_oa_hierarchy(
@@ -283,6 +279,7 @@ def load_ni_dz_hierarchy(url: str = NI_DZ_GEOJSON_ZIP_URL) -> pd.DataFrame:
                 "lsoa_code": props.get("DZ2021_cd"),
                 "msoa_code": props.get("SDZ2021_cd"),
                 "la_code": props.get("LGD2014_cd"),
+                "ward_code": props.get("DEA2014_cd"),
             }
         )
     return _normalise_ni_hierarchy(
@@ -472,27 +469,57 @@ def load_ni_dz_population(url: str = NI_DZ_POPULATION_CSV_URL) -> pd.DataFrame:
     return _normalise_ni_population(frame, expected_count=NI_DZ2021_COUNT)
 
 
-def load_uk_postcode_oa_lookup(url: str = UK_POSTCODE_OA_MAY25_ZIP_URL) -> pd.DataFrame:
-    """Load ONS UK postcode -> OA2021 lookup from a zipped CSV."""
-
-    return _read_zip_csv_url(
-        url,
-        usecols=["pcds", "doterm", "oa21cd"],
-        dtype=str,
-    )
-
-
-def load_uk_postcode_constituency_lookup(
-    url: str = UK_POSTCODE_PCON_MAY24_ZIP_URL,
+def load_ni_dz_parlcon24_lookup(
+    url: str = NI_DZ_PARLCON24_LOOKUP_XLSX_URL,
 ) -> pd.DataFrame:
-    """Load ONS UK postcode -> Westminster constituency lookup."""
+    """Load NISRA's published DZ2021 -> PARLCON24 administrative lookup."""
 
-    return _read_zip_csv_url(
-        url,
-        usecols=["pcd", "pconcd"],
-        dtype=str,
-        encoding="latin-1",
+    frame = _read_excel_url(url, sheet_name=NI_DZ_LOOKUP_SHEET, dtype=str)
+    columns = {
+        "DZ2021_code": "oa_code",
+        "PARLCON2024_code": "constituency_code",
+        "SDZ2021_code": "msoa_code",
+        "LGD2014_code": "la_code",
+        "DEA2014_code": "ward_code",
+    }
+    missing = sorted(set(columns) - set(frame.columns))
+    if missing:
+        raise ValueError(f"NI DZ PARLCON24 lookup is missing column(s): {missing}.")
+    lookup = _normalise_code_rows(
+        frame[list(columns)].rename(columns=columns),
+        label="NI DZ PARLCON24 lookup",
+        unique_column="oa_code",
+        expected_count=NI_DZ2021_COUNT,
+        unit_label="DZ2021",
+        prefixes=("N20",),
     )
+    expected_constituencies = {
+        f"N050000{index:02d}" for index in range(1, NI_PARLCON24_COUNT + 1)
+    }
+    actual_constituencies = set(lookup["constituency_code"])
+    if actual_constituencies != expected_constituencies:
+        missing_constituencies = sorted(expected_constituencies - actual_constituencies)
+        unexpected_constituencies = sorted(
+            actual_constituencies - expected_constituencies
+        )
+        raise ValueError(
+            "NI DZ PARLCON24 lookup constituency set must be exactly "
+            "N05000001-N05000018; "
+            f"missing {missing_constituencies[:5]}, "
+            f"unexpected {unexpected_constituencies[:5]}."
+        )
+    for column, prefix in (
+        ("msoa_code", "N21"),
+        ("la_code", "N09"),
+        ("ward_code", "N10"),
+    ):
+        invalid = lookup.loc[~lookup[column].str.startswith(prefix), column]
+        if not invalid.empty:
+            raise ValueError(
+                f"NI DZ PARLCON24 lookup {column} must use {prefix} codes; "
+                f"unexpected value(s): {sorted(invalid.unique())[:5]}."
+            )
+    return lookup.sort_values("oa_code", kind="mergesort").reset_index(drop=True)
 
 
 def build_england_wales_crosswalk(
@@ -657,8 +684,6 @@ def build_official_uk_geography_crosswalk(
     ni_dz_hierarchy: pd.DataFrame | None = None,
     ni_dz_population: pd.DataFrame | None = None,
     ni_dz_constituencies: pd.DataFrame | None = None,
-    postcode_oa: pd.DataFrame | None = None,
-    postcode_constituency: pd.DataFrame | None = None,
     expected_england_wales_oa_count: int | None = ENGLAND_WALES_OA2021_COUNT,
     expected_scotland_oa_count: int | None = SCOTLAND_OA2022_COUNT,
     expected_ni_dz_count: int | None = NI_DZ2021_COUNT,
@@ -688,14 +713,7 @@ def build_official_uk_geography_crosswalk(
     if ni_dz_population is None:
         ni_dz_population = load_ni_dz_population()
     if ni_dz_constituencies is None:
-        if postcode_oa is None:
-            postcode_oa = load_uk_postcode_oa_lookup()
-        if postcode_constituency is None:
-            postcode_constituency = load_uk_postcode_constituency_lookup()
-        ni_dz_constituencies = infer_ni_dz_constituencies_from_postcodes(
-            postcode_oa,
-            postcode_constituency,
-        )
+        ni_dz_constituencies = load_ni_dz_parlcon24_lookup()
 
     gb = build_great_britain_crosswalk(
         ew_oa_hierarchy=ew_oa_hierarchy,
@@ -740,99 +758,6 @@ def update_england_wales_lad_codes(
     return repaired.drop(columns=["lad23_code"])
 
 
-def infer_ni_dz_constituencies_from_postcodes(
-    postcode_oa: pd.DataFrame,
-    postcode_constituency: pd.DataFrame,
-    *,
-    max_unmatched_active_postcode_share: float = (
-        MAX_UNMATCHED_ACTIVE_NI_POSTCODE_SHARE
-    ),
-) -> pd.DataFrame:
-    """Infer NI Data Zone -> PCON24 by active-postcode modal constituency."""
-
-    if not 0 <= max_unmatched_active_postcode_share <= 1:
-        raise ValueError("max_unmatched_active_postcode_share must be in [0, 1].")
-
-    oa = postcode_oa.copy()
-    if "pcds" not in oa.columns or "oa21cd" not in oa.columns:
-        raise ValueError("postcode_oa must include 'pcds' and 'oa21cd'.")
-    oa["pcd_key"] = _normalise_postcode(oa["pcds"])
-    oa = oa[oa["oa21cd"].astype(str).str.startswith("N", na=False)]
-    if "doterm" in oa.columns:
-        active = oa["doterm"].isna() | oa["doterm"].astype(str).str.strip().eq("")
-        oa = oa[active]
-    if oa.empty:
-        raise ValueError("postcode_oa did not include active NI postcodes.")
-
-    pcon = postcode_constituency.copy()
-    if "pcd" not in pcon.columns or "pconcd" not in pcon.columns:
-        raise ValueError("postcode_constituency must include 'pcd' and 'pconcd'.")
-    pcon["pcd_key"] = _normalise_postcode(pcon["pcd"])
-    pcon = pcon[pcon["pconcd"].astype(str).str.startswith("N", na=False)]
-    if pcon.empty:
-        raise ValueError("postcode_constituency did not include NI postcodes.")
-
-    # Duplicate normalized keys would Cartesian-expand the merge below and
-    # could flip a Data Zone's modal constituency without ever tripping the
-    # unmatched-postcode fence — refuse them in either source.
-    for label, frame in (("postcode_oa", oa), ("postcode_constituency", pcon)):
-        duplicated = frame["pcd_key"].duplicated()
-        if duplicated.any():
-            examples = sorted(frame.loc[duplicated, "pcd_key"].unique()[:5])
-            raise ValueError(
-                f"{label} contains {int(duplicated.sum())} duplicate "
-                f"normalized postcode key(s); examples {examples}."
-            )
-
-    pcon_keys = set(pcon["pcd_key"])
-    matched_mask = oa["pcd_key"].isin(pcon_keys)
-    active_postcode_count = len(oa)
-    unmatched_postcode_count = int((~matched_mask).sum())
-    unmatched_share = unmatched_postcode_count / active_postcode_count
-    if unmatched_share > max_unmatched_active_postcode_share:
-        raise ValueError(
-            "postcode constituency source is missing too many active NI "
-            f"postcodes: {unmatched_postcode_count}/{active_postcode_count} "
-            f"({unmatched_share:.2%})."
-        )
-
-    joined = oa.loc[matched_mask, ["pcd_key", "oa21cd"]].merge(
-        pcon[["pcd_key", "pconcd"]],
-        on="pcd_key",
-        how="inner",
-    )
-    if joined.empty:
-        raise ValueError("postcode sources did not produce any NI DZ-PCON matches.")
-
-    counts = (
-        joined.groupby(["oa21cd", "pconcd"], sort=True)
-        .size()
-        .rename("postcode_count")
-        .reset_index()
-        .sort_values(
-            ["oa21cd", "postcode_count", "pconcd"],
-            ascending=[True, False, True],
-        )
-    )
-    mode = counts.drop_duplicates("oa21cd")
-    result = mode.rename(
-        columns={
-            "oa21cd": "oa_code",
-            "pconcd": "constituency_code",
-        }
-    )[["oa_code", "constituency_code", "postcode_count"]].reset_index(drop=True)
-    missing_dz = sorted(set(oa["oa21cd"]) - set(result["oa_code"]))
-    if missing_dz:
-        raise ValueError(
-            "postcode sources left active NI DZ code(s) without PCON matches: "
-            f"{missing_dz[:5]}."
-        )
-    result.attrs["active_ni_postcode_count"] = active_postcode_count
-    result.attrs["unmatched_active_ni_postcode_count"] = unmatched_postcode_count
-    result.attrs["unmatched_active_ni_postcode_share"] = unmatched_share
-    return result
-
-
 def build_northern_ireland_crosswalk(
     dz_hierarchy: pd.DataFrame,
     dz_population: pd.DataFrame,
@@ -855,7 +780,19 @@ def build_northern_ireland_crosswalk(
         raise ValueError(
             "dz_constituencies must include 'oa_code' and 'constituency_code'."
         )
-    constituencies = constituencies[["oa_code", "constituency_code"]].copy()
+    nesting_columns = ("msoa_code", "la_code", "ward_code")
+    carries_nesting = len(constituencies.columns) > 2
+    if carries_nesting:
+        missing_nesting = sorted(set(nesting_columns) - set(constituencies.columns))
+        if missing_nesting:
+            raise ValueError(
+                "dz_constituencies nesting rows are missing column(s): "
+                f"{missing_nesting}."
+            )
+    constituency_columns = ["oa_code", "constituency_code"]
+    if carries_nesting:
+        constituency_columns.extend(nesting_columns)
+    constituencies = constituencies[constituency_columns].copy()
     constituencies["oa_code"] = (
         constituencies["oa_code"].fillna("").astype(str).str.strip()
     )
@@ -888,9 +825,32 @@ def build_northern_ireland_crosswalk(
             "constituency": constituencies["oa_code"],
         }
     )
+    if carries_nesting:
+        missing_hierarchy = sorted(set(nesting_columns) - set(hierarchy.columns))
+        if missing_hierarchy:
+            raise ValueError(
+                "NI GeoJSON hierarchy cannot verify published lookup nesting; "
+                f"missing column(s): {missing_hierarchy}."
+            )
+        comparison = hierarchy[["oa_code", *nesting_columns]].merge(
+            constituencies[["oa_code", *nesting_columns]],
+            on="oa_code",
+            suffixes=("_geojson", "_lookup"),
+            validate="one_to_one",
+        )
+        for column in nesting_columns:
+            mismatch = comparison[
+                comparison[f"{column}_geojson"] != comparison[f"{column}_lookup"]
+            ]
+            if not mismatch.empty:
+                examples = mismatch["oa_code"].tolist()[:5]
+                raise ValueError(
+                    "NI published DZ lookup nesting disagrees with the GeoJSON "
+                    f"for {column}; DZ code(s): {examples}."
+                )
 
     rows = hierarchy.merge(population, on="oa_code", how="left").merge(
-        constituencies,
+        constituencies[["oa_code", "constituency_code"]],
         on="oa_code",
         how="left",
     )
@@ -1425,7 +1385,10 @@ def _normalise_ni_hierarchy(
     missing = sorted({"oa_code", "lsoa_code", "msoa_code", "la_code"} - set(hierarchy))
     if missing:
         raise ValueError(f"NI hierarchy is missing column(s): {missing}.")
-    hierarchy = hierarchy[["oa_code", "lsoa_code", "msoa_code", "la_code"]].copy()
+    columns = ["oa_code", "lsoa_code", "msoa_code", "la_code"]
+    if "ward_code" in hierarchy:
+        columns.append("ward_code")
+    hierarchy = hierarchy[columns].copy()
     for column in hierarchy.columns:
         hierarchy[column] = hierarchy[column].astype(str).str.strip()
     hierarchy = hierarchy[hierarchy["oa_code"].str.startswith("N2")]
@@ -1634,10 +1597,6 @@ def _validate_matching_source_codes(
         raise ValueError(f"{label} source {code_label} differ; " + "; ".join(failures))
 
 
-def _normalise_postcode(values: pd.Series) -> pd.Series:
-    return values.astype(str).str.replace(" ", "", regex=False).str.upper()
-
-
 def _read_url_bytes(
     url: str,
     *,
@@ -1666,6 +1625,21 @@ def _read_url_bytes(
 
 def _read_csv_url(url: str, **kwargs: Any) -> pd.DataFrame:
     return pd.read_csv(io.BytesIO(_read_url_bytes(url)), **kwargs)
+
+
+def _read_excel_url(url: str, **kwargs: Any) -> pd.DataFrame:
+    try:
+        __import__("openpyxl")
+    except ImportError as error:  # pragma: no cover - exercised without the extra
+        raise ImportError(
+            "Reading NISRA's DZ2021 lookup workbook needs openpyxl; install "
+            "microcosm-build[uk] (the workspace dev group also carries it)."
+        ) from error
+    return pd.read_excel(
+        io.BytesIO(_read_url_bytes(url)),
+        engine="openpyxl",
+        **kwargs,
+    )
 
 
 def _read_zip_csv_url(

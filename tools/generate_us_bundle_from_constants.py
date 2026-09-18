@@ -122,13 +122,13 @@ LEGACY_COMPATIBILITY_PROJECTIONS = {
 # frozen files, is the forward YAML -> legacy-payload path.
 FROZEN_LEGACY_RESOURCE_SHA256 = {
     "source_stages.json": (
-        "788b815f748abb2061c41efb0cec4cc4952435dbcb4448ecf21ccac85a5ccec2"
+        "7935d891ed16eac618f04813a7b8a3ceb9a971c8b4c4273683594ba61e7dd631"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
     ),
     "take_up_contract.json": (
-        "a9e70fb3e14b0af6cac5cc7935ef554f62dc3dca0377bc1fb57c0e6fa583e813"
+        "282dbc4c31e30134d008152138a95dd1a84f4355b44ac83607760dcaeef35db5"
     ),
 }
 
@@ -189,8 +189,19 @@ def _plain(value: object) -> object:
     raise TypeError(f"US bundle extractor returned unsupported {type(value).__name__}")
 
 
-def build_documents() -> dict[str, dict[str, object]]:
-    """Return every typed US domain in stable filename order."""
+def build_documents(
+    kinds: tuple[str, ...] | None = None,
+) -> dict[str, dict[str, object]]:
+    """Return the requested typed US domains in stable filename order.
+
+    ``kinds`` defaults to every domain.  Restricting it is not an optimisation:
+    the imputation domain's receipt binds the primary-QRF worker identity,
+    which authenticates itself by importing the worker in a clean child
+    process, and that child inherits no context variables - so it re-enters
+    ``spine_agreement``'s import-time take-up load and asserts the very lock
+    the engine-lock bootstrap exists to regenerate. Asking for only the
+    domains the lock reads keeps that bootstrap acyclic.
+    """
 
     raw_take_up = json.loads((US_PACKAGE_ROOT / "take_up_contract.json").read_bytes())
     raw_programs = raw_take_up.get("programs")
@@ -212,8 +223,18 @@ def build_documents() -> dict[str, dict[str, object]]:
         bootstrap_bindings.append(values)
 
     documents: dict[str, dict[str, object]] = {}
+    # The scope must cover the import as well as the call: importing the
+    # extractors imports ``microcosm.build.us_runtime``, whose spine-agreement
+    # registry is built at import time and reads the take-up contract - the
+    # bootstrap binding is what keeps that read off the possibly-stale bundle.
     with scoped_take_up_manifest_program_bindings(tuple(bootstrap_bindings)):
-        for kind, builder in sorted(_domain_builders().items()):
+        builders = _domain_builders()
+        if kinds is not None:
+            missing = sorted(set(kinds) - set(builders))
+            if missing:
+                raise KeyError(f"unknown US bundle domain(s): {missing}")
+            builders = {kind: builders[kind] for kind in kinds}
+        for kind, builder in sorted(builders.items()):
             value = _plain(builder())
             if not isinstance(value, dict):
                 raise TypeError(f"{kind} builder must return a mapping")
@@ -383,7 +404,7 @@ def write_engine_abi_lock_only(*, check: bool) -> bool:
     # checked-in YAML may itself be stale while this bootstrap command is
     # needed.  ``build_documents`` scopes the legacy runtime import against the
     # frozen generation-0 program bindings, so no stale typed bundle is read.
-    documents = build_documents()
+    documents = build_documents(("take_up", "sources"))
     payload = engine_abi_lock_bytes_from_domains(
         {
             "take_up": documents["take_up.yaml"],

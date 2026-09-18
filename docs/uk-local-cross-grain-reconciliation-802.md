@@ -10,15 +10,28 @@ the solve signature.
 ## Detection and bridges
 
 Exact matches use the measurement fields `concept`, `entity`, `map_to`, and
-`filters`. Two explicit UK bridges cover relationships that those fields
+`filters`. Explicit UK bridges cover relationships that those fields
 cannot express on their own:
 
 - The 10-cell `ons.household_composition.*` partition sums to the national
-  household-count control and bridges to the ladder-derived
-  `census_households/households` metric.
+  household-count control and bridges to the Chronicle-compiled
+  `ons.census.households` contract target. Since microcosm#791 the ten cells
+  bind on the `frs_relationships` stage's `household.ons_household_type`
+  column, so the bridge is fully bound (it was reviewed-unbound while three
+  cells carried measure exclusions).
 - `dwp.uc.households` bridges to `dwp.uc.households_by_area`. The four
   `dwp.uc.payment_distribution_*` rows also match the by-area target exactly
   and form a separate exhaustive national partition.
+
+Eight age bridges pair the single-cell UK controls
+`ons.population.age_0_9_by_region` through
+`ons.population.age_70_79_by_region` with the corresponding local
+`ons.age.0_10` through `ons.age.70_80` bands. They represent the same
+integer-age populations, but the national inclusive and local half-open filter
+encodings do not signature-match. Each bridge therefore rescales both the
+constituency and local-authority band to the `K02000001` UK total over the
+declared England, Wales, Scotland, and Northern Ireland legs. The national
+80--89 band has no local counterpart and is deliberately not bridged.
 
 These declarations live beside the UK Ledger target orchestration in
 `uk_runtime/ledger_targets.py`. Tests pin the precedence and complete bridge
@@ -43,22 +56,19 @@ when no inconsistency is in force.
 
 ## Census evidence and current effect
 
-Published constituency household counts are disclosure-controlled. At review,
-the measured constituency-sum differences from the corresponding national
-census totals were E&W +105, Scotland -554, and Northern Ireland +3 — a
-relative magnitude around 2e-5. The tension the reconciliation actually
-addresses is a separate, larger one: the roughly 1–2% vintage gap between
-census-day 2021/2022 counts and any bound 2023 national household count. The
-published local values still bind as published when no same-concept national
-control is bound. If one is bound in the same solve, country wins and the
-standing rule rescales the local values before calibration.
+Published constituency and local-authority household counts compile from the
+pinned Chronicle feed and remain disclosure-controlled. Against the retired
+OA-ladder diagnostic sums, constituency mean/max absolute differences are
+7.4/29 households in England, 6.4/15 in Wales, 49.6/157 in Scotland (net
+−557), and 7/16 in Northern Ireland (net +4). The NI result uses NISRA's
+published DZ2021→PARLCON24 lookup; the retired postcode inference misplaced
+10 Data Zones and reached a maximum difference of 694.
 
-Today the rowwise candidate binds only `census_households/constituency` and
-declares no bound national targets. The pass therefore records an absence
-receipt and leaves all target values numerically identical. Increment #762
-must extend the mixed-grain surface through
-`apply_uk_cross_grain_reconciliation`; the existing rowwise area-type fence
-remains the structural backstop.
+The Chronicle cells total 28,061,271 households at constituency grain and
+28,061,277 at local-authority grain. A15 uprates each grain separately to the
+2025 Ledger control of 29,003,000; A17 applies the corresponding grain factor
+to eligible census-tenure holds. If a same-concept national control is bound
+in the solve, country wins and the standing rule rescales both local grains.
 
 ## Rescope from the issue text
 

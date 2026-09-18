@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate the hermetic charter-H2 UK spine parity fixture.
 
-The oracle is the legacy :class:`microcosm.build.plan.StagePlan`: all 28
+The oracle is the legacy :class:`microcosm.build.plan.StagePlan`: all 29
 stages are the current production transform classes.  Private source files
 are replaced only through their supported parsed-input seams.  The bundle's
 ``fixture.json`` is deliberately data-only so the graph's unbound UK registry
@@ -54,6 +54,9 @@ from microcosm.build.uk_runtime.frs_legacy_proxies import (
     UKFRSLegacyProxiesStageTransform,
 )
 from microcosm.build.uk_runtime.frs_person_draws import UKFRSPersonDrawsStageTransform
+from microcosm.build.uk_runtime.frs_relationships import (
+    UKFRSRelationshipsStageTransform,
+)
 from microcosm.build.uk_runtime.frs_spine import (
     FRS_SPINE_TABLES,
     UKFRSSpineStageTransform,
@@ -126,11 +129,11 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 28
+UK_FIXTURE_STAGE_COUNT = 29
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
-# legacy 28-stage output.  Graph storage uses pandas StringDtype/python.
+# legacy 29-stage output.  Graph storage uses pandas StringDtype/python.
 _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
     "person": (
         "gender",
@@ -146,6 +149,8 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "highest_education",
         "person_support_channel",
         "student_loan_plan",
+        "relationship_to_head",
+        "ons_family_role",
     ),
     "benunit": ("benunit_support_channel", "uc_deduction_combination"),
     "household": (
@@ -156,6 +161,7 @@ _NORMALIZED_STRING_COLUMNS: Mapping[str, tuple[str, ...]] = {
         "brma",
         "household_support_channel",
         "source_household_key",
+        "ons_household_type",
     ),
 }
 
@@ -304,6 +310,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 "CTBAND": 1 + household_id % 7,
                 "CTREBAMT": float(household_id % 3),
                 "ADULTH": 1,
+                "HRPNUM": 1,
                 "CSEWAMT": "",
                 "CWATAMTD": 0.0,
                 "CWATAMT1": 4.0 if scotland else "",
@@ -338,6 +345,11 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
             "TOTHOURS": 20 + household_id % 25,
             "HRPID": 1,
             "UPERSON": 1,
+            # #791 household grid: the HRP carries a blank relhrp and, when a
+            # child is present, the parent code toward person 2.
+            "RELHRP": "",
+            **{f"R{index:02d}": "" for index in range(1, 15)},
+            **({"R02": 7} if has_child else {}),
             "MARITAL": 1 + household_id % 3,
             "EMPSTATI": 1 + household_id % 8,
             "MJOBSECT": 1 + household_id % 2,
@@ -390,6 +402,9 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                     "TOTHOURS": np.nan,
                     "HRPID": 0,
                     "UPERSON": 0,
+                    "RELHRP": 3,
+                    **{f"R{index:02d}": "" for index in range(1, 15)},
+                    "R01": 3,
                     "MARITAL": 2,
                     "FTED": 1,
                     "TYPEED2": 2,
@@ -439,6 +454,7 @@ def _frs_tables() -> dict[str, pd.DataFrame]:
                 (14, 2, 3.0),
                 (16, 3, 4.0),
                 (16, 4, 5.0),
+                (5, 0, 1.0),
                 (6, 0, 6.0),
                 (3, 0, 7.0),
             )
@@ -596,6 +612,7 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
         "g018": 1 + rows.astype(int) % 3,
         "g019": rows.astype(int) % 3,
         "gorx": 1 + rows.astype(int) % 12,
+        "a124": rows.astype(int) % 4,
         "p389p": 100.0 + rows * 10.0,
         "p344p": 150.0 + rows * 10.0,
         "weighta": 1.0 + rows % 7 / 10.0,
@@ -627,6 +644,12 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
         start=1,
     ):
         household[source] = position + rows / 10.0
+    # A third of the diary households buy no bus fares, as the licensed diary
+    # does: the stage clips the recipient's fares to the donor's realised
+    # range with no allowance (María's Wales fence), so the synthetic donor
+    # must reach zero or every non-user recipient would clip low.
+    for source in BUS_FARE_LCFS_CODES:
+        household[source] = np.where(rows.astype(int) % 3 == 0, 0.0, household[source])
     person = pd.DataFrame(
         {
             "case": np.arange(1, _DONOR_ROWS + 1),
@@ -839,9 +862,6 @@ def _fixture_stages(
             stage = _replace_operation(
                 stage, "fit_weighted_qrf_chain", n_estimators=_QRF_ESTIMATORS
             )
-            stage = _replace_operation(
-                stage, "bridge_donor_column_via_qrf", n_estimators=_QRF_ESTIMATORS
-            )
         elif stage.stage == "hmrc_spi_income_spine":
             stage = _replace_operation(
                 stage,
@@ -866,7 +886,7 @@ def _normalization_markdown() -> str:
     lines = [
         "# UK spine parity string normalization",
         "",
-        "The unchanged legacy transforms retain these 22 textual table columns as",
+        "The unchanged legacy transforms retain these 25 textual table columns as",
         "pandas `object`. The frozen graph dtype token `string` is specified by",
         'interface-freeze amendment 10 as pandas `StringDtype(storage="python")`.',
         "Before computing the legacy oracle's `uk_frame_content_identity` (live,",
@@ -922,8 +942,8 @@ def _normalize_legacy_strings(frame: Frame) -> Frame:
         for entity, columns in _NORMALIZED_STRING_COLUMNS.items()
         for column in columns
     ]
-    if observed != expected_order or len(observed) != 22:
-        raise RuntimeError("The legacy normalization audit is not exactly 22 cells.")
+    if observed != expected_order or len(observed) != 25:
+        raise RuntimeError("The legacy normalization audit is not exactly 25 cells.")
     return Frame(
         tables,
         frame.schema,
@@ -1026,6 +1046,9 @@ def _build_implementations(
 
     implementations: dict[str, object] = {
         "frs_spine": capture_root,
+        "frs_relationships": UKFRSRelationshipsStageTransform(
+            raw_dir, stage=stages["frs_relationships"]
+        ),
         "frs_employment": UKFRSEmploymentStageTransform(
             raw_dir, stage=stages["frs_employment"]
         ),
@@ -1065,7 +1088,6 @@ def _build_implementations(
             engine=engine,
             lcfs_household=lcfs_household,
             lcfs_person=lcfs_person,
-            was_donor=was,
         ),
         "etb_vat": UKETBVATStageTransform(
             stage=stages["etb_vat"], engine=engine, donor=etb
@@ -1126,7 +1148,7 @@ def _run_legacy_plan(
     stages: Iterable[SourceStageSpec],
     implementations: Mapping[str, object],
 ) -> Frame:
-    """Run the legacy 28-stage StagePlan oracle and return its final frame."""
+    """Run the legacy 29-stage StagePlan oracle and return its final frame."""
 
     stages = tuple(stages)
     committed = load_country_spec("uk")
@@ -1159,7 +1181,7 @@ def _run_legacy_plan(
 def legacy_oracle_frame(fixture: Path) -> Frame:
     """The legacy oracle's final frame on the fixture, computed live.
 
-    Rebuilds the same 28 transforms the graph's UK registry reconstructs from
+    Rebuilds the same 29 transforms the graph's UK registry reconstructs from
     ``fixture/sources``, runs them through the legacy StagePlan in this
     process, root included, and applies the one string normalization the
     fixture documents. The content identity is a byte-exact fingerprint of
@@ -1238,7 +1260,7 @@ def generate(output: Path) -> None:
     descriptor = {
         "schema_version": "uk-spine-parity-fixture.v1",
         "description": (
-            "Data-only inputs for reconstructing the same 28 current UK stage "
+            "Data-only inputs for reconstructing the same 29 current UK stage "
             "transform classes used by the legacy StagePlan oracle."
         ),
         "stages": {stage.stage: _stage_payload(stage) for stage in stages},
@@ -1274,7 +1296,7 @@ def generate(output: Path) -> None:
         _normalization_markdown(), encoding="utf-8"
     )
     (output / "PRODUCED_BY.txt").write_text(
-        "tools/graph_uk_spine_fixture.py; current 28-transform legacy "
+        "tools/graph_uk_spine_fixture.py; current 29-transform legacy "
         "StagePlan oracle with parsed private-source seams. The acceptance "
         "test runs both sides from frs_raw in-process (root weights differ "
         "by one ulp between machines); the captured root tables serve the "

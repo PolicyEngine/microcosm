@@ -1,6 +1,6 @@
 """Score a UK local candidate against incumbent wide-format area weights.
 
-The candidate side is read from its schema-v6 calibration diagnostics.  The
+The candidate side is read from the current calibration diagnostics schema. The
 incumbent side is deliberately explicit: a household-grain metric table and a
 wide weight table with one column per local area.  Both are evaluated on the
 same frozen UK TargetRegistry; no fitted row is allowed to disappear.
@@ -27,7 +27,7 @@ from microcosm.calibrate import (
     relative_error_loss,
 )
 
-UK_LOCAL_ACTIVE_REFERENCE_COUNT = 17_077
+UK_LOCAL_ACTIVE_REFERENCE_COUNT = 20_885
 UK_LOCAL_SCORE_TARGET_PERIOD = 2025
 #: The incumbent is scored from published weights, never re-solved, so no
 #: incumbent holdout exists to place beside the candidate's rotation.
@@ -61,9 +61,12 @@ def _verify_artifact(path: str | Path, expected_sha256: str) -> dict[str, object
 def _candidate_estimates(
     diagnostics: Mapping[str, object],
     registry: TargetRegistry,
-) -> dict[str, float]:
+) -> tuple[dict[str, float], dict[str, object]]:
     if diagnostics.get("schema_version") != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
-        raise ValueError("UK local scoring requires schema-v6 candidate diagnostics.")
+        raise ValueError(
+            "UK local scoring requires calibration diagnostics schema "
+            f"{CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
+        )
     rows = diagnostics.get("targets")
     if not isinstance(rows, list):
         raise ValueError("candidate diagnostics must contain target rows.")
@@ -83,22 +86,25 @@ def _candidate_estimates(
             raise ValueError("candidate diagnostics contain invalid target estimates.")
         estimates[name] = float(raw)
     expected = {spec.to_target().row_name for spec in registry.specs}
-    if set(estimates) != expected:
-        missing = sorted(expected - set(estimates))
-        extra = sorted(set(estimates) - expected)
+    missing = sorted(expected - set(estimates))
+    if missing:
         raise ValueError(
-            "candidate diagnostics must exactly cover the frozen local register; "
-            f"missing={missing[:10]}, extra={extra[:10]}."
+            "candidate diagnostics must cover every frozen local register row; "
+            f"missing={missing[:10]}."
         )
-    return estimates
+    extra = sorted(set(estimates) - expected)
+    return (
+        {name: estimates[name] for name in expected},
+        {"count": len(extra), "rows": extra},
+    )
 
 
 def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
     """Read the candidate's measured rotated holdout out of its diagnostics.
 
-    The candidate driver runs the rotation and publishes it in the same
-    schema-v6 payload this scorer already reads, so a receipt that reported
-    ``none_declared`` beside it would be understating what was measured.  The
+    The candidate driver runs the rotation and publishes it in the current
+    diagnostics payload this scorer already reads, so a receipt that reported
+    ``none_declared`` beside it would be understating what was measured. The
     block is required: a candidate whose diagnostics carry no rotation is
     refused rather than scored on its fitted surface alone.
     """
@@ -146,6 +152,24 @@ def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
             f"{float(declared_cap)!r}, but this scorer reports its aggregates "
             f"at {float(UK_LOCAL_TARGET_LOSS_CAP)!r}; re-measure the candidate "
             "rather than reporting the two on different scales."
+        )
+    if holdout.get("target_weight_rule") not in ("uniform", "grain_equal"):
+        raise ValueError("candidate holdout target_weight_rule is missing or invalid.")
+    if holdout.get("loss_weight_scale") != "held_local_grains_only":
+        raise ValueError(
+            "candidate holdout loss_weight_scale must be held_local_grains_only."
+        )
+    if holdout.get("population") != "held_out_local_targets":
+        raise ValueError("candidate holdout population must be held_out_local_targets.")
+    grains = holdout.get("grains")
+    if (
+        not isinstance(grains, list)
+        or not grains
+        or any(g not in ("constituency", "local_authority", "la") for g in grains)
+        or len(set(grains)) != len(grains)
+    ):
+        raise ValueError(
+            "candidate holdout grains must name its distinct local grains."
         )
     losses: dict[str, float] = {}
     for key in ("mean_holdout_loss", "worst_holdout_loss"):
@@ -198,6 +222,10 @@ def _candidate_holdout(diagnostics: Mapping[str, object]) -> dict[str, object]:
     return {
         "basis": f"{method}:n_folds={n_folds}:seed={seed}",
         "method": method,
+        "target_weight_rule": holdout["target_weight_rule"],
+        "loss_weight_scale": holdout["loss_weight_scale"],
+        "population": holdout["population"],
+        "grains": grains,
         "target_loss_cap": float(declared_cap),
         "n_folds": n_folds,
         "seed": seed,
@@ -259,12 +287,23 @@ def _incumbent_estimates(
     registry: TargetRegistry,
     incumbent_weights: pd.DataFrame,
     incumbent_metrics: pd.DataFrame,
-) -> dict[str, float]:
+) -> tuple[dict[str, float], dict[str, int]]:
+    """Estimate every registry row the incumbent can, and name the rest.
+
+    An area absent from the incumbent's wide weight table (the incumbent
+    ships 360 local authorities against the register's 361: Northern
+    Ireland's ``N09000011`` has no column) is not a fitted row disappearing
+    — the incumbent simply has no estimate there. Those rows are returned
+    as ``missing_areas`` (area → row count) and scored candidate-only, with
+    the receipt saying so; the comparison never silently shrinks.
+    """
+
     incumbent_weights, incumbent_metrics = _align_on_household_id(
         incumbent_weights,
         incumbent_metrics,
     )
     estimates: dict[str, float] = {}
+    missing_areas: dict[str, int] = {}
     for spec in registry.specs:
         area = str(spec.metadata.get("ledger_geography_id") or "")
         if not area:
@@ -273,7 +312,8 @@ def _incumbent_estimates(
                 "ledger_geography_id metadata."
             )
         if area not in incumbent_weights.columns:
-            raise ValueError(f"incumbent wide weights are missing area {area!r}.")
+            missing_areas[area] = missing_areas.get(area, 0) + 1
+            continue
         if spec.measure not in incumbent_metrics.columns:
             raise ValueError(
                 f"incumbent household metrics are missing measure {spec.measure!r}."
@@ -289,7 +329,12 @@ def _incumbent_estimates(
                 f"incumbent inputs for {spec.to_target().row_name!r} are invalid."
             )
         estimates[spec.to_target().row_name] = float(np.dot(weights, metric))
-    return estimates
+    if not estimates:
+        raise ValueError(
+            "incumbent wide weights cover none of the registry's areas: "
+            f"{sorted(missing_areas)[:10]}."
+        )
+    return estimates, dict(sorted(missing_areas.items()))
 
 
 def _relative_errors(estimates: np.ndarray, targets: np.ndarray) -> np.ndarray:
@@ -333,9 +378,27 @@ def score_uk_local_candidate(
             f"UK local scoring requires target period {target_period}; "
             f"mismatches={wrong_period[:10]}."
         )
+    fitted_grains = sorted(
+        {
+            str(
+                s.metadata.get(
+                    "ledger_geography_level", s.metadata.get("geography_level", "")
+                )
+            )
+            for s in target_registry.specs
+        }
+    )
+    if any(
+        grain not in ("constituency", "local_authority", "la")
+        for grain in fitted_grains
+    ):
+        raise ValueError("fitted target grains must identify the local surface.")
     holdout = _candidate_holdout(candidate_diagnostics)
-    candidate = _candidate_estimates(candidate_diagnostics, target_registry)
-    incumbent = _incumbent_estimates(
+    candidate, rows_outside_register = _candidate_estimates(
+        candidate_diagnostics,
+        target_registry,
+    )
+    incumbent, incumbent_missing_areas = _incumbent_estimates(
         target_registry,
         incumbent_weights,
         incumbent_metrics,
@@ -348,8 +411,15 @@ def score_uk_local_candidate(
         [candidate[spec.to_target().row_name] for spec in target_registry.specs],
         dtype=np.float64,
     )
+    compared_mask = np.array(
+        [spec.to_target().row_name in incumbent for spec in target_registry.specs],
+        dtype=bool,
+    )
     incumbent_estimates = np.array(
-        [incumbent[spec.to_target().row_name] for spec in target_registry.specs],
+        [
+            incumbent.get(spec.to_target().row_name, np.nan)
+            for spec in target_registry.specs
+        ],
         dtype=np.float64,
     )
     candidate_errors = _relative_errors(candidate_estimates, targets)
@@ -359,11 +429,28 @@ def score_uk_local_candidate(
     for index, spec in enumerate(target_registry.specs):
         name = spec.to_target().row_name
         candidate_error = float(candidate_errors[index])
-        incumbent_error = float(incumbent_errors[index])
         bucket = families.setdefault(
             spec.family,
-            {"candidate_target_wins": 0, "incumbent_target_wins": 0, "ties": 0},
+            {
+                "candidate_target_wins": 0,
+                "incumbent_target_wins": 0,
+                "ties": 0,
+                "incumbent_absent": 0,
+            },
         )
+        if not compared_mask[index]:
+            bucket["incumbent_absent"] += 1
+            drift.append(
+                {
+                    "target": name,
+                    "family": spec.family,
+                    "candidate_relative_error": candidate_error,
+                    "incumbent_relative_error": None,
+                    "winner": "incumbent_absent",
+                }
+            )
+            continue
+        incumbent_error = float(incumbent_errors[index])
         if abs(candidate_error) < abs(incumbent_error):
             winner = "candidate"
             candidate_wins += 1
@@ -384,30 +471,53 @@ def score_uk_local_candidate(
                 "winner": winner,
             }
         )
-    # Both aggregates, and the holdout the candidate driver measured, go
-    # through the one canonical objective at the one declared doctrine cap,
-    # so the numbers in this receipt are on a single scale and stay there
-    # when microcosm#762 adjudicates the cap.
+    # The fitted scores use uniform rows. The holdout uses its separately
+    # recorded held-grain weighting and population; a common cap does not
+    # make these losses directly comparable.
     candidate_loss = relative_error_loss(
         candidate_estimates,
         targets,
         target_loss_cap=UK_LOCAL_TARGET_LOSS_CAP,
     )
+    # The incumbent's aggregate and the head-to-head candidate aggregate are
+    # both over the rows the incumbent can estimate; the candidate's full
+    # surface loss stays reported over every fitted row.
     incumbent_loss = relative_error_loss(
-        incumbent_estimates,
-        targets,
+        incumbent_estimates[compared_mask],
+        targets[compared_mask],
+        target_loss_cap=UK_LOCAL_TARGET_LOSS_CAP,
+    )
+    candidate_loss_on_compared_rows = relative_error_loss(
+        candidate_estimates[compared_mask],
+        targets[compared_mask],
         target_loss_cap=UK_LOCAL_TARGET_LOSS_CAP,
     )
     return {
         "candidate_fitted_surface_loss": candidate_loss,
+        "candidate_fitted_surface_loss_on_compared_rows": (
+            candidate_loss_on_compared_rows
+        ),
         "candidate_holdout_loss": holdout["mean_holdout_loss"],
         "incumbent_fitted_surface_loss": incumbent_loss,
         "incumbent_holdout_loss": None,
         "candidate_target_wins": candidate_wins,
         "incumbent_target_wins": incumbent_wins,
+        "rows_compared": int(compared_mask.sum()),
+        "rows_candidate_only": int((~compared_mask).sum()),
+        "incumbent_missing_areas": incumbent_missing_areas,
+        "rows_outside_register": rows_outside_register,
         "holdout_basis": holdout["basis"],
         "incumbent_holdout_basis": UK_LOCAL_INCUMBENT_HOLDOUT_BASIS,
         "candidate_holdout": holdout,
+        "fitted_basis": {
+            "target_weight_rule": "uniform",
+            "loss_weight_scale": "uniform_rows",
+            "population": "active_local_reference",
+            "grains": fitted_grains,
+            "n_targets": len(target_registry),
+            "n_compared_targets": int(compared_mask.sum()),
+        },
+        "holdout_directly_comparable_to_fitted": False,
         "loss": {
             # Names the function that actually produced every loss above,
             # including the candidate's holdout, at its declared cap.

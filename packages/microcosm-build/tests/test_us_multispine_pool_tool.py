@@ -64,6 +64,11 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights, read_frame_ta
 _FIXTURE_SEED_PERSON_COLUMN = "takes_up_medicaid_if_eligible"
 
 
+@pytest.fixture(autouse=True)
+def _prime_worker_identity(prime_primary_qrf_worker_identity: None) -> None:
+    """Share the real session attestation unless a test opts into live identity."""
+
+
 @pytest.fixture(scope="module")
 def pool_tool() -> ModuleType:
     root = Path(__file__).resolve().parents[3]
@@ -2928,7 +2933,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "ea5cc4f31ac7cd67a0d01bccf9e1454755c879f045a813741c84d17cbddd796d",
+            "spec_sha256": "e058159f89a01b6541e98ee57ffb0169eeff8ed2ea4fb1c664b3f3fb0c60a675",
         },
     }
 
@@ -3982,7 +3987,7 @@ def test_stacked_checkpoint_identity_binds_v13_semantic_contracts(
     current = identity()
     pool_code = current["pool_code"]
     assert current["materializer_version"] == 13
-    assert current["stacked_authority"]["version"] == 11
+    assert current["stacked_authority"]["version"] == 12
     assert current["geography_assignment"] == (
         pool_tool._stacked_geography_assignment_contract()
     )
@@ -4962,9 +4967,13 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
-        # The PE-US 1.819.0 compatibility edits legitimately move the pool-code
-        # checkpoint identities embedded in the otherwise legacy publication.
-        "manifest": "63c6e6973079f0b793d5435113aaae66184564b70271f8af120fecdbb5015f63",
+        # The engine-lock move to PolicyEngine-US 2.2.1 legitimately moves the
+        # pool-code checkpoint identities embedded in the otherwise legacy
+        # publication: the checkpoint identity carries policyengine_us_version,
+        # and the pool engine contracts it binds were re-derived for 2.2.1.
+        # pool_h5 and agreement above are unchanged, so only the identity
+        # surface moved, not the pool content.
+        "manifest": "e4692aa45f05826eb0097a7ae76dcbc712c13886a4d23a9c6a62b53752e323f1",
     }
 
 

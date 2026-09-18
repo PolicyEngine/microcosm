@@ -601,3 +601,80 @@ def test_named_cardinality_gate_fails_closed() -> None:
 
     normalized = assert_exact_k_support([3, 1], 2, pool_size=4)
     np.testing.assert_array_equal(normalized, [1, 3])
+
+
+def test_design_feasibility_agrees_with_the_draw() -> None:
+    import numpy as np
+
+    from microcosm.calibrate import exact_k_design_feasibility, select_exact_k
+
+    rng = np.random.default_rng(355)
+    verdicts: set[str] = set()
+    for trial in range(120):
+        n = int(rng.integers(8, 40))
+        # Polarised vectors like an informed L0 at many epochs: a shoulder near
+        # one, a thin tail with exact zeros, a few exact ones.
+        tail = rng.uniform(0.0, 0.05, n)
+        tail[rng.random(n) < 0.4] = 0.0
+        pi = np.where(rng.random(n) < 0.5, rng.uniform(0.9, 1.0, n), tail)
+        pi[: int(rng.integers(0, 3))] = 1.0
+        k = int(rng.integers(1, n + 1))
+        pi_hi = float(rng.choice([1.0, 0.95, 0.7, 0.5]))
+        verdict = exact_k_design_feasibility(pi, k, pi_hi)
+        verdicts.add(str(verdict["reason"]))
+        assert verdict["k"] == k and verdict["pi_hi"] == pi_hi
+        assert verdict["certainty_count"] + verdict["boundary_pool_size"] == n
+        assert verdict["boundary_draw"] == k - verdict["certainty_count"]
+        try:
+            support, receipt, q = select_exact_k(pi, k=k, pi_hi=pi_hi, seed=trial)
+        except ValueError as error:
+            assert verdict["feasible"] is False, (verdict, str(error))
+            if verdict["reason"] == "certainties_exceed_k":
+                assert "certainty units" in str(error)
+            else:
+                assert "degenerate boundary mass" in str(error)
+        else:
+            assert verdict["feasible"] is True, verdict
+            assert len(support) == k
+            assert receipt["certainty_count"] == verdict["certainty_count"]
+    # The generator covered every verdict the draw can return.
+    assert verdicts == {
+        "feasible",
+        "certainties_exceed_k",
+        "boundary_short_of_draw",
+        "boundary_mass_short",
+    }
+
+
+def test_design_feasibility_reports_the_degenerate_mass_inequality() -> None:
+    import numpy as np
+
+    from microcosm.calibrate import exact_k_design_feasibility
+
+    # Two near-certain gates and a tail whose mass cannot cover the draw: at
+    # pi_hi 0.95 the draw needs 3 boundary units from a mass of 0.7 with a
+    # maximum of 0.6 -> 3 * 0.6 / 0.7 > 1.
+    pi = np.array([1.0, 0.99, 0.6, 0.05, 0.05, 0.0])
+    short = exact_k_design_feasibility(pi, 5, 0.95)
+    assert short["feasible"] is False and short["reason"] == "boundary_mass_short"
+    assert short["certainty_count"] == 2 and short["boundary_draw"] == 3
+    assert short["boundary_positive"] == 3
+    assert short["max_normalized_probability"] > 1.0
+    # Lowering the threshold promotes the 0.6 gate: 2 draws from mass 0.1,
+    # both tail units taken deterministically.
+    promoted = exact_k_design_feasibility(pi, 5, 0.5)
+    assert promoted["feasible"] is True and promoted["reason"] == "feasible"
+    # More certainties than k refuses; a boundary with fewer positive units
+    # than places refuses by that name.
+    assert exact_k_design_feasibility(pi, 1, 0.95)["reason"] == "certainties_exceed_k"
+    assert (
+        exact_k_design_feasibility(pi, 6, 0.95)["reason"] == "feasible"
+    )  # k == pool: the whole boundary is taken, zeros included
+    assert (
+        exact_k_design_feasibility(np.array([1.0, 0.0, 0.0]), 2, 1.0)["reason"]
+        == "boundary_short_of_draw"
+    )
+    with pytest.raises(ValueError, match="exceeds the pool size"):
+        exact_k_design_feasibility(pi, 7, 0.95)
+    with pytest.raises(ValueError, match="pi_hi"):
+        exact_k_design_feasibility(pi, 2, 1.5)

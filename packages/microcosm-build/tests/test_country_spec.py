@@ -83,9 +83,19 @@ def _armenia_scalar_ledger_fact(
     source_measure_id = str(selector["source_measure_id"])
     geography_level = str(selector["geography_level"])
     cell_id = f"cell-{ordinal}"
+    dimension_values = dimensions or {}
+    dimension_labels = {
+        dimension_id: dimension_id.replace("_", " ").title()
+        for dimension_id in dimension_values
+    }
+    dimension_value_labels = {
+        dimension_id: {str(value): str(value).replace("_", " ").title()}
+        for dimension_id, value in dimension_values.items()
+    }
     return {
         "aggregate_fact_key": f"ledger.aggregate_fact.v2:am-scalar-{ordinal}",
         "semantic_fact_key": f"ledger.semantic_fact.v2:am-scalar-{ordinal}",
+        "label": f"{reference.name} fixture",
         "lineage": {
             "source_record_id": f"ledger_am.scalar_fixture.{reference.name}.{cell_id}",
             "source_cell_keys": [f"ledger.source_cell.v1:am-{ordinal}"],
@@ -122,7 +132,9 @@ def _armenia_scalar_ledger_fact(
             "url": "https://statbank.armstat.am/",
             "vintage": "2024",
         },
-        "dimensions": dimensions or {},
+        "dimensions": dimension_values,
+        "dimension_labels": dimension_labels,
+        "dimension_value_labels": dimension_value_labels,
         "universe_constraints": {
             "domain": "all households"
             if reference.entity == "household"
@@ -132,6 +144,8 @@ def _armenia_scalar_ledger_fact(
             "record_set_id": f"{source_name}.2024.synthetic_scalar_fixture",
             "groupby_dimension": "fixture_cell",
             "groupby_value_id": cell_id,
+            "groupby_dimension_label": "Fixture cell",
+            "groupby_value_label": f"Cell {ordinal}",
             "measure_id": source_measure_id,
         },
     }
@@ -904,9 +918,11 @@ class TestUKCountryPackage:
         assert legacy_rows == (
             "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
+            "target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
             "frs_release.json",
+            "chronicle_feed.json",
             "gates.json",
             "brma_rent_counts.json",
             "calibration_measure_exclusions.json",
@@ -918,8 +934,7 @@ class TestUKCountryPackage:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
-            "need_energy_targets.json",
-            "lcfs_consumption_anchors.json",
+            "ofgem_region_crosswalk.json",
             "etb_policy_anchors.json",
             "etb_services_anchors.json",
             "dwp_uc_deduction_distributions.json",
@@ -931,6 +946,7 @@ class TestUKCountryPackage:
             "regional_land_values.json",
             "source_stages.json",
             "take_up_contract.json",
+            "target_reference_signed_exclusions.json",
             "input_mass_reviewed_exclusions.json",
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
@@ -946,6 +962,7 @@ class TestUKCountryPackage:
             "was_wealth_support_bounds.json",
             "uc_deduction_support_bounds.json",
             "local_binding_adjudications.json",
+            "local_area_support_exclusions.json",
             "uk_local_target_census.json",
             "uk_data_target_parity.json",
             "uk_data_target_inventory.json",
@@ -957,16 +974,28 @@ class TestUKCountryPackage:
             "target_reference_membership.json",
             "local_target_references.json",
             "local_target_reference_membership.json",
+            "ledger_fact_vendor_selections.json",
+            "dft_bus_value_anchors.json",
+            "road_fuel_anchors.json",
+            "licensed_cars_fuel_type.json",
+            "need_energy_facts.json",
+            "ofgem_price_cap_facts.json",
+            "desnz_domestic_energy_facts.json",
+            "qep_energy_prices.json",
+            "nts_bus_use_frequency.json",
+            "devolved_bus_finance.json",
+            "orr_rail_facts.json",
+            "ons_household_expenditure_facts.json",
         )
 
     def test_uk_source_manifest_loads_thirty_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        # 28 spine stages (uc_reporter_redraw #832, then uc_deduction_attributes
-        # #685 as the newest) plus the
+        # 29 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
+        # #685, then frs_relationships #791 as the newest) plus the
         # two certified-pair stages the June path still uses.
-        assert len(spec.sources.stages) == 30
+        assert len(spec.sources.stages) == 31
 
 
 class TestExistingPackagesGeneralize:
@@ -994,9 +1023,11 @@ class TestExistingPackagesGeneralize:
             "spec/vintages.yaml",
             "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
+            "target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
             "efrs_parity_reference.json",
             "frs_release.json",
+            "chronicle_feed.json",
             "gates.json",
             "brma_rent_counts.json",
             "calibration_measure_exclusions.json",
@@ -1008,8 +1039,7 @@ class TestExistingPackagesGeneralize:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
-            "need_energy_targets.json",
-            "lcfs_consumption_anchors.json",
+            "ofgem_region_crosswalk.json",
             "etb_policy_anchors.json",
             "etb_services_anchors.json",
             "dwp_uc_deduction_distributions.json",
@@ -1021,6 +1051,7 @@ class TestExistingPackagesGeneralize:
             "regional_land_values.json",
             "source_stages.json",
             "take_up_contract.json",
+            "target_reference_signed_exclusions.json",
             "input_mass_reviewed_exclusions.json",
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
@@ -1036,6 +1067,7 @@ class TestExistingPackagesGeneralize:
             "was_wealth_support_bounds.json",
             "uc_deduction_support_bounds.json",
             "local_binding_adjudications.json",
+            "local_area_support_exclusions.json",
             "uk_local_target_census.json",
             "uk_data_target_parity.json",
             "uk_data_target_inventory.json",
@@ -1047,17 +1079,35 @@ class TestExistingPackagesGeneralize:
             "target_reference_membership.json",
             "local_target_references.json",
             "local_target_reference_membership.json",
+            "ledger_fact_vendor_selections.json",
+            "dft_bus_value_anchors.json",
+            "road_fuel_anchors.json",
+            "licensed_cars_fuel_type.json",
+            "need_energy_facts.json",
+            "ofgem_price_cap_facts.json",
+            "desnz_domestic_energy_facts.json",
+            "qep_energy_prices.json",
+            "nts_bus_use_frequency.json",
+            "devolved_bus_finance.json",
+            "orr_rail_facts.json",
+            "ons_household_expenditure_facts.json",
         )
 
     def test_uk_target_references_accept_regenerated_contract_fields(self) -> None:
         spec = load_country_spec("uk")
 
         references = {reference.name: reference for reference in spec.target_references}
-        assert len(references) == 408
+        assert (
+            len(references) == 631
+        )  # microcosm#905: 424 - 18 country rows + 189 region-tier cells;
+        # microcosm#929: the 81 VOA region cells become 81 composed MHCLG
+        # cells and Wales gains ten country rows (bands A-I + total)
         assert references["obr.esa"].value_operation == "sum"
         assert references["dwp.uc.households"].value_operation == (
-            "calendar_year_average"
+            "monthly_window_sum_average"
         )
+        assert references["dwp.uc.households"].period_match_policy == "source_window"
+        assert len(references["dwp.uc.households"].value_operands) == 10
         assert (
             references["obr.income_tax"].assertion_policy == "allow_source_projection"
         )
@@ -1287,6 +1337,7 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
+            "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -1298,6 +1349,7 @@ class TestUKGatesManifest:
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
+            "uk_stage_frs_relationships_composition",
             "uk_release_input_coverage",
             "uk_degenerate_release_surface",
             "uk_zero_weight_strata",
@@ -1311,6 +1363,7 @@ class TestUKGatesManifest:
             "uk_export_surface",
             "uk_take_up_signal",
             "uk_brma_enum_domain",
+            "uk_ons_household_type_enum_domain",
             "uk_uc_deduction_combination_enum_domain",
             "uk_student_loan_plan_enum_domain",
             "uk_calibration_reference_coverage",
@@ -1325,12 +1378,9 @@ class TestUKGatesManifest:
             "uk_local_weight_ratio",
             "uk_local_weight_ess",
         ]
-        diagnostic = {
-            "uk_local_target_fit",
-            "uk_local_per_family_fit",
-            "uk_local_weight_ratio",
-            "uk_local_weight_ess",
-        }
+        # PR #870 review: the four local fit/weight gates are release-blocking
+        # like the rest of the battery; nothing in the manifest is diagnostic.
+        diagnostic: set[str] = set()
         assert {
             gate.id for gate in manifest.gates if gate.criticality == "diagnostic"
         } == diagnostic
@@ -1379,6 +1429,7 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
+            "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -1390,6 +1441,7 @@ class TestUKGatesManifest:
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
+            "uk_stage_frs_relationships_composition",
             "uk_weights_audit",
         ]
         assert all(g.not_applicable is None for g in manifest.gates)
@@ -1429,10 +1481,17 @@ class TestUKGatesManifest:
         aggregate = params["uk_aggregate_admin"]
         assert aggregate["default_rtol"] == 0.15
         assert [anchor["name"] for anchor in aggregate["anchors"]] == [
-            "need_electricity_mean_spending",
-            "need_gas_mean_spending",
             "nhs_spending_total",
         ]
+        energy_rake = params["uk_stage_lcfs_consumption_energy_rake"]
+        assert energy_rake["check"] == "energy_rake"
+        assert list(energy_rake["margins"]) == [
+            "income",
+            "tenure",
+            "accommodation",
+            "region",
+        ]
+        assert energy_rake["maximum_relative_deviation"] == 0.025
 
     def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}
@@ -2199,10 +2258,15 @@ def test_schema2_be_geography_vintage_contract_survives_identifier_resolution(
     )
     fact = {
         "aggregate_fact_key": fact_key,
+        "label": "Taxable income in Brussels",
         "lineage": {"source_record_id": record_id},
         "value": 10.0,  # Synthetic resolver probe, not a Belgian source value.
         "period": {"type": "tax_year", "value": 2022},
-        "geography": {"level": "commune", "id": "21004"},
+        "geography": {
+            "level": "commune",
+            "id": "21004",
+            "name": "Brussels",
+        },
         "entity": {"name": "household"},
         "observed_measure": {
             "source_name": "statbel_fiscal_income",

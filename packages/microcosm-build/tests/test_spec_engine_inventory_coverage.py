@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import copy
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import replace
+from functools import cache
 from typing import Any
 
 import pytest
 
+from microcosm.build.spec_engine import inventory_coverage as inventory_coverage_module
 from microcosm.build.spec_engine.compiler_ir import CompiledSpecIR, compile_spec
 from microcosm.build.spec_engine.inventory_coverage import (
     InventoryCoverageError,
@@ -19,6 +22,7 @@ from microcosm.build.spec_engine.inventory_coverage import (
 from microcosm.build.spec_engine.legacy_adapter import compile_to_legacy_payload
 from microcosm.build.spec_engine.loader import load_bundle
 from microcosm.build.spec_engine.model import ResolvedSpec, ResourceKind, freeze_json
+from microcosm.build.us_runtime import worker_identity as worker_identity_module
 
 EXPECTED_CHECKS = {
     "acs_group_predictors_exact",
@@ -63,6 +67,40 @@ EXPECTED_CHECKS = {
     "take_up_program_mechanisms_exact",
     "take_up_program_order_exact",
 }
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _reuse_real_worker_binding_for_pin_checks() -> object:
+    """Reuse one real operational binding while testing digests that strip it."""
+
+    original = worker_identity_module.primary_qrf_worker_execution_binding
+
+    @cache
+    def cached(
+        _fit_jobs: str | None,
+        _predict_workers: str | None,
+        _cpu_count: int | None,
+    ) -> dict[str, object]:
+        return original()
+
+    def binding() -> dict[str, object]:
+        return copy.deepcopy(
+            cached(
+                os.environ.get("POPULACE_FIT_N_JOBS"),
+                os.environ.get("POPULACE_FIT_PREDICT_WORKERS"),
+                os.cpu_count(),
+            )
+        )
+
+    patcher = pytest.MonkeyPatch()
+    patcher.setattr(
+        worker_identity_module,
+        "primary_qrf_worker_execution_binding",
+        binding,
+    )
+    yield
+    patcher.undo()
+
 
 EXPECTED_COUNTS = {
     "adapter_surfaces": 13,
@@ -185,6 +223,75 @@ def test_full_checkpoint_vector_binds_dynamic_inputs_and_scale_controls(
     assert item["observed"]["input_roles"] == ["alpha", "zeta"]
     assert item["observed"]["fraction_token"] == "f025"
     assert item["observed"]["sha256"] == item["expected"]["sha256"]
+
+
+def test_operational_free_digest_ignores_the_worker_execution_binding() -> None:
+    """The primary-QRF worker binding authenticates a machine, not the spec.
+
+    Its semantic identity hashes the interpreter binary, ABI, pyvenv.cfg, the
+    installed distributions' RECORD files and the resolved CPU count, all of
+    which differ between a macOS checkout and the Linux CI runners. The pinned
+    inventory digests must not move with any of it, so the whole subtree is
+    stripped before digesting, as are audit aliases and receipt self-hashes.
+    """
+
+    def receipt(worker_execution: object) -> dict[str, object]:
+        binding: dict[str, object] = {"clone_attachment": {"seed": 991}}
+        if worker_execution is not None:
+            binding["worker_execution"] = worker_execution
+        return {
+            "producers": [
+                {
+                    "producer": "primary_puf_qrf",
+                    "resources": {
+                        "tax_unit.@primary_puf_execution_config": {
+                            "binding": binding,
+                            "audit_aliases": {"executable": "/some/venv/bin/python"},
+                        }
+                    },
+                }
+            ],
+            "sha256": "self-hash over the unpruned receipt",
+        }
+
+    macos = receipt(
+        {
+            "schema_version": 1,
+            "semantic_identity": {
+                "interpreter": {"bytes_sha256": "a" * 64, "abi": {"soabi": "darwin"}},
+                "installed_distributions_record_sha256": "b" * 64,
+                "environment": {"POPULACE_FIT_PREDICT_WORKERS": {"resolved": 12}},
+            },
+            "semantic_identity_sha256": "c" * 64,
+        }
+    )
+    linux = receipt(
+        {
+            "schema_version": 1,
+            "semantic_identity": {
+                "interpreter": {"bytes_sha256": "d" * 64, "abi": {"soabi": "linux"}},
+                "installed_distributions_record_sha256": "e" * 64,
+                "environment": {"POPULACE_FIT_PREDICT_WORKERS": {"resolved": 4}},
+            },
+            "semantic_identity_sha256": "f" * 64,
+        }
+    )
+    unbound = receipt(None)
+
+    digests = {
+        inventory_coverage_module._operational_free_sha256(value)
+        for value in (macos, linux, unbound)
+    }
+
+    assert len(digests) == 1
+    stripped = inventory_coverage_module._without_operational_bindings(macos)
+    resource = stripped["producers"][0]["resources"][
+        "tax_unit.@primary_puf_execution_config"
+    ]
+    assert "worker_execution" not in resource["binding"]
+    assert "audit_aliases" not in resource
+    assert "sha256" not in stripped
+    assert resource["binding"]["clone_attachment"] == {"seed": 991}
 
 
 def test_nonexistent_bundle_home_is_rejected(

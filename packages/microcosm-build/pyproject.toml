@@ -30,7 +30,7 @@ dependencies = [
 # content is declared in packaged manifests and interpreted by shared Microcosm
 # runtimes; country source loaders must not depend on incumbent data packages.
 us = [
-    "policyengine-us>=1.745.0,<2",
+    "policyengine-us>=2.2.1,<3",
     "microcosm-data>=0.1,<0.2",
     "h5py>=3",
     "microunit>=0.1.0",
@@ -39,7 +39,7 @@ us = [
 # The UK extra adds the rules engine for local metric generation from a
 # Microcosm UK H5. Target tables remain explicit inputs, and the base package
 # still does not import policyengine-uk at import time.
-uk = ["policyengine-uk>=2.92", "h5py>=3", "tables>=3"]
+uk = ["policyengine-uk>=2.98.0", "h5py>=3", "tables>=3", "openpyxl>=3.1"]
 
 [project.scripts]
 microcosm-export-us-l0-refit-h5 = "microcosm.build.us_runtime.l0_refit_export:main"

@@ -11,7 +11,7 @@ import os
 import platform
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from importlib import metadata
@@ -28,6 +28,9 @@ from microcosm.build.gate_battery import (
     GateBatteryRun,
     gate_signing_key_env,
 )
+from microcosm.build.gate_battery import (
+    _canonical_json_bytes as gate_battery_canonical_json_bytes,
+)
 from microcosm.build.logbook import canonical_json_bytes
 from microcosm.build.logbook_adoption import (
     AttemptState,
@@ -41,6 +44,7 @@ from microcosm.build.logbook_adoption import (
     role_pins_digest,
     write_error_receipt,
 )
+from microcosm.build.staging_v2 import validate_staging_delivery
 from microcosm.build.target_materialization import assert_calibration_input_finite
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.diagnostics import (
@@ -109,6 +113,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
     "uk_stage_uc_deduction_attributes",
     "uk_stage_lcfs_consumption_support",
+    "uk_stage_lcfs_consumption_energy_rake",
     "uk_stage_etb_vat_support",
     "uk_stage_etb_services_support",
     "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -120,6 +125,10 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_salary_sacrifice_realization",
     "uk_stage_student_loans_realization",
     "uk_stage_age_tail_targets",
+    "uk_stage_frs_relationships_composition",
+    # Weight-independent like the BRMA enum below, and its column exists from
+    # frs_relationships onward (#791).
+    "uk_ons_household_type_enum_domain",
     # Weight-independent, and its column exists from frs_brma onward, so the
     # spine checks it at the assembled boundary instead of the release end.
     "uk_brma_enum_domain",
@@ -258,6 +267,11 @@ def run_uk_calibration(
     run_config_extra: Mapping[str, object],
     release_id: str,
     logbook_prev_row_digest: str | None = None,
+    progress_callback: Callable[[dict[str, object]], None] | None = None,
+    event_callback: (Callable[[str, str, Mapping[str, object]], None] | None) = None,
+    staging_delivery: Mapping[str, object] | None = None,
+    staging_finalizer: Callable[[], None] | None = None,
+    staging_delivery_provider: Callable[[], Mapping[str, object]] | None = None,
 ) -> UKCalibrationRunResult:
     """Run the UK national calibration seam and write its sidecars."""
 
@@ -271,6 +285,10 @@ def run_uk_calibration(
         band_edge_registry=band_edge_registry,
         exclusion_receipt=exclusion_receipt,
     )
+    if (staging_finalizer is None) != (staging_delivery_provider is None):
+        raise ValueError(
+            "staging_finalizer and staging_delivery_provider must be supplied together."
+        )
     edge_registry = band_edge_registry
     code_pin = git_code_pin(_REPOSITORY)
     # Predecessor configuration is validated before anything is written: a
@@ -323,6 +341,11 @@ def run_uk_calibration(
             started_ts=started_ts,
             predecessor=predecessor,
             spool_dir=spool_dir,
+            progress_callback=progress_callback,
+            event_callback=event_callback,
+            staging_delivery=staging_delivery,
+            staging_finalizer=staging_finalizer,
+            staging_delivery_provider=staging_delivery_provider,
         )
     except BaseException as error:
         # Every terminal disposition records a row — successful, failed, or
@@ -451,7 +474,13 @@ def _run_uk_calibration_attempt(
     started_ts: datetime,
     predecessor: str | None,
     spool_dir: Path,
+    progress_callback: Callable[[dict[str, object]], None] | None,
+    event_callback: Callable[[str, str, Mapping[str, object]], None] | None,
+    staging_delivery: Mapping[str, object] | None,
+    staging_finalizer: Callable[[], None] | None,
+    staging_delivery_provider: Callable[[], Mapping[str, object]] | None,
 ) -> UKCalibrationRunResult:
+    _notify_run_event(event_callback, "input_loading", "started")
     measured_input_sha = _sha256_file(paths.input_h5)
     if measured_input_sha != input_sha256:
         raise ValueError(
@@ -462,10 +491,18 @@ def _run_uk_calibration_attempt(
     frame, _provenance = load_uk_national_frame(paths.input_h5)
     append_phase(state, "input_loaded")
     spine_sidecar_path = paths.input_h5.with_suffix(".build.json")
-    spine_sidecar = _load_bound_spine_sidecar(spine_sidecar_path, frame)
+    spine_sidecar = load_bound_spine_sidecar(spine_sidecar_path, frame)
     append_phase(state, "input_sidecar_bound")
     assert_calibration_input_finite(frame)
     append_phase(state, "input_finite")
+    _notify_run_event(
+        event_callback,
+        "input_loading",
+        "completed",
+        entity_row_counts={
+            entity: int(len(frame.table(entity))) for entity in frame.entities
+        },
+    )
 
     stage = UKNationalCalibrationStage(
         register_registry,
@@ -476,9 +513,21 @@ def _run_uk_calibration_attempt(
         doctrine=doctrine,
         measure_resolver=measure_resolver,
         band_edge_registry=band_edge_registry,
+        progress_callback=progress_callback,
+        stage_callback=event_callback,
     )
+    _notify_run_event(event_callback, "calibration", "started")
     calibrated = stage(frame)
     append_phase(state, "national_calibration_solved")
+    _notify_run_event(
+        event_callback,
+        "calibration",
+        "completed",
+        target_count=len(stage.registry.specs),
+        entity_row_counts={
+            entity: int(len(calibrated.table(entity))) for entity in calibrated.entities
+        },
+    )
 
     build_block = {
         "build_id": state.build_id,
@@ -503,12 +552,13 @@ def _run_uk_calibration_attempt(
             else None
         ),
         "register": _register_census(register_registry, exclusion_receipt),
-        "spine_provenance": _spine_provenance_from_sidecar(
+        "spine_provenance": spine_provenance_from_sidecar(
             spine_sidecar_path,
             spine_sidecar,
         ),
         "score_vs_enhanced_frs": None,
     }
+    _notify_run_event(event_callback, "diagnostics", "started")
     write_uk_calibration_diagnostics(
         stage.solve_result,
         paths.diagnostics_json,
@@ -519,7 +569,14 @@ def _run_uk_calibration_attempt(
     )
     diagnostics_sha = _sha256_file(paths.diagnostics_json)
     append_phase(state, "diagnostics_written")
+    _notify_run_event(
+        event_callback,
+        "diagnostics",
+        "completed",
+        target_count=len(stage.diagnostics),
+    )
 
+    _notify_run_event(event_callback, "release_check_evaluation", "started")
     gate_report = _run_calibration_gate_battery(
         calibrated,
         stage,
@@ -528,16 +585,30 @@ def _run_uk_calibration_attempt(
         diagnostics_sha256=diagnostics_sha,
     )
     append_phase(state, "calibration_gates_evaluated")
+    _notify_run_event(
+        event_callback,
+        "release_check_evaluation",
+        "completed",
+        check_count=len(gate_report["gates"]),
+    )
     for gate_id, payload in gate_report["gates"].items():
         state.gate_verdicts[gate_id] = {
             "verdict": payload["status"],
             "receipt": f"local://{paths.terminal_gate_json.name}#/gates/{gate_id}",
         }
 
+    _notify_run_event(event_callback, "candidate_h5_creation", "started")
     write_uk_national_frame(calibrated, paths.staging_h5)
     staging_sha = _sha256_file(paths.staging_h5)
     append_phase(state, "staging_h5_written")
+    _notify_run_event(
+        event_callback,
+        "candidate_h5_creation",
+        "completed",
+        size_bytes=paths.staging_h5.stat().st_size,
+    )
 
+    _notify_run_event(event_callback, "build_record_creation", "started")
     record = {
         "schema_version": 1,
         "pipeline": _PIPELINE,
@@ -571,12 +642,30 @@ def _run_uk_calibration_attempt(
             },
         },
     }
+    if staging_delivery is not None:
+        record["staging_delivery"] = validate_staging_delivery(staging_delivery)
     _write_json(paths.build_record_json, record)
     build_record_sha = _sha256_file(paths.build_record_json)
     append_phase(state, "build_record_written")
+    _notify_run_event(
+        event_callback,
+        "build_record_creation",
+        "completed",
+        size_bytes=paths.build_record_json.stat().st_size,
+    )
     state.artifact_location = local_artifact_reference(
         paths.staging_h5, repository_hint=_REPOSITORY
     )
+    if staging_finalizer is not None:
+        assert staging_delivery_provider is not None
+        try:
+            staging_finalizer()
+        finally:
+            record["staging_delivery"] = validate_staging_delivery(
+                staging_delivery_provider()
+            )
+            _write_json(paths.build_record_json, record)
+            build_record_sha = _sha256_file(paths.build_record_json)
     spool = record_terminal_attempt(
         state=state,
         started_at=started_at,
@@ -601,6 +690,16 @@ def _run_uk_calibration_attempt(
     )
 
 
+def _notify_run_event(
+    callback: Callable[[str, str, Mapping[str, object]], None] | None,
+    stage_id: str,
+    status: str,
+    **details: object,
+) -> None:
+    if callback is not None:
+        callback(stage_id, status, details)
+
+
 def _run_calibration_gate_battery(
     frame: Frame,
     stage: UKNationalCalibrationStage,
@@ -620,6 +719,10 @@ def _run_calibration_gate_battery(
             }
         ),
         "aggregate_admin": admin_totals,
+        # The target-fit deferral register is evaluated against the run
+        # clock (schema-2 approval windows); the seam supplies today's date
+        # exactly as the rowwise candidate build supplies its start date.
+        "exclusions_evaluated_on": datetime.now(UTC).date(),
     }
     battery = GateBatteryRun(
         manifest,
@@ -646,7 +749,7 @@ def _run_calibration_gate_battery(
     return payload
 
 
-def _load_bound_spine_sidecar(path: Path, frame: Frame) -> dict[str, object]:
+def load_bound_spine_sidecar(path: Path, frame: Frame) -> dict[str, object]:
     if not path.is_file():
         raise ValueError(f"input H5 build sidecar absent: {path}")
     try:
@@ -741,7 +844,7 @@ def _assert_spine_gate_report_passed(
         )
 
 
-def _spine_provenance_from_sidecar(
+def spine_provenance_from_sidecar(
     path: Path,
     sidecar: Mapping[str, object],
 ) -> dict[str, object]:
@@ -921,23 +1024,66 @@ def uk_aggregate_admin_totals(
     return totals, receipt
 
 
+#: The manifest fields the UK run seals into ``run_config``. Narrower than
+#: the artifact's whole manifest on purpose: the identity digest should name
+#: *which* published artifact was compiled, not re-hash its manifest.
+_LEDGER_MANIFEST_IDENTITY_FIELDS = (
+    "artifact_id",
+    "profile",
+    "schema_version",
+    "generated_at",
+)
+
+#: Epoch witnesses :meth:`LedgerConsumerArtifact.provenance` supplies, split
+#: by shape. Named here so the delegation below cannot quietly drop one: a
+#: run that compiled a chronicle-era or mixed-epoch feed has to say so in its
+#: own evidence, not only in the loader's return value
+#: (PolicyEngine/chronicle#143).
+_LEDGER_EPOCH_WITNESS_SCALARS = ("schema_epoch",)
+_LEDGER_EPOCH_WITNESS_LISTS = (
+    "fact_key_epochs",
+    "undeclared_fact_key_domains",
+    "fact_schema_versions",
+)
+
+
 def _ledger_provenance(artifact: Any) -> dict[str, object]:
-    """The verified identity of the Ledger consumer feed this run compiled.
+    """The verified identity of the Chronicle consumer feed this run compiled.
+
+    Delegates to :meth:`microcosm.build.ledger_artifact.LedgerConsumerArtifact.provenance`
+    rather than rebuilding the block field by field. Rebuilding it is how the
+    epoch witnesses went missing here in the first place: the loader learned
+    which era resolved the targets and the UK run kept reporting only the
+    hashes. Anything the shared block gains, this block gains.
+
+    The whole block is sealed into ``run_config`` and so into the run's
+    identity digest: the epoch witnesses enter it beside the hashes, which is
+    why this delegation is a change to the digest of an otherwise identical
+    configuration, once. Only the manifest sub-block is UK-shaped, and it
+    stays narrow so the digest names the artifact rather than re-hashing its
+    whole manifest.
 
     A bare ``consumer_facts.jsonl`` feed carries no manifest, so its
-    Ledger-side provenance is recorded as absent rather than invented.
+    Chronicle-side provenance is recorded as absent rather than invented. So
+    is a stand-in that predates the shared block: the fields it cannot supply
+    are recorded ``None``/empty rather than fabricated.
     """
 
+    shared = getattr(artifact, "provenance", None)
+    block: Mapping[str, Any] = shared() if callable(shared) else {}
     provenance: dict[str, object] = {
-        "facts_sha256": getattr(artifact, "facts_sha256", None),
-        "fact_row_count": getattr(artifact, "fact_row_count", None),
-        "manifest_sha256": getattr(artifact, "manifest_sha256", None),
+        field: block.get(field, getattr(artifact, field, None))
+        for field in ("facts_sha256", "fact_row_count", "manifest_sha256")
     }
+    for field in _LEDGER_EPOCH_WITNESS_SCALARS:
+        provenance[field] = block.get(field)
+    for field in _LEDGER_EPOCH_WITNESS_LISTS:
+        provenance[field] = list(block.get(field) or ())
     manifest = getattr(artifact, "manifest", None)
     if isinstance(manifest, Mapping):
         provenance["manifest"] = {
             key: manifest.get(key)
-            for key in ("artifact_id", "profile", "schema_version", "generated_at")
+            for key in _LEDGER_MANIFEST_IDENTITY_FIELDS
             if manifest.get(key) is not None
         }
     return provenance
@@ -956,7 +1102,7 @@ _RUNTIME_PROVENANCE_PACKAGES = (
 )
 
 
-def _runtime_provenance() -> dict[str, str]:
+def runtime_provenance() -> dict[str, str]:
     """The calibrating environment's package versions, for the build block."""
 
     runtime = {"python": platform.python_version()}
@@ -966,6 +1112,12 @@ def _runtime_provenance() -> dict[str, str]:
         except metadata.PackageNotFoundError:
             runtime[package] = "unavailable"
     return runtime
+
+
+# Compatibility aliases for the established internal call sites.
+_load_bound_spine_sidecar = load_bound_spine_sidecar
+_spine_provenance_from_sidecar = spine_provenance_from_sidecar
+_runtime_provenance = runtime_provenance
 
 
 def _register_census(
@@ -1050,8 +1202,15 @@ def resign_uk_gate_report(payload: dict[str, object]) -> None:
     attestation.pop("signing_error", None)
     attestation["signing_key_sha256"] = hashlib.sha256(key).hexdigest()
     attestation["signature"] = None
+    # Sign with the gate battery's canonical form — the one the battery used
+    # for the original signature and the one every verifier (the data
+    # contract's terminal and dense checks) recomputes. The Logbook's
+    # canonical form renders integral floats without the ".0" (50.0 -> 50),
+    # so a report re-signed with it cannot be authenticated wherever a gate
+    # detail carries an integral float (microcosm#762 R17: the local
+    # battery's ESS floor 50.0).
     attestation["signature"] = hmac.new(
-        key, canonical_json_bytes(payload), hashlib.sha256
+        key, gate_battery_canonical_json_bytes(payload), hashlib.sha256
     ).hexdigest()
 
 

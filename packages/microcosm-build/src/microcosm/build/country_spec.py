@@ -44,6 +44,7 @@ from typing import Any
 
 from microcosm.build.ledger_targets import (
     LedgerTargetReference,
+    hierarchy_seed_from_catalog,
     period_type_hint,
     period_values_semantically_equal,
 )
@@ -159,6 +160,7 @@ _GATE_ENTRY_KEYS = frozenset(
         "parameters",
         "not_applicable",
         "evidence_absent_blocks",
+        "population_fact_check",
         "notes",
     }
 )
@@ -452,6 +454,11 @@ class GateSelectionSpec:
             in the report; only the enforcement changes. Meaningless on an
             excused entry, so mutually exclusive with ``not_applicable``.
         notes: Free-text rationale.
+        population_fact_check: When true, the gate checks the frame against
+            published population statistics (a NEED shape, a DESNZ level, a
+            published connection share); a synthetic smoke build records its
+            failure but does not block on it, because a synthetic fixture is
+            not the population the facts describe. Every other posture blocks.
     """
 
     id: str
@@ -461,6 +468,7 @@ class GateSelectionSpec:
     parameters: Mapping[str, Any] = field(default_factory=dict)
     not_applicable: str | None = None
     evidence_absent_blocks: bool = False
+    population_fact_check: bool = False
     notes: str = ""
 
     def __post_init__(self) -> None:
@@ -473,6 +481,11 @@ class GateSelectionSpec:
             raise TypeError(
                 "GateSelectionSpec evidence_absent_blocks must be a bool, got "
                 f"{type(self.evidence_absent_blocks).__name__}."
+            )
+        if not isinstance(self.population_fact_check, bool):
+            raise TypeError(
+                "GateSelectionSpec population_fact_check must be a bool, got "
+                f"{type(self.population_fact_check).__name__}."
             )
         object.__setattr__(
             self,
@@ -555,6 +568,12 @@ class GateSelectionSpec:
                 "are mutually exclusive — an excused entry never evaluates, "
                 "so demanding its absence block is a contradiction."
             )
+        population_fact_check = raw.get("population_fact_check", False)
+        if not isinstance(population_fact_check, bool):
+            raise ValueError(
+                f"gate {gate_id!r}: population_fact_check must be a JSON "
+                f"boolean, got {population_fact_check!r}."
+            )
         return cls(
             id=gate_id,
             gate=gate,
@@ -563,6 +582,7 @@ class GateSelectionSpec:
             parameters=dict(parameters),
             not_applicable=not_applicable,
             evidence_absent_blocks=evidence_absent_blocks,
+            population_fact_check=population_fact_check,
             notes=str(raw.get("notes", "")),
         )
 
@@ -804,6 +824,12 @@ def _validate_target_references(
             f"{context}: declares country {declared!r} but lives in the "
             f"{country!r} package."
         )
+    schema_version = raw.get("schema_version")
+    if schema_version is not None and schema_version != 2:
+        raise ValueError(
+            f"{context}: schema_version must be 2 when declared, got "
+            f"{schema_version!r}."
+        )
     rows = raw.get("target_references")
     if not isinstance(rows, list) or not rows:
         raise ValueError(f"{context}: target_references must be a non-empty list.")
@@ -818,12 +844,96 @@ def _validate_target_references(
                 "live in Ledger, never in microcosm."
             )
         try:
-            references.append(LedgerTargetReference(**row))
+            constructor_row = dict(row)
+            if schema_version == 2:
+                hierarchy_catalog = _require_mapping(
+                    raw.get("hierarchy"), context=f"{context} hierarchy"
+                )
+                metadata = constructor_row.get("metadata")
+                contract_target_id = (
+                    metadata.get("contract_target_id")
+                    if isinstance(metadata, Mapping)
+                    else None
+                )
+                category_id = constructor_row.pop("category_id", None)
+                if category_id is None:
+                    target_categories = _require_mapping(
+                        hierarchy_catalog.get("target_categories"),
+                        context=f"{context} hierarchy.target_categories",
+                    )
+                    category_id = target_categories.get(contract_target_id)
+                category_id = _require_non_empty_string(
+                    category_id,
+                    field_name="category_id",
+                    context=f"{context} reference {row.get('name')!r}",
+                )
+                constructor_row["hierarchy"] = hierarchy_seed_from_catalog(
+                    hierarchy_catalog,
+                    category_id,
+                    target_id=(
+                        str(contract_target_id)
+                        if contract_target_id is not None
+                        else None
+                    ),
+                )
+            references.append(LedgerTargetReference(**constructor_row))
         except (TypeError, ValueError) as error:
             raise ValueError(
                 f"{context}: reference {row.get('name')!r} is invalid: {error}"
             ) from error
+    if schema_version == 2:
+        _validate_target_reference_hierarchy(
+            raw.get("hierarchy"),
+            references=references,
+            context=context,
+        )
     return tuple(references)
+
+
+def _validate_target_reference_hierarchy(
+    raw_hierarchy: object,
+    *,
+    references: list[LedgerTargetReference],
+    context: str,
+) -> None:
+    """Validate normalized catalogs against every denormalized reference seed."""
+
+    hierarchy = _require_mapping(raw_hierarchy, context=f"{context} hierarchy")
+    providers = _require_mapping(
+        hierarchy.get("providers"), context=f"{context} hierarchy.providers"
+    )
+    categories = _require_mapping(
+        hierarchy.get("categories"), context=f"{context} hierarchy.categories"
+    )
+    if not providers or not categories:
+        raise ValueError(f"{context}: hierarchy catalogs must be non-empty.")
+    for reference in references:
+        seed = reference.hierarchy
+        if seed is None:
+            raise ValueError(
+                f"{context}: reference {reference.name!r} has no hierarchy seed."
+            )
+        provider = _require_mapping(
+            providers.get(seed.provider.id),
+            context=f"{context} provider {seed.provider.id!r}",
+        )
+        category = _require_mapping(
+            categories.get(seed.category.id),
+            context=f"{context} category {seed.category.id!r}",
+        )
+        if provider.get("label") != seed.provider.label:
+            raise ValueError(
+                f"{context}: reference {reference.name!r} provider label does "
+                "not match the normalized catalog."
+            )
+        if (
+            category.get("label") != seed.category.label
+            or category.get("provider_id") != seed.provider.id
+        ):
+            raise ValueError(
+                f"{context}: reference {reference.name!r} category does not "
+                "match the normalized catalog."
+            )
 
 
 def _typed_geography_vintage_aliases(
@@ -1308,7 +1418,30 @@ def _validate_local_target_references(
                 f"{context}: reference {reference.name!r} must pin "
                 "ledger_selector.geography_level and geography_id."
             )
-        if str(selector_id) != geography_id:
+        # An aliased cell selects under the roster code and the publisher's
+        # alias code(s); the roster code leads the list and names the row, and
+        # the aliases are declared on the row's metadata (microcosm#929).
+        declared_aliases = {
+            code.strip()
+            for code in str(reference.metadata.get("geography_id_aliases") or "").split(
+                ","
+            )
+            if code.strip()
+        }
+        if isinstance(selector_id, list):
+            codes = [str(code) for code in selector_id]
+            if (
+                not codes
+                or codes[0] != geography_id
+                or set(codes[1:]) != declared_aliases
+                or not declared_aliases
+            ):
+                raise ValueError(
+                    f"{context}: reference {reference.name!r} selector "
+                    f"geography_id {selector_id!r} must lead with the roster "
+                    "code and list exactly the declared geography_id_aliases."
+                )
+        elif str(selector_id) != geography_id:
             raise ValueError(
                 f"{context}: reference {reference.name!r} geography id does not "
                 f"match selector geography_id {selector_id!r}."

@@ -179,8 +179,8 @@ def _tiny_frame_with_marketplace_columns(
             [True, False], dtype=bool
         )
     if interview_leaf:
-        tables["person"]["has_marketplace_health_coverage_at_interview"] = (
-            np.asarray([True, False], dtype=bool)
+        tables["person"]["has_marketplace_health_coverage_at_interview"] = np.asarray(
+            [True, False], dtype=bool
         )
     return Frame(
         tables,
@@ -298,7 +298,141 @@ def test_head_to_head_signature_has_no_target_membership_switches() -> None:
         "congressional_district_vintage_crosswalk",
         "maximum_microsim_batch_size",
         "candidate_manifest_sha256",
+        "candidate_worker_identity_attestation",
     }
+
+
+def test_candidate_worker_attestation_propagates_from_cli_to_artifact_loader(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _load_head_to_head_module()
+    incumbent = tmp_path / "incumbent.h5"
+    candidate = tmp_path / "candidate.manifest.json"
+    attestation = tmp_path / "worker-attestation.json"
+    pin = "a" * 64
+    args = module._parse_args(
+        [
+            "--incumbent",
+            str(incumbent),
+            "--candidate",
+            str(candidate),
+            "--candidate-manifest-sha256",
+            pin,
+            "--candidate-worker-identity-attestation",
+            str(attestation),
+            "--ledger-facts",
+            str(tmp_path / "facts.jsonl"),
+            "--out-prefix",
+            str(tmp_path / "scorecard"),
+        ]
+    )
+    assert args.candidate_worker_identity_attestation == attestation
+
+    calls: list[tuple[Path, str | None, Path | None]] = []
+
+    def fake_load_artifact(
+        path: Path,
+        *,
+        expected_manifest_sha256: str | None = None,
+        worker_identity_attestation: Path | None = None,
+    ) -> SimpleNamespace:
+        calls.append((path, expected_manifest_sha256, worker_identity_attestation))
+        return SimpleNamespace()
+
+    monkeypatch.setattr(module, "load_artifact", fake_load_artifact)
+    monkeypatch.setattr(
+        module,
+        "compile_yardstick",
+        lambda **_kwargs: SimpleNamespace(identity={}, loss_basis={}),
+    )
+    monkeypatch.setattr(
+        module,
+        "score_loaded_artifact",
+        lambda **kwargs: ({"name": kwargs["artifact_name"]}, (("fixture",),)),
+    )
+    monkeypatch.setattr(module, "_assert_identical_scored_contracts", lambda _: None)
+    monkeypatch.setattr(module, "_comparison_payload", lambda *_: {})
+    monkeypatch.setattr(module, "_canonical_battery_contract", lambda: {})
+    monkeypatch.setattr(module, "_assert_rss_below_limit", lambda _: None)
+
+    module.score_head_to_head(
+        incumbent=args.incumbent,
+        candidate=args.candidate,
+        ledger_facts=args.ledger_facts,
+        candidate_manifest_sha256=args.candidate_manifest_sha256,
+        candidate_worker_identity_attestation=(
+            args.candidate_worker_identity_attestation
+        ),
+    )
+
+    assert calls == [
+        (incumbent, None, None),
+        (candidate, pin, attestation),
+    ]
+
+
+def test_pool_scorecard_preserves_worker_authentication_receipts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    module = _load_head_to_head_module()
+    manifest_path = tmp_path / "candidate.manifest.json"
+    pool_path = tmp_path / "candidate.h5"
+    attestation_path = tmp_path / "worker-attestation.json"
+    authentication = {
+        "semantic_identity_sha256": "b" * 64,
+        "compatibility_attestation_sha256": "c" * 64,
+        "purpose": "scoring_only",
+    }
+    authenticated = SimpleNamespace(
+        path=pool_path,
+        sha256="d" * 64,
+        size_bytes=123,
+        manifest_sha256="e" * 64,
+        publication_run_id="fixture-run",
+        worker_execution_authentication=authentication,
+    )
+    captured: dict[str, object] = {}
+
+    def fake_scoring_loader(path: Path, **kwargs):
+        captured["path"] = path
+        captured.update(kwargs)
+        return (
+            _tiny_frame(measure_values=(1.0, 2.0)),
+            {
+                "release_id": "fixture-release",
+                "status": "gate_failed",
+                "simulation_ready": False,
+                "terminal_gates": {"passed": False},
+            },
+            authenticated,
+        )
+
+    monkeypatch.setattr(
+        module,
+        "load_authenticated_us_multispine_pool_for_scoring",
+        fake_scoring_loader,
+    )
+    monkeypatch.setattr(
+        module,
+        "_drop_historical_formula_owned_columns",
+        lambda frame: (frame, {"count": 0, "columns_by_entity": {}}),
+    )
+
+    loaded = module._load_pool_manifest(
+        manifest_path,
+        expected_manifest_sha256="e" * 64,
+        worker_identity_attestation=attestation_path,
+    )
+
+    assert captured == {
+        "path": manifest_path,
+        "expected_manifest_sha256": "e" * 64,
+        "worker_identity_attestation": attestation_path,
+    }
+    assert loaded.identity["worker_execution_authentication"] == authentication
+    assert loaded.loader["worker_execution_authentication"] == authentication
 
 
 def test_dense_candidate_streaming_plan_is_independent_of_total_pool_size() -> None:
