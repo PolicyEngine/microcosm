@@ -64,7 +64,8 @@
               "dft.other_local_bus_trips_per_person",
               "dft.bus_in_london_trips_per_person"
             ],
-            "period_type": "calendar_year"
+            "period_type": "calendar_year",
+            "groupby_dimension": "dft.household_income_quintile"
           },
           "expected_row_count": 24
         }
@@ -280,7 +281,7 @@
     },
     {
       "resource": "devolved_bus_finance.json",
-      "purpose": "Scotland bus and coach statistics (2024 and 2025 editions: journeys, passenger revenue, operator revenue, government support components, fare index); Welsh local authority roads and transport revenue outturn public transport lines for the Wales total; Northern Ireland Transport Holding Company transactions with DfI; DfI Translink bus journeys and passenger receipts by service. Consumed by the devolved cells of the bus-fare and bus-support rakes and the country-leg bus targets.",
+      "purpose": "Scotland bus and coach statistics (2024 and 2025 editions: journeys, passenger revenue, operator revenue, government support components, fare index); Welsh local authority roads and transport revenue outturn public transport lines for the Wales total; Northern Ireland Transport Holding Company transactions with DfI; DfI Translink bus journeys and passenger receipts by service. Consumed by the devolved cells of the bus-fare and bus-support rakes and the country-leg bus targets; DfI Northern Ireland Translink full-fare concession passenger journeys by fiscal year (the concessionary split for the Northern Ireland bus price).",
       "consumers": [
         "uk_runtime.lcfs_consumption",
         "uk_runtime.etb_services"
@@ -335,6 +336,15 @@
             "period_type": "fiscal_year"
           },
           "expected_row_count": 24
+        },
+        {
+          "label": "dfi_ni_translink_bus_full_fare_concession_journeys",
+          "selector": {
+            "source_name": "dfi_ni",
+            "source_concept": "dfi_ni.translink_bus.full_fare_concession_passenger_journeys",
+            "period_type": "fiscal_year"
+          },
+          "expected_row_count": 6
         }
       ]
     },
@@ -568,6 +578,208 @@
             "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023"
           },
           "expected_row_count": 12
+        }
+      ]
+    },
+    {
+      "resource": "dft_bus_journeys.json",
+      "purpose": "DfT BUS01 local bus passenger journeys by area (England, London, England outside London, the metropolitan split and the nine English regions; year-ending-March labels 2023 to 2025), the BUS01c elderly and disabled and total concessionary journeys by the same areas, the BUS05i operating revenue and support components beyond fare receipts and net support (concessionary travel reimbursement, Bus Service Operators Grant, gross and net public transport support, total operating revenue, additional funding to operators, fare cap) for England, London and England outside London, and the ONS mid-year population of the four UK countries and the nine English regions (England is the regions' sum). Consumed by the bus fare pricing (receipts over fare-paying boardings, boardings per resident trip) and the support-per-journey diagnostic (microcosm#930).",
+      "consumers": [],
+      "planned_consumers": [
+        "uk_runtime.lcfs_consumption",
+        "uk_runtime.etb_services",
+        "uk_runtime.bus_fare_pricing"
+      ],
+      "selections": [
+        {
+          "label": "bus01a_passenger_journeys_by_area",
+          "selector": {
+            "source_name": "dft",
+            "source_concept": "dft.local_bus_passenger_journeys",
+            "period_type": "fiscal_year",
+            "period_value": [
+              "2023",
+              "2024",
+              "2025"
+            ],
+            "geography_id": [
+              "E92000001",
+              "E12000007",
+              "dft:england_outside_london",
+              "dft:english_metropolitan_areas",
+              "dft:english_non_metropolitan_areas",
+              "E12000001",
+              "E12000002",
+              "E12000003",
+              "E12000004",
+              "E12000005",
+              "E12000006",
+              "E12000007",
+              "E12000008",
+              "E12000009"
+            ],
+            "dimensions": []
+          },
+          "expected_row_count": 39
+        },
+        {
+          "label": "bus01c_concessionary_journeys_by_area",
+          "selector": {
+            "source_name": "dft",
+            "source_concept": "dft.local_bus_passenger_journeys",
+            "period_type": "fiscal_year",
+            "period_value": [
+              "2023",
+              "2024",
+              "2025"
+            ],
+            "geography_id": [
+              "E92000001",
+              "E12000007",
+              "dft:england_outside_london",
+              "dft:english_metropolitan_areas",
+              "dft:english_non_metropolitan_areas",
+              "E12000001",
+              "E12000002",
+              "E12000003",
+              "E12000004",
+              "E12000005",
+              "E12000006",
+              "E12000007",
+              "E12000008",
+              "E12000009"
+            ],
+            "dimension_values": {
+              "journey_category": [
+                "elderly_disabled_concessionary",
+                "total_concessionary"
+              ]
+            }
+          },
+          "expected_row_count": 78
+        },
+        {
+          "label": "bus05i_revenue_and_support_components",
+          "selector": {
+            "source_name": "dft",
+            "source_concept": [
+              "dft.local_bus_concessionary_travel_reimbursement",
+              "dft.local_bus_bus_service_operators_grant",
+              "dft.local_bus_gross_public_transport_support",
+              "dft.local_bus_net_public_transport_support",
+              "dft.local_bus_total_estimated_operating_revenue",
+              "dft.local_bus_additional_funding_to_operators",
+              "dft.local_bus_fare_cap"
+            ],
+            "period_type": "fiscal_year",
+            "geography_id": [
+              "E92000001",
+              "E12000007",
+              "dft:england_outside_london"
+            ]
+          },
+          "expected_row_count": 54
+        },
+        {
+          "label": "ons_mid_year_population_countries_and_english_regions",
+          "selector": {
+            "source_name": "ons",
+            "source_concept": "ons.mid_year_population_estimate",
+            "period_type": "calendar_year",
+            "geography_id": [
+              "K02000001",
+              "S92000003",
+              "W92000004",
+              "N92000002",
+              "E12000001",
+              "E12000002",
+              "E12000003",
+              "E12000004",
+              "E12000005",
+              "E12000006",
+              "E12000007",
+              "E12000008",
+              "E12000009"
+            ],
+            "dimensions": []
+          },
+          "expected_row_count": 26
+        }
+      ]
+    },
+    {
+      "resource": "nts_trip_rates.json",
+      "purpose": "DfT NTS0303 average trips per person per year by main mode (all modes, bus in London, other local bus; England, all ages) and NTS0601 the same rates by age band, survey years 2023 to 2025. Consumed by the NTS bus-travel stage's fact checks on the imputed trip rates by age and the level of local-bus trips per resident (microcosm#930).",
+      "consumers": [],
+      "planned_consumers": [
+        "uk_runtime.nts_bus_travel"
+      ],
+      "selections": [
+        {
+          "label": "nts0303_trips_per_person_by_mode",
+          "selector": {
+            "source_name": "dft",
+            "source_concept": [
+              "dft.all_modes_trips_per_person",
+              "dft.bus_in_london_trips_per_person",
+              "dft.other_local_bus_trips_per_person"
+            ],
+            "groupby_dimension": "dft.survey_year",
+            "period_type": "calendar_year",
+            "period_value": [
+              "2023",
+              "2024",
+              "2025"
+            ]
+          },
+          "expected_row_count": 9
+        },
+        {
+          "label": "nts0601_trips_per_person_by_age_band",
+          "selector": {
+            "source_name": "dft",
+            "source_concept": [
+              "dft.all_modes_trips_per_person",
+              "dft.bus_in_london_trips_per_person",
+              "dft.other_local_bus_trips_per_person"
+            ],
+            "groupby_dimension": "dft.age_band",
+            "period_type": "calendar_year",
+            "period_value": [
+              "2023",
+              "2024",
+              "2025"
+            ]
+          },
+          "expected_row_count": 81
+        }
+      ]
+    },
+    {
+      "resource": "nts_car_availability.json",
+      "purpose": "DfT NTS0205 shares of households with no car or van, one, and two or more (England, survey years 2023 and 2024). Consumed by the NTS bus-travel stage's receipt of the frame's num_vehicles distribution against the published shares (microcosm#890 item A, carried by microcosm#930).",
+      "consumers": [],
+      "planned_consumers": [
+        "uk_runtime.nts_bus_travel"
+      ],
+      "selections": [
+        {
+          "label": "nts0205_household_car_availability_england",
+          "selector": {
+            "source_name": "dft",
+            "source_concept": [
+              "dft.households_no_car_share",
+              "dft.households_one_car_share",
+              "dft.households_two_plus_cars_share"
+            ],
+            "geography_id": "E92000001",
+            "period_type": "calendar_year",
+            "period_value": [
+              "2023",
+              "2024"
+            ]
+          },
+          "expected_row_count": 6
         }
       ]
     }

@@ -386,6 +386,21 @@
       "path": "ons_household_expenditure_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
+    },
+    {
+      "path": "dft_bus_journeys.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "nts_trip_rates.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "nts_car_availability.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
     }
   ]
 }

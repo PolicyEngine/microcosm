@@ -3,7 +3,7 @@
   "country": "uk",
   "kind": "uk_vendored_ledger_facts",
   "resource": "devolved_bus_finance.json",
-  "purpose": "Scotland bus and coach statistics (2024 and 2025 editions: journeys, passenger revenue, operator revenue, government support components, fare index); Welsh local authority roads and transport revenue outturn public transport lines for the Wales total; Northern Ireland Transport Holding Company transactions with DfI; DfI Translink bus journeys and passenger receipts by service. Consumed by the devolved cells of the bus-fare and bus-support rakes and the country-leg bus targets.",
+  "purpose": "Scotland bus and coach statistics (2024 and 2025 editions: journeys, passenger revenue, operator revenue, government support components, fare index); Welsh local authority roads and transport revenue outturn public transport lines for the Wales total; Northern Ireland Transport Holding Company transactions with DfI; DfI Translink bus journeys and passenger receipts by service. Consumed by the devolved cells of the bus-fare and bus-support rakes and the country-leg bus targets; DfI Northern Ireland Translink full-fare concession passenger journeys by fiscal year (the concessionary split for the Northern Ireland bus price).",
   "consumers": [
     "uk_runtime.lcfs_consumption",
     "uk_runtime.etb_services"
@@ -16,12 +16,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
+    "source_commit": "78466057401af48f9a53da41b87295241e4af1ba",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 276205,
-    "facts_sha256": "6d039dd869dc1704b0c98fd1d2db72965b1c38de92c165fe4e12c3f530951e2d",
-    "manifest_sha256": "20ac5d22e7d8f3cdb83dbd7fd617e37e290f5c4c480097057f959aa14033391d"
+    "fact_row_count": 277183,
+    "facts_sha256": "8dc4336d776533d0c878d008311f81f936568d6471ee82f025dc8c996ad8867a",
+    "manifest_sha256": "0ff28c71e7d3c6b61ad776ff223aaad32aa01c8bb832e9834b8969a232ad77d2"
   },
   "selections": [
     {
@@ -72,10 +72,295 @@
         "period_type": "fiscal_year"
       },
       "row_count": 24
+    },
+    {
+      "label": "dfi_ni_translink_bus_full_fare_concession_journeys",
+      "selector": {
+        "source_name": "dfi_ni",
+        "source_concept": "dfi_ni.translink_bus.full_fare_concession_passenger_journeys",
+        "period_type": "fiscal_year"
+      },
+      "row_count": 6
     }
   ],
-  "row_count": 86,
+  "row_count": 92,
   "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_47761c17297570afa5f02bc0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6f5db9e2c98301d79066f6d1",
+      "source_record_id": "dfi_ni.public_transport.figure_6.fy2019.full_fare_concession.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.full_fare_concession_passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2019
+      },
+      "period_coverage": {
+        "start_date": "2019-04-01",
+        "end_date": "2020-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_6.fy2019",
+        "groupby_dimension": "dfi_ni.travel_status",
+        "groupby_value_id": "full_fare_concession",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "bus",
+        "travel_status": "full_fare_concession"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 Figure 6",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 10855000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_417e8b0e99c38d51a56fa733",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6b83d6b89bb6a5d7dd58e9fe",
+      "source_record_id": "dfi_ni.public_transport.figure_6.fy2020.full_fare_concession.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.full_fare_concession_passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2020
+      },
+      "period_coverage": {
+        "start_date": "2020-04-01",
+        "end_date": "2021-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_6.fy2020",
+        "groupby_dimension": "dfi_ni.travel_status",
+        "groupby_value_id": "full_fare_concession",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "bus",
+        "travel_status": "full_fare_concession"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 Figure 6",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 3500000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b957e464f7b52b76cd3d2aad",
+      "semantic_fact_key": "ledger_semantic_fact_v2_953236ab76764c187a659764",
+      "source_record_id": "dfi_ni.public_transport.figure_6.fy2021.full_fare_concession.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.full_fare_concession_passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2021
+      },
+      "period_coverage": {
+        "start_date": "2021-04-01",
+        "end_date": "2022-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_6.fy2021",
+        "groupby_dimension": "dfi_ni.travel_status",
+        "groupby_value_id": "full_fare_concession",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "bus",
+        "travel_status": "full_fare_concession"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 Figure 6",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 6179000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ed9db21da5f78c78cf019fce",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1ea56ff6e7b12cdc6cb046f6",
+      "source_record_id": "dfi_ni.public_transport.figure_6.fy2022.full_fare_concession.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.full_fare_concession_passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2022
+      },
+      "period_coverage": {
+        "start_date": "2022-04-01",
+        "end_date": "2023-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_6.fy2022",
+        "groupby_dimension": "dfi_ni.travel_status",
+        "groupby_value_id": "full_fare_concession",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "bus",
+        "travel_status": "full_fare_concession"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 Figure 6",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 7824000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_214ea2754f799551cac9b76d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4a4392f37ec385faf43359bd",
+      "source_record_id": "dfi_ni.public_transport.figure_6.fy2023.full_fare_concession.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.full_fare_concession_passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-01",
+        "end_date": "2024-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_6.fy2023",
+        "groupby_dimension": "dfi_ni.travel_status",
+        "groupby_value_id": "full_fare_concession",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "bus",
+        "travel_status": "full_fare_concession"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 Figure 6",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 8642000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_58c1c16649823db6022568d4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_18530dd75bc0c9806fb44d86",
+      "source_record_id": "dfi_ni.public_transport.figure_6.fy2024.full_fare_concession.passenger_journeys",
+      "concept": "dfi_ni.translink_bus.full_fare_concession_passenger_journeys",
+      "measure_id": "passenger_journeys",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "translink_bus_passenger"
+      },
+      "geography": {
+        "id": "N92000002",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "fiscal_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-01",
+        "end_date": "2025-03-31",
+        "basis": "fiscal"
+      },
+      "layout": {
+        "record_set_id": "dfi_ni.public_transport.figure_6.fy2024",
+        "groupby_dimension": "dfi_ni.travel_status",
+        "groupby_value_id": "full_fare_concession",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "transport_mode": "bus",
+        "travel_status": "full_fare_concession"
+      },
+      "source": {
+        "source_name": "dfi_ni",
+        "source_table": "Public Transport Statistics Northern Ireland 2024-25 Figure 6",
+        "source_file": "public-transport-statistics-2024-25.xlsx",
+        "source_sha256": "8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca",
+        "vintage": "2024_25",
+        "raw_r2_key": "raw/dfi_ni/dfi-ni-public-transport-statistics-2024-25/2025/8e0a0f14410a25f16a13b26d312cfd4e3dac55129ed0c541165679aaa9fcd6ca/public-transport-statistics-2024-25.xlsx"
+      },
+      "value": 8960000
+    },
     {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_288b81ee8cbcfdfa95bc22cf",
       "semantic_fact_key": "ledger_semantic_fact_v2_df8a2df5fa3eca57cce2b853",
