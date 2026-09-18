@@ -371,7 +371,57 @@ replay's verdict is in)*
 
 ## 10. Tests, as CI runs them
 
-*(the per-file battery is in flight)*
+**The battery's "before" half, at the branch point and against branch-point
+sources.** The brief asked for the current comparison's refusals to be shown
+before the seal's. They already were: the file this lane extends existed at
+`a64f7b733` and is green there.
+
+```
+$ cd <worktree detached at a64f7b733>
+$ PYTHONPATH="$(ls -d $PWD/packages/*/src | tr '\n' ':')" \
+    python -m pytest packages/microcosm-build/tests/test_us_survey_population_replay.py
+59 passed in 0.26s
+```
+
+**The `PYTHONPATH` is not decoration.** Run without it, the workspace's editable
+install resolves `microcosm.*` to *this lane's* sources and the run silently
+measures the head it was meant to compare against — checked by printing
+`module.__file__`, which is how the first attempt was caught. Fifty-nine tests
+at the branch point; 119 at this head, with every mutation driven through both
+paths.
+
+```
+$ uv run ruff check .
+All checks passed!
+
+$ uv lock --check
+Resolved 125 packages in 4ms
+
+$ uv run ruff format --check <every .py this branch touches>
+12 files already formatted
+
+$ uv run python tools/ci_test_groups.py --verify
+verification=ok
+
+$ python3 -I -B -S packages/microcosm-build/tests/test_ci_test_groups.py
+Ran 15 tests in 0.357s
+
+OK
+
+$ uv run python -m pytest packages/microcosm-graph/tests
+783 passed, 1 skipped in 48.89s
+
+$ MICROCOSM_BATTERY_RECEIPT=... uv run python -m pytest \
+    packages/microcosm-build/tests/test_us_survey_population_replay.py
+119 passed in 0.99s
+```
+
+`packages/microcosm-graph/tests` is 783 against the base branch's 778: the five
+are this lane's, and every other test in that package is unchanged and green.
+
+### 10a. The twenty-one dependent files, one pytest process each
+
+*(in flight)*
 
 ## 9. Questions for Max
 
