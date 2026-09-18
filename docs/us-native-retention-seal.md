@@ -400,6 +400,16 @@ round trip of §0, the object-scalar equivalences of
 `test_object_scalar_equivalence_uses_actual_store_types` — which the seal must
 also accept. A mutation the seal misses is a finding, not a test to delete.
 
+**And a seeded sweep beside the hand-built battery, because the battery tests
+the cases its author thought of.** Two of the three divergences §4a records
+lived behind a battery of 116 agreeing comparisons and a claim that every
+defect is still refused. `experiments/native-retention-seal/agreement_fuzz.py`
+walks a deterministic pseudo-random sweep over seven axis kinds, a 21-value
+object pool and nine column mutations, driving every pair through both paths:
+3,852 pairs, nine refusal codes, 466 mutual acceptances, **0 disagreements**.
+It would have found two of the three. Any change that replaces a predicate with
+a fold should carry one.
+
 ## 6. Fail-closed after the change
 
 **Every refusal code that exists today still fires on the same defect.** All
