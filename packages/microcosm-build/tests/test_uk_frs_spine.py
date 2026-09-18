@@ -2063,18 +2063,30 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "etb_household_tab",
         "lcfs_household_tab",
         "lcfs_person_tab",
+        "nts_household_tab",
+        "nts_individual_tab",
+        "nts_trip_tab",
         "published_fact_surface",
         "qrf_donor",
         "was_qrf_donor",
     }
-    for pin in pins.values():
+    # The NTS tabs (#930) are declared with placeholder pins until the licensed
+    # extract lands: a zero size and an all-zero digest the runtime refuses.
+    # Flip this to the positive branch when the tabs are pinned.
+    pending = {"nts_household_tab", "nts_individual_tab", "nts_trip_tab"}
+    for role, pin in pins.items():
         assert len(str(pin["sha256"])) == 64
-        assert int(pin["size_bytes"]) > 0
         assert str(pin["filename"])
+        if role in pending:
+            assert int(pin["size_bytes"]) == 0
+            assert str(pin["sha256"]) == "0" * 64
+        else:
+            assert int(pin["size_bytes"]) > 0
     declared = {
         str(artifact["role"]): str(artifact["sha256"])
         for stage_name in (
             "was_wealth",
+            "nts_bus_travel",
             "lcfs_consumption",
             "etb_vat",
             "etb_services",
@@ -2100,9 +2112,9 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     )
 
     assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
+    assert declared["nts_bus_travel"] == {"local_bus_use_band": 0}
     assert declared["lcfs_consumption"] == {
         "has_fuel_consumption": 0,
-        "uses_local_bus": 0,
         "lcfs_consumption": 0,
     }
     assert declared["uc_capital_coherence"] == {"frs_benunit_capital": 0}

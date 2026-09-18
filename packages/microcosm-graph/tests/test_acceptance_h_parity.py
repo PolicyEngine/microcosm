@@ -43,7 +43,7 @@ PARITY = Path(__file__).parent / "fixtures" / "parity"
 #: was taken under).
 KERNEL_PARITY = PARITY / "kernels"
 
-#: H2: ``uk_spine.json`` — the 30-stage FRS spine expressed as a graph — plus
+#: H2: ``uk_spine.json`` — the 31-stage FRS spine expressed as a graph — plus
 #: ``sources/``, the data-only bundle both the graph and the legacy oracle
 #: rebuild their transforms from. The root transform's weights differ at the
 #: last bit between machines, so both sides recompute the root from the raw
@@ -256,7 +256,7 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     from declared ``consumes``: the assertion below is that the compiled
     topological order is derived, so the hand-maintained ``_STAGE_NAMES`` tuple
     in ``tools/build_uk_frs_spine.py`` — the 30 names intersected with a
-    30-stage packaged manifest, kept in step by hand — can be deleted.
+    31-stage packaged manifest, kept in step by hand — can be deleted.
     """
     _require(UK_SPINE_PARITY, "the UK migration lane (charter H2, María reviews)")
 

@@ -5,8 +5,8 @@
   "resource": "nts_bus_use_frequency.json",
   "purpose": "DfT NTS0313 shares of people by frequency of local bus use (all ages, England) and NTS0621 the same bands for people aged 60 and over, 2023 to 2025, with the unweighted sample sizes. Consumed by the LCFS bus-use incidence calibration.",
   "consumers": [
-    "uk_runtime.lcfs_consumption",
-    "uk_runtime.bus_use_incidence"
+    "uk_runtime.bus_use_incidence",
+    "uk_runtime.nts_bus_travel"
   ],
   "planned_consumers": [],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",

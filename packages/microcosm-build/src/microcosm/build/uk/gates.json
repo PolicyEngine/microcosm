@@ -142,6 +142,52 @@
       "notes": "Stage-time support-clip health gate over the WAS wealth receipt; raw FRS mapping stages have no imputation semantics and intentionally have no empty health gate. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison."
     },
     {
+      "id": "uk_stage_nts_bus_travel_support",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "nts_bus_travel",
+        "check": "support_clip",
+        "columns": [
+          "bus_in_london_trips",
+          "local_bus_trips",
+          "local_bus_use_band",
+          "other_local_bus_trips"
+        ],
+        "max_clipped_low_rows_by_column": {
+          "bus_in_london_trips": 0,
+          "local_bus_trips": 0,
+          "local_bus_use_band": 0,
+          "other_local_bus_trips": 0
+        },
+        "max_clipped_high_rows_by_column": {
+          "bus_in_london_trips": 0,
+          "local_bus_trips": 0,
+          "local_bus_use_band": 0,
+          "other_local_bus_trips": 0
+        }
+      },
+      "notes": "Stage-time support-clip health gate over the NTS bus-travel receipt (microcosm#930): the band is an ordinal the QRF draws inside the donor's 0..6 and the trips are the donor's band means, so no row can clip; the zero allowances make any clip a signal."
+    },
+    {
+      "id": "uk_stage_nts_bus_travel_facts",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "nts_bus_travel",
+        "check": "bus_travel_facts",
+        "trip_rates_period_value": 2024,
+        "maximum_user_share_deviation": 0.05,
+        "maximum_trip_rate_deviation": 0.15
+      },
+      "notes": "Stage-time fact check on the NTS bus-travel receipt (microcosm#930), every published value recomputed from the vendored rows: the frame's design-weighted share of persons who use a local bus at least yearly against the vendored NTS0313 all-ages share (maximum_user_share_deviation, in points), and the frame's mean local-bus trips per person per series against the vendored NTS0303 rate of the declared year (maximum_trip_rate_deviation, relative). The tolerances are rules set above what a conditional draw on the FRS composition can be expected to reproduce, not observed maxima; the stage runs on a synthetic donor in the smoke build, so the entry is a population fact check that a synthetic smoke records without blocking on. Car availability against NTS0205 is a receipt line, not a check: a mismatch there is a was_wealth finding."
+    },
+    {
       "id": "uk_stage_uc_deduction_attributes",
       "gate": "stage_health",
       "phase": "transferred",
@@ -222,7 +268,7 @@
           "transport_consumption": 0
         }
       },
-      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus fares are clipped before the fare rake (microcosm#890, María's ruling 2026-09-15): the clip bounds the regions no fare cell levels at donor support, the rake then moves the raked regions beyond it, and the column carries no committed terminal support bound."
+      "notes": "Stage-time support-clip health gate over the LCFS receipt. The exempt energy columns are deliberately named here because they are bridged through the NEED/WAS path rather than clipped to LCFS donor support. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus fares are clipped before the pricing step (microcosm#890 and #930, María's rulings 2026-09-15 and 2026-09-17): the clip bounds the region no area prices (Wales keeps the chain's raw draw) at donor support, the priced regions then move beyond it as journeys times the published yield, and the column carries no committed terminal support bound."
     },
     {
       "id": "uk_stage_lcfs_consumption_energy_rake",
@@ -245,6 +291,20 @@
         "maximum_connected_share_deviation": 0.005
       },
       "notes": "Stage-time energy check (microcosm#890 F, chronicle#270). María's ruling (2026-09-15, PR #927): 'I'm not sure why we are comparing against NEED as a gate in the first place if that is not what we are calibrating, but I agree we should implement Vahid's recommended fix and move the fix to before calibration.' Fact checks on the lcfs energy_rake receipt, every published value recomputed at gate time from the vendored rows the stage declares: each cell's shape target is the vendored NEED 2024 mean (need_energy_facts.json, margins_period_value), each fuel's level is the vendored DESNZ Energy Trends domestic consumption at actual temperature over the four FY2024-25 quarters (desnz_domestic_energy_facts.json) with the level factor equal to that total over the frame's pre-level total and the levelled frame total equal to the published one, each cell's target is shape times factor, and every region with a published gas-connected share (DESNZ subnational gas meters over electricity meters, 2024) sits within 0.5 points of it after the imposition unless the draw could not fill it (a receipted shortfall). The residual check holds the maximum absolute relative deviation of any cell mean from its levelled target, per margin (income band, tenure, property type, region) and fuel, electricity over every household of a cell and gas over its gas-connected households, to one fixed 2.5 % tolerance on the IPF's cross-margin residual (region is swept last and fits to machine precision by construction, so the tolerance binds the earlier three; a declared rule set above the observed maxima, not a fact: spine-s3 on NEED 2023 showed income 1.65 %, tenure 1.29 %, accommodation 0.83 %; spine-s5 on the NEED 2024 shape with the published connection showed income 2.16 % electricity / 1.97 % gas, accommodation 1.46 %, tenure 1.31 %, which is why the 2 % rule of spine-s3 moved to 2.5 %). This gate replaced the two NEED mean-spend anchors that uk_aggregate_admin measured on the calibrated frame; the calibrated frame is held to the bound ONS 04.5.1 electricity and 04.5.2 gas rows, and the gap between the DESNZ-volume-times-QEP-price level the stage sets and the ONS national-accounts spend is the published-source residual PR #927 receipts Part T records, not a gate. The entry is a population_fact_check: a synthetic smoke build (the staging smoke over the H2 fixture) records its outcome without blocking, because the fixture is not the population NEED, DESNZ and the meter counts describe; every licensed build blocks on it. Tolerance governance (Vahid's third pass on PR #927): maximum_relative_deviation is a rule set above the observed maxima, not a fact; the rake runs a fixed number of sweeps and the receipt now records the cross-margin residual after every sweep (sweep_residuals), so the terminal residual is shown converged, not truncated, and a vintage whose converged residual exceeds the rule is a new ruling for María, never a silent re-pin. maximum_connected_share_deviation is declared, not derived from the walk: the greedy weight-fitting walk lands within a fraction of one household weight of the published share, and the check is waived only for a region whose draw cannot fill its published share (the shortfall is receipted and reported here), never for a region above it. The regions the crosswalk maps to no subnational area are declared on the stage (connection_fallback_regions, Northern Ireland) and refused if they differ from the crosswalk."
+    },
+    {
+      "id": "uk_stage_lcfs_consumption_bus_pricing",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "lcfs_consumption",
+        "check": "bus_pricing",
+        "maximum_relative_deviation": 1e-09
+      },
+      "notes": "Stage-time fact check on the lcfs bus_pricing receipt (microcosm#930): every area's receipts, boardings, concessionary journeys, trips per resident and population, and the boardings-per-trip and yield factors derived from them, are recomputed from the vendored rows the stage declares and must equal the receipt's; the unpriced regions must be the declared ones (Wales, which keeps the chain's raw draw by María's ruling of 2026-09-17) and the chain must have conditioned on the raw draw. The frame-implied boardings over the published ones are reported per area, not fenced: that ratio is the survey-versus-admin reading the bound receipts targets then act on. A population fact check: the synthetic smoke records it without blocking."
     },
     {
       "id": "uk_stage_etb_vat_support",
@@ -294,6 +354,27 @@
         }
       },
       "notes": "Stage-time support-clip health gate over the ETB services receipt. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus support is exempt since microcosm#890: the declared rake to the published net support sets its level."
+    },
+    {
+      "id": "uk_stage_etb_services_support_rake",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "population_fact_check": true,
+      "parameters": {
+        "stage": "etb_services",
+        "check": "fact_rake",
+        "receipt_key": "bus_support_rake",
+        "maximum_relative_deviation": 1e-06,
+        "allowed_resources": [
+          "orr_rail_facts.json",
+          "dft_bus_value_anchors.json",
+          "devolved_bus_finance.json",
+          "dft_bus_journeys.json"
+        ]
+      },
+      "notes": "Stage-time fact check on the ETB bus-support rake receipt (microcosm#930 C7; the #890 rake had no fence): every cell's published net support (DfT BUS05bi for London and England outside London, Scottish Transport Statistics, StatsWales, and the NITHC bus-plus-rail joint cell) is recomputed from the vendored rows through the stage's own declaration and must equal the receipt's, and each cell's design-weighted total after the rake must equal its published value (a joint cell over the sum of its columns); a skipped cell fails closed. A population fact check: the synthetic smoke records it without blocking. The stage also records, unfenced, what pricing support from the frame's journeys would give (support_per_journey), for María's ruling on retiring this rake."
     },
     {
       "id": "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -624,6 +705,7 @@
           "household.household_is_capital_gains_clone",
           "household.household_is_cgt_band_donor",
           "household.household_is_spi_synthetic",
+          "household.household_local_bus_trips",
           "household.la_code_oa",
           "household.lsoa_code",
           "household.mortgage_debt",
@@ -643,6 +725,8 @@
           "person.attends_private_school_random_draw",
           "person.capital_gains_asset_type",
           "person.capital_gains_residential_property",
+          "person.bus_in_london_trips",
+          "person.bus_pass_eligible",
           "person.care_hours",
           "person.charitable_investment_gifts",
           "person.dla_m_category",
@@ -657,8 +741,11 @@
           "person.is_parent",
           "person.is_uc_claimant",
           "person.legacy_jobseeker_proxy",
+          "person.local_bus_trips",
+          "person.local_bus_use_band",
           "person.ons_family_index",
           "person.ons_family_role",
+          "person.other_local_bus_trips",
           "person.outpatient_visits",
           "person.pension_contributions_via_salary_sacrifice",
           "person.pip_dl_category",

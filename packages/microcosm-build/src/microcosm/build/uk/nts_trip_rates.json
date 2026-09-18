@@ -4,10 +4,10 @@
   "kind": "uk_vendored_ledger_facts",
   "resource": "nts_trip_rates.json",
   "purpose": "DfT NTS0303 average trips per person per year by main mode (all modes, bus in London, other local bus; England, all ages) and NTS0601 the same rates by age band, survey years 2023 to 2025. Consumed by the NTS bus-travel stage's fact checks on the imputed trip rates by age and the level of local-bus trips per resident (microcosm#930).",
-  "consumers": [],
-  "planned_consumers": [
+  "consumers": [
     "uk_runtime.nts_bus_travel"
   ],
+  "planned_consumers": [],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
   "generator": {
     "tool": "tools/vendor_uk_ledger_facts.py",

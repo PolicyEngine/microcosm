@@ -613,6 +613,7 @@ class TestUKManifest:
                 "student_loans",
                 "was_wealth",
                 "regional_property_uprating",
+                "nts_bus_travel",
                 "lcfs_consumption",
                 "etb_vat",
                 "etb_services",

@@ -107,6 +107,7 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_education": ("frs",),
     "frs_legacy_proxies": ("frs",),
     "was_wealth": ("was",),
+    "nts_bus_travel": ("nts_household", "nts_individual", "nts_trip"),
     "lcfs_consumption": ("lcfs_household", "lcfs_person"),
     "etb_vat": ("etb",),
     "etb_services": ("etb",),
@@ -117,6 +118,9 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
 _SPLIT_SOURCE_DESCRIPTIONS = {
     "frs": "Pinned local FRS table directory.",
     "was": "Pinned local WAS household donor table.",
+    "nts_household": "Pinned local NTS household donor table.",
+    "nts_individual": "Pinned local NTS individual donor table.",
+    "nts_trip": "Pinned local NTS trip donor table.",
     "lcfs_household": "Pinned local LCFS household donor table.",
     "lcfs_person": "Pinned local LCFS person donor table.",
     "etb": "Pinned local ETB household donor table.",
@@ -190,6 +194,9 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             ("household", "property_wealth"),
         }
     ),
+    # The NTS band model materializes an engine predictor (household gross
+    # income) over the whole frame, an open surface like the LCFS QRF.
+    "nts_bus_travel": None,
     "lcfs_consumption": None,
     "etb_vat": None,
     "etb_services": None,
@@ -494,6 +501,15 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         *_cells("household", ("cash_isa", "stocks_and_shares_isa")),
         *_cells("household", ("mortgage_debt", "consumer_debt")),
         _Cell("person", "student_loan_balance", "float64"),
+    ),
+    "nts_bus_travel": (
+        _Cell("person", "local_bus_use_band", "int64"),
+        *_cells(
+            "person",
+            ("bus_in_london_trips", "other_local_bus_trips", "local_bus_trips"),
+        ),
+        _Cell("person", "bus_pass_eligible", "bool"),
+        _Cell("household", "household_local_bus_trips", "float64"),
     ),
     "regional_property_uprating": _cells(
         "household", ("main_residence_value", "property_wealth")

@@ -12,6 +12,10 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
+from microcosm.build.uk_runtime.bus_support_per_journey import (
+    RECORD_SUPPORT_PER_JOURNEY_KIND,
+    support_per_journey_diagnostic,
+)
 from microcosm.build.uk_runtime.donor_uprating import (
     apply_donor_uprating,
     donor_uprating_factors,
@@ -101,6 +105,7 @@ UK_ETB_SERVICES_VENDORED_RESOURCES = (
     "orr_rail_facts.json",
     "dft_bus_value_anchors.json",
     "devolved_bus_finance.json",
+    "dft_bus_journeys.json",
 )
 
 
@@ -113,6 +118,7 @@ class UKETBServicesResult:
     nhs_cells: dict[str, object] = field(default_factory=dict)
     donor_uprating: dict[str, object] | None = None
     bus_support_rake: dict[str, object] | None = None
+    support_per_journey: dict[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -124,6 +130,8 @@ class UKETBServicesResult:
             evidence["donor_uprating"] = dict(self.donor_uprating)
         if self.bus_support_rake is not None:
             evidence["bus_support_rake"] = dict(self.bus_support_rake)
+        if self.support_per_journey is not None:
+            evidence["support_per_journey"] = dict(self.support_per_journey)
         return evidence
 
 
@@ -179,6 +187,13 @@ class UKETBServicesStageTransform:
             household=household,
             weights=frame.weights_for("household").values,
         )
+        support_receipt = etb_support_per_journey(
+            self.stage,
+            draws,
+            frame=frame,
+            household=household,
+            weights=frame.weights_for("household").values,
+        )
         draws["rail_usage"] = draws["rail_subsidy_spending"] / config["rail_fare_index"]
         for column in UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS:
             household[column] = draws[column].to_numpy()
@@ -210,6 +225,7 @@ class UKETBServicesStageTransform:
             nhs_cells=nhs_cells,
             donor_uprating=uprating_receipt,
             bus_support_rake=rake_receipt,
+            support_per_journey=support_receipt,
         )
         return result
 
@@ -490,6 +506,41 @@ def etb_bus_support_rake(
         )
         receipts.append(receipt)
     return raked, receipts[0] if len(receipts) == 1 else {"operations": receipts}
+
+
+def etb_support_per_journey(
+    stage: SourceStageSpec,
+    draws: pd.DataFrame,
+    *,
+    frame: Frame,
+    household: pd.DataFrame,
+    weights: np.ndarray,
+) -> dict[str, object] | None:
+    """Record what pricing support from journeys would give (microcosm#930)."""
+
+    parameters = next(
+        (
+            dict(operation.parameters)
+            for operation in stage.operations
+            if operation.kind == RECORD_SUPPORT_PER_JOURNEY_KIND
+        ),
+        None,
+    )
+    if parameters is None:
+        return None
+    column = str(parameters["support_column"])
+    if column not in draws:
+        raise KeyError(
+            f"record_support_per_journey names {column!r}, not a drawn column."
+        )
+    return support_per_journey_diagnostic(
+        parameters,
+        person=frame.table("person"),
+        household=household,
+        household_weights=np.asarray(weights, dtype=float),
+        raked_support=draws[column].to_numpy(dtype=float),
+        allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES,
+    )
 
 
 #: The declared rake levels bus support; the support clip and the committed

@@ -18,7 +18,6 @@ from microcosm.build.uk_runtime.fact_raking import (
     rake_to_facts,
     resolve_cells,
 )
-from microcosm.build.uk_runtime.lcfs_consumption import UK_LCFS_VENDORED_RESOURCES
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 
 OUTSIDE_LONDON = (
@@ -41,63 +40,6 @@ def _fact(resource: str, **criteria) -> float:
     rows = vendored_rows(resource, **criteria)
     assert rows, criteria
     return float(sum(row["value"] for row in rows))
-
-
-def test_lcfs_fare_cells_resolve_to_the_fy2024_25_published_receipts() -> None:
-    (operation,) = rake_operations(_stage("lcfs_consumption"))
-    assert operation["columns"] == ["bus_fare_spending"]
-    assert operation["scope"] == "users_only"
-    assert operation["quintile_income"] == "hbai_household_net_income"
-
-    cells = {
-        cell.label: cell
-        for cell in resolve_cells(
-            operation, allowed_resources=UK_LCFS_VENDORED_RESOURCES
-        )
-    }
-    assert set(cells) == {
-        "london",
-        "england_outside_london",
-        "scotland",
-        "northern_ireland",
-    }
-    assert cells["london"].regions == ("LONDON",)
-    assert cells["england_outside_london"].regions == OUTSIDE_LONDON
-    assert cells["london"].value == _fact(
-        "dft_bus_value_anchors.json",
-        concept="dft.local_bus_passenger_fare_receipts",
-        fiscal_start="2024-04-01",
-        geography_id="E12000007",
-    )
-    assert cells["england_outside_london"].value == _fact(
-        "dft_bus_value_anchors.json",
-        concept="dft.local_bus_passenger_fare_receipts",
-        fiscal_start="2024-04-01",
-        geography_id="dft:england_outside_london",
-    )
-    assert cells["scotland"].value == 391_000_000.0
-    assert cells["northern_ireland"].value == pytest.approx(
-        49_584_434.28 + 100_498_383.21
-    )
-    assert cells["london"].allocation == "income_quintile_trips"
-    assert set(cells["london"].quintile_trips) == {
-        "lowest",
-        "second",
-        "third",
-        "fourth",
-        "highest",
-    }
-    assert (
-        cells["london"].quintile_trips["lowest"]
-        > cells["london"].quintile_trips["third"]
-    )
-    assert cells["scotland"].allocation == "uniform"
-    assert cells["scotland"].quintile_trips is None
-    receipt = cells["northern_ireland"].receipt
-    assert receipt["selector"]["sum_over"] == {"service": ["ulsterbus", "metro_glider"]}
-    assert len(receipt["source_record_ids"]) == 2
-    # Wales publishes no fare receipts: no cell names it.
-    assert not any("WALES" in cell.regions for cell in cells.values())
 
 
 def test_etb_support_cells_cover_every_nation_with_the_ni_joint_cell() -> None:
@@ -139,7 +81,7 @@ def test_etb_support_cells_cover_every_nation_with_the_ni_joint_cell() -> None:
 
 
 def test_resolve_cells_refuses_resources_the_stage_does_not_declare() -> None:
-    (operation,) = rake_operations(_stage("lcfs_consumption"))
+    (operation,) = rake_operations(_stage("etb_services"))
     with pytest.raises(ValueError, match="does not declare"):
         resolve_cells(operation, allowed_resources=("road_fuel_anchors.json",))
     import copy
@@ -147,11 +89,13 @@ def test_resolve_cells_refuses_resources_the_stage_does_not_declare() -> None:
     duplicated = copy.deepcopy(operation)
     duplicated["cells"][1]["regions"].append("LONDON")
     with pytest.raises(ValueError, match="repeats regions"):
-        resolve_cells(duplicated, allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+        resolve_cells(duplicated, allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES)
     wrong_period = copy.deepcopy(operation)
     wrong_period["cells"][0]["selector"]["fiscal_start"] = "1999-04-01"
     with pytest.raises(ValueError, match="expected exactly one row"):
-        resolve_cells(wrong_period, allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+        resolve_cells(
+            wrong_period, allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES
+        )
 
 
 def test_person_income_quintiles_rank_people_not_households() -> None:

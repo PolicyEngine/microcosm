@@ -4,10 +4,10 @@
   "kind": "uk_vendored_ledger_facts",
   "resource": "nts_car_availability.json",
   "purpose": "DfT NTS0205 shares of households with no car or van, one, and two or more (England, survey years 2023 and 2024). Consumed by the NTS bus-travel stage's receipt of the frame's num_vehicles distribution against the published shares (microcosm#890 item A, carried by microcosm#930).",
-  "consumers": [],
-  "planned_consumers": [
+  "consumers": [
     "uk_runtime.nts_bus_travel"
   ],
+  "planned_consumers": [],
   "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
   "generator": {
     "tool": "tools/vendor_uk_ledger_facts.py",

@@ -235,8 +235,8 @@
       "resource": "nts_bus_use_frequency.json",
       "purpose": "DfT NTS0313 shares of people by frequency of local bus use (all ages, England) and NTS0621 the same bands for people aged 60 and over, 2023 to 2025, with the unweighted sample sizes. Consumed by the LCFS bus-use incidence calibration.",
       "consumers": [
-        "uk_runtime.lcfs_consumption",
-        "uk_runtime.bus_use_incidence"
+        "uk_runtime.bus_use_incidence",
+        "uk_runtime.nts_bus_travel"
       ],
       "planned_consumers": [],
       "selections": [
@@ -584,12 +584,13 @@
     {
       "resource": "dft_bus_journeys.json",
       "purpose": "DfT BUS01 local bus passenger journeys by area (England, London, England outside London, the metropolitan split and the nine English regions; year-ending-March labels 2023 to 2025), the BUS01c elderly and disabled and total concessionary journeys by the same areas, the BUS05i operating revenue and support components beyond fare receipts and net support (concessionary travel reimbursement, Bus Service Operators Grant, gross and net public transport support, total operating revenue, additional funding to operators, fare cap) for England, London and England outside London, and the ONS mid-year population of the four UK countries and the nine English regions (England is the regions' sum). Consumed by the bus fare pricing (receipts over fare-paying boardings, boardings per resident trip) and the support-per-journey diagnostic (microcosm#930).",
-      "consumers": [],
-      "planned_consumers": [
+      "consumers": [
         "uk_runtime.lcfs_consumption",
+        "uk_runtime.bus_fare_pricing",
         "uk_runtime.etb_services",
-        "uk_runtime.bus_fare_pricing"
+        "uk_runtime.bus_support_per_journey"
       ],
+      "planned_consumers": [],
       "selections": [
         {
           "label": "bus01a_passenger_journeys_by_area",
@@ -710,10 +711,10 @@
     {
       "resource": "nts_trip_rates.json",
       "purpose": "DfT NTS0303 average trips per person per year by main mode (all modes, bus in London, other local bus; England, all ages) and NTS0601 the same rates by age band, survey years 2023 to 2025. Consumed by the NTS bus-travel stage's fact checks on the imputed trip rates by age and the level of local-bus trips per resident (microcosm#930).",
-      "consumers": [],
-      "planned_consumers": [
+      "consumers": [
         "uk_runtime.nts_bus_travel"
       ],
+      "planned_consumers": [],
       "selections": [
         {
           "label": "nts0303_trips_per_person_by_mode",
@@ -758,10 +759,10 @@
     {
       "resource": "nts_car_availability.json",
       "purpose": "DfT NTS0205 shares of households with no car or van, one, and two or more (England, survey years 2023 and 2024). Consumed by the NTS bus-travel stage's receipt of the frame's num_vehicles distribution against the published shares (microcosm#890 item A, carried by microcosm#930).",
-      "consumers": [],
-      "planned_consumers": [
+      "consumers": [
         "uk_runtime.nts_bus_travel"
       ],
+      "planned_consumers": [],
       "selections": [
         {
           "label": "nts0205_household_car_availability_england",

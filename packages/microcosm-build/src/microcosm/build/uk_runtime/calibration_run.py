@@ -114,11 +114,15 @@ UK_LOCAL_GATE_SCOPE = (
 
 UK_SPINE_GATE_SCOPE = (
     "uk_stage_was_wealth_support",
+    "uk_stage_nts_bus_travel_support",
+    "uk_stage_nts_bus_travel_facts",
     "uk_stage_uc_deduction_attributes",
     "uk_stage_lcfs_consumption_support",
     "uk_stage_lcfs_consumption_energy_rake",
+    "uk_stage_lcfs_consumption_bus_pricing",
     "uk_stage_etb_vat_support",
     "uk_stage_etb_services_support",
+    "uk_stage_etb_services_support_rake",
     "uk_stage_frs_hmrc_spine_leaves_signal",
     "uk_stage_spi_support_channel_mass",
     "uk_stage_hmrc_spi_income_spine_identity",
