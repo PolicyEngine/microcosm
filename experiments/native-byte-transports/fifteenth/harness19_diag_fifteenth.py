@@ -125,7 +125,8 @@ RUN = pathlib.Path(os.environ["MEASURE_RUN"]).absolute()
 PROBE = pathlib.Path(os.environ["MEASURE_PROBE"]).absolute()
 LABEL = os.environ["MEASURE_LABEL"]
 HEAD = os.environ["MEASURE_HEAD"]
-VENV = pathlib.Path(os.environ["MEASURE_VENV"])  # byte-transport lane: this tree's lock moved
+# Byte-transport lane: this tree's lock moved, so the venv is an argument.
+VENV = pathlib.Path(os.environ["MEASURE_VENV"])
 SITE = VENV / "lib/python3.14/site-packages"
 SUPPORT_SHA256 = "5edc0e77471ba31d550a1eed416d5b46ada0a35425718eb87cfabe4d66fe4960"
 SOURCE_IDS = (

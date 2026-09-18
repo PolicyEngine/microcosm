@@ -1,0 +1,12 @@
+........................                                                 [100%]
+=============================== warnings summary ===============================
+packages/microcosm-build/tests/test_us_graph_atomic_survey_population.py: 12 warnings
+  /Users/maxghenis/PolicyEngine/_worktrees/microcosm-native-byte-transports/packages/microcosm-build/tests/test_us_graph_atomic_survey_population.py:105: Pandas4Warning: The 'verify_integrity' keyword in DataFrame.set_index is deprecated and will be removed in a future version. Directly check the result.index.is_unique instead.
+    original = before.frame.table(entity).set_index(
+
+packages/microcosm-build/tests/test_us_graph_atomic_survey_population.py: 24 warnings
+  /Users/maxghenis/PolicyEngine/_worktrees/microcosm-native-byte-transports/packages/microcosm-build/tests/test_us_graph_atomic_survey_population.py:119: Pandas4Warning: The 'verify_integrity' keyword in DataFrame.set_index is deprecated and will be removed in a future version. Directly check the result.index.is_unique instead.
+    arm = expanded.loc[expanded[clone_index].eq(role)].set_index(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+24 passed, 36 warnings in 541.01s (0:09:01)

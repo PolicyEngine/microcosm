@@ -46,7 +46,16 @@ FILES = sorted(
 def run(relative):
     started = time.monotonic()
     completed = subprocess.run(
-        [str(PYTHON), "-m", "pytest", relative, "-p", "no:randomly", "-p", "no:cacheprovider"],
+        [
+            str(PYTHON),
+            "-m",
+            "pytest",
+            relative,
+            "-p",
+            "no:randomly",
+            "-p",
+            "no:cacheprovider",
+        ],
         cwd=ROOT,
         capture_output=True,
         text=True,

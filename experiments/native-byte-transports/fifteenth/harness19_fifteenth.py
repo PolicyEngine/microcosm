@@ -116,7 +116,8 @@ RUN = pathlib.Path(os.environ["MEASURE_RUN"]).absolute()
 PROBE = pathlib.Path(os.environ["MEASURE_PROBE"]).absolute()
 LABEL = os.environ["MEASURE_LABEL"]
 HEAD = os.environ["MEASURE_HEAD"]
-VENV = pathlib.Path(os.environ["MEASURE_VENV"])  # byte-transport lane: this tree's lock moved
+# Byte-transport lane: this tree's lock moved, so the venv is an argument.
+VENV = pathlib.Path(os.environ["MEASURE_VENV"])
 SITE = VENV / "lib/python3.14/site-packages"
 SUPPORT_SHA256 = "5edc0e77471ba31d550a1eed416d5b46ada0a35425718eb87cfabe4d66fe4960"
 SOURCE_IDS = (
@@ -511,9 +512,9 @@ def flush(status=None):
         "source_snapshot_label_head": HEAD,
         "source_tree": str(BASE),
         "staged_run_inputs": str(RUN),
-        "sample": {"fraction": [1, 10], "seed": 20260908},
+        "sample": {"fraction": [1, 15], "seed": 20260908},
         "scope": (
-            "nineteen-node base financial graph at 1/10 -- 158,737 source "
+            "nineteen-node base financial graph at 1/15 -- 105,825 source "
             "households, above the 96,860 the single bounded encode admitted. "
             "Descriptive measurement, not a build, not a certification, not "
             "release eligible."

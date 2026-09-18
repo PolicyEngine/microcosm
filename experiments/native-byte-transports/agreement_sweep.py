@@ -65,7 +65,16 @@ def _scalar(rng, floats):
         return rng.randint(-(2**62), 2**62)
     if kind < 0.45 and floats:
         return rng.choice(
-            [0.0, -0.0, 1.5, 137.0 / 7, 5e-324, 1e300, rng.random() * 1e6, -rng.random()]
+            [
+                0.0,
+                -0.0,
+                1.5,
+                137.0 / 7,
+                5e-324,
+                1e300,
+                rng.random() * 1e6,
+                -rng.random(),
+            ]
         )
     if kind < 0.75:
         return "".join(rng.choice(ALPHABET) for _ in range(rng.randint(0, 24)))
@@ -79,7 +88,10 @@ def _document(rng, depth=0, floats=True):
         return _scalar(rng, floats)
     if rng.random() < 0.5:
         return [_document(rng, depth + 1, floats) for _ in range(rng.randint(0, 12))]
-    keys = ["".join(rng.choice(ALPHABET[:12]) for _ in range(rng.randint(1, 8))) for _ in range(rng.randint(0, 8))]
+    keys = [
+        "".join(rng.choice(ALPHABET[:12]) for _ in range(rng.randint(1, 8)))
+        for _ in range(rng.randint(0, 8))
+    ]
     return {k: _document(rng, depth + 1, floats) for k in keys}
 
 
@@ -112,10 +124,18 @@ def sweep_graph(rng, receipt):
     for _ in range(3):
         segment = rng.randint(longest, max(longest, len(whole)) + 8)
         receipt["comparisons"] += 1
-        if graph._segmented_json(document, segment=segment, maximum=len(whole)) != whole:
-            receipt["disagreements"].append(("graph._segmented_json", segment, whole[:80]))
+        if (
+            graph._segmented_json(document, segment=segment, maximum=len(whole))
+            != whole
+        ):
+            receipt["disagreements"].append(
+                ("graph._segmented_json", segment, whole[:80])
+            )
     receipt["comparisons"] += 1
-    if graph._json_sha256(document, maximum=len(whole)) != hashlib.sha256(whole).hexdigest():
+    if (
+        graph._json_sha256(document, maximum=len(whole))
+        != hashlib.sha256(whole).hexdigest()
+    ):
         receipt["disagreements"].append(("graph._json_sha256", whole[:80]))
     receipt["comparisons"] += 1
     if graph._json_matches(document, whole, maximum=len(whole)) is not True:
@@ -128,7 +148,9 @@ def sweep_graph(rng, receipt):
         receipt["refusals"] += 1
         try:
             graph._segmented_json(document, segment=longest - 1, maximum=len(whole))
-            receipt["disagreements"].append(("graph accumulation refusal missing", whole[:80]))
+            receipt["disagreements"].append(
+                ("graph accumulation refusal missing", whole[:80])
+            )
         except graph.SurveyPopulationGraphError as error:
             if str(error) != "TRANSPORT_LIMIT":
                 receipt["disagreements"].append(("graph accumulation code", str(error)))
@@ -158,7 +180,9 @@ def sweep_coverage(rng, receipt):
         receipt["refusals"] += 1
         try:
             auth._json_roster(document, segment=longest - 1, maximum=len(whole))
-            receipt["disagreements"].append(("auth accumulation refusal missing", whole[:80]))
+            receipt["disagreements"].append(
+                ("auth accumulation refusal missing", whole[:80])
+            )
         except auth.ACSCoverageAuthenticationError as error:
             if str(error) != "CANONICAL_SIZE":
                 receipt["disagreements"].append(("auth accumulation code", str(error)))
@@ -189,7 +213,9 @@ def sweep_child(rng, receipt, monkey):
         receipt["refusals"] += 1
         try:
             child._json(document)
-            receipt["disagreements"].append(("child accumulation refusal missing", whole[:80]))
+            receipt["disagreements"].append(
+                ("child accumulation refusal missing", whole[:80])
+            )
         except ValueError as error:
             if "GRAPH_ARTIFACT_SIZE" not in str(error):
                 receipt["disagreements"].append(("child accumulation code", str(error)))

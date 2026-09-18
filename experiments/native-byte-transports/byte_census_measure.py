@@ -29,7 +29,6 @@ from __future__ import annotations
 import csv
 import io
 import json
-import math
 import pathlib
 import sys
 import time
@@ -48,7 +47,9 @@ from microcosm.build.us_runtime import current_survey_household_roles as roles
 from microcosm.build.us_runtime import current_survey_predictors as predictors
 from microcosm.build.us_runtime import graph_child_property_income as child_graph
 from microcosm.build.us_runtime import graph_combined_clone as clone
-from microcosm.build.us_runtime import graph_current_survey_household_roles as roles_graph
+from microcosm.build.us_runtime import (
+    graph_current_survey_household_roles as roles_graph,
+)
 from microcosm.build.us_runtime import graph_survey_age_artifact as ages
 from microcosm.build.us_runtime import graph_survey_calibration as numeric
 from microcosm.build.us_runtime import graph_survey_population as graph
@@ -137,13 +138,24 @@ def acs_persons(archive, contract):
                 for state in states:
                     out["states"][state] = out["states"].get(state, 0) + 1
                 row = auth._json(
-                    [serial, int(sporder), agep, mil, esr, *states, info.filename, ordinal],
+                    [
+                        serial,
+                        int(sporder),
+                        agep,
+                        mil,
+                        esr,
+                        *states,
+                        info.filename,
+                        ordinal,
+                    ],
                     auth.MAX_RECORD_BYTES - 1,
                 )
                 out["body_bytes"] += len(row) + 1
                 out["body_row_max"] = max(out["body_row_max"], len(row) + 1)
                 cells_json = len(
-                    auth._json([*cells, info.filename, ordinal], auth.MAX_RECORD_BYTES - 1)
+                    auth._json(
+                        [*cells, info.filename, ordinal], auth.MAX_RECORD_BYTES - 1
+                    )
                 )
                 out["cells_json_bytes"] += cells_json
                 out["cells_json_max"] = max(out["cells_json_max"], cells_json)
@@ -233,8 +245,10 @@ def origin_budget():
         "tenth_bytes": per_group * (STACKED_HOUSEHOLDS // 10),
         "households_the_64MiB_cap_admits": budget_owner.MAX_PAYLOAD_BYTES // per_group,
         # The two header lists alone, each one entry per clone household row.
-        "household_ids_list_bytes": (len(str(CLONE_HOUSEHOLDS)) + 1) * CLONE_HOUSEHOLDS + 1,
-        "group_indices_list_bytes": (len(str(STACKED_HOUSEHOLDS)) + 1) * CLONE_HOUSEHOLDS
+        "household_ids_list_bytes": (len(str(CLONE_HOUSEHOLDS)) + 1) * CLONE_HOUSEHOLDS
+        + 1,
+        "group_indices_list_bytes": (len(str(STACKED_HOUSEHOLDS)) + 1)
+        * CLONE_HOUSEHOLDS
         + 1,
     }
 
@@ -313,11 +327,16 @@ def roles_projection():
             roles.UNIVERSE_COLUMN: ["housing_unit"] * 3,
         }
         frame = pd.concat([pd.DataFrame(pattern)] * ((rows + 2) // 3)).head(rows)
-        frame.index = pd.Index(range(STACKED_PERSONS - rows, STACKED_PERSONS), name="person_id")
+        frame.index = pd.Index(
+            range(STACKED_PERSONS - rows, STACKED_PERSONS), name="person_id"
+        )
         return frame
 
     small, large = 3, 1_203
-    a, b = len(roles._projection_bytes(table(small))), len(roles._projection_bytes(table(large)))
+    a, b = (
+        len(roles._projection_bytes(table(small))),
+        len(roles._projection_bytes(table(large))),
+    )
     per_row = (b - a) / (large - small)
     return {
         "encoder": 'table.reset_index().to_json(orient="table", index=False).encode()',
@@ -368,7 +387,7 @@ def diagnostic_matrix(preparation):
     row = 8 * (1 + len(detail.FEATURES))
     clone_one = int(round(ratio * STACKED_HOUSEHOLDS))
     return {
-        "encoder": "puf_detail_transfer.recipient_matrix -> encode_recipient_matrix, FEATURES=%d" % len(detail.FEATURES),
+        "encoder": f"puf_detail_transfer.recipient_matrix -> encode_recipient_matrix, FEATURES={len(detail.FEATURES)}",
         "bytes_per_tax_unit": row,
         "tax_units_per_household_at_1_1000": round(ratio, 6),
         "clone_one_tax_units_full_source_SCALED_FROM_1_1000": clone_one,
@@ -426,7 +445,14 @@ def child_draw():
 
 def selection_block(preparation):
     selected = preparation["selection"]["selected"]
-    enc = lambda v: len(json.dumps(v, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode())  # noqa: E731
+
+    def enc(v):
+        return len(
+            json.dumps(
+                v, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ).encode()
+        )
+
     per_row = enc(selected) / len(selected)
     return {
         "encoder": "survey_origin_budget._json(view.receipt['selection']) for selection_sha256 (graph._bounded_json, 64 MiB)",
@@ -474,28 +500,42 @@ def main() -> int:
     print("encoder measurements written; streaming the ACS archive ...", flush=True)
     record["acs_household_archive"] = acs_households(snapshot / "csv_hus.zip")
     out.write_text(json.dumps(record, indent=1) + "\n")
-    print("household archive done", record["acs_household_archive"]["seconds"], "s", flush=True)
+    print(
+        "household archive done",
+        record["acs_household_archive"]["seconds"],
+        "s",
+        flush=True,
+    )
     record["acs_person_archive"] = acs_persons(snapshot / "csv_pus.zip", contract)
     people = record["acs_person_archive"]
     people["derived"] = {
-        "old_charge_admits_rows_at_64MiB": int(auth.MAX_BODY_BYTES / (people["old_charge_bytes"] / people["records"])),
-        "old_charge_full_source_over_64MiB": people["old_charge_bytes"] / auth.MAX_BODY_BYTES,
+        "old_charge_admits_rows_at_64MiB": int(
+            auth.MAX_BODY_BYTES / (people["old_charge_bytes"] / people["records"])
+        ),
+        "old_charge_full_source_over_64MiB": people["old_charge_bytes"]
+        / auth.MAX_BODY_BYTES,
         "body_full_source_over_64MiB": people["body_bytes"] / auth.MAX_BODY_BYTES,
-        "body_admits_rows_at_64MiB": int(auth.MAX_BODY_BYTES / (people["body_bytes"] / people["records"])),
-        "key_list_full_source_over_64MiB": people["key_list_bytes"] / auth.MAX_BODY_BYTES,
+        "body_admits_rows_at_64MiB": int(
+            auth.MAX_BODY_BYTES / (people["body_bytes"] / people["records"])
+        ),
+        "key_list_full_source_over_64MiB": people["key_list_bytes"]
+        / auth.MAX_BODY_BYTES,
         "body_bytes_per_row_mean": people["body_bytes"] / people["records"],
         "old_charge_over_body": people["old_charge_bytes"] / people["body_bytes"],
     }
     hh = record["acs_household_archive"]
     hh["derived"] = {
-        "old_charge_occupied_over_64MiB": hh["old_charge_bytes_occupied"] / auth.MAX_BODY_BYTES,
+        "old_charge_occupied_over_64MiB": hh["old_charge_bytes_occupied"]
+        / auth.MAX_BODY_BYTES,
         "np_total_equals_person_records": hh["np_total"] == people["records"],
         "serialno_list_over_1MiB": hh["serialno_list_bytes_full_source"] / MIB,
         "serialno_list_over_2MiB": hh["serialno_list_bytes_full_source"] / (2 * MIB),
         "serialnos_the_1MiB_cap_admits": (MIB - 1) // 16,
     }
     out.write_text(json.dumps(record, indent=1) + "\n")
-    print(json.dumps({"people": people["derived"], "households": hh["derived"]}, indent=1))
+    print(
+        json.dumps({"people": people["derived"], "households": hh["derived"]}, indent=1)
+    )
     return 0
 
 

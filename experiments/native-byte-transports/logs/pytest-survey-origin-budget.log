@@ -1,0 +1,65 @@
+....................................................F.                   [100%]
+=================================== FAILURES ===================================
+____ test_budget_document_is_the_single_accumulation_at_every_segment_size _____
+
+tmp_path = PosixPath('/private/var/folders/9l/_wztzgbx7mgc7l1r0416cy7m0000gn/T/pytest-of-maxghenis/pytest-6429/test_budget_document_is_the_si0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x123e52e40>
+
+    def test_budget_document_is_the_single_accumulation_at_every_segment_size(
+        tmp_path, monkeypatch
+    ):
+        """MAX_PAYLOAD_BYTES is now the size of one accumulation; the bytes are unchanged.
+    
+        The document's pieces are the encoded keys, the origin records, the two
+        header lists streamed element by element and the remaining header values.
+        Below the longest piece the refusal is the one a single accumulation made,
+        TRANSPORT_LIMIT; the total has its own code. Both constants are inside the
+        module's loaded contract, so each patch re-seals `_LIVE` the way
+        `test_group_ceiling_refuses_at_its_own_number` does.
+        """
+        arguments = _actual(tmp_path, monkeypatch)
+        baseline = owner.freeze_survey_origin_budget(**arguments).checked_view().payload
+        document = json.loads(baseline)
+        pieces = [owner._json(key) + b":" for key in document]
+        pieces += [owner._json(record) for record in document["origins"]]
+        pieces += [
+            owner._json(value)
+            for key in ("household_ids", "group_indices")
+            for value in document[key]
+        ]
+        pieces += [
+            owner._json(document[key])
+            for key in document
+            if key not in ("origins", "household_ids", "group_indices")
+        ]
+        longest = max(map(len, pieces))
+        assert longest < len(baseline)
+        for segment in (longest, longest + 1, 2 * longest, len(baseline)):
+            monkeypatch.setattr(owner, "MAX_PAYLOAD_BYTES", segment)
+            monkeypatch.setattr(owner, "_LIVE", owner._live())
+>           issued = owner.freeze_survey_origin_budget(**arguments).checked_view().payload
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+packages/microcosm-build/tests/test_us_survey_origin_budget.py:624: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+packages/microcosm-build/src/microcosm/build/us_runtime/survey_origin_budget.py:930: in checked_view
+    _require(_json(document) == entry[1], "FINAL_BUDGET_VIEW_DOCUMENT")
+             ^^^^^^^^^^^^^^^
+packages/microcosm-build/src/microcosm/build/us_runtime/survey_origin_budget.py:93: in _json
+    return graph._bounded_json(value, MAX_PAYLOAD_BYTES)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+packages/microcosm-build/src/microcosm/build/us_runtime/graph_survey_population.py:281: in _bounded_json
+    _require(len(piece) <= limit - len(result), "TRANSPORT_LIMIT")
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+condition = False, code = 'TRANSPORT_LIMIT'
+
+    def _require(condition, code):
+        if not condition:
+>           raise SurveyPopulationGraphError(code)
+E           microcosm.build.us_runtime.graph_survey_population.SurveyPopulationGraphError: TRANSPORT_LIMIT
+
+packages/microcosm-build/src/microcosm/build/us_runtime/graph_survey_population.py:122: SurveyPopulationGraphError
+=========================== short test summary info ============================
+FAILED packages/microcosm-build/tests/test_us_survey_origin_budget.py::test_budget_document_is_the_single_accumulation_at_every_segment_size
+1 failed, 53 passed in 451.09s (0:07:31)
