@@ -113,9 +113,7 @@ def _check(frame: Frame) -> dict:
         ],
         "role_source": result.details["role_source"],
         "fallback_columns_present": result.details["fallback_columns_present"],
-        "offending_unit_ids_reported": [
-            row["spm_unit_id"] for row in result.rows
-        ],
+        "offending_unit_ids_reported": [row["spm_unit_id"] for row in result.rows],
     }
 
 
@@ -198,9 +196,13 @@ def _resolution_audit(before: Frame, after: Frame, role: np.ndarray) -> dict:
     membership = person_after["person_spm_unit_id"].to_numpy()
     adult_18 = age >= 18.0
     classified = adult_18 | ((age >= 15.0) & role)
-    units = pd.DataFrame(
-        {"unit": membership, "adult_18": adult_18, "classified": classified}
-    ).groupby("unit", sort=False)[["adult_18", "classified"]].sum()
+    units = (
+        pd.DataFrame(
+            {"unit": membership, "adult_18": adult_18, "classified": classified}
+        )
+        .groupby("unit", sort=False)[["adult_18", "classified"]]
+        .sum()
+    )
     no_adult_18 = units.index[units["adult_18"] == 0]
     member_of = np.isin(membership, no_adult_18.to_numpy())
     resolvers = member_of & (age >= 15.0) & (age < 18.0) & role
@@ -252,9 +254,7 @@ def prove_base(args: argparse.Namespace) -> dict:
     started = time.perf_counter()
     sha = _sha256(base)
     sidecar = base.with_name(base.name + ".sha256")
-    sidecar_sha = (
-        sidecar.read_text().split()[0] if sidecar.exists() else None
-    )
+    sidecar_sha = sidecar.read_text().split()[0] if sidecar.exists() else None
     source_paths = _source_paths(args.source_cache.expanduser())
 
     t0 = time.perf_counter()
@@ -353,10 +353,9 @@ def prove_buildp(args: argparse.Namespace) -> dict:
     )
     role_column = [c for c in certified.columns if c.startswith("is_spm")][0]
     both = merged["_merge"].eq("both")
-    equal = (
-        merged.loc[both, f"{role_column}_stage"].astype(bool)
-        == merged.loc[both, f"{role_column}_certified"].astype(bool)
-    )
+    equal = merged.loc[both, f"{role_column}_stage"].astype(bool) == merged.loc[
+        both, f"{role_column}_certified"
+    ].astype(bool)
 
     t0 = time.perf_counter()
     frame = _load_frame(parent)
@@ -424,7 +423,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     receipt = prove_base(args) if args.command == "base" else prove_buildp(args)
     args.out.write_text(json.dumps(receipt, indent=2, sort_keys=False) + "\n")
-    print(json.dumps({k: receipt[k] for k in ("before", "after") if k in receipt}, indent=2))
+    print(
+        json.dumps(
+            {k: receipt[k] for k in ("before", "after") if k in receipt}, indent=2
+        )
+    )
     print(f"wrote {args.out}")
     return 0
 

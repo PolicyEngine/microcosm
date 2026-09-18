@@ -143,7 +143,9 @@ def _random_source(seed: int, n_units: int) -> pd.DataFrame:
     rows: list[dict] = []
     for unit in range(1, n_units + 1):
         teen_headed = rng.random() < 0.02
-        head_age = int(rng.integers(15, 18)) if teen_headed else int(rng.integers(25, 71))
+        head_age = (
+            int(rng.integers(15, 18)) if teen_headed else int(rng.integers(25, 71))
+        )
         members = [
             dict(A_AGE=head_age, SPM_HEAD=1, A_FAMTYP=1, A_FAMREL=1, A_SPOUSE=0),
         ]
@@ -183,7 +185,9 @@ def _random_source(seed: int, n_units: int) -> pd.DataFrame:
     return _finish_units(rows)
 
 
-def _write_source(tmp_path: Path, source: pd.DataFrame) -> tuple[Path, AsecSpmRoleSource]:
+def _write_source(
+    tmp_path: Path, source: pd.DataFrame
+) -> tuple[Path, AsecSpmRoleSource]:
     path = tmp_path / "pppub25.csv"
     source.to_csv(path, index=False)
     pin = AsecSpmRoleSource(
@@ -200,7 +204,9 @@ def _write_source(tmp_path: Path, source: pd.DataFrame) -> tuple[Path, AsecSpmRo
     return path, pin
 
 
-def _person_table(source: pd.DataFrame, *, clone_units: tuple[int, ...] = ()) -> pd.DataFrame:
+def _person_table(
+    source: pd.DataFrame, *, clone_units: tuple[int, ...] = ()
+) -> pd.DataFrame:
     """The pooled person table a base carries for ``source``, plus optional clones.
 
     Mirrors what ``asec_pool`` and cloning leave on the frame: frozen-vintage
@@ -262,7 +268,11 @@ def _frame(person: pd.DataFrame, weights: np.ndarray | None = None) -> Frame:
     return Frame(
         tables,
         US_SCHEMA,
-        {"household": Weights(np.asarray(weights, dtype=np.float64), WeightKind.DESIGN)},
+        {
+            "household": Weights(
+                np.asarray(weights, dtype=np.float64), WeightKind.DESIGN
+            )
+        },
     )
 
 
@@ -316,13 +326,17 @@ class TestManifestAndPlan:
         spec = us_spm_independence_role_stage_spec()
 
         assert spec.stage == US_SPM_INDEPENDENCE_ROLE_STAGE_NAME
-        assert tuple(spec.outputs) == US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS == (_ROLE,)
+        assert (
+            tuple(spec.outputs) == US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS == (_ROLE,)
+        )
         assert US_SPM_INDEPENDENCE_ROLE_NONCONSTANT_PERSON_COLUMNS == (_ROLE,)
         assert [operation.kind for operation in spec.operations] == [
             "read_table",
             US_SPM_INDEPENDENCE_ROLE_OPERATION_KIND,
         ]
-        assert "SPM_HEAD == 1 OR (A_FAMTYP in {1,4} AND A_FAMREL in {1,2})" in spec.notes
+        assert (
+            "SPM_HEAD == 1 OR (A_FAMTYP in {1,4} AND A_FAMREL in {1,2})" in spec.notes
+        )
         assert "derive_spm_role_source" in spec.notes
         assert "exactly one SPM_HEAD" in spec.notes
         assert "no SPM unit is left without a classified adult" in spec.notes
@@ -336,7 +350,9 @@ class TestManifestAndPlan:
             is derive_us_spm_independence_role_from_manifest
         )
         assert US_SPM_INDEPENDENCE_ROLE_STAGE_NAME in US_DONORS
-        assert US_DONORS[US_SPM_INDEPENDENCE_ROLE_STAGE_NAME].survey == "Census CPS ASEC"
+        assert (
+            US_DONORS[US_SPM_INDEPENDENCE_ROLE_STAGE_NAME].survey == "Census CPS ASEC"
+        )
         order = US_STAGE_NAMES.index
         assert (
             order(US_RELATIONSHIP_INPUTS_STAGE_NAME)
@@ -372,7 +388,11 @@ class TestManifestAndPlan:
         parent = tmp_path / "parent.h5"
         person.to_hdf(parent, key="person")
         pd.DataFrame(
-            {"spm_unit_id": np.sort(_person_table(source)["person_spm_unit_id"].unique())}
+            {
+                "spm_unit_id": np.sort(
+                    _person_table(source)["person_spm_unit_id"].unique()
+                )
+            }
         ).to_hdf(parent, key="spm_unit")
         with pytest.raises(ValueError, match=f"missing required columns.*{column}"):
             derive_spm_role_source(
@@ -416,11 +436,23 @@ class TestDerivation:
         # The raw rule on the source rows, joined by PERIDNUM (clones repeat it).
         expected = (
             person["PERIDNUM"]
-            .map(dict(zip(source.PERIDNUM, independent_minor_role(source), strict=True)))
+            .map(
+                dict(zip(source.PERIDNUM, independent_minor_role(source), strict=True))
+            )
             .to_numpy(dtype=bool)
         )
         assert np.array_equal(role, expected)
-        assert role.tolist() == [True, True, False, True, False, True, True, True, False]
+        assert role.tolist() == [
+            True,
+            True,
+            False,
+            True,
+            False,
+            True,
+            True,
+            True,
+            False,
+        ]
         # Unit 100's clone (native unit 40) carries the same roles as the native.
         assert person.loc[person.person_spm_unit_id.eq(13), _ROLE].tolist() == [
             True,
