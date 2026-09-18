@@ -1020,6 +1020,62 @@ exactly that. The failure is my measurement error, not evidence about the
 change, and the honest statement is that **these two files' results are
 unknown until they are re-run against a still tree.** That re-run is below.
 
+### 9d. The adversarial verification pass, and what it found
+
+Six independent review dimensions over the finished head — accept-where-refuse,
+retention-roster completeness, executor invariants, document accuracy, battery
+completeness, refusal-code preservation — with **every** finding then put to
+two independent adversarial verifiers whose default answer is REFUTED, one
+judging mechanism and one judging consequence. 68 agents, 0 errors,
+**31 findings, 25 survived**. The receipt, with every finding's claim, both
+verdicts and what was done about it, is committed at
+`experiments/native-retention-seal/adversarial-verification-receipt.json`.
+
+| disposition | findings |
+|---|---|
+| **fixed in code** | 5 |
+| fixed in a test | 2 |
+| fixed in a test **and** the documents | 2 |
+| fixed in the documents | 16 |
+| left open, with a question | 0 |
+| **refuted by both verifiers** | 6 |
+
+**The five code findings are the ones that matter, and three of them were
+accept-where-refuse or refuse-where-accept.** Each was reproduced before being
+believed and again after being fixed:
+
+| finding | direction | now |
+|---|---|---|
+| an object-axis value carrying its own `__eq__` | comparison **refuses**, seal **accepted** | refuses on both, at seal construction |
+| `None` against `float("nan")` on an object axis | comparison **accepts**, seal **refused** | accepted by both |
+| a masked-integer axis above `2**53` | both refuse, the seal's fold was **lossy** and the code moved | exact, and `AXIS` on both |
+| `run_graph`'s docstring withdrew one guarantee of two | documentation | both withdrawn by name, with the blast radius |
+| the table generator produced neither the replay row nor the delta column | documentation of method | both derived |
+
+**The sixteen documentation findings are not cosmetic.** Four of them are the
+class Max's standing rule is written against — a document stating a mechanism
+that is not in the code. The design note described a **dtype token** of
+strings and booleans and a `_comparables` digest with a `repr()` fallback, and
+built its whole "residual risk" paragraph on the fallback; the code does the
+opposite of tokenising, and the note's own §4(1) argued that a token would be
+wrong. Both sections now describe what ships, and §6 states the three residual
+risks that are real. §6 of *this* report concluded "the US half moves no key at
+all" from a revision that excludes the lane's own re-pin — the US half moves
+every node key, through `inventory_sha256`.
+
+**Two tests were vacuous and are not any more**, both found by the pass and
+both verified to go red against the defect they now pin: an executor test whose
+default-mode arm compared one run's objects against another run's, and the
+dtype census, which asserted the same predicate twice and called no seal
+function.
+
+**What was refuted is recorded too**, because a review that only reports hits
+cannot be calibrated: six findings did not survive, including a claim that the
+module raises 25 codes rather than 22 (it raises 22 pre-existing plus three the
+change adds, which §2c states), and three claims about battery cases that
+reach their refusal for the wrong reason, which the verifiers showed reach it
+for the right one.
+
 ### 9b. What this session re-derived rather than trusted
 
 A report's numbers are worth what their re-derivation is worth, so every
