@@ -106,7 +106,7 @@ in character, and the note states all four:
 
 Every defect is still refused, so this did not go back to the owner as a
 blocking question. Items 3 and 4 were found by an adversarial pass over the
-finished seal, not by writing it, and are §10 question 1 below.
+finished seal, not by writing it, and are §11 question 1 below.
 
 ## 2. The discrimination battery
 
@@ -120,15 +120,21 @@ that is where drift comes from:
 seal misses fails there.
 
 ```
-$ MICROCOSM_BATTERY_RECEIPT=... uv run python -m pytest \
-    packages/microcosm-build/tests/test_us_survey_population_replay.py
-119 passed in 0.99s
+$ uv run python experiments/native-retention-seal/battery_receipt.py \
+    experiments/native-retention-seal/battery-receipt.json
+122 passed in 0.84s
+comparisons=116 agreements=116 disagreements=0 codes=21
 ```
 
 **116 comparisons, 116 agreements, 0 disagreements**, over twenty distinct
 refusal codes and 14 pairs both paths accept. The receipt is committed at
-`experiments/native-retention-seal/battery-receipt.json`; the hook that writes
-it is off unless the environment variable is set and changes no assertion.
+`experiments/native-retention-seal/battery-receipt.json`, and
+`battery_receipt.py` rebuilds it from the battery's own rows, so those three
+figures and the table below are derived rather than counted by hand. The hook
+that writes the rows is off unless `MICROCOSM_BATTERY_RECEIPT` is set and
+changes no assertion. The file is 122 tests against 116 comparisons because
+six of them drive no comparison: three pin the codes this change *adds* (§2c)
+and three are the O(columns) and snapshot-preservation properties.
 
 | verdict both paths reached | comparisons |
 |---|---|
@@ -202,6 +208,56 @@ at 8, 8,000 and 800,000 rows and requires the three pickled records to differ by
 under 128 bytes. They differ by the width of the row counts and shapes the
 record names. That is the whole memory argument, asserted rather than asserted
 about.
+
+### 2c. The six codes this change adds, five of which now have tests
+
+The battery covers the codes that *existed*. This change **adds six**, none of
+them about a population's content, and it had a test for **none** of them —
+the same shape of gap as §5's inherited contract defect, where nothing was red
+because nothing was tested. Five are now pinned:
+
+| added code | what it guards | pinned by |
+|---|---|---|
+| `FRAME_SEAL_PROTOCOL` | a record that is not a frame seal of this protocol version | `test_a_foreign_frame_seal_record_refuses_frame_seal_protocol` |
+| `POPULATION_SEAL_PROTOCOL` | the same for a population seal | `test_a_foreign_population_seal_record_refuses_population_seal_protocol` |
+| `SEAL_TYPE` | `seal_identity` handed something that is not a seal record | `test_seal_identity_refuses_anything_that_is_not_a_seal_record` |
+| `RETAIN_EVERY_NODE_POPULATION_FLAG` | the private retention flag is not a bool, or is set for an extension run | `test_an_invalid_retention_flag_refuses_before_source_io`, `test_retaining_every_node_together_with_a_child_property_refuses` |
+| `FINANCIAL_SEALED_NODE_SCOPE` | a sealed node reaching the completion-boundary or manifest stamp arm | `test_a_sealed_node_refuses_the_completion_and_manifest_stamp_arms` |
+| **`ATOMIC_OBSERVER_RETENTION`** | **the observed roster is not the declared consumers, or an arrival seal's identity moved** | **nothing — see below** |
+
+**Each of the three seal tests was verified to go red when its own guard is
+reverted**, not merely to pass: deleting the `SEAL_TYPE` require, and reducing
+either protocol guard to a length check, each turns exactly its own test red
+and nothing else. The population test also pins two orderings — a protocol tag
+both sides agree on but that is not this version still refuses, and a record
+both truncated *and* different in content refuses under the protocol code
+rather than under the content code the difference would earn.
+
+**`ATOMIC_OBSERVER_RETENTION` is not pinned, and its two conjuncts are not
+equally strong.** It reads
+
+```python
+require(
+    set(observed) == declared_consumers
+    and all(
+        seal_identity(observed_seals[node_id]) == recorded
+        for node_id, recorded in observed_seal_ids.items()
+    ),
+    "ATOMIC_OBSERVER_RETENTION",
+)
+```
+
+The first conjunct is load-bearing: it catches an observer that retained the
+wrong set, and it is reachable only from inside a real nineteen-node run whose
+observer has been made to lie, which is why there is no cheap test for it. The
+second conjunct re-derives `seal_identity` from the very record whose recorded
+identity it compares against — `observed_seals[node_id]` *is* the tuple whose
+`seal_identity` was stored as `recorded` — so it can only fail if a seal
+record's `repr` changed between observation and this line. A seal holds digest
+bytes, dtypes, index classes and `WeightKind` members, all of stable `repr`,
+so **as written that conjunct cannot fire.** It is not harmful and it is not
+evidence; calling it a guard would overstate it. §11 question 7 asks what to
+do about it.
 
 ## 3. What the change is, in the runner
 
@@ -474,7 +530,7 @@ invent a mechanism for it. What can be said:
   top twelve.
 
 What would settle it is a repeat on a quiet machine, or the same comparison at
-a fraction where nineteen snapshots are not noise. §10 question 5 asks for it.
+a fraction where nineteen snapshots are not noise. §11 question 5 asks for it.
 
 ## 8. The 1/15 run, and the ceiling that stops it
 
@@ -686,8 +742,8 @@ $ PYTHONPATH="$(ls -d $PWD/packages/*/src | tr '\n' ':')" \
 install resolves `microcosm.*` to *this lane's* sources and the run silently
 measures the head it was meant to compare against — checked by printing
 `module.__file__`, which is how the first attempt was caught. Fifty-nine tests
-at the branch point; 119 at this head, with every mutation driven through both
-paths.
+at the branch point; **122** at this head, with every mutation driven through
+both paths and the added codes of §2c pinned besides.
 
 ```
 $ uv run ruff check .
@@ -710,9 +766,10 @@ OK
 $ uv run python -m pytest packages/microcosm-graph/tests
 783 passed, 1 skipped in 48.89s
 
-$ MICROCOSM_BATTERY_RECEIPT=... uv run python -m pytest \
-    packages/microcosm-build/tests/test_us_survey_population_replay.py
-119 passed in 0.99s
+$ uv run python experiments/native-retention-seal/battery_receipt.py \
+    experiments/native-retention-seal/battery-receipt.json
+122 passed in 0.84s
+comparisons=116 agreements=116 disagreements=0 codes=21
 ```
 
 `packages/microcosm-graph/tests` is 783 against the base branch's 778: the five
@@ -722,7 +779,18 @@ are this lane's, and every other test in that package is unchanged and green.
 
 *(in flight)*
 
-## 10. Questions for Max
+## 10. The pull request
+
+**[PolicyEngine/microcosm#950](https://github.com/PolicyEngine/microcosm/pull/950)**
+— *Compare replayed populations by content seal instead of by retained object*.
+Draft, base `native-scale-transport`, `MERGEABLE`. **It stays draft, and it was
+never marked ready.** Its body carries the four answers, the fail-closed
+statement, the declared-consumer roster, the inherited-defect repair, the what
+moves table, and the main-only hunk table — the two
+`packages/microcosm-graph/` files, whose change is commit `9bef866c5` on its
+own.
+
+## 11. Questions for Max
 
 **1. Where should the inherited contract repair live?** §5's re-pin is another
 lane's defect, repaired here because no run this brief requires was possible
@@ -830,7 +898,27 @@ give the completion host the same treatment — which means finding a frame-free
 form for `_states`' per-node cell census — or is the base 19-node path the only
 one whose memory matters?
 
-## 11. What a reader should not take from this report
+**7. `ATOMIC_OBSERVER_RETENTION`'s second conjunct cannot fire — keep it, test
+it, or cut it?** §2c: it re-derives `seal_identity` from the very record whose
+recorded identity it compares against, so it is a self-comparison as written.
+The first conjunct is real and is reachable only from inside a full run.
+
+- **(a) Leave both, as shipped.** The self-comparison costs nineteen sha256
+  digests over small tuples and documents the intent. §2c says plainly that it
+  cannot fire, so nobody will quote it as coverage.
+- **(b) Keep it and pin the first conjunct** with a fresh nineteen-node run
+  whose observer is patched to retain the wrong roster. That is a real test of
+  the code that matters, at the cost of one more ~145 s test file run in the
+  build shard's slowest group.
+- **(c) Cut the second conjunct** and keep `set(observed) == declared_consumers`
+  alone, which is the half that can fail.
+
+My reading is **(b)**, because the first conjunct is the fence that would catch
+a future edit to the declared-consumer roster, and it is the one thing in this
+change with no test at all. I did not do it here because it adds a run to the
+slowest test file and the brief's measurement work had the machine.
+
+## 12. What a reader should not take from this report
 
 - **Nothing here is a build, a certification or a release artifact.** Every
   measurement JSON carries `"release_eligible": false` and a scope line saying
