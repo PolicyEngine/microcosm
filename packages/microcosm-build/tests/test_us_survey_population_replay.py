@@ -1306,3 +1306,120 @@ def test_seal_identity_refuses_anything_that_is_not_a_seal_record():
     # digests -- the guard is a type fence, not a protocol fence, and the two
     # protocol guards above are what catch a record of the wrong shape.
     assert len(seal_identity(good[1])) == 64
+
+
+class _RefusingInt(int):
+    """An int whose ``__eq__`` refuses everything, itself included."""
+
+    def __eq__(self, other):
+        return False
+
+    __hash__ = int.__hash__
+
+
+class _PickyInt(int):
+    """An int that is equal to itself but not to the plain int of equal value."""
+
+    def __eq__(self, other):
+        return type(other) is _PickyInt and int(other) == int(self)
+
+    __hash__ = int.__hash__
+
+
+@pytest.mark.parametrize("subclass", [_RefusingInt, _PickyInt])
+def test_an_object_axis_value_with_its_own_equality_refuses_on_both_paths(subclass):
+    """An adversarial pass found the seal ACCEPTING this pair. It refuses now.
+
+    ``Index.equals`` over an object axis is an element-wise ``==``, and the
+    seal's fold was a digest of the store codec's bytes. A value whose
+    ``__eq__`` is its own has equal bytes to the plain int of the same value
+    and is not ``==`` to it, so the comparison refused ``AXIS`` and the seal
+    accepted -- the one direction that matters, because it is a run accepting
+    a replay the comparison refuses. The fold now refuses at seal
+    construction, on either operand, when a value is not ``==`` to the plain
+    builtin the codec encodes it as.
+    """
+    frame = _frame()
+    expected = _with_person_axis(frame, pd.Index([subclass(1), 2, 3], dtype=object))
+    actual = _with_person_axis(frame, pd.Index([1, 2, 3], dtype=object))
+    assert expected.person.index.identical(actual.person.index) is False
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_AXIS"
+    assert _refuses_frames(actual, expected) == "SURVEY_POPULATION_REPLAY_AXIS"
+
+
+# The equivalence classes ``Index.equals`` puts an object-axis value in, as
+# measured on this pandas pin: one row per class, and every cross-class pair
+# must refuse while every within-class pair must be accepted by both paths.
+_AXIS_CLASSES = {
+    "null": [None, float("nan"), np.float64("nan")],
+    "pd.NA": [pd.NA],
+    "pd.NaT": [pd.NaT],
+    "one": [True, 1, 1.0, np.int64(1), np.bool_(True)],
+    "zero": [0, False, -0.0, 0.0],
+    "2**53": [2**53, float(2**53)],
+    "2**53+1": [2**53 + 1],
+    "+inf": [float("inf")],
+    "-inf": [float("-inf")],
+    "text": ["a"],
+    "bytes": [b"a"],
+}
+
+
+@pytest.mark.parametrize("left", sorted(_AXIS_CLASSES))
+@pytest.mark.parametrize("right", sorted(_AXIS_CLASSES))
+def test_the_object_axis_fold_reproduces_pandas_own_equality_classes(left, right):
+    """The fold must split exactly where ``==`` splits -- no more, no less.
+
+    Being stricter is as much a defect as being weaker: a seal that refuses a
+    pair the comparison accepts turns a green run red. An adversarial pass
+    found exactly that for ``None`` against ``float("nan")``, which pandas
+    holds equal and the codec spelled apart. Both directions are pinned here,
+    for every pair of the measured classes, with the members of each class
+    crossed so that ``True``/``1``/``1.0`` and ``-0.0``/``0.0`` are covered too.
+    """
+    frame = _frame()
+    for one in _AXIS_CLASSES[left]:
+        for other in _AXIS_CLASSES[right]:
+            expected = _with_person_axis(
+                frame, pd.Index([one, "z", b"z"], dtype=object)
+            )
+            actual = _with_person_axis(
+                frame, pd.Index([other, "z", b"z"], dtype=object)
+            )
+            equal = expected.person.index.equals(actual.person.index)
+            assert equal is (left == right), (left, right, one, other, equal)
+            code = _agree_frames(expected, actual)
+            if left == right:
+                # Within a class the value fold must agree. The byte arm may
+                # still refuse under its own code -- that is what the
+                # comparison does too, and the agreement driver requires the
+                # same code on both paths, which is the point.
+                assert code in (
+                    None,
+                    "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+                ), (left, one, other, code)
+            else:
+                assert code is not None, (left, right, one, other)
+
+
+def test_a_masked_integer_axis_is_exact_above_two_to_the_fifty_three():
+    """``np.asarray`` on a masked integer array returns float64, and that is lossy.
+
+    An ``Int64`` axis carrying any null materialises through float64 with NA as
+    NaN, so two labels that round to the same double folded identically and the
+    refusal moved from ``AXIS`` to ``PRESENT_BITS``. The fold now takes an
+    extension-dtype axis through its exact object view, which keeps ``pd.NA``
+    and the full integer width -- measured for ``Int64``, ``UInt64``,
+    ``boolean`` and ``string``.
+    """
+    assert np.asarray(pd.array([2**53, 2, pd.NA], dtype="Int64")).dtype == np.float64
+    frame = _frame()
+    for dtype, high in (("Int64", 2**53), ("UInt64", 2**64 - 2)):
+        expected = _with_person_axis(
+            frame, pd.Index(pd.array([high, 2, pd.NA], dtype=dtype))
+        )
+        actual = _with_person_axis(
+            frame, pd.Index(pd.array([high + 1, 2, pd.NA], dtype=dtype))
+        )
+        assert expected.person.index.identical(actual.person.index) is False
+        assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_AXIS"

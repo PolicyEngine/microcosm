@@ -265,10 +265,18 @@ def _array_seal(values, reason):
 
 
 def _same_array_seal(expected, actual, reason):
+    # Unpacked rather than indexed. `test_us_spine_blindness.py`'s
+    # source-spine analyser refuses a subscript it cannot resolve statically on
+    # a name it has inferred to be a column container, and every seal record in
+    # this module is a positional tuple. Naming the fields satisfies that gate
+    # without a single behavioural change -- the records, their order and their
+    # `repr` are untouched, so no seal identity moves.
+    expected_dtype, expected_shape, expected_digest = expected
+    actual_dtype, actual_shape, actual_digest = actual
     _require(
-        expected[0] == actual[0]
-        and expected[1] == actual[1]
-        and expected[2] == actual[2],
+        expected_dtype == actual_dtype
+        and expected_shape == actual_shape
+        and expected_digest == actual_digest,
         reason,
     )
 
@@ -348,33 +356,150 @@ def _series_seal(series):
 
 def _same_series_seal(expected, actual):
     """Refuse exactly what ``_series`` refuses, with the same codes."""
-    _require(expected[0] == actual[0], "SERIES_DTYPE_OR_LENGTH")
-    left, right = expected[1], actual[1]
+    expected_kind, expected_head, *expected_rest = expected
+    actual_kind, actual_head, *actual_rest = actual
+    _require(expected_kind == actual_kind, "SERIES_DTYPE_OR_LENGTH")
+    expected_class, expected_dtype, expected_length = expected_head
+    actual_class, actual_dtype, actual_length = actual_head
     _require(
-        left[0] is right[0] and left[1] == right[1] and left[2] == right[2],
+        expected_class is actual_class
+        and expected_dtype == actual_dtype
+        and expected_length == actual_length,
         "SERIES_DTYPE_OR_LENGTH",
     )
-    kind = expected[0]
-    if kind == "masked":
+    if expected_kind == "masked":
+        (
+            expected_data_dtype,
+            expected_mask,
+            expected_present,
+            expected_backing,
+            _expected_canonical,
+        ) = expected_rest
+        (
+            actual_data_dtype,
+            actual_mask,
+            actual_present,
+            actual_backing,
+            actual_canonical,
+        ) = actual_rest
         _require(
-            expected[2] == actual[2] and expected[3] == actual[3], "MASKED_STORAGE"
+            expected_data_dtype == actual_data_dtype and expected_mask == actual_mask,
+            "MASKED_STORAGE",
         )
-        _require(expected[4] == actual[4], "PRESENT_BITS")
+        _require(expected_present == actual_present, "PRESENT_BITS")
         # Directional, and per series: the ACTUAL side may carry canonically
         # zeroed backing beneath its nulls, which is what a store round trip
         # produces. One non-canonical column must not force byte equality on
         # the others, so this disjunction stays inside the per-series walk.
-        _require(actual[6] or expected[5] == actual[5], "NONCANONICAL_NULL_BACKING")
+        _require(
+            actual_canonical or expected_backing == actual_backing,
+            "NONCANONICAL_NULL_BACKING",
+        )
         return
-    if kind == "string":
-        _require(expected[2] == actual[2] and expected[3] == actual[3], "STRING_POLICY")
-        _require(expected[4] == actual[4], "STRING_MASK")
-        _require(expected[5] == actual[5], "STRING_VALUE")
+    if expected_kind == "string":
+        expected_storage, expected_na, expected_nulls, expected_values = expected_rest
+        actual_storage, actual_na, actual_nulls, actual_values = actual_rest
+        _require(
+            expected_storage == actual_storage and expected_na == actual_na,
+            "STRING_POLICY",
+        )
+        _require(expected_nulls == actual_nulls, "STRING_MASK")
+        _require(expected_values == actual_values, "STRING_VALUE")
         return
-    if kind == "object":
-        _require(expected[2] == actual[2], "OBJECT_VALUE")
+    if expected_kind == "object":
+        (expected_values,) = expected_rest
+        (actual_values,) = actual_rest
+        _require(expected_values == actual_values, "OBJECT_VALUE")
         return
-    _same_array_seal(expected[2], actual[2], "NATIVE_BITS")
+    (expected_array,) = expected_rest
+    (actual_array,) = actual_rest
+    _same_array_seal(expected_array, actual_array, "NATIVE_BITS")
+
+
+# The equivalence classes ``Index.equals`` puts an OBJECT-axis value in, as
+# measured on this pandas pin rather than read off its source: ``{None}`` and
+# every NaN are ONE class, ``pd.NA`` and ``pd.NaT`` are each their own, bool,
+# int and float share one numeric class by EXACT value (``True == 1 == 1.0``,
+# ``0 == False == -0.0``, and ``2**53 == float(2**53)`` while ``2**53 + 1`` is
+# distinct from both), and ``str`` and ``bytes`` are each their own. These tags
+# are a fold-local canonical form, never persisted and never compared across
+# processes -- see ``seal_identity`` -- so they are not a stored encoding and
+# they move no digest that leaves this process.
+_AXIS_NULL = b"\x00"  # None and every NaN
+_AXIS_PD_NA = b"\x01"
+_AXIS_PD_NAT = b"\x02"
+_AXIS_NUMBER = b"\x03"
+_AXIS_POSITIVE_INFINITY = b"\x04"
+_AXIS_NEGATIVE_INFINITY = b"\x05"
+_AXIS_TEXT = b"\x06"
+_AXIS_BYTES = b"\x07"
+
+
+def _plain_object(value):
+    """The builtin-typed value the store codec encodes ``value`` as."""
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    if isinstance(value, (float, np.floating)):
+        return float(value)
+    if isinstance(value, str):
+        return str(value)
+    return bytes(value)
+
+
+def _object_axis_equivalence(value):
+    """The class token for one object-axis value, under the ``AXIS`` code.
+
+    ``Index.equals`` over an object axis is an element-wise ``==`` between
+    arbitrary Python objects, so a fold that reproduces each refusal's own code
+    has to put two values in one class exactly when ``==`` holds them equal --
+    no more and no less. A digest of the store codec's bytes does neither: it
+    is WEAKER, because two values with equal bytes need not be ``==`` when one
+    carries its own ``__eq__``; and STRICTER, because the codec spells apart
+    ``None`` from NaN, ``True`` from ``1`` and ``-0.0`` from ``0.0``, all three
+    of which ``==`` holds equal. Both directions were reproduced before this
+    was written.
+
+    So the codec is the gatekeeper and not the fold: ``_object_bytes`` runs
+    first, which keeps ``UNSUPPORTED_OBJECT`` firing on a leaf no column may
+    carry, and the class token is then the measured equivalence class above.
+    The one thing a digest cannot reproduce is an ``__eq__`` of the value's
+    own, so a value that is not ``==`` to the plain builtin the codec encodes
+    it as refuses ``AXIS`` when its seal is built, on both operands, rather
+    than being folded into a class it does not belong to.
+
+    The byte-exact discriminations the codec makes and ``==`` does not are not
+    lost: ``_axis_seal``'s last element is ``_series_seal`` over the same
+    materialised array, which is the arm ``_axis`` itself falls through to, and
+    it reports them under ``OBJECT_VALUE`` exactly as the comparison does.
+    """
+    _object_bytes(value)
+    if value is pd.NA:
+        return _AXIS_PD_NA
+    if value is pd.NaT:
+        return _AXIS_PD_NAT
+    if value is None:
+        return _AXIS_NULL
+    if isinstance(value, (float, np.floating)) and value != value:
+        return _AXIS_NULL
+    plain = _plain_object(value)
+    try:
+        faithful = bool(value == plain) and bool(plain == value)
+    except (TypeError, ValueError):
+        faithful = False
+    _require(faithful, "AXIS")
+    if isinstance(plain, float):
+        if plain == float("inf"):
+            return _AXIS_POSITIVE_INFINITY
+        if plain == float("-inf"):
+            return _AXIS_NEGATIVE_INFINITY
+    if isinstance(plain, (bool, int, float)):
+        numerator, denominator = plain.as_integer_ratio()
+        return _AXIS_NUMBER + f"{numerator}/{denominator}".encode("ascii")
+    if isinstance(plain, str):
+        return _AXIS_TEXT + plain.encode("utf-8", "surrogatepass")
+    return _AXIS_BYTES + plain
 
 
 def _axis_values_fold(index):
@@ -393,19 +518,26 @@ def _axis_values_fold(index):
     ``array_equivalent`` is tolerant of NaN payloads, NaN sign and signed zeros
     for float and complex (``dtype.kind in "fc"``) and of bool bytes outside
     ``{0, 1}``, so those are collapsed before hashing and the byte difference
-    reaches the series code that reports it today. For an object axis it is an
-    element-wise ``!=`` over arbitrary Python objects, which no digest
-    reproduces: the fold there is the store codec's own bytes, which is never
-    weaker than ``equals`` and is stricter on exactly the differences the codec
-    spells and ``==`` does not -- ``True`` against ``1``, ``-0.0`` against
-    ``0.0``. Those refuse under ``AXIS`` rather than under ``OBJECT_VALUE``.
-    The run refuses either way; see docs/us-native-retention-seal.md section 4.
+    reaches the series code that reports it today. For an object axis the fold
+    is ``_object_axis_equivalence``, which reproduces ``==``'s own classes;
+    read its docstring for why the store codec's bytes are not that.
+
+    An EXTENSION-dtype axis is taken through its exact object view rather than
+    ``np.asarray(index.array)``, because a masked integer array materialises
+    as float64 with NA as NaN: every distinction above ``2**53`` would be lost
+    and the fold of an ``Int64`` axis would silently be a float fold. The
+    object view keeps ``pd.NA`` and the full integer width, and was measured to
+    do so for ``Int64``, ``UInt64``, ``boolean`` and ``string``.
     """
     values = np.asarray(index.array)
+    if values.dtype != object and isinstance(
+        index.dtype, pd.api.extensions.ExtensionDtype
+    ):
+        values = np.asarray(index.array, dtype=object)
     if values.dtype == object:
         payload = bytearray()
         for value in values:
-            encoded = _object_bytes(value)
+            encoded = _object_axis_equivalence(value)
             payload += len(encoded).to_bytes(8, "little") + encoded
         return ("object", values.shape, _seal_digest_bytes(bytes(payload)))
     _require(not values.dtype.hasobject, "AXIS")
@@ -424,6 +556,28 @@ def _axis_values_fold(index):
     )
 
 
+# ``Index._comparables`` is ``['name']`` for ``Index`` and ``RangeIndex`` and
+# ``['name', 'freq']`` for ``DatetimeIndex``, measured. Reading them through a
+# literal reader per name rather than ``getattr(index, name, None)`` does two
+# things: it satisfies the source-spine analyser, which fails closed on a
+# dynamic attribute, and it makes an index class that declares a comparable
+# this module has never seen REFUSE rather than fold ``None`` for it silently.
+_AXIS_COMPARABLE_READERS = {
+    "name": lambda index: index.name,
+    "freq": lambda index: getattr(index, "freq", None),
+}
+
+
+def _axis_comparable_values(index, comparables):
+    """Read each declared comparable through its own literal reader."""
+    values = []
+    for comparable in comparables:
+        reader = _AXIS_COMPARABLE_READERS.get(comparable)
+        _require(reader is not None, "AXIS")
+        values.append(reader(index))
+    return tuple(values)
+
+
 def _axis_seal(index):
     """Seal one axis: ``_axis``'s class, ``identical`` parts, name and values."""
     _require(not isinstance(index, pd.MultiIndex), "AXIS")
@@ -436,7 +590,7 @@ def _axis_seal(index):
     return (
         type(index),
         comparables,
-        tuple(getattr(index, name, None) for name in comparables),
+        _axis_comparable_values(index, comparables),
         index.dtype,
         _axis_values_fold(index),
         _name_seal(index.name),
@@ -449,23 +603,43 @@ def _axis_seal(index):
 
 
 def _same_axis_seal(expected, actual):
+    (
+        expected_class,
+        expected_comparables,
+        expected_comparable_values,
+        expected_dtype,
+        expected_fold,
+        expected_name,
+        expected_series,
+    ) = expected
+    (
+        actual_class,
+        actual_comparables,
+        actual_comparable_values,
+        actual_dtype,
+        actual_fold,
+        actual_name,
+        actual_series,
+    ) = actual
     _require(
-        expected[0] is actual[0]
-        and expected[1] == actual[1]
-        and len(expected[2]) == len(actual[2])
+        expected_class is actual_class
+        and expected_comparables == actual_comparables
+        and len(expected_comparable_values) == len(actual_comparable_values)
         # ``identical`` applies ``==`` to each comparable; a tuple comparison
         # would short-circuit on identity and accept a value whose own
         # ``__eq__`` refuses itself.
         and all(
             bool(one == other)
-            for one, other in zip(expected[2], actual[2], strict=True)
+            for one, other in zip(
+                expected_comparable_values, actual_comparable_values, strict=True
+            )
         )
-        and expected[3] == actual[3]
-        and expected[4] == actual[4],
+        and expected_dtype == actual_dtype
+        and expected_fold == actual_fold,
         "AXIS",
     )
-    _require(expected[5] == actual[5], "AXIS_NAME")
-    _same_series_seal(expected[6], actual[6])
+    _require(expected_name == actual_name, "AXIS_NAME")
+    _same_series_seal(expected_series, actual_series)
 
 
 def _flags_seal(table):
@@ -523,44 +697,75 @@ def same_replayed_frame_seals(expected: tuple, actual: tuple) -> None:
     _require(
         type(expected) is tuple
         and type(actual) is tuple
-        and len(expected) == len(actual) == 11
-        and expected[0] == actual[0] == SEAL_PROTOCOL,
+        and len(expected) == len(actual) == 11,
+        "FRAME_SEAL_PROTOCOL",
+    )
+    (
+        expected_protocol,
+        expected_schema,
+        expected_entities,
+        expected_metadata,
+        expected_mass_log,
+        expected_weighted,
+        expected_tables,
+        expected_strata_index,
+        expected_strata_name,
+        expected_strata,
+        expected_weights,
+    ) = expected
+    (
+        actual_protocol,
+        actual_schema,
+        actual_entities,
+        actual_metadata,
+        actual_mass_log,
+        actual_weighted,
+        actual_tables,
+        actual_strata_index,
+        actual_strata_name,
+        actual_strata,
+        actual_weights,
+    ) = actual
+    _require(
+        expected_protocol == actual_protocol == SEAL_PROTOCOL,
         "FRAME_SEAL_PROTOCOL",
     )
     _require(
-        expected[1] == actual[1]
-        and expected[2] == actual[2]
-        and expected[3] == actual[3]
-        and expected[4] == actual[4]
-        and expected[5] == actual[5],
+        expected_schema == actual_schema
+        and expected_entities == actual_entities
+        and expected_metadata == actual_metadata
+        and expected_mass_log == actual_mass_log
+        and expected_weighted == actual_weighted,
         "FRAME_CONTEXT",
     )
     _require(
-        tuple(entity[0] for entity in expected[6])
-        == tuple(entity[0] for entity in actual[6]),
+        tuple(entity for entity, _, _, _, _ in expected_tables)
+        == tuple(entity for entity, _, _, _, _ in actual_tables),
         "FRAME_CONTEXT",
     )
-    for left, right in zip(expected[6], actual[6], strict=True):
-        _require(left[1] == right[1], "TABLE_TYPE_OR_FLAGS")
-        _same_axis_seal(left[2], right[2])
-        _same_axis_seal(left[3], right[3])
+    for left, right in zip(expected_tables, actual_tables, strict=True):
+        _, left_flags, left_index, left_columns, left_series = left
+        _, right_flags, right_index, right_columns, right_series = right
+        _require(left_flags == right_flags, "TABLE_TYPE_OR_FLAGS")
+        _same_axis_seal(left_index, right_index)
+        _same_axis_seal(left_columns, right_columns)
         _require(
-            tuple(column for column, _ in left[4])
-            == tuple(column for column, _ in right[4]),
+            tuple(column for column, _ in left_series)
+            == tuple(column for column, _ in right_series),
             "AXIS",
         )
-        for (_, one), (_, other) in zip(left[4], right[4], strict=True):
+        for (_, one), (_, other) in zip(left_series, right_series, strict=True):
             _same_series_seal(one, other)
-    _same_axis_seal(expected[7], actual[7])
-    _require(expected[8] == actual[8], "STRATA_NAME")
-    _same_series_seal(expected[9], actual[9])
+    _same_axis_seal(expected_strata_index, actual_strata_index)
+    _require(expected_strata_name == actual_strata_name, "STRATA_NAME")
+    _same_series_seal(expected_strata, actual_strata)
     _require(
-        tuple(entity for entity, _, _ in expected[10])
-        == tuple(entity for entity, _, _ in actual[10]),
+        tuple(entity for entity, _, _ in expected_weights)
+        == tuple(entity for entity, _, _ in actual_weights),
         "FRAME_CONTEXT",
     )
     for (_, kind, values), (_, other_kind, other_values) in zip(
-        expected[10], actual[10], strict=True
+        expected_weights, actual_weights, strict=True
     ):
         _require(kind is other_kind, "WEIGHT_BYTES")
         _same_array_seal(values, other_values, "WEIGHT_BYTES")
@@ -608,20 +813,45 @@ def same_replayed_population_seals(expected: tuple, actual: tuple) -> None:
     _require(
         type(expected) is tuple
         and type(actual) is tuple
-        and len(expected) == len(actual) == 8
-        and expected[0] == actual[0] == SEAL_PROTOCOL,
+        and len(expected) == len(actual) == 8,
         "POPULATION_SEAL_PROTOCOL",
     )
-    same_replayed_frame_seals(expected[1], actual[1])
+    (
+        expected_protocol,
+        expected_frame,
+        expected_version,
+        expected_owners,
+        expected_weight_kind,
+        expected_mass_ledger,
+        expected_design_names,
+        expected_design_weights,
+    ) = expected
+    (
+        actual_protocol,
+        actual_frame,
+        actual_version,
+        actual_owners,
+        actual_weight_kind,
+        actual_mass_ledger,
+        actual_design_names,
+        actual_design_weights,
+    ) = actual
     _require(
-        expected[2] == actual[2]
-        and expected[3] == actual[3]
-        and expected[4] == actual[4]
-        and expected[5] == actual[5]
-        and expected[6] == actual[6],
+        expected_protocol == actual_protocol == SEAL_PROTOCOL,
+        "POPULATION_SEAL_PROTOCOL",
+    )
+    same_replayed_frame_seals(expected_frame, actual_frame)
+    _require(
+        expected_version == actual_version
+        and expected_owners == actual_owners
+        and expected_weight_kind == actual_weight_kind
+        and expected_mass_ledger == actual_mass_ledger
+        and expected_design_names == actual_design_names,
         "POPULATION_CONTEXT",
     )
-    for (_, values), (_, other) in zip(expected[7], actual[7], strict=True):
+    for (_, values), (_, other) in zip(
+        expected_design_weights, actual_design_weights, strict=True
+    ):
         _same_array_seal(values, other, "DESIGN_BYTES")
 
 

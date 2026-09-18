@@ -44,9 +44,18 @@ ROWS = (
         "outside_both_node_loops_wall_seconds",
         2,
     ),
+    # The replay row and the "vs after" column were quoted in the report while
+    # this generator produced neither, which an adversarial pass caught: the
+    # claim that no figure in the table is transcribed by hand was false of
+    # exactly those two. Both are derived here now. The baseline had no replay
+    # phase, so its cell is the same em dash a missing field gets.
+    ("required replay CPU s", "required_replay", "cpu_seconds", 2),
     ("whole-process CPU s", "process", "cpu_seconds", 2),
     ("whole-process peak RSS GB", "process", "peak_rss_bytes", None),
 )
+# The column the report leads its comparison with: this lane against the run it
+# is trying to improve on, which is the transport lane's after-run.
+DELTA = ("transport after 5307249b3", "retention seal (this lane)")
 
 
 def main():
@@ -56,18 +65,30 @@ def main():
             loaded.append((label, json.loads(path.read_text()), path))
         except FileNotFoundError:
             loaded.append((label, None, path))
-    print("| | " + " | ".join(label for label, _, _ in loaded) + " |")
-    print("|---" * (len(loaded) + 1) + "|")
+    print(
+        "| | "
+        + " | ".join(label for label, _, _ in loaded)
+        + f" | {DELTA[1].split(' (')[0]} vs after |"
+    )
+    print("|---" * (len(loaded) + 2) + "|")
     for name, section, key, places in ROWS:
-        cells = []
-        for _, document, _ in loaded:
+        cells, values = [], {}
+        for label, document, _ in loaded:
             value = (document or {}).get(section, {}).get(key)
+            values[label] = value
             if value is None:
                 cells.append("—")
             elif places is None:
                 cells.append(f"{value / 1e9:.2f}")
             else:
                 cells.append(f"{value:,.{places}f}")
+        before, after = values.get(DELTA[0]), values.get(DELTA[1])
+        if before is None or after is None:
+            cells.append("—")
+        elif places is None:
+            cells.append(f"{(after - before) / 1e9:+.2f}")
+        else:
+            cells.append(f"{after - before:+,.{places}f}")
         print(f"| {name} | " + " | ".join(cells) + " |")
     for label, document, _ in loaded:
         print(f"\n{label}: status={(document or {}).get('status')}")

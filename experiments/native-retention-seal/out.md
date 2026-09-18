@@ -142,9 +142,20 @@ refusal codes and 14 pairs both paths accept. The receipt is committed at
 `battery_receipt.py` rebuilds it from the battery's own rows, so those three
 figures and the table below are derived rather than counted by hand. The hook
 that writes the rows is off unless `MICROCOSM_BATTERY_RECEIPT` is set and
-changes no assertion. The file is 122 tests against 116 comparisons because
-six of them drive no comparison: three pin the codes this change *adds* (§2c)
-and three are the O(columns) and snapshot-preservation properties.
+changes no assertion. The file is **246 collected items** against 116
+comparisons, and the decomposition is computed rather than asserted: **113
+items drive at least one comparison**, three of those drive two
+(`test_actual_store_roundtrip_accepts_canonical_nulls_and_typed_objects`,
+`test_an_observer_snapshot_preserves_the_replay_seal`,
+`test_non_finite_metadata_keeps_its_sign_on_both_paths`), which is the 116
+rows; and **133 drive none** — 124 of them added in this session's fix pass
+(the 121-case object-axis equality-class sweep, the two `__eq__`-subclass
+cases and the masked-integer case) and nine that assert a property rather than
+a comparison: the two seal-protocol guards, `SEAL_TYPE`, the flags fold, the
+two `RangeIndex` descriptor cases, `seal_identity`'s stability, the dtype
+census and `test_the_seal_is_proportional_to_columns_and_not_to_rows`. An
+earlier draft of this sentence said "122 tests ... six of them", and both
+halves were wrong.
 
 | verdict both paths reached | comparisons |
 |---|---|
@@ -178,10 +189,15 @@ seal is much more likely to be *stricter* than the predicate it replaces than
 weaker, and a stricter seal turns a green run red. They include the store round
 trip of §1; the object-scalar equivalences (`np.int64(7)` for `7`,
 `np.bool_(True)` for `True`, `np.float32(1.25)` for `1.25`, `np.bytes_` for
-`bytes`); `owners` insertion order, which is compared sorted; and
-`RangeIndex(0, 1, 1)` against `RangeIndex(0, 1, 7)`, whose descriptors differ
-and whose materialised labels do not — a seal derived from the store's index
-encoding would have folded `start`/`stop`/`step` and refused it.
+`bytes`); and `owners` insertion order, which is compared sorted.
+**The `RangeIndex` case is not one of the fourteen**, and saying it was is a
+mistake this report made until it was checked against the receipt:
+`RangeIndex(0, 1, 1)` against `RangeIndex(0, 1, 7)` — whose descriptors differ
+and whose materialised labels do not, so a seal derived from the store's index
+encoding would have folded `start`/`stop`/`step` and refused it — is checked
+path by path in `test_range_index_parameters_that_no_label_shows_are_accepted`
+rather than through the agreement driver, so it contributes none of the 116
+rows and appears nowhere in the receipt.
 
 ### 2a. What the battery found, which is the point of having one
 
@@ -271,6 +287,14 @@ do about it.
 
 ## 3. What the change is, in the runner
 
+**The roster is one, two or three nodes, not three.** It is
+`financial.ATTACH_NODE`, plus the property graph's attach node when there is a
+property graph, plus the tax gate when the rebase is enabled — so the base
+nineteen-node run measured in §7 declares exactly **one**, which
+`test_the_base_run_retains_its_declared_consumers_and_seals_the_rest` asserts
+(`{'survey_predictors.attach'}`, 18 sealed). Wherever this report says "three"
+it means the three the code can name, not three at once.
+
 `graph_atomic_survey_financial` names its **declared consumers** before the run
 — `financial.ATTACH_NODE`, the property graph's attach node, and the tax gate
 when the rebase is enabled — because
@@ -331,7 +355,7 @@ Four tests, modelled on `test_absent_observer_allocates_no_snapshot`:
 |---|---|
 | `test_a_seal_only_observer_allocates_no_snapshot` | `_observer_snapshot` monkeypatched to raise is never called, and the observer still sees every node in `compiled.order` |
 | `test_a_seal_only_observer_moves_no_key_receipt_or_store_object` (cold and warm) | identical manifest key, identical node keys, byte-identical store objects against a no-observer run |
-| `test_a_seal_only_observer_receives_the_live_population` | the observer really does receive the executor's own table objects, and the default mode really does not |
+| `test_a_seal_only_observer_receives_the_live_population` | **the seal-only arm only.** It asserts the observer receives the executor's own table objects in the new mode. Its default-mode arm compares one run's snapshots against a *different* run's frames, so it cannot show that the default does not hand over live objects — an adversarial pass found that and it is not fixed here; §11 question 8 |
 | `test_the_detach_keyword_is_a_bool_and_does_nothing_without_an_observer` | a non-bool raises `TypeError`; the keyword alone moves no key |
 
 **The mode's one honest cost, stated in the docstring:** in this mode the
@@ -477,18 +501,24 @@ rather than edited, as the brief required. Status
 
 ### 7a. Before and after
 
-| | baseline `5ff889814` | transport after `5307249b3` | **this lane** | vs after |
+```
+| | baseline 5ff889814 | transport after 5307249b3 | retention seal (this lane) | retention seal vs after |
 |---|---|---|---|---|
-| **runner call CPU s** | **2,026.78** | **1,907.58** | **1,714.92** | **−192.65** |
-| runner call wall s | 2,045.91 | 1,975.99 | 1,709.70 | −266.28 |
-| financial node loop wall s (19) | 277.36 | 238.33 | 196.48 | −41.85 |
-| prefix node loop wall s (9) | 55.93 | 45.49 | 39.55 | −5.94 |
-| outside both node loops, wall s | 1,712.62 | 1,692.17 | 1,473.68 | −218.49 |
-| required replay CPU s | — | 1,664.45 | **1,566.82** | −97.63 |
-| whole-process CPU s | 2,028.69 | 3,574.86 | **3,284.70** | −290.16 |
+| runner call CPU s | 2,026.78 | 1,907.58 | 1,714.92 | -192.65 |
+| runner call wall s | 2,045.91 | 1,975.99 | 1,709.70 | -266.28 |
+| financial node loop wall s (19) | 277.36 | 238.33 | 196.48 | -41.85 |
+| prefix node loop wall s (9) | 55.93 | 45.49 | 39.55 | -5.94 |
+| outside both node loops, wall s | 1,712.62 | 1,692.17 | 1,473.68 | -218.49 |
+| required replay CPU s | — | 1,664.45 | 1,566.82 | -97.63 |
+| whole-process CPU s | 2,028.69 | 3,574.86 | 3,284.70 | -290.16 |
+| whole-process peak RSS GB | 13.16 | 12.42 | 17.86 | +5.43 |
+```
 
-Generated by `experiments/native-retention-seal/before_after_table.py` from the
-three runs' own measurement JSONs, so no figure here is transcribed by hand.
+Pasted verbatim from `experiments/native-retention-seal/before_after_table.py`,
+which reads the three runs' own measurement JSONs, so **no figure here is
+transcribed by hand** — including the replay row and the delta column, which
+the report quoted while the generator produced neither until an adversarial
+pass caught it.
 
 **Read the CPU row.** `call_cpu_seconds` comes from `process_time` and is
 load-independent; the wall rows are not, and this run shared the machine with
@@ -588,9 +618,14 @@ phase from the two runs' own RSS traces:
 **I cannot attribute the replay-phase difference**, and I am not going to
 invent a mechanism for it. What can be said:
 
-* The retention this change removes is, at 1/1000, **about 0.31 GiB** —
+* The retention this change removes is, at 1/1000, **about 0.31 GB** —
   nineteen snapshots at the cost attribution's measured 9.6–9.8 bytes per cell
-  over this frame's 1.70e6 cells. That is an order of magnitude below the
+  over this frame's 1.70e6 cells, which is 310–317 MB, i.e. 0.29–0.30 **GiB**.
+  The base branch's report and earlier drafts of this one wrote that as
+  "0.31 GiB"; the arithmetic gives 0.31 GB and the two units differ by 7 %
+  here. Neither the cell count nor the bytes-per-cell figure is this lane's:
+  both are the cost-attribution report's, carried forward and labelled as
+  such. That is an order of magnitude below the
   difference, so this comparison is not evidence about retention in either
   direction.
 * `ru_maxrss` is a high-water mark of resident pages and depends on when the
@@ -628,7 +663,7 @@ over the call, not a fitted slope**, and not all of it is node work.
 **This points against the change, and that is the finding.** At the same point
 in the run — the runner call's return, before the replay — this head holds
 **2.24 GB more** than the transport after-run and 2.78 GB more than the
-baseline, where what the change removes is about **0.31 GiB** of retention at
+baseline, where what the change removes is about **0.31 GB** of retention at
 1/1000. The in-call peak moves the same way, 13.49 against 12.42. I am not
 going to invent a mechanism for it; §7d sets out what can and cannot be said,
 and the one candidate there — that this run had 67–80 GB free throughout where
@@ -902,7 +937,88 @@ are this lane's, and every other test in that package is unchanged and green.
 
 ### 9a. The twenty-one dependent files, one pytest process each
 
-*(in flight)*
+`experiments/native-retention-seal/dependent_test_battery.py` selects every
+build-shard test file naming `survey_population_replay`,
+`graph_atomic_survey_financial` or `graph_implementation` — 21 of the 460 — and
+runs each in its own pytest process, as CI's groups do, because one file's
+`monkeypatch.setattr` on a module-level function otherwise trips
+`survey_population_preparation._producer`'s live-code seal for every later
+file. Three processes at a time, 2 h 20 m wall.
+
+**Three files were red, and each for a different reason. One is this change's
+defect, one is this lane's own measurement error, and one is neither.**
+
+| file | result |
+|---|---|
+| `test_us_spine_blindness.py` | **1 failed**, 502 passed — **this change's defect**, fixed below |
+| `test_us_graph_atomic_completion_host.py` | 1 failed, 8 passed, **23 errors** — invalidated, see below |
+| `test_us_graph_atomic_person_status.py` | 11 passed, **2 errors** — invalidated, see below |
+| `test_us_implementation_inventory_contracts.py` | 135 passed |
+| `test_us_graph_atomic_survey_financial.py` | 8 passed (13 at this head, with the new guard tests) |
+| `test_us_survey_population_replay.py` | 122 passed (246 at this head) |
+| `test_us_graph_atomic_property_financial.py` | 9 passed |
+| `test_us_graph_atomic_property_tax_financial.py` | 13 passed |
+| `test_us_graph_atomic_survey_population.py` | 7 passed |
+| `test_us_graph_us_survey_enrichment.py` | 9 passed (24 m) |
+| `test_us_graph_full_puf_enrichment.py` | 57 passed |
+| `test_us_property_completion_graph.py` | 27 passed |
+| `test_us_survey_financial_successor.py` | 8 passed |
+| `test_us_survey_origin_budget_atomic_geography.py` | 10 passed |
+| `test_us_survey_age_calibration_atomic_geography.py` | 1 passed |
+| `test_us_completion_support_custody.py` | 50 passed |
+| `test_us_current_survey_puf_host.py` | 6 passed |
+| `test_us_current_survey_puf_transfer.py` | 1 passed |
+| `test_us_full_puf_output_profiles.py` | 57 passed |
+| `test_us_graph_puf55_survey_ss.py` | 3 passed |
+| `test_us_asec_prepared_resources.py` | 8 passed |
+
+**The spine-blindness failure is real, and it is this change's.**
+`test_runtime_population_operators_are_source_spine_blind` is a static
+analyser over a reviewed roster of US runtime population operator modules, and
+`survey_population_replay.py` has been on that roster since before this branch
+— the branch does not touch the test. It refuses a subscript it cannot resolve
+statically on a name it has inferred to be a column container, fail-closed,
+because such a subscript could be reading a source-spine column. Every seal
+record in this module is a **positional tuple**, compared with `expected[0]`,
+`actual[6]`, `left[4]` and so on, so the analyser reported **48 offending
+sites** in one module:
+
+```
+AssertionError: US runtime population operators must be source-spine blind.
+Found: {'survey_population_replay.py': ('line 269:9: subscript with an
+unresolvable dynamic selector (fail-closed)', ... 47 more ...,
+'line 532:15: getattr with an unresolvable dynamic attribute (fail-closed)')}
+```
+
+It is a false positive about intent — a seal record is a tuple, not a column
+container — and a true report about form. **Checked both ways before fixing
+anything:** the same test passes at `a64f7b733` against that tree's own
+sources (`1 passed in 223.35s`), and fails at this head, so the seal
+introduced it. **A PR left in that state would be red in CI**, since
+`test_us_spine_blindness.py` is a `test_us_*` file and this PR sets both the
+`us` and `shared` path filters.
+
+The fix is to stop indexing the records and name their fields, by unpacking:
+`expected_dtype, expected_shape, expected_digest = expected` instead of
+`expected[0]`, `expected[1]`, `expected[2]`. No record changed shape, order or
+`repr`, so **no seal identity moves**; the module is in no stage roster and in
+none of the inventory's 124 contracts, so no pin moves either. The one dynamic
+`getattr(index, name, None)` over `type(index)._comparables` became a literal
+reader per comparable, which is also **strictly more closed**: an index class
+declaring a comparable this module has never seen now refuses `AXIS` instead of
+folding `None` for it in silence.
+
+**The completion-host and person-status results are invalidated, by me.** Both
+errored, and the person-status teardown names the cause:
+`ValueError: CURRENT_SURVEY_PREDICTOR_FINANCIAL_RUN_IMPLEMENTATIONS_CHANGED`,
+with `SurveyPopulationGraphError: MANIFEST_NODE_STATE` at setup. Those runs
+overlapped a window in which **I was editing
+`survey_population_replay.py` in the working tree** — mutating the guards to
+prove three new tests go red, and restoring them — and an implementation hash
+is over the module file's bytes. A run whose source changes under it reports
+exactly that. The failure is my measurement error, not evidence about the
+change, and the honest statement is that **these two files' results are
+unknown until they are re-run against a still tree.** That re-run is below.
 
 ### 9b. What this session re-derived rather than trusted
 
@@ -1013,9 +1129,13 @@ arbitrary Python objects that no digest reproduces.
 - **(a) Keep it as shipped.** The refusal is preserved; only the code moves,
   and only for an object-dtype axis.
 - **(b) Retain the axes.** An index is `O(rows)` but 8 bytes a row, not a
-  frame: nineteen person indexes at 1/10 are about 0.5 GB against the 29 GB
-  the populations were. Keeping the objects for axes alone would make every
-  axis code exact.
+  frame. At **full source** that is nineteen person indexes over about
+  3.3e8 person rows, so roughly 50 GB against the ~290 GiB the populations
+  were — the two figures an earlier draft of this option mixed were 0.5 GB at
+  1/10 against 29 GB at full source, which is not a comparison. At **1/10**
+  it is about 0.5 GB against about 29 GB. Either way it is a tenth of the
+  retention, not none of it. Keeping the objects for axes alone would make
+  every axis code exact.
 - **(c) Refuse object-dtype axes outright in the seal.** Strictly more closed,
   and a behaviour change to a case no US frame is known to carry.
 
@@ -1048,7 +1168,7 @@ the kind that gets quoted later.
 say why — do you want it chased?** §7d: the replay phase peaks at 17.83 GB
 against the base branch's 11.71 GB. §7e: at the runner call's *return*, before
 any replay, this head holds 8.69 GB against 6.45 GB, and the in-call peak is
-13.49 against 12.42. The retention this change removes is about 0.31 GiB, an
+13.49 against 12.42. The retention this change removes is about 0.31 GB, an
 order of magnitude below any of those differences, so the comparison is not
 evidence about retention in either direction — but three figures moving the
 same way is worth a sentence better than the one I can give. Options: **(a)** repeat the 1/1000 after-run on
@@ -1092,6 +1212,23 @@ a future edit to the declared-consumer roster, and it is the one thing in this
 change with no test at all. I did not do it here because it adds a run to the
 slowest test file and the brief's measurement work had the machine.
 
+**8. One executor test's default-mode arm is vacuous — worth a fix, or worth
+just saying so?** `test_a_seal_only_observer_receives_the_live_population`
+asserts the new mode hands over the executor's own table objects, which it
+does. Its *other* arm is meant to show the default does **not**, and it
+compares one run's snapshots against a **different** run's frames, so it would
+pass whatever the default did. `test_absent_observer_allocates_no_snapshot` and
+`test_mutating_and_retained_observers_cannot_change_execution_or_cache` do pin
+the default's behaviour, so nothing is unpinned — but that table row in §4
+claimed a discrimination this test cannot make, and §4 now says so.
+
+- **(a) Fix the test** so both arms observe the same run, which is a small
+  change to a `microcosm-graph` test and belongs with the main-only PR.
+- **(b) Leave it and keep §4 honest about what it pins.**
+
+My reading is (a), in the main-only PR rather than here, so the graph half
+arrives with its own tests intact.
+
 ## 12. What a reader should not take from this report
 
 - **Nothing here is a build, a certification or a release artifact.** Every
@@ -1104,7 +1241,7 @@ slowest test file and the brief's measurement work had the machine.
   carry a pre-existing second link, uniformly, from elsewhere in the recovered
   tree).
 - **The memory figures at 1/1000 are noise, not a result.** Nineteen snapshots
-  at 1/1000 are about 0.31 GiB against a 1–2 GB RSS sawtooth and single-second
+  at 1/1000 are about 0.31 GB against a 1–2 GB RSS sawtooth and single-second
   jumps of over 2 GB from the ASEC HDF5 loads — the transport lane's baseline
   said so and this lane's trace agrees. The retention saving has to be read at
   a larger fraction or from the record's own size, which

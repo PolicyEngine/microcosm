@@ -214,27 +214,45 @@ strictly more closed, it fires earlier, and no code changes.
 Two are re-expressed rather than dropped, because they are not properties of
 one side:
 
-* **S2/S3, the dtype pair.** Instead of `type(a.dtype) is type(b.dtype) and
-  a.dtype == b.dtype`, the seal folds a **dtype token**
-  `(type(dtype).__module__, type(dtype).__qualname__, str(dtype),
-  getattr(dtype, "storage", None), getattr(dtype, "na_value", …) is pd.NA)`.
-  Token equality must be equivalent to the pair for every admitted dtype; the
-  battery proves it by sweeping a dtype census and asserting the equivalence
-  both ways. `str()` alone is not enough — `StringDtype("python")` and
-  `StringDtype("pyarrow")` both spell `string` — which is why `storage` is in
-  the token; and `CategoricalDtype`, whose `__eq__` is not an equivalence
-  relation, never reaches here because S14 refuses it.
-* **A1/A2, `type(...)` and `Index.identical`.** The seal folds the **qualified
-  class** (`__module__` + `__qualname__`, rather than `_frame_identity`'s bare
-  `__name__`), the dtype token, and a digest over every name in
-  `type(index)._comparables`. That last part closes a gap neither existing
-  seal has: `pd.DatetimeIndex._comparables == ['name', 'freq']` (measured at
-  pandas 3.0.3), so two `DatetimeIndex`es with identical values, dtype and
-  name but different `freq` are **not** `identical()` while their bytes are
-  equal. `name` is folded through `_name_bytes`; any other comparable is
-  folded through `_name_bytes` when the store codec accepts it and through
-  `repr()` otherwise. §6 states the one residual risk that `repr` fallback
-  carries.
+> **Corrected 2026-09-18.** The two bullets below described a *dtype token* of
+> strings and booleans, and a `_comparables` digest with a `repr()` fallback.
+> **Neither is in the code**, and an adversarial pass over this note caught it:
+> §4(1) of this same note argues that a spelling-based token would *miss* a
+> defect the code catches, so the two sections contradicted each other and this
+> was the wrong one. What the code does is the opposite of tokenising — it
+> **retains the small objects** and applies the identical operator. The bullets
+> now say that.
+
+* **S2/S3, the dtype pair.** `_series_seal` retains
+  `head = (type(dtype), dtype, length)` — the dtype **class object** and the
+  dtype **object itself**, not a spelling of either — and `_same_series_seal`
+  compares them as `expected_class is actual_class and expected_dtype ==
+  actual_dtype`, which is `type(a.dtype) is type(b.dtype) and a.dtype ==
+  b.dtype` with the operands retained rather than re-derived. Retaining the
+  objects is what makes the exact cases work, and §4(1) has the sharpest one:
+  `np.longlong` against `np.int64` has equal `str()`, equal `dtype.str` and
+  equal bytes, and a different dtype **class**. A token keyed on spellings
+  would accept that pair; this refuses it `SERIES_DTYPE_OR_LENGTH`.
+  `CategoricalDtype`, whose `__eq__` is not an equivalence relation, never
+  reaches here because S14 refuses it. `test_the_dtype_token_is_faithful_to_
+  the_predicate_it_replaces` sweeps the admitted dtype census and asserts the
+  equivalence on `(type(dtype), dtype)`; it is named for the token this note
+  used to describe, and the name is now the only trace of it.
+* **A1/A2, `type(...)` and `Index.identical`.** `_axis_seal` retains the
+  **class object** `type(index)`, the `_comparables` names, the raw comparable
+  **values**, the dtype object, the value fold and the name seal.
+  `_same_axis_seal` compares the class with `is`, the names with `==`, and each
+  comparable value with `bool(one == other)` element-wise — which is exactly
+  what `Index.identical` applies, and deliberately not a tuple comparison,
+  which would short-circuit on identity and accept a comparable whose own
+  `__eq__` refuses itself (pinned by
+  `test_a_comparable_whose_equality_refuses_itself_still_refuses`). Folding the
+  `_comparables` **tuple itself** closes a gap neither existing seal has:
+  `pd.DatetimeIndex._comparables == ['name', 'freq']` (measured at pandas
+  3.0.3), so two `DatetimeIndex`es with identical values, dtype and name but
+  different `freq` are **not** `identical()` while their bytes are equal, and
+  an index class that declares a comparable this module has never seen refuses
+  `AXIS` rather than folding `None` for it.
 
 **(b) Every binary comparison folds exactly the bytes that comparison
 compares.** Not an approximation of them, and not a different normalisation:
@@ -419,16 +437,40 @@ to. Removing it means giving the completion host the same seal treatment and
 finding a frame-free form for `_states`; that is a second change with its own
 argument.
 
-**The residual risk this note will not hide.** The `_comparables` fallback in
-§3(a) uses `repr()` for a comparable the store's axis-name codec will not
-encode. `repr` is not guaranteed injective with respect to `==`, so a pair of
-`==`-equal, differently-`repr`'d comparables would make the seal refuse where
-today's `identical()` accepts. No index class in this runtime reaches it: US
+**The residual risks this note will not hide.** An earlier version of this
+paragraph declared one that **does not exist**: a `repr()` fallback in the
+`_comparables` fold. There is no such fallback — `_axis_seal` retains the raw
+comparable values and `_same_axis_seal` compares each with the same `==`
+`Index.identical` applies, so the comparables arm introduces no divergence in
+either direction. The three that are real, each reproduced before being written
+down:
+
+1. **`seal_identity` depends on `repr`.** It is `sha256(repr(seal))`, and a
+   seal retains live dtype, class and `WeightKind` objects whose canonical JSON
+   does not exist. That is the *stamp*, not the comparison: two seals are
+   compared field by field by `same_replayed_population_seals`, and `repr` only
+   decides the digest a run retains per node for
+   `FINANCIAL_NODE_POPULATION_CHANGED`. Two objects that are `==`, of the same
+   class, with different `repr` would give different stamps — but the stamp is
+   only ever compared with another taken in the same process, from the same
+   object, which its own docstring says.
+2. **An object-dtype axis cannot be folded exactly by any digest**, because
+   `Index.equals` there is an element-wise `==` over arbitrary Python objects.
+   `_object_axis_equivalence` reproduces the equivalence classes that operator
+   actually has — measured, not assumed — and refuses `AXIS` at seal
+   construction for a value that is not `==` to the plain builtin the codec
+   encodes it as, which is the only case a digest cannot represent. Before that
+   guard the seal **accepted** a pair the comparison refuses; §4 records it.
+3. **A one-sided refusal now takes precedence** over a two-sided difference on
+   the same operand, because the one-sided assertions fire when the seal is
+   built. Both refuse; the code between them can differ. The clearest instance
+   is an object axis carrying a `datetime64` leaf and a value difference: the
+   comparison reports `AXIS`, the seal `UNSUPPORTED_OBJECT`.
+
+No index class in this runtime reaches the exotic comparables case at all: US
 frames carry `Index` and `RangeIndex`, whose `_comparables` is `['name']`
 (measured), and `graph_context.encode_us_frame_context` requires group entities
-to carry a default unnamed `RangeIndex` (`:130-143`). The seal folds the
-comparables tuple itself, so a future index class with a wider one cannot pass
-unnoticed.
+to carry a default unnamed `RangeIndex` (`:130-143`).
 
 ## 7. The `microcosm-graph` half
 
