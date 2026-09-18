@@ -1,0 +1,30 @@
+native-retention-seal lane — 1/15 run record
+queued: 2026-09-17T23:55Z
+waiter pid: 45669  (zsh ./launch_fifteenth.sh)
+gates: waits for this lane's own 1/1000 after-run (pid 82878) to exit, so that
+       neither measurement's wall clock or peak RSS is the other's contention,
+       then for available memory > 45 GB, polling every 60 s, refusing after 6 h
+source tree: /Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-fifteenth
+             detached at 0bc16009925551abce06bf31d6bedd891366e8ca
+             (packages/ byte-identical to the 1/1000 tree, verified by diff -r)
+sources: /Users/maxghenis/PolicyEngine/_worktrees/native-scale-runs/run-fifteenth
+         selection-request.json carries fraction [1,15]; every other file is an
+         APFS clonefile copy of the staged pilot original with a matching
+         sha256 and its own inode. `cp -c` was proved not to change the
+         source's link count (the staged inputs carry a pre-existing second
+         link, uniformly, from elsewhere in the recovered tree).
+harness: harness19_fifteenth.py -- the native-scale lane's committed
+         harness19_tenth.py with exactly three changes: fraction 1/15, the
+         retention brief's 48 GiB RSS ceiling, and the label. Verified by
+         diffing the two bodies.
+ceilings: RLIMIT_CPU hard 21660 s (setsid_exec), harness soft 21600 CPU-s,
+          43200 wall-s, 48 GiB RSS
+the harness pid appears in fifteenth/launch.log (and in fifteenth-launch.log)
+once the gates open; record it there
+kill, if ever needed: kill <that pid>   -- exact pid only, never a pattern kill
+note: the native-scale lane's own 1/10 run reached its gate at 22:58:25Z on
+      2026-09-17, ran 573 CPU-s and STOPPED with
+      SurveyPopulationPreparationError: PREPARATION_ISSUANCE_REFUSED. That is a
+      catch-all that discards the cause (`raise ... from None`,
+      survey_population_preparation.py:2084), so the artifact does not say what
+      refused. This run is the next evidence on that question.
