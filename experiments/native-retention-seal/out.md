@@ -654,6 +654,17 @@ head: **`contracts accepted at the working tree: True`** over all ten stages,
 so the test files this lane has added since the runs moved no digest and broke
 no contract.
 
+**Regenerated once more at the finished head**, after §9d's fixes changed both
+`survey_population_replay.py` and `executor.py`, and the conclusion is
+unchanged where it matters: `base → seal_and_battery` is still empty,
+`base → head` is still `microcosm.graph/executor.py` **alone**, and all ten
+contracts are still accepted. `executor.py`'s digest itself moved again
+(`feb26666…` → `f9b8eca9…`), because the docstring that withdraws both
+guarantees is part of the file the manifest folds — which is the same movement
+already accounted for, not a new one. That the seal's own rewrite moved
+**nothing** is the direct re-verification of this section's claim at the head
+that ships.
+
 ### 7d. Peak RSS went up, and this report is not going to spin it
 
 17.86 GB whole-process against the base branch's after-run's 12.42 GB. Split by
