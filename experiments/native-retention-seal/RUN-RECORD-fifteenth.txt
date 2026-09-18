@@ -40,3 +40,67 @@ prediction on record BEFORE the outcome: this run refuses at
 acs_native_coverage_binding.py:562-564 with CANONICAL_SIZE, because 1/15 needs
 about 102,151 ACS serialnos = 1,634,409 canonical-JSON bytes against a 1 MiB
 cap. See acs-serialno-ceiling-receipt.json, computed and committed first.
+
+--- result ---
+2026-09-18T00:45:22Z (605.7 s after the start): STOPPED.
+  status      SurveyPopulationPreparationError: PREPARATION_ISSUANCE_REFUSED
+  CPU         605.651883 s   (ceiling 21,600; 2.8% of it)
+  wall        606.550110 s   (ceiling 43,200)
+  peak RSS    8,279,228,416 B = 8.28 GB   (ceiling 48 GiB; 16% of it)
+  nodes run   0  -- `node_wall_times` is the empty list
+  runner call entered at wall 2.028 s / cpu 1.806 s / RSS 402,259,968 B and
+  returned at wall 605.690 s / cpu 604.791 s, so the whole run is inside the
+  runner call and none of it is in a node loop.
+artifact: experiments/native-retention-seal/measurement-fifteenth-refusal.json
+  (a copy of .measure/fifteenth/repeated-verification-measurement.json)
+
+The refusal is the predicted one's family, and the prediction on record above
+named the code. `PREPARATION_ISSUANCE_REFUSED` is a catch-all that discards its
+cause (`raise ... from None`, survey_population_preparation.py:2084), so this
+artifact cannot name what refused; the 1/15 diagnostic below does.
+
+--- a defect in this harness's own receipt, not in the run ---
+The run really did sample 1/15: `harness19_fifteenth.py:604` passes
+`fraction=Fraction(1, 15)`, and the staged sources'
+`sources/selection-request.json` carries `"fraction":[1,15]`. But two receipt
+fields were left as the tenth harness's while the three code changes were made:
+
+  harness19_fifteenth.py:516  "sample": {"fraction": [1, 10], "seed": 20260908}
+  harness19_fifteenth.py:517  "scope": "... at 1/10 -- 158,737 source households ..."
+
+So `measurement-fifteenth-refusal.json` reports `sample.fraction == [1, 10]`
+and a scope sentence naming 1/10, and both are wrong about the run that wrote
+them. The harness is committed as it ran and is not being retrofitted; the
+authoritative record of the fraction is the call site and the staged selection
+request, both cited above. The 1/15 diagnostic harness corrects both fields and
+says so in its own docstring.
+
+--- the 1/15 refusal diagnostic ---
+purpose: recover the cause the three nested catch-alls discard, at 1/15, the
+         way round 3 of the 1/10 diagnostic did.
+harness: harness19_diag_fifteenth.py = harness19_fifteenth.py with the 1/10
+         diagnostic's committed `sys.monitoring` RAISE block inserted at the
+         same point in the file, plus the two receipt-field corrections above.
+         Proved by diffing both ways: against harness19_fifteenth.py the only
+         code difference is the inserted block; against harness19_diag.py the
+         only differences are the docstring, `RSS_CEILING`, `sample`, `scope`
+         and `Fraction(1, 15)`. It changes no byte of the measured tree, so no
+         source pin moves and no producer refuses.
+tree:    the same worktree the measurement ran in,
+         /Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-fifteenth,
+         detached at 0bc16009925551abce06bf31d6bedd891366e8ca, `git status`
+         clean; the harness lives in its gitignored `.measure/`.
+sources: the same staged 1/15 clone, read only.
+gates:   the measurement's own, unchanged -- available > 45 GB, RLIMIT_CPU
+         21,660 s, harness soft 21,600 CPU-s / 43,200 wall-s / 48 GiB RSS.
+first attempt: pid 32611, launched 00:52:06Z at available 81.1 GB, stopped by
+         `kill 32611` at 00:53:1xZ after ~3 min, before it had written
+         anything, because its receipt would have inherited the two stale
+         fields above. Its partial probe directory was removed.
+run:     pid 47936 / pgid 47936 (session leader), launched 00:53:59Z at
+         available 79.9 GB.
+kill, if ever needed: kill 47936   -- exact pid only, never a pattern kill
+note:    this lane's 21-file dependent pytest battery is running concurrently
+         on other cores. The refusal is a byte-budget comparison and cannot
+         turn on load; the CPU and wall figures it reports can, and nothing in
+         the report leads with them.
