@@ -59,7 +59,10 @@ validation oracles (microcosm#264), which sequence behind reform modules
 compiled upstream, not behind a protocol change.
 """
 
+import platform
 from collections.abc import Mapping, Sequence
+from hashlib import sha256
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
@@ -68,7 +71,7 @@ import pandas as pd
 
 from microcosm.frame.bundle import Frame
 from microcosm.frame.materialize import engine_tables, put_frame_table, read_frame_table
-from microcosm.frame.rules import ExportContract
+from microcosm.frame.rules import EngineInput, ExportContract, InputInventory
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 
 __all__ = ["AxiomEngine", "AxiomEntityTableDataset", "BE_SCHEMA"]
@@ -244,6 +247,170 @@ class AxiomEngine:
     def entity_schema(self) -> EntitySchema:
         """Return the frame entity schema (no engine import required)."""
         return self._schema
+
+    def input_inventory(self) -> InputInventory:
+        """Compile an input-only diagnostic through the real dense runtime.
+
+        Canonical request addresses come from the compiled catalog, never from
+        slot-name concatenation. The current runtime supplies no typed input
+        semantics (engine issue #62); missing metadata stays unknown. Root
+        membership is operational entity evidence, not a statistical universe.
+        Related-entity batches are not supported by this adapter, so a module
+        with relations fails rather than reporting partial input coverage.
+
+        Fresh compilation prevents cached programs being paired with newer
+        source fingerprints. Full canonical-root YAML and toolchain digests
+        conservatively bind imported content, not just the entry module.
+        """
+        adapter = AxiomEngine(
+            self._module,
+            self._schema,
+            rulespec_roots=self._rulespec_roots,
+            entity_names=self._entity_names,
+            arithmetic=self._arithmetic,
+        )
+        # Validate the engine's canonical authority boundary before reading
+        # any root contents for provenance. The measured compilation below is
+        # still fresh and bracketed by before/after content fingerprints.
+        adapter._program(self._schema.person_entity, missing_ok=True)
+        adapter._programs.clear()
+        adapter._metadata = None
+        before = adapter._inventory_fingerprints()
+        inputs: list[EngineInput] = []
+        discovery = []
+        for entity in self._schema.entities:
+            program = adapter._program(entity, missing_ok=True)
+            if program is None:
+                discovery.append(
+                    {
+                        "entity": entity,
+                        "engine_entity": self._entity_names[entity],
+                        "status": "no_derived_program",
+                        "root_input_count": None,
+                    }
+                )
+                continue
+            if program.relations:
+                raise NotImplementedError(
+                    "Input inventory does not support related-entity inputs; "
+                    "a relation-bearing module cannot report complete coverage."
+                )
+            catalog = program.input_catalog
+            aliases = program.input_request_names
+            root_inputs = program.root_inputs
+            discovery.append(
+                {
+                    "entity": entity,
+                    "engine_entity": program.root_entity,
+                    "status": "complete",
+                    "root_input_count": len(root_inputs),
+                }
+            )
+            for name in sorted(root_inputs):
+                canonical = catalog.get(name)
+                accepted = tuple(sorted(aliases.get(name, ())))
+                if canonical is not None and canonical not in accepted:
+                    raise ValueError(f"Inconsistent Axiom input catalog for {name!r}.")
+                inputs.append(
+                    EngineInput(
+                        name=name,
+                        entity=entity,
+                        engine_entity=program.root_entity,
+                        canonical_request_name=canonical,
+                        request_names=accepted,
+                    )
+                )
+        after = adapter._inventory_fingerprints()
+        if before != after:
+            raise ValueError("Axiom sources changed during input discovery.")
+        return InputInventory(
+            inputs=tuple(inputs),
+            fingerprints=after,
+            mapped_entities=tuple(self._schema.entities),
+            entity_discovery=tuple(discovery),
+            runtime={
+                "engine": "axiom",
+                "wrapper_distribution_version": _distribution_version(
+                    "axiom-rules-engine"
+                ),
+                "native_distribution_version": _distribution_version(
+                    "axiom-rules-engine-dense"
+                ),
+                "core_version": None,
+                "python": platform.python_version(),
+                "platform": platform.platform(),
+                "numpy": np.__version__,
+            },
+        )
+
+    def _inventory_fingerprints(self) -> tuple[dict[str, str], ...]:
+        engine = self._import_engine()
+        import axiom_rules_engine_dense
+
+        fingerprints = []
+        for root in self._rulespec_roots:
+            files = sorted(
+                path
+                for path in root.rglob("*")
+                if path.is_file() and path.suffix.lower() in {".yaml", ".yml"}
+            )
+            toolchain = root / ".axiom/toolchain.toml"
+            if toolchain.is_file():
+                files.append(toolchain)
+            fingerprints.append(
+                {
+                    "role": "rulespec_root_yaml_and_toolchain",
+                    "name": root.name,
+                    "sha256": _content_tree_digest(root, files),
+                }
+            )
+        module_name = next(
+            (
+                f"{root.name}/{self._module.relative_to(root).as_posix()}"
+                for root in self._rulespec_roots
+                if self._module.is_relative_to(root)
+            ),
+            self._module.name,
+        )
+        fingerprints.append(
+            {
+                "role": "entry_module",
+                "name": module_name,
+                "sha256": sha256(self._module.read_bytes()).hexdigest(),
+            }
+        )
+        for role, module in (
+            ("engine_wrapper", engine),
+            ("engine_native", axiom_rules_engine_dense),
+        ):
+            path = Path(module.__file__)
+            files = (
+                [path]
+                if path.suffix != ".py"
+                else [
+                    item
+                    for item in path.parent.rglob("*")
+                    if item.is_file()
+                    and item.suffix in {".py", ".so", ".pyd", ".dylib"}
+                ]
+            )
+            fingerprints.append(
+                {
+                    "role": role,
+                    "name": module.__name__,
+                    "sha256": _content_tree_digest(path.parent, files),
+                }
+            )
+        fingerprints.append(
+            {
+                "role": "adapter",
+                "name": "microcosm.frame.adapters.axiom",
+                "sha256": sha256(Path(__file__).read_bytes()).hexdigest(),
+            }
+        )
+        return tuple(
+            sorted(fingerprints, key=lambda item: (item["role"], item["name"]))
+        )
 
     # ------------------------------------------------------------------
     # Materialization
@@ -683,6 +850,27 @@ class AxiomEntityTableDataset:
         if time_period is None:
             raise ValueError(f"Dataset at {path} carries no {cls._TIME_PERIOD_KEY}.")
         return tables, time_period
+
+
+def _distribution_version(name: str) -> str | None:
+    """Source-path imports can expose a runtime without installed dist metadata."""
+    try:
+        return version(name)
+    except PackageNotFoundError:
+        return None
+
+
+def _content_tree_digest(root: Path, files: Sequence[Path]) -> str:
+    """Hash relative paths and bytes with length framing, never absolute paths."""
+    digest = sha256()
+    for path in sorted(files):
+        relative = path.relative_to(root).as_posix().encode()
+        content = path.read_bytes()
+        digest.update(len(relative).to_bytes(8, "big"))
+        digest.update(relative)
+        digest.update(len(content).to_bytes(8, "big"))
+        digest.update(content)
+    return digest.hexdigest()
 
 
 def _period_bounds(period: int | str) -> tuple[str, str, str]:
