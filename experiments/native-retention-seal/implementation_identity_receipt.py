@@ -87,6 +87,16 @@ def main():
                 changes[stage] = differing
         moved[f"{base}->{label}"] = changes
 
+    # The inventory file's own digest is `inventory_sha256` in EVERY stage
+    # manifest, so a re-pin of one contract moves all ten even when no roster
+    # module's bytes move.
+    inventory_digests = {}
+    for label, revision in revisions.items():
+        payload = _blob(revision, INVENTORY)
+        inventory_digests[label] = (
+            None if payload is None else hashlib.sha256(payload).hexdigest()
+        )
+
     # The contract arm: the manifest refuses an unclassified import or resource
     # access, so calling it at the working tree proves this branch added none.
     contracts = {}
@@ -115,6 +125,7 @@ def main():
                 "revisions": revisions,
                 "stages": sorted(inventory["stages"]),
                 "moved_module_digests": moved,
+                "inventory_sha256_by_revision": inventory_digests,
                 "working_tree_contract_acceptance": contracts,
             },
             indent=2,
