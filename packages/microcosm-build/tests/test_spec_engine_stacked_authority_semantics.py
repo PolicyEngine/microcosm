@@ -88,7 +88,7 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
             "cacc6c11e114dbae3aaa2761cc6b3fcb1191cd9b689b1c2bd096614c51ebff8b"
         ),
         "late_producer_schedule": (
-            "777979b267e7307581b39d14b7232b6ee2712e3da0029fffc090396ebd849166"
+            "ebbce94e8cefb7afef0a2547d28f578b13c6a791576ab04081a6a09099a8c8bc"
         ),
         "metric_registry": (
             "d75cb9b29f8b0a9a085471a11f4c19c32ba04cbe5419053df94ea81cbe6125a9"
