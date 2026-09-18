@@ -104,9 +104,19 @@ in character, and the note states all four:
    Every non-object axis kind is exact, including the three `array_equivalent`
    is byte-tolerant for (`float`, `complex`, `bool`).
 
-Every defect is still refused, so this did not go back to the owner as a
-blocking question. Items 3 and 4 were found by an adversarial pass over the
-finished seal, not by writing it, and are §11 question 1 below.
+**The brief's stop-condition, evaluated.** It said: if the honest answer to (4)
+is not "nothing", stop and put it to Max as a question with options *before*
+implementing. Every defect is still refused — nothing goes unrefused, and no
+code is lost — so the condition was not met and the work went on. The four
+items above are changes in *character*, not in what is refused.
+
+Items 3 and 4 were found by an adversarial pass over the finished seal rather
+than by writing it. Item 4 is **§11 question 3**. Item 3 — which refusal takes
+precedence when a population carries both a one-sided and a two-sided defect —
+has no question of its own, because both orders refuse and both codes remain
+reachable; it is recorded rather than asked. If you would rather have been
+asked about a change in character as well as a change in what is refused, say
+so and the next lane treats it as blocking.
 
 ## 2. The discrimination battery
 
