@@ -264,8 +264,9 @@ do about it.
 `graph_atomic_survey_financial` names its **declared consumers** before the run
 — `financial.ATTACH_NODE`, the property graph's attach node, and the tax gate
 when the rebase is enabled — because
-`result.financial_population is observed[final_node]` (`:1897`) is an identity
-check and a caller holds those objects. Those three are detached with the
+`result.financial_population is observed[final_node]` (`:1986`, under the
+IDENTITY note at `:1682`; `:1897` at the base) is an identity check and a
+caller holds those objects. Those three are detached with the
 executor's own `_observer_snapshot`, so what a caller receives is exactly what
 it receives today. Every other observation is sealed on arrival and dropped.
 
