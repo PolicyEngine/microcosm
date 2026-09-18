@@ -712,7 +712,24 @@ that branch lifted, and in no census. Two separate calls:
 My reading: **(b)** for the lift, and yes for the amendment — the sentence is
 the kind that gets quoted later.
 
-**5. The completion path still retains everything, and that is where the
+**5. The replay phase's peak RSS went up and I cannot say why — do you want it
+chased?** §7d: 17.83 GB against the base branch's 11.71 GB, on a comparison
+where the retention this change removes is about 0.31 GiB, an order of
+magnitude below the difference. Options: **(a)** repeat the 1/1000 after-run on
+a quiet machine, which is about an hour and settles whether it is allocator
+behaviour under no memory pressure; **(b)** leave it until a fraction where
+nineteen snapshots are not noise, which needs the ceiling of §8 lifted first;
+**(c)** accept it as unattributed. I would take (a), because an unexplained
++6 GB next to a change whose purpose is memory is the kind of loose end that
+gets quoted against it.
+
+There is one cheap change that would shrink the seal's transient regardless,
+and this lane deliberately did **not** make it: `_array_seal` calls
+`.tobytes()` per column, which copies it, where `hashlib.update` accepts the
+array's buffer directly. Making it after the measurements would have meant the
+committed head was not the head that was measured. It is a one-line follow-up.
+
+**6. The completion path still retains everything, and that is where the
 remaining wall is.** `graph_survey_completion_host` hands the base run's whole
 population roster to `_states`, which reads each frame. Should the next lane
 give the completion host the same treatment — which means finding a frame-free

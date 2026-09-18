@@ -28,3 +28,15 @@ note: the native-scale lane's own 1/10 run reached its gate at 22:58:25Z on
       catch-all that discards the cause (`raise ... from None`,
       survey_population_preparation.py:2084), so the artifact does not say what
       refused. This run is the next evidence on that question.
+
+--- started ---
+2026-09-18T00:35:15Z: the 1/1000 after-run (pid 82878) exited, then the gate
+opened at available 76.2 GB > 45 GB.
+harness pid: 45669 / pgid 45669 (session leader; the waiter shell exec'd into
+setsid_exec, which exec'd into the harness, so the pid the shell printed is the
+harness's own).
+kill, if ever needed: kill 45669   -- exact pid only, never a pattern kill
+prediction on record BEFORE the outcome: this run refuses at
+acs_native_coverage_binding.py:562-564 with CANONICAL_SIZE, because 1/15 needs
+about 102,151 ACS serialnos = 1,634,409 canonical-JSON bytes against a 1 MiB
+cap. See acs-serialno-ceiling-receipt.json, computed and committed first.
