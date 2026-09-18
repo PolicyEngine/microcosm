@@ -32,6 +32,7 @@ from microcosm.build.us_runtime.release_gate_preflight import (
     check_export_mass_parity_risk,
     check_selection_carryover,
     check_smoke_probe_support,
+    check_spm_composition,
     check_zero_support_preview,
     selected_household_ids,
 )
@@ -1199,3 +1200,314 @@ def test__load_ledger_target_specs__hands_fact_rows_to_the_compiler(
     assert captured["target_period"] == 2024
     assert captured["age_targets"] is True
     assert specs == expected_specs
+
+
+# ---------------------------------------------------------------------------
+# Check 5: SPM measurement composition
+# ---------------------------------------------------------------------------
+#
+# The behavioural equivalence with the installed engine lives in
+# ``test_us_spm_composition_engine.py`` (``requires_us``). These pin the check's
+# own contract — role resolution, the graded scope, the reported rows — on
+# synthetic frames, with no policyengine-us.
+
+
+_SPM_ROLE_COLUMNS = (
+    "is_spm_independent_minor_role",
+    "is_household_head",
+    "is_household_spouse",
+)
+
+
+def _spm_frame(people: list[dict]) -> Frame:
+    """A US frame from ``{hid, spm, age, **role columns}`` specs.
+
+    Only the role columns some spec mentions are materialized: the engine's
+    fallback turns on a column being *present*, not on its values, so a test
+    that silently added all three could never exercise the absent-column path.
+    """
+    rows = []
+    for index, person in enumerate(people, start=1):
+        hid = int(person["hid"])
+        row = {
+            "person_id": index,
+            "person_household_id": hid,
+            "person_tax_unit_id": hid,
+            "person_spm_unit_id": int(person["spm"]),
+            "person_family_id": hid,
+            "person_marital_unit_id": index,
+            "age": person["age"],
+        }
+        for column in _SPM_ROLE_COLUMNS:
+            if any(column in candidate for candidate in people):
+                row[column] = person.get(column, False)
+        rows.append(row)
+    person_table = pd.DataFrame(rows)
+    household_ids = sorted({int(person["hid"]) for person in people})
+    spm_ids = sorted({int(person["spm"]) for person in people})
+    return Frame(
+        {
+            "person": person_table,
+            "household": pd.DataFrame({"household_id": household_ids}),
+            "tax_unit": pd.DataFrame({"tax_unit_id": household_ids}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": spm_ids}),
+            "family": pd.DataFrame({"family_id": household_ids}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": person_table["person_marital_unit_id"].tolist()}
+            ),
+        },
+        US_SCHEMA,
+        {
+            "household": Weights(
+                np.full(len(household_ids), 100.0), WeightKind.CALIBRATED
+            )
+        },
+    )
+
+
+_MINOR_ONLY_POOL = [
+    {"hid": 1, "spm": 1, "age": 40.0},
+    {"hid": 1, "spm": 1, "age": 8.0},
+    {"hid": 2, "spm": 2, "age": 16.0},
+    {"hid": 2, "spm": 2, "age": 8.0},
+]
+
+
+def test__spm_composition__minor_only_unit__fails_and_names_the_unit() -> None:
+    result = check_spm_composition(_spm_frame(_MINOR_ONLY_POOL))
+
+    assert result.status == "FAIL"
+    assert result.details["n_units"] == 2
+    assert result.details["n_units_without_classified_adult"] == 1
+    assert result.details["n_units_without_member_aged_18_or_over"] == 1
+    assert result.details["role_source"] == "unclassified"
+    assert [row["spm_unit_id"] for row in result.rows] == [2]
+    assert result.rows[0]["member_ages"] == [16.0, 8.0]
+    assert result.rows[0]["n_members"] == 2
+    assert "SPM_COMPOSITION_REQUIRED" in result.summary
+    assert any("Remedy:" in failure for failure in result.failures)
+
+
+def test__spm_composition__every_unit_has_an_adult__passes() -> None:
+    result = check_spm_composition(
+        _spm_frame(
+            [
+                {"hid": 1, "spm": 1, "age": 40.0},
+                {"hid": 2, "spm": 2, "age": 18.0},
+            ]
+        )
+    )
+
+    assert result.status == "PASS"
+    assert result.details["n_units_without_classified_adult"] == 0
+    assert result.rows == ()
+
+
+def test__spm_composition__source_role_rescues_a_fifteen_year_old() -> None:
+    result = check_spm_composition(
+        _spm_frame(
+            [
+                {
+                    "hid": 1,
+                    "spm": 1,
+                    "age": 40.0,
+                    "is_spm_independent_minor_role": False,
+                },
+                {
+                    "hid": 2,
+                    "spm": 2,
+                    "age": 15.0,
+                    "is_spm_independent_minor_role": True,
+                },
+            ]
+        )
+    )
+
+    assert result.status == "PASS"
+    assert result.details["role_source"] == "source_column"
+    assert result.details["role_column_present"] is True
+
+
+def test__spm_composition__role_below_fifteen_is_not_an_adult() -> None:
+    """The role only lifts 15-to-17-year-olds; a 14-year-old stays a child."""
+    result = check_spm_composition(
+        _spm_frame(
+            [
+                {
+                    "hid": 1,
+                    "spm": 1,
+                    "age": 14.0,
+                    "is_spm_independent_minor_role": True,
+                },
+            ]
+        )
+    )
+
+    assert result.status == "FAIL"
+    assert result.rows[0]["member_independence_roles"] == [True]
+
+
+def test__spm_composition__head_spouse_fallback_is_used_when_no_role_column() -> None:
+    result = check_spm_composition(
+        _spm_frame(
+            [
+                {"hid": 1, "spm": 1, "age": 16.0, "is_household_head": True},
+                {"hid": 2, "spm": 2, "age": 16.0, "is_household_spouse": True},
+            ]
+        )
+    )
+
+    assert result.status == "PASS"
+    assert result.details["role_source"] == "household_structure_fallback"
+    assert result.details["fallback_columns_present"] == [
+        "is_household_head",
+        "is_household_spouse",
+    ]
+
+
+def test__spm_composition__a_supplied_role_overrides_the_head_fallback() -> None:
+    """``policyengine_us.spm.DATASET_SOURCE_INPUTS``: an observed False stands.
+
+    A frame carrying both must read the source column, never OR the two
+    together — otherwise a producer's measured "not independent" would be
+    overwritten by a household-structure guess and this check would pass where
+    the engine refuses.
+    """
+    result = check_spm_composition(
+        _spm_frame(
+            [
+                {
+                    "hid": 1,
+                    "spm": 1,
+                    "age": 16.0,
+                    "is_household_head": True,
+                    "is_spm_independent_minor_role": False,
+                },
+            ]
+        )
+    )
+
+    assert result.status == "FAIL"
+    assert result.details["role_source"] == "source_column"
+
+
+def test__spm_composition__only_one_fallback_column_present_still_counts() -> None:
+    """``is_household_spouse`` has no formula, so an absent column is False.
+
+    Microcosm's own relationship-input stage emits ``is_household_head`` and
+    never ``is_household_spouse``
+    (``relationship_inputs.US_RELATIONSHIP_INPUTS_OUTPUT_COLUMNS``), so
+    head-only is the shape a real base actually has.
+    """
+    result = check_spm_composition(
+        _spm_frame([{"hid": 1, "spm": 1, "age": 16.0, "is_household_head": True}])
+    )
+
+    assert result.status == "PASS"
+    assert result.details["fallback_columns_present"] == ["is_household_head"]
+
+
+def test__spm_composition__grades_the_selected_frame_and_reports_the_pool() -> None:
+    """A pool unit the selection drops never reaches the engine.
+
+    The L0/refit export calls ``base_frame.select``, so the exported population
+    is a strict subset of the pool. Grading the pool would refuse a run whose
+    selection had already dropped every offender.
+    """
+    base = _spm_frame(_MINOR_ONLY_POOL)
+    # Keep household 1 only: the minor-only unit is not selected.
+    selected = base.select(base.table("person")["person_household_id"].to_numpy() == 1)
+
+    result = check_spm_composition(base, selected)
+
+    assert result.status == "PASS"
+    assert result.details["graded_scope"] == "selected pool"
+    assert result.details["n_units_without_classified_adult"] == 0
+    # The pool's defect is still reported, because a later selection may keep it.
+    assert result.details["base_pool_n_units_without_classified_adult"] == 1
+    assert result.details["base_pool_n_units"] == 2
+
+
+def test__spm_composition__selected_frame_keeping_the_offender_still_fails() -> None:
+    base = _spm_frame(_MINOR_ONLY_POOL)
+    selected = base.select(base.table("person")["person_household_id"].to_numpy() == 2)
+
+    result = check_spm_composition(base, selected)
+
+    assert result.status == "FAIL"
+    assert result.details["graded_scope"] == "selected pool"
+    assert result.details["base_pool_n_units_without_classified_adult"] == 1
+
+
+def test__spm_composition__caps_the_named_units_but_reports_the_full_count() -> None:
+    pool = [{"hid": index, "spm": index, "age": 10.0} for index in range(1, 8)]
+
+    result = check_spm_composition(_spm_frame(pool), max_reported=3)
+
+    assert result.status == "FAIL"
+    assert result.details["n_units_without_classified_adult"] == 7
+    assert len(result.rows) == 3
+    assert result.details["n_units_reported"] == 3
+    assert "(+4 more)" in result.failures[0]
+
+
+def test__spm_composition__missing_age_column_is_reported_not_guessed() -> None:
+    frame = _spm_frame([{"hid": 1, "spm": 1, "age": 40.0}])
+    person = frame.table("person").drop(columns=["age"])
+    stripped = Frame(
+        {
+            entity: (person if entity == "person" else frame.table(entity))
+            for entity in frame.entities
+        },
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+    with pytest.raises(ValueError, match="no 'age' column"):
+        check_spm_composition(stripped)
+
+
+def test__spm_composition__missing_role_values_are_counted_not_silently_false() -> None:
+    frame = _spm_frame(
+        [
+            {"hid": 1, "spm": 1, "age": 16.0, "is_spm_independent_minor_role": True},
+            {"hid": 2, "spm": 2, "age": 16.0, "is_spm_independent_minor_role": None},
+        ]
+    )
+
+    result = check_spm_composition(frame)
+
+    assert result.status == "FAIL"
+    assert result.details["role_missing_values_read_as_false"] == 1
+    assert [row["spm_unit_id"] for row in result.rows] == [2]
+
+
+def test__cli__forwards_the_spm_unit_report_cap_to_run_preflight(
+    monkeypatch, tmp_path
+) -> None:
+    """``--max-reported-spm-units`` reaches ``run_preflight``; omitting it does not.
+
+    Passing the flag's ``None`` through would override the module default with
+    ``None`` and break the cap, so the CLI must omit the key entirely instead.
+    """
+    cli = _load_preflight_cli()
+    captured: dict[str, object] = {}
+
+    def fake_run_preflight(**kwargs):
+        captured.clear()
+        captured.update(kwargs)
+        return PreflightReport(checks=())
+
+    monkeypatch.setattr(cli, "run_preflight", fake_run_preflight)
+    argv = [
+        "--base-h5",
+        str(tmp_path / "base.h5"),
+        "--selection-source-manifest",
+        str(tmp_path / "selection.json"),
+    ]
+
+    assert cli.main(argv) == 0
+    assert "max_reported_spm_units" not in captured
+
+    assert cli.main([*argv, "--max-reported-spm-units", "3"]) == 0
+    assert captured["max_reported_spm_units"] == 3

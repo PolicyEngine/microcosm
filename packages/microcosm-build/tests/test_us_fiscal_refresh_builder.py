@@ -22,7 +22,7 @@ from microcosm.calibrate import (
     TargetSpec,
     calibrate,
 )
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 
 def _load_builder_module():
@@ -4339,12 +4339,23 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
 
     class FakeFrame:
+        # Household-only, shaped like the real ``Frame`` contract: ``schema``
+        # is always present, and ``table`` raises ``ValueError`` for an entity
+        # the schema does not declare (``Frame.table``). That is what lets the
+        # pre-calibration SPM composition advisory degrade to a notice here
+        # instead of aborting the run before the gate under test.
+        schema = EntitySchema(group_entities=("household",))
+
         def n(self, entity):
             assert entity == "household"
             return 2 if terminal_mode == "puf_tail" else 4
 
         def table(self, entity):
-            assert entity == "household"
+            if entity != "household":
+                raise ValueError(
+                    f"Unknown entity {entity!r}; schema declares "
+                    f"{list(self.schema.entities)}."
+                )
             size = self.n("household")
             return pd.DataFrame({"household_id": np.arange(1, size + 1, dtype="int64")})
 
@@ -12295,3 +12306,149 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
     assert len(owner_check_calls) == 5, (
         f"expected 5 owner-resolution sites in _main(), found {len(owner_check_calls)}"
     )
+
+
+# ---------------------------------------------------------------------------
+# SPM measurement composition refusal
+# ---------------------------------------------------------------------------
+
+
+def _spm_frame(people: list[dict]) -> Frame:
+    """A US frame from ``{spm, age, **role columns}`` specs, one household."""
+    from microcosm.frame.units import US_SCHEMA
+
+    role_columns = (
+        "is_spm_independent_minor_role",
+        "is_household_head",
+        "is_household_spouse",
+    )
+    rows = []
+    for index, person in enumerate(people, start=1):
+        row = {
+            "person_id": index,
+            "person_household_id": 1,
+            "person_tax_unit_id": 1,
+            "person_spm_unit_id": int(person["spm"]),
+            "person_family_id": 1,
+            "person_marital_unit_id": index,
+            "age": float(person["age"]),
+        }
+        for column in role_columns:
+            if any(column in candidate for candidate in people):
+                row[column] = bool(person.get(column, False))
+        rows.append(row)
+    person_table = pd.DataFrame(rows)
+    return Frame(
+        {
+            "person": person_table,
+            "household": pd.DataFrame({"household_id": [1]}),
+            "tax_unit": pd.DataFrame({"tax_unit_id": [1]}),
+            "spm_unit": pd.DataFrame(
+                {"spm_unit_id": sorted({int(p["spm"]) for p in people})}
+            ),
+            "family": pd.DataFrame({"family_id": [1]}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": person_table["person_marital_unit_id"].tolist()}
+            ),
+        },
+        US_SCHEMA,
+        {"household": Weights(np.array([100.0]), WeightKind.CALIBRATED)},
+    )
+
+
+def test__assert_spm_composition__minor_only_unit__refuses_by_name() -> None:
+    """The release must name the unit and the remedy, not re-raise the engine's
+    anonymous population-wide ``SPM_COMPOSITION_REQUIRED``."""
+    builder = _load_builder_module()
+    frame = _spm_frame([{"spm": 1, "age": 40}, {"spm": 2, "age": 16}])
+
+    with pytest.raises(RuntimeError) as error:
+        builder._assert_spm_composition(frame, stage="unit test")
+
+    message = str(error.value)
+    assert "Release gates failed: SPM measurement composition (unit test)" in message
+    assert "SPM_COMPOSITION_REQUIRED" in message
+    # The single-sourced remedy travels with the refusal.
+    assert "Remedy:" in message
+    assert "spm_unit_id(s): 2" in message
+
+
+def test__assert_spm_composition__every_unit_classified__returns_details() -> None:
+    builder = _load_builder_module()
+    frame = _spm_frame([{"spm": 1, "age": 40}, {"spm": 2, "age": 18}])
+
+    details = builder._assert_spm_composition(frame, stage="unit test")
+
+    assert details["n_units"] == 2
+    assert details["n_units_without_classified_adult"] == 0
+
+
+def test__assert_spm_composition__source_role_rescues_the_minor() -> None:
+    builder = _load_builder_module()
+    frame = _spm_frame(
+        [
+            {"spm": 1, "age": 40, "is_spm_independent_minor_role": False},
+            {"spm": 2, "age": 16, "is_spm_independent_minor_role": True},
+        ]
+    )
+
+    details = builder._assert_spm_composition(frame, stage="unit test")
+
+    assert details["role_source"] == "source_column"
+    assert details["n_units_without_classified_adult"] == 0
+
+
+def test__spm_composition_report__unclassifiable_frame__raises_for_the_advisory(
+    monkeypatch,
+) -> None:
+    """The pre-calibration advisory catches this; the graded point re-raises it.
+
+    A frame with no ``age`` column cannot be classified at all. The report
+    function must surface that as a ValueError naming the column, so the
+    advisory's ``except (KeyError, ValueError)`` can degrade to a notice while
+    the export-frame assertion still refuses.
+    """
+    builder = _load_builder_module()
+    frame = _spm_frame([{"spm": 1, "age": 40}])
+    person = frame.table("person").drop(columns=["age"])
+    stripped = Frame(
+        {
+            entity: (person if entity == "person" else frame.table(entity))
+            for entity in frame.entities
+        },
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+    with pytest.raises(ValueError, match="no 'age' column"):
+        builder._spm_composition_report(stripped)
+
+
+def test__spm_composition_report__frame_without_spm_units__raises_for_the_advisory() -> (
+    None
+):
+    """A real frame whose schema declares no ``spm_unit`` raises ``ValueError``.
+
+    ``Frame.table`` refuses an undeclared entity with ``ValueError``, so a
+    household-only pool degrades the pre-calibration advisory to a notice
+    through the same ``except (KeyError, ValueError)`` — no broader catch, and
+    no attribute the real frame lacks, is needed for that.
+    """
+    builder = _load_builder_module()
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2],
+                    "person_household_id": [1, 1],
+                    "age": [40.0, 16.0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [1]}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.array([100.0]), WeightKind.CALIBRATED)},
+    )
+
+    with pytest.raises(ValueError, match="Unknown entity 'spm_unit'"):
+        builder._spm_composition_report(frame)

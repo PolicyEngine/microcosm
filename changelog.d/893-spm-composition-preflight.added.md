@@ -1,0 +1,1 @@
+Add a US release-gate preflight check that names SPM units with no classified adult, and refuse them by name in the release tool instead of letting the engine raise SPM_COMPOSITION_REQUIRED for the whole population after calibration and export.
