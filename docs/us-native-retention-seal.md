@@ -300,9 +300,20 @@ entities and a few hundred columns, tens of kilobytes per node against about
 §1 still refuses the same defect with the same code; §5's battery is the proof
 obligation and it is discharged mutation by mutation, in both directions.
 
-Four things change in character rather than in coverage, and this note states
-them rather than leaving them to be found. Three were established by an
-adversarial pass over the finished seal, not by writing it.
+Three things change in character rather than in coverage, and this note states
+them rather than leaving them to be found. All three were established by
+adversarial passes over the finished seal, not by writing it.
+
+> **Corrected 2026-09-18.** There was a fourth item here, and it was the one
+> place this note said something false about what a run proves. It claimed that
+> on an object-dtype axis the fold of the store codec's bytes "is never weaker
+> than `equals` and is stricter on exactly those pairs", and that "every defect
+> is still refused". A second adversarial pass ran both paths and found the
+> fold **weaker** in one case and **stricter** in another it had not named, so
+> for a period this change did *narrow* what a run proves. The fold was
+> rewritten to reproduce the equivalence classes `Index.equals` actually has,
+> the object-axis code no longer moves, and the withdrawn item is set out below
+> the list rather than deleted.
 
 1. **Byte equality becomes sha256 equality.** Today `same_replayed_population`
    compares the bytes; the seal compares a 256-bit digest of those bytes. This
@@ -330,26 +341,49 @@ adversarial pass over the finished seal, not by writing it.
    seal reports the one-sided one, because the seal is built before anything is
    compared. The same set of codes; a different precedence between them. No
    pair in the battery carries two defects at once, and none is manufactured.
-4. **On an object-dtype axis, a difference reports `AXIS` rather than
-   `OBJECT_VALUE`.** `_axis` refuses `AXIS` when `Index.identical` fails, and
-   `identical` runs `array_equivalent` over the index's own values, which for
-   an object axis is an element-wise `!=` over arbitrary Python objects: it
-   holds `True` equal to `1` and `-0.0` equal to `0.0`, which the store's
-   scalar codec spells apart. No digest reproduces an arbitrary `!=`, so the
-   axis folds the codec's bytes, which is never weaker than `equals` and is
-   stricter on exactly those pairs — they refuse under `AXIS` instead of under
-   the `OBJECT_VALUE` they reach today. Every non-object axis kind is exact,
-   including the three `array_equivalent` is byte-tolerant for: `float`,
-   `complex` and `bool` all collapse NaN payloads, NaN sign, signed zeros and
-   bool bytes outside `{0, 1}` before folding, so a byte-only difference still
-   reaches `NATIVE_BITS`.
+Every non-object axis kind is exact, including the three `array_equivalent` is
+byte-tolerant for: `float`, `complex` and `bool` all collapse NaN payloads, NaN
+sign, signed zeros and bool bytes outside `{0, 1}` before folding, so a
+byte-only difference still reaches `NATIVE_BITS`. Since the second adversarial
+pass, a **masked-integer** axis is exact too: `np.asarray` on a masked integer
+array returns float64 with NA as NaN, so an `Int64` axis's fold was a float
+fold and lost every distinction above `2**53`; it now takes the array's exact
+object view.
 
-None of the four is a narrowing of what a run proves about the data — every
-defect is still refused, and item 4 is a refusal moving from one code to
-another — so this note does not stop and ask. The report §10's *stated
-mechanism* was wrong and this note
-says so in §0 and replaces it; the *decision* — compare content seals, not
-objects — is implemented as chosen.
+### 4a. The withdrawn fourth item, and why it is left here
+
+It said that on an object-dtype axis a difference reports `AXIS` rather than
+`OBJECT_VALUE`, because `Index.equals` there is an element-wise `==` over
+arbitrary Python objects that no digest reproduces, and that the fold of the
+store codec's bytes is therefore "never weaker than `equals` and stricter on
+exactly those pairs" — `True` against `1`, `-0.0` against `0.0`.
+
+**Both halves were false**, and each was reproduced by running the two paths:
+
+* **Weaker.** Two values with equal codec bytes need not be `==`, when one
+  carries its own `__eq__`. The comparison refused `AXIS`; the seal
+  **accepted**. That is a run accepting a replay the comparison refuses, and
+  for as long as it stood, this change did narrow what a run proves.
+* **Stricter, in an unnamed case.** pandas holds `None` and every NaN
+  interchangeable on an object axis and the codec spells them apart, so the
+  comparison **accepted** and the seal refused — a green run turning red.
+
+The fold is now `_object_axis_equivalence`, which reproduces the equivalence
+classes `Index.equals` actually has, **measured on this pandas pin** rather
+than read off its source: `{None, NaN}` is one class, `pd.NA` and `pd.NaT` are
+each their own, bool/int/float share one numeric class by exact value, and
+`str` and `bytes` are each their own. The one thing no digest can represent —
+a value's own `__eq__` — refuses `AXIS` when the seal is built, on either
+operand. The byte-exact discriminations the codec makes and `==` does not are
+not lost: they reach `OBJECT_VALUE` through the arm `_axis` itself falls
+through to, which is what the comparison reports, so **the object-axis code no
+longer moves at all.**
+
+So the honest answer to "what is no longer proved" is: nothing, now — and it
+was not nothing between the first version of this note and the fix. That is
+why the item is withdrawn in place rather than deleted. The report §10's
+*stated mechanism* was wrong and §0 of this note says so and replaces it; the
+*decision* — compare content seals, not objects — is implemented as chosen.
 
 ## 5. The proof obligation
 
