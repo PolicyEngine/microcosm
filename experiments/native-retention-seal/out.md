@@ -19,9 +19,10 @@ numbers move; each one this report relies on was re-derived here.
 **(1) What `same_replayed_population` compares today.** Forty-four rows under
 the twenty-two refusal codes `survey_population_replay.py` raises, listed field
 by field in §1 of the note with the code each raises and a mutation recipe for
-each: eleven at the population level, thirteen at the frame level, five per axis (applied to every
-table index, every columns axis and the strata index) and fifteen per series
-(applied to every column, every axis array and the strata). The admitted dtype
+each: eleven at the population level, thirteen at the frame level, five per
+axis (applied to every table index, every columns axis and the strata index)
+and fifteen per series (applied to every column, every axis array and the
+strata). The admitted dtype
 set is narrow, which bounds the problem: `_series` refuses `CategoricalDtype`,
 `Float64Dtype` and `DatetimeTZDtype` with `UNSUPPORTED_EXTENSION_DTYPE`, so
 only masked integer/boolean, `StringDtype`, `object` and plain numpy dtypes get
