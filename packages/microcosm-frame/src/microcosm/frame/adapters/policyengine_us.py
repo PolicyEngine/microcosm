@@ -858,10 +858,13 @@ class PolicyEngineUSEngine:
             ImportError: If ``policyengine_us`` is not installed.
         """
         variables = self._tax_benefit_system().variables
+        source_inputs = self._dataset_source_inputs()
         defaults: dict[str, object] = {}
         for name in names:
             variable = variables.get(name)
-            if variable is None or _is_engine_computed(variable):
+            if variable is None or (
+                name not in source_inputs and _is_engine_computed(variable)
+            ):
                 continue
             default = getattr(variable, "default_value", None)
             if default is None:

@@ -339,10 +339,10 @@ POOL_SSI_DEPENDENCY_CONTRACT = PoolSsiDependencyContract(
 
 POOL_ENGINE_INPUT_PROJECTION_CONTRACT = PoolEngineInputProjectionContract(
     engine_version="2.2.1",
-    input_count=925,
-    default_count=925,
-    sha256="d0f660fdbe3ae839dc5e68b3b4887ff07013ccfe321a3bf7ea99fc6de3a9af4f",
-    defaults_sha256="5a209930880c1dd03caba90feee358b1057aeed55b99b26b6ebee47d530689ee",
+    input_count=926,
+    default_count=926,
+    sha256="cefb137f164c6629589a887bbb56831ebc463cd46909a72ead4dbe0557961e61",
+    defaults_sha256="7b284fd79fb167e6415632cf64dc8bba3721f941634e28ff3d1982b1922839c6",
 )
 """Exact installed input registry scanned by the disposable projection."""
 
@@ -363,7 +363,7 @@ is asserted.
 
 POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
     ("assembled_native_engine_input", 5),
-    ("declared_absent_engine_input", 763),
+    ("declared_absent_engine_input", 764),
     ("declared_deferred_null_input", 3),
     ("derived_schedule_d_input", 1),
     ("frame_structural_engine_input", 10),
@@ -378,9 +378,9 @@ tool re-derives every engine-pinned quantity this module carries.
 """
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "df42a6d95e4b98ce158334014dc9524de8f7791757eeaf3c6392d8d9b8469edf"
+    "69b2b2a9c7665c6d5e0db8feb30a366acebe986a983f347160631e7626bde280"
 )
-"""Pinned content digest of all 1,058 post-transfer consumer/input rows."""
+"""Pinned content digest of all 1,059 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)
