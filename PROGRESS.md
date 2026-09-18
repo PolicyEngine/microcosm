@@ -8,10 +8,16 @@ is prior-lane history; see "Root journals are history, not state" in
 
 ## State
 
-Implemented and green on the replay battery (107 tests). Base financial,
-property and property-tax graph tests green. Completion host and person-status
-tests re-running after the retention flag. Neither measurement run has started:
-both are armed and gated.
+Implemented; both required runs have run. The 1/1000 cold run **and its
+required replay completed** and export byte-identical bytes (identical manifest
+key, 0 store paths added or changed), at 1,714.92 CPU-s against the transport
+after-run's 1,907.58. The **1/15 run refused** 605.65 CPU-s in, at 8.28 GB,
+having run no node: `PREPARATION_ISSUANCE_REFUSED`, the catch-all that discards
+its cause. The predicted cause is a 1 MiB canonical-JSON cap on the
+selected-ACS-`SERIALNO` list — **below** the row-count ceiling the base branch
+lifted, and in no census — and a non-invasive 1/15 diagnostic is running to
+name it rather than infer it. The discrimination battery is 116 comparisons,
+116 agreements, 0 disagreements. Draft PR #950 is open and stays draft.
 
 ## Done
 
@@ -29,7 +35,22 @@ both are armed and gated.
   comparisons sealed, `_node_population_stamp` on both arms.
 - Repaired a **stale implementation contract inherited from the transport
   branch** and added the guard that would have caught it.
-- Armed both runs with their gates and their source trees.
+- Armed both runs with their gates and their source trees, and ran both.
+- The 1/1000 cold run plus required replay, under a byte-identical copy of the
+  transport lane's committed harness: `COMPLETED_NINETEEN_NODE_AND_REQUIRED_REPLAY`,
+  every node a store hit on the replay, manifest key identical, store bytes
+  identical. Recorded with the three causes that move the key off the base
+  branch's `bd511d92…`, one of which is this lane's own executor commit.
+- The 1/10 refusal diagnostic, three rounds, the third non-invasive: the cause
+  the three nested catch-alls discard is
+  `ACSCoverageAuthenticationError: CANONICAL_SIZE`, and the ceiling it belongs
+  to was computed from measured inputs and committed **before** the 1/15 run.
+- The 1/15 run: refused as predicted, recorded with its CPU, wall, peak RSS and
+  the fact that no node ran.
+- Found and recorded a defect in the 1/15 harness's own receipt: `sample.fraction`
+  and the `scope` sentence were left as the tenth harness's while the call site
+  ran `Fraction(1, 15)`. The harness stays as it ran; the 1/15 diagnostic
+  harness corrects both fields and says so.
 
 ## Pull request
 
@@ -38,12 +59,16 @@ both are armed and gated.
 
 ## Next
 
-1. The 1/1000 required replay's verdict (cold phase finished at 1,714.92 CPU-s
-   against the transport after-run's 1,907.58 and the baseline's 2,026.78).
-2. The 1/15 run, queued behind it at a 45 GB gate.
-3. The monitored 1/10 refusal diagnostic (round 3).
-4. The 21-file dependent battery, one pytest process per file.
-5. Fold all of it into `experiments/native-retention-seal/out.md` and the PR body.
+1. The 1/15 refusal diagnostic's trace (pid 47936, launched 2026-09-18T00:53:59Z
+   at 79.9 GB available), which turns the predicted `CANONICAL_SIZE` into an
+   observed one.
+2. The 21-file dependent battery, one pytest process per file, as CI runs them.
+3. An adversarial verification pass over the finished head, across six
+   dimensions, each finding refuted or kept by two independent verifiers.
+4. Fold all of it into `experiments/native-retention-seal/out.md` and the PR
+   body, and fix the report's own section numbering, which runs 1..8, 10, 10a,
+   9, 11 with cross-references to both orderings.
+5. Max's rulings on the report's six open questions.
 
 ## Inherited defect, repaired here (for the report and for Max)
 
