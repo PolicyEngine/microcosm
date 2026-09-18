@@ -31,12 +31,19 @@ both are armed and gated.
   branch** and added the guard that would have caught it.
 - Armed both runs with their gates and their source trees.
 
+## Pull request
+
+**[PolicyEngine/microcosm#950](https://github.com/PolicyEngine/microcosm/pull/950)**
+— draft, base `native-scale-transport`, `MERGEABLE`. It stays draft.
+
 ## Next
 
-1. Re-run the completion-host and person-status tests on the final head.
-2. The 1/1000 cold run + required replay (gate: >40 GB available).
-3. The 1/15 run behind it (gate: >45 GB available).
-4. Draft PR against `native-scale-transport`.
+1. The 1/1000 required replay's verdict (cold phase finished at 1,714.92 CPU-s
+   against the transport after-run's 1,907.58 and the baseline's 2,026.78).
+2. The 1/15 run, queued behind it at a 45 GB gate.
+3. The monitored 1/10 refusal diagnostic (round 3).
+4. The 21-file dependent battery, one pytest process per file.
+5. Fold all of it into `experiments/native-retention-seal/out.md` and the PR body.
 
 ## Inherited defect, repaired here (for the report and for Max)
 
