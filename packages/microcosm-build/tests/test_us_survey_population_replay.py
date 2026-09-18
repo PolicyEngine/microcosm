@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import os
 from dataclasses import fields, replace
+from decimal import Decimal
 
 import numpy as np
 import pandas as pd
@@ -54,6 +57,30 @@ def _sealed_verdict(seal, compare, expected, actual):
     return _verdict(compare, expected_seal, actual_seal)
 
 
+# Optional receipt: with MICROCOSM_BATTERY_RECEIPT set to a path, every
+# agreement below appends one row naming the test, the object path's verdict
+# and the seal path's. It is off by default, writes nothing when unset, and
+# changes no assertion -- see experiments/native-retention-seal/battery-receipt.json.
+_RECEIPT_PATH = os.environ.get("MICROCOSM_BATTERY_RECEIPT")
+
+
+def _record(kind, direct, sealed):
+    if not _RECEIPT_PATH:
+        return
+    with open(_RECEIPT_PATH, "a", encoding="utf-8") as handle:
+        handle.write(
+            json.dumps(
+                {
+                    "test": os.environ.get("PYTEST_CURRENT_TEST", "").split(" ")[0],
+                    "operand": kind,
+                    "object_path": direct,
+                    "seal_path": sealed,
+                }
+            )
+            + "\n"
+        )
+
+
 def _agree_frames(expected, actual):
     """Both paths must reach the same verdict, with the same refusal code.
 
@@ -66,6 +93,7 @@ def _agree_frames(expected, actual):
     sealed = _sealed_verdict(
         replayed_frame_seal, same_replayed_frame_seals, expected, actual
     )
+    _record("frame", direct, sealed)
     assert direct == sealed, f"object path {direct!r}, seal path {sealed!r}"
     return direct
 
@@ -75,6 +103,7 @@ def _agree_populations(expected, actual):
     sealed = _sealed_verdict(
         replayed_population_seal, same_replayed_population_seals, expected, actual
     )
+    _record("population", direct, sealed)
     assert direct == sealed, f"object path {direct!r}, seal path {sealed!r}"
     return direct
 
@@ -1132,3 +1161,32 @@ def test_an_observer_snapshot_preserves_the_replay_seal():
     assert replayed_population_seal(detached) == replayed_population_seal(live)
     _accepts_populations(live, detached)
     _accepts_populations(detached, live)
+
+
+def test_the_strata_name_is_part_of_the_comparison():
+    """``Frame`` normalises the strata name, so this is only reachable after."""
+    expected, actual = _frame(), _frame()
+    assert actual.strata.name == expected.strata.name == "stratum"
+    actual.strata.name = "renamed_strata"
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_STRATA_NAME"
+
+
+def test_a_string_columns_missing_mask_alone_is_part_of_the_comparison():
+    expected = _with_column(
+        _frame(), "text", pd.array(["a", "b", pd.NA], dtype="string")
+    )
+    actual = _with_column(_frame(), "text", pd.array(["a", pd.NA, "b"], dtype="string"))
+    assert _refuses_frames(expected, actual) == "SURVEY_POPULATION_REPLAY_STRING_MASK"
+
+
+@pytest.mark.parametrize("name", [np.int64(5), Decimal("1"), b"bytes"])
+def test_an_axis_name_outside_the_store_grammar_refuses_on_both_paths(name):
+    """``_name_bytes`` converts the codec's own refusal into this code."""
+    frame = _frame()
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["household"].index = tables["household"].index.rename(name)
+    unsupported = _rebuild(frame, tables=tables)
+    assert (
+        _refuses_frames(unsupported, unsupported)
+        == "SURVEY_POPULATION_REPLAY_UNSUPPORTED_AXIS_NAME"
+    )
