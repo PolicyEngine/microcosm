@@ -57,6 +57,19 @@ def _signing_key(monkeypatch):
     monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", SIGNING_KEY)
 
 
+@pytest.fixture
+def invented_code_pin(monkeypatch):
+    """Supply fixture provenance without claiming the wheel venv is a checkout."""
+    pin = "1" * 40
+
+    def fixture_pin(repository):
+        assert repository == calibration_run._REPOSITORY
+        return pin
+
+    monkeypatch.setattr(calibration_run, "git_code_pin", fixture_pin)
+    return pin
+
+
 def _frame():
     ids = np.arange(4, dtype="int64")
     return uk_national_frame(
@@ -235,7 +248,9 @@ def test_import_hygiene_does_not_load_national_build_in_fresh_subprocess():
     assert " ".join(("from", legacy_module, "import")) not in source
 
 
-def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: Path):
+def test_run_uk_calibration_writes_cross_pinned_outputs(
+    monkeypatch, tmp_path: Path, invented_code_pin
+):
     pytest.importorskip("tables")  # pandas HDF backend
     monkeypatch.setattr(
         calibration_run,
@@ -371,10 +386,12 @@ def test_run_uk_calibration_writes_cross_pinned_outputs(monkeypatch, tmp_path: P
         == signature
     )
     assert result.logbook_spool.exists()
+    row = json.loads(result.logbook_spool.read_text())
+    assert row["code_pin"] == invented_code_pin
 
 
 def test_readback_failure_updates_build_record_and_failed_attempt(
-    monkeypatch, tmp_path: Path
+    monkeypatch, tmp_path: Path, invented_code_pin
 ):
     pytest.importorskip("tables")
     monkeypatch.setattr(
@@ -441,7 +458,7 @@ def test_readback_failure_updates_build_record_and_failed_attempt(
 
 
 def test_run_uk_calibration_requires_the_band_edge_register(
-    tmp_path: Path,
+    tmp_path: Path, invented_code_pin
 ):
     # Required, never defaulted: an empty receipt is a claim that nothing was
     # pruned, not permission to skip the reconciliation, so the seam takes no
@@ -470,7 +487,7 @@ def test_run_uk_calibration_requires_the_band_edge_register(
 
 
 def test_run_uk_calibration_reconciles_an_empty_receipt_as_no_prunes(
-    tmp_path: Path,
+    tmp_path: Path, invented_code_pin
 ):
     # A pruned register handed in with an empty receipt must refuse: with
     # nothing declared excluded, the two rosters have to be name-identical.
@@ -500,7 +517,9 @@ def test_run_uk_calibration_reconciles_an_empty_receipt_as_no_prunes(
     assert not paths.build_record_json.exists()
 
 
-def test_run_uk_calibration_refuses_incoherent_band_edge_register(tmp_path: Path):
+def test_run_uk_calibration_refuses_incoherent_band_edge_register(
+    tmp_path: Path, invented_code_pin
+):
     paths = _paths(tmp_path)
     edge_registry = TargetRegistry(
         [
@@ -540,7 +559,7 @@ def test_run_uk_calibration_refuses_incoherent_band_edge_register(tmp_path: Path
 
 
 def test_run_uk_calibration_records_band_edge_register_sha256(
-    monkeypatch, tmp_path: Path
+    monkeypatch, tmp_path: Path, invented_code_pin
 ):
     pytest.importorskip("tables")  # pandas HDF backend
     monkeypatch.setattr(
@@ -597,7 +616,9 @@ def test_run_uk_calibration_records_band_edge_register_sha256(
     )
 
 
-def test_run_uk_calibration_refuses_input_sha_before_outputs(tmp_path: Path):
+def test_run_uk_calibration_refuses_input_sha_before_outputs(
+    tmp_path: Path, invented_code_pin
+):
     pytest.importorskip("tables")  # pandas HDF backend
     input_h5 = tmp_path / "input.h5"
     write_uk_national_frame(_frame(), input_h5)
@@ -633,7 +654,9 @@ def test_run_uk_calibration_refuses_input_sha_before_outputs(tmp_path: Path):
     assert not paths.diagnostics_json.exists()
 
 
-def test_run_uk_calibration_refuses_absent_input_sidecar(tmp_path: Path):
+def test_run_uk_calibration_refuses_absent_input_sidecar(
+    tmp_path: Path, invented_code_pin
+):
     pytest.importorskip("tables")  # pandas HDF backend
     input_h5 = tmp_path / "input.h5"
     write_uk_national_frame(_frame(), input_h5)
@@ -683,7 +706,7 @@ def test_run_uk_calibration_refuses_absent_input_sidecar(tmp_path: Path):
     ],
 )
 def test_run_uk_calibration_refuses_unbound_input_sidecar(
-    override, message, tmp_path: Path
+    override, message, tmp_path: Path, invented_code_pin
 ):
     pytest.importorskip("tables")  # pandas HDF backend
     frame = _frame()
@@ -725,7 +748,9 @@ def test_run_uk_calibration_refuses_unbound_input_sidecar(
     assert not paths.terminal_gate_json.exists()
 
 
-def test_seam_never_modifies_data_variables(monkeypatch, tmp_path: Path):
+def test_seam_never_modifies_data_variables(
+    monkeypatch, tmp_path: Path, invented_code_pin
+):
     """The seam's defining invariant: weights move, data never does.
 
     Every data column of every entity table in the staged H5 must be
@@ -925,7 +950,9 @@ def _load_logbook_tool():
     return module
 
 
-def test_refusal_records_a_failed_attempt_and_stages_nothing(tmp_path: Path):
+def test_refusal_records_a_failed_attempt_and_stages_nothing(
+    tmp_path: Path, invented_code_pin
+):
     pytest.importorskip("tables")  # pandas HDF backend
     input_h5 = tmp_path / "input.h5"
     write_uk_national_frame(_frame(), input_h5)
@@ -975,7 +1002,7 @@ def test_refusal_records_a_failed_attempt_and_stages_nothing(tmp_path: Path):
 
 
 def test_attempt_ids_are_unique_across_reruns_of_one_release(
-    monkeypatch, tmp_path: Path
+    monkeypatch, tmp_path: Path, invented_code_pin
 ):
     pytest.importorskip("tables")  # pandas HDF backend
     monkeypatch.setattr(
@@ -1023,7 +1050,9 @@ def test_attempt_ids_are_unique_across_reruns_of_one_release(
     assert all(value.startswith("uk-frs-calibration-attempt-") for value in build_ids)
 
 
-def test_verified_ledger_identity_reaches_the_run_evidence(monkeypatch, tmp_path: Path):
+def test_verified_ledger_identity_reaches_the_run_evidence(
+    monkeypatch, tmp_path: Path, invented_code_pin
+):
     pytest.importorskip("tables")  # pandas HDF backend
     monkeypatch.setattr(
         calibration_run,
@@ -1159,7 +1188,9 @@ def _mixed_epoch_artifact_dir(tmp_path: Path) -> Path:
     return artifact_dir
 
 
-def test_mixed_epoch_feed_epochs_reach_the_uk_release_evidence(monkeypatch, tmp_path):
+def test_mixed_epoch_feed_epochs_reach_the_uk_release_evidence(
+    monkeypatch, tmp_path, invented_code_pin
+):
     """A UK run says which Chronicle era resolved its targets.
 
     The run's own provenance block used to be assembled field by field from
@@ -1251,3 +1282,41 @@ def test_the_uk_block_delegates_rather_than_reassembling_the_shared_one(tmp_path
             continue
         assert block[field] == value, field
     assert block["manifest"]["schema_version"] == shared["schema_version"]
+
+
+def test_run_uk_calibration_refuses_unresolved_code_pin_before_io(
+    monkeypatch, tmp_path
+):
+    paths = _paths(tmp_path)
+    probes = []
+
+    def unavailable_pin(repository):
+        probes.append(repository)
+        raise RuntimeError("fixture code pin unavailable")
+
+    def forbidden_io(*args, **kwargs):
+        pytest.fail("unresolved code identity must refuse before input or attempt I/O")
+
+    monkeypatch.setattr(calibration_run, "git_code_pin", unavailable_pin)
+    monkeypatch.setattr(calibration_run, "_sha256_file", forbidden_io)
+    monkeypatch.setattr(calibration_run, "resolve_predecessor", forbidden_io)
+    monkeypatch.setattr(calibration_run, "_run_uk_calibration_attempt", forbidden_io)
+    with pytest.raises(RuntimeError, match="^fixture code pin unavailable$"):
+        run_uk_calibration(
+            paths=paths,
+            input_sha256="a" * 64,
+            ledger_artifact=object(),
+            register_registry=_registry(),
+            band_edge_registry=_registry(),
+            calibration_year=2025,
+            exclusion_receipt={},
+            doctrine=UKNationalSolveDoctrine(epochs=1),
+            doctrine_overrides={},
+            measure_resolver=None,
+            source_pins={},
+            run_config_extra={},
+            release_id="unresolved-fixture-code-pin",
+        )
+
+    assert probes == [calibration_run._REPOSITORY]
+    assert list(tmp_path.iterdir()) == []

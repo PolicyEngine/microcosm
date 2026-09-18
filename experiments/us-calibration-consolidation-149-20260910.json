@@ -1,0 +1,50 @@
+{
+  "cases": 149,
+  "checks": {
+    "copied_test_helper_fixture_files": 10,
+    "exact_case_and_junit_rosters": true,
+    "junit_selector_order": true,
+    "junit_unique_names": 149,
+    "owned_before_after_current_match": true,
+    "owned_files": 20,
+    "source_before_after_current_match": true,
+    "source_files": 34,
+    "terminal_pins_final_match": true
+  },
+  "coverage": [
+    "US grouped upper bounds, fixed zero support and unsupported combinations",
+    "UK informed gates and budget search",
+    "ordinary best iterate plus same-runtime frozen optimizer controls",
+    "dense/CSR combined behavior and strict diagnostic payload/rebuild"
+  ],
+  "cpu_seconds": 3.9523219999999997,
+  "current_34_source_subset_matches": true,
+  "date": "2026-09-10",
+  "excluded_control": "cross-runtime saved golden requiring18 interop threads; same-runtime frozen optimizer comparisons still executed",
+  "failed_predecessor_receipt_sha256": "240b17fdb30b8dfa0cddb3f58343fc4a1ba0bc14e44b852cd188cb1bd7a6703b",
+  "full_checkout_certified": false,
+  "guard_sha256": "c4218acbd403c1ff4b05f3cbb4d47654e1a1b51cbcf7f6b8b045c9252248aa80",
+  "junit_sha256": "57ba56887978b71aa86152f36f83484471a216829f4b7cca9b20c15ea1af9bee",
+  "native_calibration_accepted": false,
+  "peak_rss_bytes": 394067968,
+  "postchecker_sha256": "ee5bd078009c7842d7f9c19adf5452bc2c1c8c97a44c4a890c6fd4e7ee924bff",
+  "predecessor_failure": "collection stopped before tests: two still-denied stdlib ZIP probe counts exceeded their reporting ceilings",
+  "receipt_sha256": "242fa8cb76d5e6f1fa4589319bf6764c4f63620b3cda2e9e2a15f69549f362c3",
+  "release_acceptance": false,
+  "root_postcheck_sha256": "dca84da504acf53c65d68f7076ebe1ecf12a8d64a6479c40255c164717f3d10d",
+  "schema_version": "microcosm.scoped-calibration-control.v1",
+  "scope": "exact invented calibration149 source/runtime evidence only; no native, release or unrelated consolidated-checkout acceptance",
+  "selectors": 68,
+  "source_files": 34,
+  "source_map_sha256": "7de4ee1007343d72a3618cd95850700cb28bf87cd89405d956a0f92d37634850",
+  "status": "accepted_invented_calibration149",
+  "successor_change": "fresh once-only run; two reporting ceilings changed2 to3; exact same source, selectors, permissions and600CPU/900wall/one-thread limits",
+  "test_counts": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 149
+  },
+  "unexpected_refusals": {},
+  "wall_seconds": 4.565558874979615
+}

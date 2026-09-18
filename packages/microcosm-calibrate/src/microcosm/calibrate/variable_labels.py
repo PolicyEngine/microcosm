@@ -52,6 +52,8 @@ US_CALIBRATION_VARIABLE_LABELS: Mapping[str, Mapping[str, str]] = _immutable_reg
         },
         "census_acs": {
             "resident_population": "Resident population",
+            "population_by_age": "Population by age",
+            "population_by_sex_and_age": "Population by sex and age",
         },
         "census_pep": {
             "resident_population": "Resident population",

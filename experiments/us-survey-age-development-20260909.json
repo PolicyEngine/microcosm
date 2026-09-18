@@ -1,0 +1,54 @@
+{
+  "artifact_readback_and_final_owner_target_verification": "passed inside the unchanged reviewed harness; final manifest exists only after final verification",
+  "code_resource_pins_current_equal": true,
+  "code_resources": 12,
+  "compiled_order": [
+    "survey_population.create",
+    "survey_population.allocate",
+    "combined_survey_puf_support_clone",
+    "combined_survey_puf_support_clone.owned",
+    "survey.age_count_matrix",
+    "survey.sampling_budget",
+    "survey.age_calibration"
+  ],
+  "cpu_seconds": 4115.737018,
+  "cross_process_source_authority_granted": false,
+  "entity_rows": {
+    "current": {
+      "household": 3168,
+      "person": 6928
+    },
+    "prepared": {
+      "household": 1584,
+      "person": 3464
+    },
+    "previous": {
+      "household": 3168,
+      "person": 6928
+    }
+  },
+  "export_count": 5,
+  "manifest_sha256": "2bdb68de84635c6cc2e0c25555887693304792e25d40052cd77996774cb7f669",
+  "native_counts": {
+    "acs": {
+      "households": 1529,
+      "persons": 3324
+    },
+    "asec": {
+      "households": 55,
+      "persons": 140
+    }
+  },
+  "native_payloads_read_by_postcheck": 0,
+  "owned_before_after_current_equal": true,
+  "peak_rss_bytes": 8260485120,
+  "receipt_sha256": "2aa76b5daca7bb0df1ac85d4db23d6b5482073d31d437418d46442ef01b002ca",
+  "release_eligible": false,
+  "result": 0,
+  "scope": "genuine seven-node ACS+ASEC age-development artifact acceptance; not full enrichment or release",
+  "source_before_after_current_equal": true,
+  "source_control_runtime_files": 473,
+  "source_head": "a9895d8a50886470f6dfe4b2b9d20c352c9871cf",
+  "unexpected_refusals": {},
+  "wall_seconds": 4268.8438986669935
+}

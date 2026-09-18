@@ -17,6 +17,15 @@ is the release-cut producer's job, not calibration's.
 
 ## Command shape
 
+The current operational path requires this local workspace and its Git identity.
+The calibration seam derives that identity from its module's checkout location;
+standalone installed-wheel execution does not yet have a supported provenance
+contract. Wheel orchestration tests use an explicit invented code pin and do not
+certify installed-wheel production provenance. Supporting that mode requires a
+separate identity design that binds the actual loaded implementation, rather
+than substituting an unrelated checkout's Git HEAD. An unresolved code pin
+continues to refuse before input or output processing.
+
 Calibration runs through `tools/calibrate_uk_national_dataset.py`. That driver
 is the only one that builds the measure resolver and applies the committed
 measure-exclusion register, and 187 of the activated references bind model

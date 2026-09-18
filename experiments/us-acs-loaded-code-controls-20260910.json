@@ -1,0 +1,33 @@
+{
+  "accepted": true,
+  "acs_source_sha256": "4dc64558ed453f1c06557ef005e42193278496a9c31b374475417c407c037573",
+  "comparison_policy": "Memo only successful immutable CodeType identity pairs within one producer invocation; retain source, alias, globals and closure checks. Historical two-argument catalogue caller preserved.",
+  "cpu_seconds": 3.121793,
+  "date": "2026-09-10",
+  "financial_successor_acceptance": false,
+  "guard_sha256": "66d02d798933d7e2a677775c4037df9e16e4f5e6f45cd42363b78234daf56448",
+  "implementation_adopted": false,
+  "native_acceptance": false,
+  "peak_rss_bytes": 353026048,
+  "performance_gain_established": false,
+  "receipt_sha256": "da8cde54cb9c5b3ed909ed88b7ab12d6ab824148462593be798dfc86048b4bf1",
+  "release_acceptance": false,
+  "runtime": "Python 3.14.4; one numerical thread; no country engine, network, child process or native data access.",
+  "scope": "invented_acs_code_equality_controls",
+  "source_map_sha256": "3e5545835bf269a165738a6f59cdd9235171044120113bdd5568a030e59cdc66",
+  "subsequent_comparison": "us-acs-code-memo-comparison-20260910.json",
+  "test_sha256": "6d2e43acc5aea4533a99d12adfb94db00629c0f01f25b725d427bd47c7f1aa1f",
+  "tests": {
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "tests": 18
+  },
+  "unexpected_refusals": {},
+  "verified_current": {
+    "code_resources": 12,
+    "model_source": 5983,
+    "source_and_owned": 500
+  },
+  "wall_seconds": 4.655691749998368
+}

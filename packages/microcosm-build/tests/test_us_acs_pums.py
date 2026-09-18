@@ -8,13 +8,13 @@ import pandas as pd
 import pytest
 
 from microcosm.build.serialization_dtypes import CANONICAL_STRING_DTYPE
+from microcosm.build.us_runtime import acs_pums
 from microcosm.build.us_runtime.acs_pums import (
     ACS_2024_1YR_SPINE,
     AcsPumsSource,
     build_acs_pums_unit_frame,
     load_acs_pums_tables,
 )
-from microcosm.build.us_runtime.spine_assembly import assemble_spines
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -124,6 +124,15 @@ def _source(tmp_path: Path) -> AcsPumsSource:
         },
     )
     return AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
+
+
+def _axis_household(kinds: list[int]) -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "SERIALNO": [f"2024HU000000{index}" for index in range(len(kinds))],
+            "TYPEHUGQ": kinds,
+        }
+    )
 
 
 def _asec_shaped_frame() -> Frame:
@@ -263,6 +272,8 @@ def test_built_acs_lineage_assembles_with_asec_without_measured_coercion(
     acs, _metadata = build_acs_pums_unit_frame(_source(tmp_path), chunksize=1)
     measured_wages = acs.table("person")["WAGP"].copy()
     raw_serials = acs.table("household")["SERIALNO"].copy()
+
+    from microcosm.build.us_runtime.spine_assembly import assemble_spines
 
     assembled = assemble_spines(
         {"asec": _asec_shaped_frame(), "acs": acs},
@@ -595,3 +606,167 @@ def test_load_acs_pums_tables_requires_native_mapping_columns(
         load_acs_pums_tables(
             AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
         )
+
+
+def test_load_acs_pums_tables_rejects_group_quarters_with_positive_weight(
+    tmp_path: Path,
+) -> None:
+    source = _source(tmp_path)
+    _write_csv_zip(
+        source.household_zip,
+        {
+            "psam_husa.csv": [
+                _household(
+                    "2024GQ0000001",
+                    WGTP=7,
+                    TYPEHUGQ=2,
+                    TEN=None,
+                    TAXAMT=None,
+                )
+            ]
+        },
+    )
+
+    with pytest.raises(ValueError, match="TYPEHUGQ/WGTP disagree"):
+        load_acs_pums_tables(source, chunksize=1)
+
+
+def test_load_acs_pums_tables_rejects_housing_unit_with_zero_weight(
+    tmp_path: Path,
+) -> None:
+    source = _source(tmp_path)
+    _write_csv_zip(
+        source.household_zip,
+        {"psam_husa.csv": [_household("2024HU0000001", WGTP=0)]},
+    )
+
+    with pytest.raises(ValueError, match="TYPEHUGQ/WGTP disagree"):
+        load_acs_pums_tables(source, chunksize=1)
+
+
+def test_build_acs_pums_unit_frame_reports_household_axis_composition(
+    tmp_path: Path,
+) -> None:
+    pytest.importorskip("microunit")  # sanctioned tax-unit constructor (us extra)
+    household_zip = tmp_path / "csv_hus.zip"
+    person_zip = tmp_path / "csv_pus.zip"
+    _write_csv_zip(
+        household_zip,
+        {
+            "psam_husa.csv": [
+                _household("2024HU0000001", WGTP=10, NP=2),
+                _household("2024HU0000002", WGTP=20),
+                _household(
+                    "2024GQ0000001",
+                    WGTP=0,
+                    TYPEHUGQ=2,
+                    TEN=None,
+                    TAXAMT=None,
+                ),
+                _household(
+                    "2024GQ0000002",
+                    WGTP=0,
+                    TYPEHUGQ=3,
+                    TEN=None,
+                    TAXAMT=None,
+                ),
+                _household("2024HU0000003", WGTP=40, NP=0),
+            ]
+        },
+    )
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("2024HU0000001", 1, 20, PWGTP=11),
+                _person("2024HU0000001", 2, 25, MAR=5, PWGTP=12),
+                _person("2024HU0000002", 1, 20, PWGTP=13),
+                _person("2024GQ0000001", 1, 37, MAR=5, PWGTP=99),
+                _person("2024GQ0000002", 1, 38, MAR=5, PWGTP=55),
+            ]
+        },
+    )
+
+    frame, metadata = build_acs_pums_unit_frame(
+        AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
+    )
+
+    composition = metadata["household_axis_composition"]
+    assert composition == {
+        "occupied_housing_unit_rows": 2,
+        "occupied_housing_unit_design_weight_total": 30.0,
+        "institutional_gq_person_rows": 1,
+        "institutional_gq_person_design_weight_total": 99.0,
+        "noninstitutional_gq_person_rows": 1,
+        "noninstitutional_gq_person_design_weight_total": 55.0,
+    }
+    # The dropped vacant housing unit is outside the described axis entirely.
+    assert metadata["vacant_household_rows_dropped"] == 1
+    # Units conserve, and design mass conserves separately from units.
+    assert (
+        composition["occupied_housing_unit_rows"]
+        + composition["institutional_gq_person_rows"]
+        + composition["noninstitutional_gq_person_rows"]
+        == metadata["household_rows"]
+        == frame.n("household")
+        == 4
+    )
+    assert composition["occupied_housing_unit_design_weight_total"] + composition[
+        "institutional_gq_person_design_weight_total"
+    ] + composition["noninstitutional_gq_person_design_weight_total"] == pytest.approx(
+        metadata["weighted_household_population"]
+    )
+
+
+# Reached through the module, not imported by name, so this file still imports
+# against a build without the helper: the four checks below then fail on their
+# own instead of erroring the whole module at collection.
+def test_household_axis_composition_separates_units_and_design_mass() -> None:
+    household = _axis_household([1, 1, 2, 3])
+    weights = Weights(
+        np.asarray([10.0, 20.0, 99.0, 55.0]),
+        WeightKind.DESIGN,
+    )
+
+    composition = acs_pums._household_axis_composition(household, weights)
+
+    assert composition == {
+        "occupied_housing_unit_rows": 2,
+        "occupied_housing_unit_design_weight_total": 30.0,
+        "institutional_gq_person_rows": 1,
+        "institutional_gq_person_design_weight_total": 99.0,
+        "noninstitutional_gq_person_rows": 1,
+        "noninstitutional_gq_person_design_weight_total": 55.0,
+    }
+    assert sum(
+        value for key, value in composition.items() if key.endswith("_rows")
+    ) == len(household)
+    assert sum(
+        value
+        for key, value in composition.items()
+        if key.endswith("_design_weight_total")
+    ) == pytest.approx(weights.total)
+
+
+def test_household_axis_composition_requires_typehugq() -> None:
+    household = _axis_household([1]).drop(columns=["TYPEHUGQ"])
+    weights = Weights(np.asarray([10.0]), WeightKind.DESIGN)
+
+    with pytest.raises(ValueError, match="requires the TYPEHUGQ column"):
+        acs_pums._household_axis_composition(household, weights)
+
+
+def test_household_axis_composition_refuses_unpartitioned_rows() -> None:
+    household = _axis_household([1, 4])
+    weights = Weights(np.asarray([10.0, 20.0]), WeightKind.DESIGN)
+
+    with pytest.raises(ValueError, match="does not partition the loaded rows"):
+        acs_pums._household_axis_composition(household, weights)
+
+
+def test_household_axis_composition_refuses_misaligned_weights() -> None:
+    household = _axis_household([1, 2])
+    weights = Weights(np.asarray([10.0, 99.0, 20.0]), WeightKind.DESIGN)
+
+    with pytest.raises(ValueError, match="one DESIGN weight per loaded"):
+        acs_pums._household_axis_composition(household, weights)

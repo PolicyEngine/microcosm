@@ -36,6 +36,9 @@ testpaths = ["packages"]
 # importlib mode lets shards share test-file basenames (each has its own
 # test_compat.py) without the prepend-mode rootdir collision.
 addopts = "-q --import-mode=importlib"
+# Build tests share named fixture helpers across CI shards. This test-only
+# path also works for installed-wheel runs without exposing any package/src.
+pythonpath = ["packages/microcosm-build/tests"]
 markers = [
     "slow: end-to-end tests that require large local source artifacts",
     "requires_us: needs policyengine-us (the us extra); auto-skipped when absent",

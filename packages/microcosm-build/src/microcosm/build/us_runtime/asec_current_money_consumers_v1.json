@@ -1,0 +1,628 @@
+{
+  "addresses": [
+    {
+      "column": "ANN_VAL",
+      "consumers": [
+        "cps_carried",
+        "microunit"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "ANN_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "taxable_pension_income",
+        "tax_exempt_pension_income"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "CAP_VAL",
+      "consumers": [
+        "cps_carried",
+        "microunit"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "CAP_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "long_term_capital_gains",
+        "short_term_capital_gains"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "CHSP_VAL",
+      "consumers": [
+        "child_support"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "CHSP_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "child_support_paid"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "CSP_VAL",
+      "consumers": [
+        "child_support"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "CSP_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "child_support_received"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "DIS_VAL1",
+      "consumers": [
+        "disability_benefits"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "DIS_VAL1",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "disability_benefits"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "DIS_VAL2",
+      "consumers": [
+        "disability_benefits"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "DIS_VAL2",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "disability_benefits"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "DIV_VAL",
+      "consumers": [
+        "cps_carried",
+        "microunit"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "DIV_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "qualified_dividend_income",
+        "non_qualified_dividend_income"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "DST_VAL1",
+      "consumers": [
+        "cps_carried",
+        "retirement_distributions"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "DST_VAL1",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "taxable_ira_distributions",
+        "retirement_distribution_family"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "DST_VAL1_YNG",
+      "consumers": [
+        "cps_carried",
+        "retirement_distributions"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "DST_VAL1_YNG",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "taxable_ira_distributions",
+        "retirement_distribution_family"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "DST_VAL2",
+      "consumers": [
+        "cps_carried",
+        "retirement_distributions"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "DST_VAL2",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "taxable_ira_distributions",
+        "retirement_distribution_family"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "DST_VAL2_YNG",
+      "consumers": [
+        "cps_carried",
+        "retirement_distributions"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "DST_VAL2_YNG",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "taxable_ira_distributions",
+        "retirement_distribution_family"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "ED_VAL",
+      "consumers": [
+        "education_inputs"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "ED_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "educational_assistance"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "FRSE_VAL",
+      "consumers": [
+        "cps_carried",
+        "microunit"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "FRSE_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "farm_operations_income"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "asec_HTOTVAL",
+      "consumers": [
+        "asec_household_observations"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "household",
+      "field": "HTOTVAL",
+      "grain": "household",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "asec_current_household_total_income"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "INT_VAL",
+      "consumers": [
+        "cps_carried",
+        "microunit"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "INT_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "taxable_interest_income"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "OI_VAL",
+      "consumers": [
+        "asec_other_income_split",
+        "microunit"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "OI_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "alimony_income",
+        "strike_benefits",
+        "miscellaneous_income"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "PHIP_VAL",
+      "consumers": [
+        "cps_carried"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "PHIP_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "health_insurance_premiums_without_medicare_part_b"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "PMED_VAL",
+      "consumers": [
+        "cps_carried"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "PMED_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "other_medical_expenses"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "PNSN_VAL",
+      "consumers": [
+        "cps_carried",
+        "microunit"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "PNSN_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "taxable_pension_income",
+        "tax_exempt_pension_income"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "POTC_VAL",
+      "consumers": [
+        "cps_carried"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "POTC_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "over_the_counter_health_expenses"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "PTOTVAL",
+      "consumers": [
+        "microunit"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "PTOTVAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "microunit_current_total_income"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "RETCB_VAL",
+      "consumers": [
+        "retirement_contributions"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "RETCB_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "retirement_contributions"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "RNT_VAL",
+      "consumers": [
+        "cps_carried",
+        "microunit"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "RNT_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "rental_income"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "SEMP_VAL",
+      "consumers": [
+        "cps_carried",
+        "immigration",
+        "microunit"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "SEMP_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "self_employment_income_before_lsr"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "SPM_CAPHOUSESUB",
+      "consumers": [
+        "immigration"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "SPM_CAPHOUSESUB",
+      "grain": "spm_unit_repeated_on_person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "immigration_amount_predictor"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "SPM_CHILDCAREXPNS",
+      "consumers": [
+        "childcare",
+        "cps_carried"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "SPM_CHILDCAREXPNS",
+      "grain": "spm_unit_repeated_on_person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "spm_unit_pre_subsidy_childcare_expenses"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "SPM_ENGVAL",
+      "consumers": [
+        "energy_subsidy"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "SPM_ENGVAL",
+      "grain": "spm_unit_repeated_on_person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "spm_unit_energy_subsidy"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "SSI_VAL",
+      "consumers": [
+        "acs_release_predictors_reported_ssi_anchor"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "SSI_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "asec_current_reported_ssi_predictor"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "SS_VAL",
+      "consumers": [
+        "cps_carried",
+        "microunit"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "SS_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "social_security_retirement",
+        "social_security_disability",
+        "social_security_survivors",
+        "social_security_dependents"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "UC_VAL",
+      "consumers": [
+        "cps_carried",
+        "microunit"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "UC_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "unemployment_compensation"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "VET_VAL",
+      "consumers": [
+        "eligibility_inputs"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "VET_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "veterans_benefits"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "WC_VAL",
+      "consumers": [
+        "workers_compensation"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "WC_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "workers_compensation"
+      ],
+      "role": "cps_source"
+    },
+    {
+      "column": "WSAL_VAL",
+      "consumers": [
+        "cps_carried",
+        "immigration",
+        "microunit",
+        "voluntary_filing_current_leaf"
+      ],
+      "cpi_owner": "us_asec_current_money_ccpiu_2024_v1",
+      "entity": "person",
+      "field": "WSAL_VAL",
+      "grain": "person",
+      "input_basis": "target_current_2024",
+      "phase": "source_decode_before_current_leaves_and_units",
+      "raw_alternates": [],
+      "resulting_surfaces": [
+        "employment_income_before_lsr"
+      ],
+      "role": "cps_source"
+    }
+  ],
+  "implementation_status": "declarations_only_live_nominal_consumers_unchanged",
+  "microunit": {
+    "amount_fields": [
+      "ANN_VAL",
+      "CAP_VAL",
+      "DIV_VAL",
+      "FRSE_VAL",
+      "INT_VAL",
+      "OI_VAL",
+      "PNSN_VAL",
+      "PTOTVAL",
+      "RNT_VAL",
+      "SEMP_VAL",
+      "SS_VAL",
+      "UC_VAL",
+      "WSAL_VAL"
+    ],
+    "distribution": "microunit",
+    "module": "microunit/tax_unit_construction.py",
+    "module_sha256": "79007065113f9600601433dc2633f4392c675e28b87a7383ab8a1f7c6279d47e",
+    "version": "0.1.0"
+  },
+  "ownership_policy": "restater_owns_cpi_only_derived_outputs_keep_registered_phase_role_owners",
+  "routing_policy": "unchanged_source_codes_no_new_DST_universe_exclusion",
+  "schema_version": 1,
+  "scope": "current_money_only_no_prior_wages",
+  "unscaled_fields": [
+    "PAW_VAL",
+    "SPM_SNAPSUB"
+  ]
+}

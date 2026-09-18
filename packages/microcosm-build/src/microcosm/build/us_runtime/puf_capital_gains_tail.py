@@ -37,6 +37,31 @@ from microcosm.build.us_runtime.support_provenance import (
 )
 from microcosm.frame import US_SCHEMA, Frame, Weights
 
+from .operator_column_contracts import (
+    PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN as PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
+)
+from .operator_column_contracts import (
+    PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN as PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
+)
+from .operator_column_contracts import (
+    PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN as PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN,
+)
+from .operator_column_contracts import (
+    PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN as PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
+)
+from .operator_column_contracts import (
+    PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN as PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
+)
+from .operator_column_contracts import (
+    PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS as PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
+)
+from .operator_column_contracts import (
+    PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS as PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
+)
+from .operator_column_contracts import (
+    PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN as PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
+)
+
 __all__ = [
     "PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN",
@@ -91,13 +116,6 @@ PUF_CAPITAL_GAINS_TAIL_QUANTILE = 0.995
 PUF_CAPITAL_GAINS_TAIL_REFERENCE_QUANTILE = 0.999
 PUF_CAPITAL_GAINS_TAIL_ASEC_CAPITAL_GAINS_TOPCODE = 1_999_998.0
 
-PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS = (
-    "short_term_capital_gains",
-    "long_term_capital_gains_before_response",
-    "long_term_capital_gains_on_collectibles",
-    "non_sch_d_capital_gains",
-)
-PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS = ("unrecaptured_section_1250_gain",)
 _JOINT_VECTOR_COLUMNS = (
     *PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
     *PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
@@ -120,18 +138,6 @@ _TAIL_AGI_BAND_INDEX_COLUMN = "_puf_capital_gains_tail_agi_band_index"
 _TAIL_AGI_BAND_LABEL_COLUMN = "_puf_capital_gains_tail_agi_band_label"
 _TAIL_SYNTHETIC_COLUMN = "_puf_capital_gains_tail_is_synthetic"
 
-PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN = "puf_capital_gains_tail_transfer_applied"
-PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN = "puf_capital_gains_tail_donor_source_id"
-PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN = (
-    "puf_capital_gains_tail_donor_is_synthetic"
-)
-PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN = (
-    "puf_capital_gains_tail_donor_filing_status_code"
-)
-PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN = (
-    "puf_capital_gains_tail_donor_agi_band_index"
-)
-PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN = "puf_capital_gains_tail_transfer_weight"
 
 _FILING_STATUS_BY_CODE = {
     1: "SINGLE",

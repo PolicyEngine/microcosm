@@ -613,6 +613,7 @@ def test_scored_column_contract_refuses_silently_missing_columns() -> None:
         )
 
 
+@pytest.mark.requires_us
 def test_incumbent_and_candidate_h5_loaders_preserve_scored_contract(
     tmp_path: Path,
 ) -> None:
@@ -672,6 +673,7 @@ def test_incumbent_and_candidate_h5_loaders_preserve_scored_contract(
         )
 
 
+@pytest.mark.requires_us
 def test_historical_formula_owned_h5_scores_with_drop_receipt(
     monkeypatch,
     tmp_path: Path,
@@ -709,6 +711,7 @@ def test_historical_formula_owned_h5_scores_with_drop_receipt(
     assert "`person`: `has_marketplace_health_coverage`" in markdown
 
 
+@pytest.mark.requires_us
 def test_historical_formula_owned_h5_refuses_missing_leaf(tmp_path: Path) -> None:
     pytest.importorskip("tables")
     module = _load_head_to_head_module()
@@ -732,6 +735,7 @@ def test_historical_formula_owned_h5_refuses_missing_leaf(tmp_path: Path) -> Non
     assert "required input leaves are absent" in message
 
 
+@pytest.mark.requires_us
 def test_clean_historical_h5_scores_with_empty_drop_receipt(
     monkeypatch,
     tmp_path: Path,
@@ -1009,3 +1013,63 @@ def test_live_incumbent_identity_annotation() -> None:
         resolved["revision"]
         == "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z"
     )
+
+
+@pytest.mark.parametrize("engine_available", [False, True])
+def test_entity_hdf_scorer_engine_markers_follow_actual_collection_hook(
+    request, monkeypatch, engine_available
+) -> None:
+    """PyTables alone must not activate the real country-engine HDF loader."""
+    engine_tests = {
+        "test_incumbent_and_candidate_h5_loaders_preserve_scored_contract",
+        "test_historical_formula_owned_h5_scores_with_drop_receipt",
+        "test_historical_formula_owned_h5_refuses_missing_leaf",
+        "test_clean_historical_h5_scores_with_empty_drop_receipt",
+    }
+    assert {
+        name
+        for name, function in globals().items()
+        if name.startswith("test_")
+        and inspect.isfunction(function)
+        and any(
+            mark.name == "requires_us" for mark in getattr(function, "pytestmark", ())
+        )
+    } == engine_tests
+    # Fresh real pytest items read the decorators without reusing skip marks
+    # already added to this session's original collection. No test body runs.
+    names = sorted(engine_tests) + [
+        "test_scored_column_contract_refuses_silently_missing_columns"
+    ]
+    items = [
+        pytest.Function.from_parent(
+            request.node.parent, name=name, callobj=globals()[name]
+        )
+        for name in names
+    ]
+    conftest_path = Path(__file__).resolve().parents[3] / "conftest.py"
+    plugins = [
+        plugin
+        for plugin in request.config.pluginmanager.get_plugins()
+        if isinstance(getattr(plugin, "__file__", None), str)
+        and Path(plugin.__file__).resolve() == conftest_path
+    ]
+    assert len(plugins) == 1
+    root_config = plugins[0]
+    requested_specs = []
+
+    def find_spec(name):
+        assert name in {"policyengine_us", "policyengine_uk"}
+        requested_specs.append(name)
+        return object() if name == "policyengine_uk" or engine_available else None
+
+    with monkeypatch.context() as patch:
+        patch.setattr(root_config.importlib.util, "find_spec", find_spec)
+        root_config.pytest_collection_modifyitems(request.config, items)
+    assert requested_specs == ["policyengine_us", "policyengine_uk"]
+    assert {item.name for item in items if item.get_closest_marker("skip")} == (
+        set() if engine_available else engine_tests
+    )
+    for item in items:
+        skip = item.get_closest_marker("skip")
+        if skip is not None:
+            assert skip.kwargs["reason"] == "requires policyengine-us extra"

@@ -1,0 +1,1 @@
+Move the unchanged shared demographic requirements into an import-free contract, preserving historical composed-stage re-exports and source identities while preventing household-role qualification from eagerly loading the legacy composed runtime. Bind both shared declarations at existing source and graph live checks.
