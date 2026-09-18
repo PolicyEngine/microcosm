@@ -60,6 +60,9 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_household_weight_kind,
     write_uk_national_frame,
 )
+from microcosm.build.uk_runtime.target_support import (
+    write_uk_target_support_sidecars,
+)
 from microcosm.calibrate import TargetRegistry
 from microcosm.frame import Frame
 
@@ -579,6 +582,24 @@ def _run_uk_calibration_attempt(
         "diagnostics",
         "completed",
         target_count=len(stage.diagnostics),
+    )
+
+    # The solve's compiled system and both weight vectors are written beside
+    # the diagnostics before the terminal battery runs, so an attempt the
+    # battery blocks still leaves the per-target weight-stretch anatomy
+    # readable (tools/diagnose_uk_target_support.py; microcosm#930, the
+    # #890 acceptance line). Non-release sidecars: the staging H5 posture is
+    # unchanged, nothing here is a shippable artifact.
+    _notify_run_event(event_callback, "target_support_sidecars", "started")
+    sidecars = write_uk_target_support_sidecars(
+        stage.solve_result, paths.diagnostics_json.parent
+    )
+    append_phase(state, "target_support_sidecars_written")
+    _notify_run_event(
+        event_callback,
+        "target_support_sidecars",
+        "completed",
+        files=sorted(str(path.name) for path in sidecars.values()),
     )
 
     _notify_run_event(event_callback, "release_check_evaluation", "started")
