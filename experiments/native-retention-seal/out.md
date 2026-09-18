@@ -411,11 +411,23 @@ Four tests, modelled on `test_absent_observer_allocates_no_snapshot`:
 | `test_a_seal_only_observer_receives_the_live_population` | **the seal-only arm only.** It asserts the observer receives the executor's own table objects in the new mode. Its default-mode arm compares one run's snapshots against a *different* run's frames, so it cannot show that the default does not hand over live objects — an adversarial pass found that and it is not fixed here; §11 question 8 |
 | `test_the_detach_keyword_is_a_bool_and_does_nothing_without_an_observer` | a non-bool raises `TypeError`; the keyword alone moves no key |
 
-**The mode's one honest cost, stated in the docstring:** in this mode the
-executor no longer *enforces* that an observer cannot reach execution state, it
-*trusts* the caller's declaration. The default still enforces it, and
-`test_mutating_and_retained_observers_cannot_change_execution_or_cache` still
-pins that.
+**The mode's honest cost, stated in the docstring — and it was under-stated
+until §9d.** The paragraph the mode qualifies promises two things, "changes to
+the snapshot cannot alter execution **or persistence**", and the admission
+named only the first. Both are withdrawn in this mode, and the second is the
+worse one: a mutating observer can leave the store holding bytes that are not
+the content the node key names, with the payload digest rewritten to match, so
+every later run sharing that store serves them as a cache hit under an
+unchanged key and nothing afterwards can detect it. The docstring now withdraws
+both by name and says the damage outlives the run. The default still enforces
+both, and `test_mutating_and_retained_observers_cannot_change_execution_or_cache`
+still pins that.
+
+**The main-only change is two commits now.** `9bef866c5` adds the mode;
+`6e3b3091c`'s graph-shard hunks carry that docstring and the fix to the
+executor test whose default-mode arm was vacuous. `git log a64f7b733..HEAD --
+packages/microcosm-graph/` returns exactly those two, and the whole graph diff
+is `executor.py` +30/−1 and `test_graph_executor.py` +152.
 
 ## 5. A defect this branch inherited, repaired here, and observed in the wild
 
