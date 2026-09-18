@@ -369,6 +369,23 @@ The transport report's §4 "No committed pin moves" was recomputed before
 `b6081efcb` and is stale at its own tip. Its after-run predates the commit and
 is unaffected.
 
+**Re-reproduced from scratch**, in the detached branch-point worktree, against
+that tree's own sources rather than this one's — which matters, because an
+editable install in another worktree will answer for the tree you think you are
+measuring, so the module's `__file__` was asserted first:
+
+```
+$ cd ~/PolicyEngine/_worktrees/microcosm-retention-branchpoint   # a64f7b733, clean
+$ PYTHONPATH="$(ls -d $PWD/packages/*/src | tr '\n' ':')" python -c ...
+module resolves to: .../microcosm-retention-branchpoint/packages/microcosm-build/
+                    src/microcosm/build/us_runtime/graph_implementation.py
+REFUSES at the base: ValueError Unclassified US dependency/resource contract:
+                     microcosm.build/us_runtime/survey_population_preparation.py.
+```
+
+At this head the same call accepts, for all ten stages:
+`contracts accepted at the working tree: True` in §7c's regenerated receipt.
+
 **Observed in the wild while this lane was running.** That branch's own 1/10
 run had been queued at a 70 GB memory gate since 20:39Z. The gate opened at
 **22:58:25Z**, the run started, and it stopped 573 CPU-s later at 8.17 GB with
