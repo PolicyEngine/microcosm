@@ -16,11 +16,21 @@ why this run exists, both reasons:
     without it. Question 5 asked whether to repeat it on a quiet machine. This
     run is that repeat, launched with nothing else of this lane's running.
 
-launched: 2026-09-18T01:53:40Z (gate opened at 79.7 GB available > 40 GB)
-pid:  4351
-pgid: 4351   (session leader; os.setsid() in setsid_exec.py, pid kept across exec)
-head: f4b4db9a2133856ba875a0e5490e5b4dada97e14 -- the finished head, with the
-      seal fixes and the unpacked seal records
+first attempt: pid 4351, launched 2026-09-18T01:53:40Z at 79.7 GB available,
+      stopped by `kill 4351` about 8 minutes in, before it had written any
+      result, because four more findings were still to be answered and one of
+      them changed packages/microcosm-graph/src/.../executor.py. A run whose
+      measured head is not the head that ships is not the run the brief asks
+      for, so it was restarted rather than reported.
+launched: 2026-09-18T01:58:01Z (gate opened at 79.8 GB available > 40 GB)
+pid:  7656
+pgid: 7656   (session leader; os.setsid() in setsid_exec.py, pid kept across exec)
+head: 6e3b3091c2a11de0d4d1a84578e1ae3f3d50d8a1 -- the finished head, with the
+      seal fixes, the unpacked seal records and the four later answers.
+      `git diff 6e3b3091c HEAD -- 'packages/*/src'` is empty at the time this
+      record is written, and no further source edit is made while it runs.
+      The measurement worktree is a separate checkout, so commits in the lane
+      worktree cannot reach the tree being measured.
 tree: /Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-after2
       a fresh throwaway detached worktree, created for this run
 harness: a byte-identical copy of the base branch's committed
