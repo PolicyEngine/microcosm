@@ -496,9 +496,31 @@ three causes between `5307249b3` and this head:
 
 Any one of the three moves every node key downstream of the stage it touches;
 `implementation_manifest` folds `sha256` of each roster module's **whole file**
-(`graph_implementation.py:431-435`) and `inventory_sha256` besides. The
-receipt's `transport_after → us_only` row is the one that matters for review:
-**this lane's US commits alone move nothing at all.**
+(`graph_implementation.py:431-435`) and `inventory_sha256` besides.
+
+The row that matters for review is **`base → us_only`**, and it is empty: *no
+roster module digest moved.* That is the claim "this lane's US commits alone
+move nothing at all", stated by the receipt rather than derived from two other
+rows — which it had to be until now, because the receipt paired every revision
+against `transport_after` alone and had no `base → us_only` row at all. An
+earlier draft of this section cited `transport_after → us_only` for it, and
+that row says the **opposite**: it shows
+`survey_population_preparation.py` moving, because `b6081efcb` is in
+`a64f7b733` and not in `5307249b3`. The generator now emits **every ordered
+pair** of the four revisions, so each claim cites a row that states it:
+
+| row | what it says |
+|---|---|
+| `base → us_only` | **no roster module digest moved** — the US half moves no key |
+| `base → head` | 10 stages, `microcosm.graph/executor.py` only — the executor half moves every key |
+| `transport_after → head` | 10 stages, `survey_population_preparation.py` **and** `executor.py` — causes 1 and 3 above |
+| `base → transport_after` | `survey_population_preparation.py` — `b6081efcb`, which is §5's inherited defect |
+| `us_only → base` | nothing moved — `us_only` and the branch point are identical in roster terms |
+
+The regeneration also re-checks the contract arm at the working tree at this
+head: **`contracts accepted at the working tree: True`** over all ten stages,
+so the test files this lane has added since the runs moved no digest and broke
+no contract.
 
 ### 7d. Peak RSS went up, and this report is not going to spin it
 

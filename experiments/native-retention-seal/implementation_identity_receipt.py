@@ -72,20 +72,28 @@ def main():
     inventory = json.loads((ROOT / INVENTORY).read_bytes())
     per_revision = {label: _digests(rev, inventory) for label, rev in revisions.items()}
 
+    # EVERY ordered pair, not just first-against-the-rest. The claims this
+    # receipt has to answer do not share one base: "this lane's US commits move
+    # nothing" is base->us_only, and "why the manifest key is not the base
+    # branch's" is transport_after->head. A receipt that carried only one base
+    # left the first claim derivable but unstated, which is how a report comes
+    # to cite a row that says the opposite of what it is quoted for.
     labels = list(revisions)
-    base = labels[0]
     moved = {}
-    for label in labels[1:]:
-        changes = {}
-        for stage, digests in per_revision[label].items():
-            differing = {
-                name: {base: per_revision[base][stage][name], label: digest}
-                for name, digest in digests.items()
-                if per_revision[base][stage][name] != digest
-            }
-            if differing:
-                changes[stage] = differing
-        moved[f"{base}->{label}"] = changes
+    for left in labels:
+        for right in labels:
+            if left == right:
+                continue
+            changes = {}
+            for stage, digests in per_revision[right].items():
+                differing = {
+                    name: {left: per_revision[left][stage][name], right: digest}
+                    for name, digest in digests.items()
+                    if per_revision[left][stage][name] != digest
+                }
+                if differing:
+                    changes[stage] = differing
+            moved[f"{left}->{right}"] = changes
 
     # The inventory file's own digest is `inventory_sha256` in EVERY stage
     # manifest, so a re-pin of one contract moves all ten even when no roster
