@@ -260,7 +260,9 @@ defect:
 | a `DatetimeIndex` freq difference was accepted | `_comparables` is `['name', 'freq']` there, and no buffer carries `freq` |
 
 **A separate adversarial pass over the finished seal found five more**, and one
-was in the dangerous direction:
+was in the dangerous direction. (A *second*, wider pass later found three more,
+two of them in the accept/refuse directions — §9d. The table below is the first
+pass's.)
 
 | finding | direction |
 |---|---|
@@ -1378,3 +1380,26 @@ arrives with its own tests intact.
 - **The inherited defect is another lane's**, and the bisect above is this
   lane's reading of that lane's commits, not an accusation about intent: the
   contract went stale because nothing in the repository tested it.
+- **The measured runs are not all at one head, and §9b says which is which.**
+  The 1/1000 after-run of §7 was **re-run at the finished head** after the
+  fixes of §9d changed the seal; the first after-run's figures are kept beside
+  it, because they are the ones the base branch's comparison was built against.
+  The 1/15 run and its diagnostic predate the fixes and were not repeated: the
+  refusal they report happens inside source authentication, before the first
+  node, so no seal code runs in either and the fixes cannot reach it.
+- **Two of the 21 dependent files have no result at this head.** The
+  completion-host and person-status runs were invalidated by my own concurrent
+  edits to `survey_population_replay.py` while they ran, which an
+  implementation hash is over. §9a says so, and what replaced them is a clean
+  re-run — not an argument that the first result did not count.
+- **The agreement sweep is evidence about the pairs it draws, and nothing
+  else.** 3,852 pairs over seven axis kinds, a 21-value object pool and nine
+  column mutations, with a fixed seed. It found no disagreement; it did not
+  prove there is none, and its pool deliberately excludes the `datetime64`
+  leaf whose refusal is the precedence class of §1's item 3.
+- **This report has been wrong in public more than once**, and each time the
+  wrong version is left visible with what replaced it: "the US half moves no
+  key at all", "never weaker than `equals`", "0.31 GiB", the section numbering,
+  seven line citations, the 122-to-116 reconciliation and the fourteen
+  accepted pairs. A report that only shows its final state hides how much of
+  it was checked.
