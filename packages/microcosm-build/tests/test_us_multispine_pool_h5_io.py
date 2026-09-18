@@ -6,7 +6,6 @@ import sys
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import replace
-from functools import cache
 from pathlib import Path
 
 import numpy as np
