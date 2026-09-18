@@ -34,7 +34,10 @@ _ISSUED = {}
 
 
 class ACSSourceCatalogueError(ValueError):
-    """Static refusal, without source identities, paths or cause chains."""
+    """Static refusal, without source identities or paths in its message.
+
+    A catch-all chains the exception it caught; the code itself stays static.
+    """
 
 
 def _require(condition, code):
@@ -454,8 +457,8 @@ def _checked(value):
         return owned
     except ACSSourceCatalogueError:
         raise
-    except Exception:
-        raise ACSSourceCatalogueError("CATALOGUE_VERIFICATION_REFUSED") from None
+    except Exception as error:
+        raise ACSSourceCatalogueError("CATALOGUE_VERIFICATION_REFUSED") from error
 
 
 def verify_acs_source_catalogue(value):
@@ -600,8 +603,8 @@ def issue_acs_source_catalogue(source_dir, *, snapshot_root, candidate=None):
         return result
     except ACSSourceCatalogueError:
         raise
-    except Exception:
-        raise ACSSourceCatalogueError("CATALOGUE_ISSUANCE_REFUSED") from None
+    except Exception as error:
+        raise ACSSourceCatalogueError("CATALOGUE_ISSUANCE_REFUSED") from error
 
 
 # Authority begins at this import, rather than accepting replacement source and

@@ -35,6 +35,16 @@ from .source_csv_builtin import csv_reader_bound
 PROTOCOL = "microcosm.acs-person-coverage-authentication.v1"
 MAX_HEADER_BYTES = 1024**2
 MAX_BODY_BYTES = 64 * 1024**2
+# One coverage body carries one NDJSON line per selected ACS person, measured
+# at 90.26 bytes per line over the whole 2024 person file, so a full-source
+# body is 308,941,698 bytes and a single 64 MiB accumulation admitted 21.7% of
+# the source. MAX_BODY_BYTES stays what one accumulation may hold; the total a
+# process will materialise for one whole-roster stream is a separate, explicit
+# resource ceiling -- 64 accumulations, the same multiple
+# survey_population_preparation.MAX_ROSTER_BYTES uses. It also bounds the
+# pre-allocation charge below and every roster-shaped canonical stream the
+# native binding digests or issues. See docs/us-native-byte-transports.md.
+MAX_ROSTER_BYTES = 64 * MAX_BODY_BYTES
 MAX_RECORD_BYTES = 400_000
 MAX_CSV_HEADER_BYTES = 64 * 1024
 MAX_TOKEN_BYTES = 64 * 1024
@@ -55,7 +65,11 @@ _IMPLEMENTATION_FILES = (
 
 
 class ACSCoverageAuthenticationError(ValueError):
-    """Static refusal code, without source paths, keys, tokens or cause chains."""
+    """Static refusal code, without source paths, keys or tokens in its message.
+
+    A catch-all chains the exception it caught, so a refused run names what
+    refused; the code itself stays static.
+    """
 
 
 def _require(condition, code):
@@ -67,7 +81,7 @@ def _sha(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
-def _json(value, cap=MAX_HEADER_BYTES):
+def _json_size(value, cap=MAX_HEADER_BYTES):
     # ASCII JSON escapes preserve CR/LF/HT and distinguish null from "". Values
     # originate in byte-bounded records or the fixed, bounded header inventory.
     # Count exact escaped bytes before an encoder can allocate a whole token.
@@ -112,14 +126,91 @@ def _json(value, cap=MAX_HEADER_BYTES):
             _require(False, "CANONICAL_TYPE")
 
     visit(value)
-    parts, count = [], 0
+    return count
+
+
+def _json_chunks(value, cap=MAX_HEADER_BYTES):
+    """The canonical ASCII tokens of ``value``, each charged before it is yielded.
+
+    The exact escaped size is charged first, so a document that exceeds ``cap``
+    refuses before the encoder allocates a token; then each token is charged
+    again as it is produced. Every canonical byte this module or the native
+    binding emits comes through here, so the three shapes below -- whole
+    bytes, a digest, a segmented body -- are one stream materialised three ways.
+    """
+    _json_size(value, cap)
+    count = 0
     for part in json.JSONEncoder(
         sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
     ).iterencode(value):
         count += len(part)
         _require(count <= cap, "CANONICAL_SIZE")
-        parts.append(part.encode("ascii"))
-    return b"".join(parts)
+        yield part.encode("ascii")
+
+
+def _json(value, cap=MAX_HEADER_BYTES):
+    return b"".join(_json_chunks(value, cap))
+
+
+def _json_sha256(value, cap=MAX_ROSTER_BYTES):
+    """``_sha(_json(value, cap))`` without holding the bytes."""
+    digest = hashlib.sha256()
+    for part in _json_chunks(value, cap):
+        digest.update(part)
+    return digest.hexdigest()
+
+
+def _json_roster(value, *, segment=MAX_BODY_BYTES, maximum=MAX_ROSTER_BYTES):
+    """``_json(value, maximum)`` accumulated in segments no larger than ``segment``.
+
+    A whole-roster document -- one that carries a record per selected row --
+    is still one canonical byte string, because its consumers hold it whole;
+    what changes is that no accumulation is larger than the value the old
+    ceiling allowed. The bytes are identical to ``_json(value, maximum)``.
+    ``CANONICAL_SIZE`` keeps its code: above ``maximum`` it refuses before a
+    token is allocated, and one token larger than one segment refuses too.
+    """
+    segments, current = [], bytearray()
+    for part in _json_chunks(value, maximum):
+        if current and len(current) + len(part) > segment:
+            segments.append(bytes(current))
+            current = bytearray()
+        _require(len(current) + len(part) <= segment, "CANONICAL_SIZE")
+        current.extend(part)
+    segments.append(bytes(current))
+    return b"".join(segments)
+
+
+# The longest state ``acs_person_coverage_columns._field_state`` can return is
+# "value_below_age_universe" (24 characters); each of the two state cells costs
+# its quotes and one separator on the NDJSON line.
+_STATE_BYTES = 2 * (2 + 24 + 1)
+
+
+def _body_row_bound(cells, member, ordinal):
+    """An upper bound on one NDJSON body line, from what is known before the read.
+
+    The line ``load_authenticated_acs_person_coverage`` emits is the canonical
+    list of the READ_COLUMNS cells, the two derived field states, the member
+    name and the row ordinal, plus a newline. Every one of those is in hand
+    here except the states, which are bounded by ``_STATE_BYTES``; SPORDER is
+    charged as the string the record carries, which is never shorter than the
+    integer the line carries. The ASCII encoder that sizes it is the same one
+    ``_json`` uses, so the bound is exact for the cells it sees.
+    """
+    return (
+        len(
+            json.dumps(
+                [*cells, member, ordinal],
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+                allow_nan=False,
+            )
+        )
+        + _STATE_BYTES
+        + 1
+    )
 
 
 def _producer():
@@ -176,6 +267,7 @@ def _producer():
         "ceilings": {
             "header": MAX_HEADER_BYTES,
             "body": MAX_BODY_BYTES,
+            "roster": MAX_ROSTER_BYTES,
             "record": MAX_RECORD_BYTES,
             "csv_header": MAX_CSV_HEADER_BYTES,
             "token": MAX_TOKEN_BYTES,
@@ -374,11 +466,17 @@ def _inventory(path, role, serialnos):
                         cells = [values[p] for p in positions]
                         if cells[0] not in serialnos:
                             continue
-                        # Upper bound on escaped row + statuses + lineage before
-                        # the low-level reader allocates its selected DataFrame.
-                        selected_budget += 6 * len(raw) + 1024
+                        # Upper bound on this row's escaped NDJSON line -- the
+                        # cells the body carries, the two field states, the
+                        # member name and the ordinal -- charged against the
+                        # body's own ceiling before the low-level reader
+                        # allocates its selected DataFrame. The charge is what
+                        # the body will hold, not six times the raw record.
+                        selected_budget += _body_row_bound(
+                            cells, member.filename, row_count
+                        )
                         _require(
-                            selected_budget <= MAX_BODY_BYTES, "SELECTED_BODY_BUDGET"
+                            selected_budget <= MAX_ROSTER_BYTES, "SELECTED_BODY_BUDGET"
                         )
                         if role == "household":
                             key = cells[0]
@@ -607,8 +705,8 @@ def verify_acs_coverage_native_consistency(coverage, frame):
         return coverage.native_binding
     except ACSCoverageAuthenticationError:
         raise
-    except Exception:
-        raise ACSCoverageAuthenticationError("NATIVE_CONSISTENCY_REFUSED") from None
+    except Exception as error:
+        raise ACSCoverageAuthenticationError("NATIVE_CONSISTENCY_REFUSED") from error
 
 
 def load_authenticated_acs_person_coverage(
@@ -651,16 +749,27 @@ def load_authenticated_acs_person_coverage(
                 person_keys=keys,
                 chunksize=min(1000, len(keys)),
             )
-            body, size = [], 0
+            # One line per selected person, accumulated in segments no larger
+            # than MAX_BODY_BYTES and materialised once, because the payload
+            # is one byte string. BODY_SIZE keeps its code on the condition a
+            # segmented stream can still reach: one line larger than one
+            # accumulation. The total is the roster ceiling.
+            segments, current, size = [], bytearray(), 0
             for row in table.itertuples(index=False, name=None):
                 raw = (
                     _json([*row, *lineage[(row[0], row[1])]], MAX_RECORD_BYTES - 1)
                     + b"\n"
                 )
+                if current and len(current) + len(raw) > MAX_BODY_BYTES:
+                    segments.append(bytes(current))
+                    current = bytearray()
+                _require(len(current) + len(raw) <= MAX_BODY_BYTES, "BODY_SIZE")
+                _require(size + len(raw) <= MAX_ROSTER_BYTES, "BODY_LIMIT")
+                current.extend(raw)
                 size += len(raw)
-                _require(size <= MAX_BODY_BYTES, "BODY_SIZE")
-                body.append(raw)
-            body = b"".join(body)
+            segments.append(bytes(current))
+            body = b"".join(segments)
+            _require(len(body) == size, "BODY_LIMIT")
             header = {
                 "protocol": PROTOCOL,
                 "encoding": "ascii-escaped-json-header-and-ndjson-v1",
@@ -719,5 +828,5 @@ def load_authenticated_acs_person_coverage(
         return AuthenticatedACSPersonCoverage(payload, _token=_TOKEN)
     except ACSCoverageAuthenticationError:
         raise
-    except Exception:
-        raise ACSCoverageAuthenticationError("SOURCE_RECONSTRUCTION_REFUSED") from None
+    except Exception as error:
+        raise ACSCoverageAuthenticationError("SOURCE_RECONSTRUCTION_REFUSED") from error

@@ -28,6 +28,14 @@ PROTOCOL = "microcosm.acs-native-coverage-binding.v2"
 MAX_ARCHIVE_BYTES = 8 * 1024**3  # combined compressed bytes, before capture
 MAX_EXPANDED_BYTES = 16 * 1024**3  # combined, before opening any member
 MAX_SOURCE_ROWS = 6_000_000  # per role, before full-source construction
+# MAX_EVIDENCE_BYTES bounds the one fixed-shape document this module encodes
+# under it, the frame details of _frame_sha256. The two roster-shaped streams
+# -- the selected SERIALNO list and the issuance receipt that embeds it, one
+# entry per selected ACS household, 24,505,825 bytes at full source -- take
+# the coverage owner's whole-roster ceiling instead: coverage.MAX_ROSTER_BYTES,
+# with coverage.MAX_BODY_BYTES as the largest accumulation. Under the 1 MiB
+# and 2 MiB caps they used to share, 65,535 selected households (4.28% of the
+# source) was the most this issuer admitted. See docs/us-native-byte-transports.md.
 MAX_EVIDENCE_BYTES = 2 * 1024**2
 # Exact accepted direct AGEP -> A_AGE and AGEP -> age implementation, and owners.
 # A new transform/owner version requires explicit review of this successor.
@@ -35,7 +43,7 @@ _ACCEPTED = {
     "acs_pums.py": "e79a2a4ecbc81e52b361918e7f391725a336274c74041387d71195cca46cb83c",
     "acs_inputs.py": "aa4a8aeaba63dfef2f3e04fb89de59766deb088ed7f4d290aeba0425739916da",
     "acs_housing_universe_source.py": "beb46a4a05a13580a868be423809a77946441dcafc3a0f57160561157e93e9a3",
-    "acs_person_coverage_authentication.py": "9ec68721a4cf480ef412c51ab354db9000eb7a7989e35e6e09b1574d88e8e49f",
+    "acs_person_coverage_authentication.py": "b8400706d44fd76f6d9495dafde984c37d261041c38efd5803286a67ca124977",
 }
 _TOKEN = object()
 _ISSUED = WeakKeyDictionary()
@@ -52,7 +60,11 @@ _COMPILE_CACHE_LOCK = RLock()
 
 
 class ACSNativeCoverageBindingError(ValueError):
-    """Static refusal without source values, paths or exception chains."""
+    """Static refusal without source values or paths in its message.
+
+    A catch-all chains the exception it caught, so a refused run names what
+    refused; the code itself stays static.
+    """
 
 
 def _require(condition, code):
@@ -539,8 +551,8 @@ def verify_acs_native_coverage(issuance, frame=None):
         return issuance
     except ACSNativeCoverageBindingError:
         raise
-    except Exception:
-        raise ACSNativeCoverageBindingError("NATIVE_VERIFICATION_REFUSED") from None
+    except Exception as error:
+        raise ACSNativeCoverageBindingError("NATIVE_VERIFICATION_REFUSED") from error
 
 
 def issue_acs_native_coverage(
@@ -560,9 +572,10 @@ def issue_acs_native_coverage(
         candidate_path = (
             None if candidate_path is None else Path(candidate_path).absolute()
         )
-        coverage._json(
-            serialnos, min(MAX_EVIDENCE_BYTES, housing.ACS_HU_RECEIPT_MAX_BYTES)
-        )
+        # The selected-key list is sized before any capture or producer work,
+        # against the ceiling of the receipt that will embed it; nothing is
+        # encoded to size it.
+        coverage._json_size(serialnos, coverage.MAX_ROSTER_BYTES)
         pins = housing._pins()
         archives = _archives(pins)
         _require(sum(p[3] for p in pins) <= MAX_ARCHIVE_BYTES, "ARCHIVE_BUDGET")
@@ -638,13 +651,11 @@ def issue_acs_native_coverage(
                     "requested_serialnos": serialnos,
                     "complete_selected_roster": True,
                     "person_rows": prepared.frame.n("person"),
-                    "raw_person_keys_sha256": coverage._sha(
-                        coverage._json(
-                            sorted(
-                                zip(keys.SERIALNO, map(int, keys.SPORDER), strict=True)
-                            ),
-                            coverage.MAX_BODY_BYTES,
-                        )
+                    # One pair per selected person: digested from the stream,
+                    # never held whole. 68,461,900 bytes at full source.
+                    "raw_person_keys_sha256": coverage._json_sha256(
+                        sorted(zip(keys.SERIALNO, map(int, keys.SPORDER), strict=True)),
+                        coverage.MAX_ROSTER_BYTES,
                     ),
                     "vacant_serialnos": None
                     if selected_roster is None
@@ -708,7 +719,9 @@ def issue_acs_native_coverage(
                 "projection_sha256": coverage._sha(prepared.source.projection_json),
                 "coverage_payload_sha256": coverage._sha(literal.payload),
             }
-            payload = coverage._json(receipt, MAX_EVIDENCE_BYTES)
+            # The receipt embeds the selected-key list, so it is a whole-roster
+            # document: the same canonical bytes, accumulated in segments.
+            payload = coverage._json_roster(receipt)
             owned = _Owned(
                 prepared.frame, payload, prepared, literal, tuple(snapshots), pins
             )
@@ -732,5 +745,5 @@ def issue_acs_native_coverage(
         return result
     except ACSNativeCoverageBindingError:
         raise
-    except Exception:
-        raise ACSNativeCoverageBindingError("NATIVE_ISSUANCE_REFUSED") from None
+    except Exception as error:
+        raise ACSNativeCoverageBindingError("NATIVE_ISSUANCE_REFUSED") from error

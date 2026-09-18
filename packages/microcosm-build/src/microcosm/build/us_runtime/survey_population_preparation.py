@@ -76,7 +76,10 @@ _ISSUED = {}
 
 
 class SurveyPopulationPreparationError(ValueError):
-    """Static refusal; messages contain no source observations or paths."""
+    """Static refusal; messages contain no source observations or paths.
+
+    The issuance catch-all chains the exception it caught.
+    """
 
 
 def _require(condition, code):
@@ -2080,8 +2083,12 @@ def prepare_authenticated_survey_population(
         return result
     except SurveyPopulationPreparationError:
         raise
-    except Exception:
-        raise SurveyPopulationPreparationError("PREPARATION_ISSUANCE_REFUSED") from None
+    except Exception as error:
+        # The code stays static; the cause is chained so a refused run names
+        # what refused instead of only that something did.
+        raise SurveyPopulationPreparationError(
+            "PREPARATION_ISSUANCE_REFUSED"
+        ) from error
 
 
 _BYTES = _code_bytes()

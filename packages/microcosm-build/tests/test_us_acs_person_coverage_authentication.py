@@ -15,6 +15,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime import acs_housing_universe_source as custody
+from microcosm.build.us_runtime import acs_native_coverage_binding as binding
 from microcosm.build.us_runtime import acs_person_coverage_authentication as owner
 from microcosm.build.us_runtime import acs_person_coverage_columns as literal
 from microcosm.build.us_runtime.acs_inputs import map_acs_native_inputs
@@ -469,7 +470,8 @@ def test_entire_zip_directory_is_checked_before_literal_reader(
         (owner, "MAX_CSV_HEADER_BYTES", 30, "CSV_RECORD_BYTES"),
         (owner, "MAX_RECORD_BYTES", 64, "CSV_RECORD_BYTES"),
         (owner, "MAX_TOKEN_BYTES", 10, "CSV_TOKEN_BYTES"),
-        (owner, "MAX_BODY_BYTES", 100, "SELECTED_BODY_BUDGET"),
+        (owner, "MAX_ROSTER_BYTES", 100, "SELECTED_BODY_BUDGET"),
+        (owner, "MAX_BODY_BYTES", 40, "BODY_SIZE"),
         (owner, "MAX_HEADER_BYTES", 100, "CANONICAL_SIZE"),
         (literal, "MAX_ROWS", 1, "SOURCE_ROWS"),
         (literal, "MAX_SELECTED_ROWS", 2, "NATIVE_ROWS"),
@@ -484,7 +486,13 @@ def test_small_limits_refuse_before_relevant_allocation(
 
 
 @pytest.mark.parametrize("kind", ["corrupt", "growth", "symlink", "fifo"])
-def test_exact_capture_refusals_are_static_and_hide_cause_chains(invented, kind):
+def test_exact_capture_refusals_are_static_and_carry_their_cause(invented, kind):
+    """The code is the whole message; the exception it caught is chained.
+
+    A refused run names what refused. The retention lane recovered a 1/15
+    refusal's cause only with a sys.monitoring observer because three nested
+    catch-alls each discarded it (docs/us-native-byte-transports.md).
+    """
     path = invented[0].person_zip
     if kind == "corrupt":
         flip_archive_byte(path)
@@ -502,8 +510,9 @@ def test_exact_capture_refusals_are_static_and_hide_cause_chains(invented, kind)
         saved.rename(invented[0].tmp_path / "saved.zip")
     with _refuses("SOURCE_RECONSTRUCTION_REFUSED") as exc:
         _load(invented)
-    assert exc.value.__cause__ is None
-    assert exc.value.__suppress_context__
+    assert str(exc.value) == "SOURCE_RECONSTRUCTION_REFUSED"
+    assert isinstance(exc.value.__cause__, Exception)
+    assert not isinstance(exc.value.__cause__, owner.ACSCoverageAuthenticationError)
 
 
 @pytest.mark.parametrize(
@@ -586,3 +595,209 @@ def test_canonical_size_is_checked_before_string_encoding(monkeypatch, value):
     monkeypatch.setattr(owner.json, "JSONEncoder", forbidden_encoder)
     with _refuses("CANONICAL_SIZE"):
         owner._json(value, len(expected) - 1)
+
+
+# ---------------------------------------------------------------------------
+# The whole-roster ceiling: one canonical stream, materialised three ways.
+# ---------------------------------------------------------------------------
+
+# Measured over the whole captured 2024 ACS person file (3,422,888 records);
+# experiments/native-byte-transports/byte-census-measurements.json.
+ACS_PERSONS = 3_422_888
+ACS_HOUSEHOLDS = 1_531_614
+MEASURED_BODY_BYTES = 308_941_698
+MEASURED_LONGEST_BODY_LINE = 102
+MEASURED_KEY_LIST_BYTES = 68_461_900
+MEASURED_SERIALNO_LIST_BYTES = 24_505_825
+
+
+def _canonical_documents():
+    return [
+        {"z": '\u00e9\t"\\', "a": [0, 1, None, True, False], "n": -12},
+        ["\U0001f600", {"k": "\u2028"}, 12345678901234567890, ""],
+        {"requested_serialnos": [f"2024HU{i:07d}" for i in range(1, 200)]},
+    ]
+
+
+@pytest.mark.parametrize("value", _canonical_documents())
+def test_canonical_size_digest_and_segments_are_one_stream(monkeypatch, value):
+    """_json, _json_size, _json_sha256 and _json_roster agree byte for byte."""
+    whole = owner._json(value, owner.MAX_ROSTER_BYTES)
+    assert owner._json_size(value, owner.MAX_ROSTER_BYTES) == len(whole)
+    assert (
+        owner._json_sha256(value, owner.MAX_ROSTER_BYTES)
+        == hashlib.sha256(whole).hexdigest()
+    )
+    tokens = list(owner._json_chunks(value, owner.MAX_ROSTER_BYTES))
+    longest = max(map(len, tokens))
+    for segment in sorted({longest, longest + 1, 17, 4096, len(whole)}):
+        if segment >= longest:
+            assert owner._json_roster(value, segment=segment) == whole
+    # The refusal keeps its code on the condition a segmented stream can still
+    # reach: one token larger than one segment, or a stream above the total.
+    with _refuses("CANONICAL_SIZE"):
+        owner._json_roster(value, segment=longest - 1)
+    with _refuses("CANONICAL_SIZE"):
+        owner._json_roster(value, maximum=len(whole) - 1)
+    with _refuses("CANONICAL_SIZE"):
+        owner._json_sha256(value, len(whole) - 1)
+
+    # The size pass refuses before the encoder allocates a token.
+    def forbidden_encoder(*_args, **_kwargs):
+        raise AssertionError("encoder reached before the size was charged")
+
+    monkeypatch.setattr(owner.json, "JSONEncoder", forbidden_encoder)
+    with _refuses("CANONICAL_SIZE"):
+        owner._json_size(value, len(whole) - 1)
+
+
+def _field_states():
+    contract = literal.coverage_field_contract()
+    states = set()
+    for definition in contract["fields"].values():
+        for age in ("", "x", "5", "16", "17", "80", "100"):
+            for raw in ("", "1", "9", "zz"):
+                states.add(
+                    literal._field_state(
+                        age,
+                        raw,
+                        minimum_age=definition["minimum_age"],
+                        codes=definition["codes"],
+                    )
+                )
+    return sorted(states)
+
+
+def test_body_row_bound_covers_every_body_line():
+    """The pre-allocation charge is an upper bound on the line the body holds."""
+    states = _field_states()
+    longest = max(states, key=len)
+    assert longest == "value_below_age_universe"
+    assert owner._STATE_BYTES == 2 * (len(owner._json(longest)) + 1)
+    rows = [
+        ["2024HU0000001", "1", "30", "1", "4"],
+        ["2024GQ0000002", "12", "80", "", ""],
+        ['\u00fc"\t', "9", "", "x", "\\"],
+    ]
+    for cells in rows:
+        for first in states:
+            for second in states:
+                line = (
+                    owner._json(
+                        [
+                            cells[0],
+                            int(cells[1]),
+                            *cells[2:],
+                            first,
+                            second,
+                            "psam_pusb.csv",
+                            1_679_137,
+                        ],
+                        owner.MAX_RECORD_BYTES - 1,
+                    )
+                    + b"\n"
+                )
+                assert owner._body_row_bound(cells, "psam_pusb.csv", 1_679_137) >= len(
+                    line
+                )
+
+
+def test_body_charge_bounds_the_issued_body(invented):
+    """Over the invented archive, the summed charge covers the body actually issued."""
+    _fixture, _frame, _h, people = invented
+    members = {"psam_pusa.csv": people[:1], "psam_pusb.csv": people[1:]}
+    charged = sum(
+        owner._body_row_bound(
+            [str(row[column]) for column in literal.READ_COLUMNS], member, ordinal
+        )
+        for member, rows in members.items()
+        for ordinal, row in enumerate(rows, 1)
+    )
+    receipt = _load(invented).receipt
+    assert receipt["rows"] == len(people)
+    assert receipt["body_bytes"] <= charged
+
+
+def test_body_segments_reassemble_identically_at_every_segment_size(
+    invented, monkeypatch
+):
+    """MAX_BODY_BYTES is now the size of one accumulation; the body is unchanged."""
+    baseline = _load(invented)
+    body = baseline._parts()[1]
+    lines = body.splitlines(keepends=True)
+    longest = max(map(len, lines))
+    assert len(lines) == 3 and longest < len(body)
+    for segment in sorted(
+        {longest, longest + 1, 2 * longest, len(body) - 1, len(body)}
+    ):
+        monkeypatch.setattr(owner, "MAX_BODY_BYTES", segment)
+        issued = _load(invented)
+        assert issued._parts()[1] == body
+        assert issued.receipt["body_sha256"] == baseline.receipt["body_sha256"]
+    monkeypatch.setattr(owner, "MAX_BODY_BYTES", longest - 1)
+    with _refuses("BODY_SIZE"):
+        _load(invented)
+
+
+def test_body_total_refuses_closed_when_the_charge_admits(invented, monkeypatch):
+    """BODY_LIMIT is the body's own ceiling, behind the charge that normally fires first."""
+    body = _load(invented)._parts()[1]
+    monkeypatch.setattr(owner, "_body_row_bound", lambda *_args: 0)
+    monkeypatch.setattr(owner, "MAX_ROSTER_BYTES", len(body) - 1)
+    with _refuses("BODY_LIMIT"):
+        _load(invented)
+    monkeypatch.setattr(owner, "MAX_ROSTER_BYTES", len(body))
+    assert _load(invented)._parts()[1] == body
+
+
+def test_roster_ceiling_admits_a_full_source_body_without_allocating():
+    """The measured full-source body, charge and key list all fit the ceiling."""
+    assert owner.MAX_ROSTER_BYTES == 64 * owner.MAX_BODY_BYTES
+    assert MEASURED_BODY_BYTES > owner.MAX_BODY_BYTES  # why the single cap had to go
+    assert MEASURED_BODY_BYTES <= owner.MAX_ROSTER_BYTES
+    assert MEASURED_LONGEST_BODY_LINE * ACS_PERSONS <= owner.MAX_ROSTER_BYTES
+    widest = owner._body_row_bound(
+        ["2024HU0009999999", "99", "99", "9", "9"], "psam_pusb.csv", ACS_PERSONS
+    )
+    assert widest * ACS_PERSONS <= owner.MAX_ROSTER_BYTES
+    assert MEASURED_KEY_LIST_BYTES > owner.MAX_BODY_BYTES  # the digest's old cap bound
+    assert MEASURED_KEY_LIST_BYTES <= owner.MAX_ROSTER_BYTES
+    assert MEASURED_SERIALNO_LIST_BYTES <= owner.MAX_ROSTER_BYTES
+    assert 16 * ACS_HOUSEHOLDS + 1 == MEASURED_SERIALNO_LIST_BYTES
+
+
+def _serialnos(invented):
+    return tuple(sorted({row["SERIALNO"] for row in invented[2]}))
+
+
+def test_native_issuance_refusal_names_the_ceiling_that_refused(invented, monkeypatch):
+    """The 1/15 shape: NATIVE_ISSUANCE_REFUSED now carries CANONICAL_SIZE as its cause."""
+    fixture = invented[0]
+    monkeypatch.setattr(owner, "MAX_ROSTER_BYTES", 8)
+    with pytest.raises(
+        binding.ACSNativeCoverageBindingError, match="^NATIVE_ISSUANCE_REFUSED$"
+    ) as exc:
+        binding.issue_acs_native_coverage(
+            fixture.source_dir,
+            snapshot_root=fixture.snapshot_root,
+            serialnos=_serialnos(invented),
+        )
+    cause = exc.value.__cause__
+    assert isinstance(cause, owner.ACSCoverageAuthenticationError)
+    assert str(cause) == "CANONICAL_SIZE"
+
+
+def test_native_issuance_receipt_is_the_whole_canonical_stream(invented):
+    """The segmented receipt is byte-identical to the single encode, at any segment."""
+    fixture = invented[0]
+    serialnos = _serialnos(invented)
+    issued = binding.issue_acs_native_coverage(
+        fixture.source_dir, snapshot_root=fixture.snapshot_root, serialnos=serialnos
+    )
+    receipt = json.loads(issued.payload)
+    assert receipt["selection"]["requested_serialnos"] == list(serialnos)
+    assert owner._json(receipt, owner.MAX_ROSTER_BYTES) == issued.payload
+    longest = max(map(len, owner._json_chunks(receipt, owner.MAX_ROSTER_BYTES)))
+    for segment in (longest, longest + 1, 4096):
+        assert owner._json_roster(receipt, segment=segment) == issued.payload
+    assert owner._json_sha256(receipt) == owner._sha(issued.payload)

@@ -1,0 +1,170 @@
+{
+ "scope": "Byte measurements for the byte-transport lane, through each module's own encoder, over the recovered 1/1000 artifact's catalogue counts and the full captured public ACS PUMS archive. Not a build, not a certification, not release eligible.",
+ "release_eligible": false,
+ "counts": {
+  "acs_households": 1531614,
+  "acs_persons": 3422888,
+  "asec_households": 55762,
+  "asec_persons": 142125,
+  "stacked_households": 1587376,
+  "stacked_persons": 3565013,
+  "clone_households": 3174752,
+  "clone_persons": 7130026
+ },
+ "origin_budget": {
+  "encoder": "survey_origin_budget._json (graph._bounded_json) per record",
+  "rows": {
+   "1587376": {
+    "record_bytes": 709,
+    "per_group_bytes": 742
+   },
+   "3174752": {
+    "record_bytes": 709,
+    "per_group_bytes": 742
+   }
+  },
+  "per_group_bytes": 742,
+  "full_source_bytes": 1177832992,
+  "tenth_bytes": 117782854,
+  "households_the_64MiB_cap_admits": 90443,
+  "household_ids_list_bytes": 25398017,
+  "group_indices_list_bytes": 25398017
+ },
+ "numeric_bounds": {
+  "encoder": "graph._bounded_json(document, graph_survey_calibration.MAX_BYTES)",
+  "bytes_at_groups": {
+   "2": 585,
+   "2002": 304525
+  },
+  "per_group_bytes": 151.97,
+  "per_clone_row_bytes": 75.98,
+  "full_source_bytes": 241233530,
+  "tenth_bytes": 24123261,
+  "clone_rows_the_64MiB_cap_admits": 883185,
+  "max_rows": 524288,
+  "clone_rows_full_source": 3174752
+ },
+ "age_artifact": {
+  "encoder": "MAGIC + header + values.tobytes(order='C'), values <i8 (rows, 1+bands)",
+  "row_bytes": 152,
+  "header_bytes": 534,
+  "full_source_bytes": 482562851,
+  "tenth_bytes": 48256747,
+  "rows_the_64MiB_cap_admits": 441074,
+  "clone_rows_full_source": 3174752,
+  "max_people": 10000000,
+  "clone_persons_full_source": 7130026
+ },
+ "roles_projection": {
+  "encoder": "table.reset_index().to_json(orient=\"table\", index=False).encode()",
+  "per_person_bytes": 324.0,
+  "full_source_bytes": 1155064212,
+  "tenth_bytes": 115506324,
+  "persons_the_64MiB_cap_admits": 207126,
+  "max_persons_row_bound": 2097152,
+  "reachability": "49/51-node variants only; the 45-node pilot disabled roles"
+ },
+ "predictor_projection": {
+  "encoder": "graph._bounded_json({**evidence, 'origins': [[person_id, native_person_id, source], ...]}, survey_population_preparation.MAX_PAYLOAD_BYTES)",
+  "per_person_origin_row_bytes": 24.04,
+  "full_source_origins_bytes": 85702912,
+  "tenth_origins_bytes": 8570284,
+  "persons_the_64MiB_cap_admits": 2791550,
+  "matrix": {
+   "encoder": "model_input.encode_recipient_matrix over ACS persons",
+   "feature_columns_with_demographic_conditioning": [
+    "survey_predictor_age",
+    "survey_predictor_employment_income",
+    "survey_predictor_self_employment_income",
+    "survey_predictor_is_female",
+    "survey_predictor_state_fips"
+   ],
+   "bytes_per_acs_person": 48,
+   "full_source_bytes": 164298624,
+   "cap": "none in encode_recipient_matrix beyond the header; stored whole by put_bytes"
+  }
+ },
+ "diagnostic_matrix": {
+  "encoder": "puf_detail_transfer.recipient_matrix -> encode_recipient_matrix, FEATURES=5",
+  "bytes_per_tax_unit": 48,
+  "tax_units_per_household_at_1_1000": 1.343434,
+  "clone_one_tax_units_full_source_SCALED_FROM_1_1000": 2132535,
+  "full_source_bytes_SCALED": 102361680,
+  "tenth_bytes_SCALED": 10236144,
+  "tax_units_the_64MiB_cap_admits": 1398101,
+  "note": "tax units per household is a roster ratio from the 1/1000 artifact, not a catalogue count"
+ },
+ "child_draw": {
+  "encoder": "graph_child_property_income._json(adapter._draw_document(...)) [producer]; adapter._document(payload, MAX_DRAW_BYTES) [consumer]",
+  "per_eligible_child_bytes": 273.0,
+  "eligible_children_full_source_ESTIMATE": null,
+  "children_the_64MiB_cap_admits": 245820,
+  "max_recipients_fit": 1048576,
+  "max_draw_bytes_fit": 67108864,
+  "max_artifact_bytes_graph": 67108864,
+  "note": "eligible-child count is not in the 1/1000 artifact; a census agent estimates it from ACS/ASEC age shares"
+ },
+ "selection_block": {
+  "encoder": "survey_origin_budget._json(view.receipt['selection']) for selection_sha256 (graph._bounded_json, 64 MiB)",
+  "per_selected_row_bytes_at_1_1000": 243.13,
+  "full_source_bytes_SCALED": 385942815,
+  "tenth_bytes_SCALED": 38594135,
+  "rows_the_64MiB_cap_admits": 276017,
+  "note": "row widths at 1/1000 (inclusion_probability pairs, ids) differ slightly from full-source widths; scaled, not encoded at full-source widths"
+ },
+ "acs_household_archive": {
+  "records": 1631969,
+  "occupied_records": 1531614,
+  "raw_bytes": 977481380,
+  "old_charge_bytes_all": 7536024536,
+  "old_charge_bytes_occupied": 7095161910,
+  "np_total": 3422888,
+  "serialno_widths": {
+   "13": 1631969
+  },
+  "members": {
+   "psam_husa.csv": 827133,
+   "psam_husb.csv": 804836
+  },
+  "serialno_list_bytes_full_source": 24505825,
+  "seconds": 13.9,
+  "derived": {
+   "old_charge_occupied_over_64MiB": 105.72615131735802,
+   "np_total_equals_person_records": true,
+   "serialno_list_over_1MiB": 23.37057590484619,
+   "serialno_list_over_2MiB": 11.685287952423096,
+   "serialnos_the_1MiB_cap_admits": 65535
+  }
+ },
+ "acs_person_archive": {
+  "records": 3422888,
+  "raw_bytes": 2405464349,
+  "raw_max": 877,
+  "old_charge_bytes": 17937823406,
+  "body_bytes": 308941698,
+  "body_row_max": 102,
+  "cells_json_bytes": 198264171,
+  "cells_json_max": 59,
+  "key_pair_bytes": 68461899,
+  "sporder_two_digit_rows": 4139,
+  "states": {
+   "observed_code": 5704812,
+   "outside_age_universe": 1140964
+  },
+  "members": {
+   "psam_pusa.csv": 1743751,
+   "psam_pusb.csv": 1679137
+  },
+  "key_list_bytes": 68461900,
+  "seconds": 182.7,
+  "derived": {
+   "old_charge_admits_rows_at_64MiB": 12805,
+   "old_charge_full_source_over_64MiB": 267.2943980395794,
+   "body_full_source_over_64MiB": 4.603590041399002,
+   "body_admits_rows_at_64MiB": 743525,
+   "key_list_full_source_over_64MiB": 1.0201618075370789,
+   "body_bytes_per_row_mean": 90.25761228529826,
+   "old_charge_over_body": 58.06216358013285
+  }
+ }
+}
