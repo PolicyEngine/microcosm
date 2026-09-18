@@ -13,7 +13,7 @@
     "spi_sample_fraction": 0.0135,
     "student_loans_calibration_year": 2025
   },
-  "description": "Data-only inputs for reconstructing the same 30 current UK stage transform classes used by the legacy StagePlan oracle.",
+  "description": "Data-only inputs for reconstructing the same 31 current UK stage transform classes used by the legacy StagePlan oracle.",
   "inputs": {
     "cgt_asset_type_facts": "cgt_asset_type_facts.json",
     "cgt_distribution": "cgt_distribution.json",

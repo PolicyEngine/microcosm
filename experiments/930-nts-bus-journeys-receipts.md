@@ -55,6 +55,18 @@ Vendored resources (`tools/vendor_uk_ledger_facts.py`, `--check` clean on the pi
 DfT labels fiscal years by the closing year, so every FY2024-25 selection here is by
 `fiscal_start: 2024-04-01`, never by label.
 
+Rebase over #939 (2026-09-18, main `ce76b358`): #939 had re-pinned the feed to chronicle `c5e5bf8`
+(the HMRC CGT Tables 7–9) with its own regeneration; `78466057` is that commit's descendant on
+chronicle main, so the rebase keeps this branch's pin and regenerates every surface on it over
+the merged register (commit "Regenerate the derived surfaces on the 7846605 feed after rebasing
+over #939"): main's two CGT resources (`hmrc_cgt_conditioning_facts.json` 254 rows,
+`hmrc_cgt_asset_type_facts.json` 60) now carry the `78466057` identity beside the three bus
+resources; `tools/vendor_uk_ledger_facts.py --check` clean; the national `target_references.json`
+is byte-identical to main's (no compiled value moved); the H2 fixture has 31 stages (#725's
+`hmrc_cgt_asset_type_spine` and #930's `nts_bus_travel`; oracle identity on this machine
+`a57881b2…`), 33 declared; the coverage manifest (145 required) and the gate and part digests
+re-pinned; the stage-count pins both sides had bumped to the same number moved once more.
+
 ## Part B — Vahid's third pass on PR #927 (C0, commit `5326ab68`)
 
 All nine items closed, none of which changed a value: the stale "FY2024-25 Ofgem pricing set
