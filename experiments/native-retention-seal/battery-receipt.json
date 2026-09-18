@@ -1,20 +1,20 @@
 {
   "scope": "diagnostic receipt of the discrimination battery; not a build, certification or release artifact",
   "release_eligible": false,
-  "pytest_summary": "122 passed in 0.84s",
-  "comparisons": 116,
-  "agreements": 116,
+  "pytest_summary": "248 passed in 1.39s",
+  "comparisons": 564,
+  "agreements": 564,
   "disagreements": [],
   "unreachable_codes": {
     "SURVEY_POPULATION_REPLAY_FRAME_TYPE": "Population validates frame is a Frame (population.py), so no Population can carry a non-Frame",
     "SURVEY_POPULATION_REPLAY_STRING_POLICY": "StringDtype.__eq__ compares storage and na_value, so SERIES_DTYPE_OR_LENGTH fires first"
   },
   "by_verdict": {
-    "SURVEY_POPULATION_REPLAY_AXIS": 16,
-    "ACCEPTED (both paths)": 14,
+    "SURVEY_POPULATION_REPLAY_AXIS": 402,
+    "SURVEY_POPULATION_REPLAY_OBJECT_VALUE": 43,
+    "ACCEPTED (both paths)": 42,
     "SURVEY_POPULATION_REPLAY_NATIVE_BITS": 13,
     "SURVEY_POPULATION_REPLAY_POPULATION_CONTEXT": 12,
-    "SURVEY_POPULATION_REPLAY_OBJECT_VALUE": 9,
     "SURVEY_POPULATION_REPLAY_FRAME_CONTEXT": 9,
     "SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING": 7,
     "SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH": 6,
@@ -56,6 +56,18 @@
       "operand": "frame",
       "object_path": "SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING",
       "seal_path": "SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_masked_integer_axis_is_exact_above_two_to_the_fifty_three",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_masked_integer_axis_is_exact_above_two_to_the_fifty_three",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
     },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_a_mass_change_record_subclass_refuses_though_the_values_match",
@@ -191,6 +203,30 @@
     },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_object_axis_keeps_its_null_sentinel_identity",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_object_axis_value_with_its_own_equality_refuses_on_both_paths[_PickyInt]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_object_axis_value_with_its_own_equality_refuses_on_both_paths[_PickyInt]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_object_axis_value_with_its_own_equality_refuses_on_both_paths[_RefusingInt]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_an_object_axis_value_with_its_own_equality_refuses_on_both_paths[_RefusingInt]",
       "operand": "frame",
       "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
       "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
@@ -706,6 +742,12 @@
       "seal_path": "SURVEY_POPULATION_REPLAY_TABLE_TYPE_OR_FLAGS"
     },
     {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_canonical_null_disjunction_is_per_column_and_not_frame_wide",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_columns_axis_dtype_is_part_of_the_comparison",
       "operand": "frame",
       "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
@@ -716,6 +758,2652 @@
       "operand": "frame",
       "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
       "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-+inf]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[+inf-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf--inf]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[-inf-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-2**53+1]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53+1-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-2**53]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-2**53]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[2**53-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-bytes]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[bytes-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-null]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-null]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-null]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-null]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-null]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[null-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-one]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[one-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-pd.NA]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NA-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-pd.NaT]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[pd.NaT-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-text]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[text-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-+inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero--inf]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-2**53+1]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-2**53]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-bytes]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-null]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-one]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-pd.NA]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-pd.NaT]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-text]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_AXIS",
+      "seal_path": "SURVEY_POPULATION_REPLAY_AXIS"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE",
+      "seal_path": "SURVEY_POPULATION_REPLAY_OBJECT_VALUE"
+    },
+    {
+      "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_object_axis_fold_reproduces_pandas_own_equality_classes[zero-zero]",
+      "operand": "frame",
+      "object_path": null,
+      "seal_path": null
     },
     {
       "test": "packages/microcosm-build/tests/test_us_survey_population_replay.py::test_the_strata_name_is_part_of_the_comparison",

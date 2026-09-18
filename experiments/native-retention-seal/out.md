@@ -180,39 +180,37 @@ seal misses fails there.
 ```
 $ uv run python experiments/native-retention-seal/battery_receipt.py \
     experiments/native-retention-seal/battery-receipt.json
-122 passed in 0.84s
-comparisons=116 agreements=116 disagreements=0 codes=21
+248 passed in 1.39s
+comparisons=564 agreements=564 disagreements=0 codes=21
 ```
 
-**116 comparisons, 116 agreements, 0 disagreements**, over twenty distinct
-refusal codes and 14 pairs both paths accept. The receipt is committed at
+**564 comparisons, 564 agreements, 0 disagreements**, over twenty distinct
+refusal codes and 42 pairs both paths accept. It was 116 comparisons over 20
+codes and 14 acceptances before §9d's fix pass, whose 124 new cases mostly
+drive the agreement driver too. The receipt is committed at
 `experiments/native-retention-seal/battery-receipt.json`, and
 `battery_receipt.py` rebuilds it from the battery's own rows, so those three
 figures and the table below are derived rather than counted by hand. The hook
 that writes the rows is off unless `MICROCOSM_BATTERY_RECEIPT` is set and
-changes no assertion. The file is **246 collected items** against 116
-comparisons, and the decomposition is computed rather than asserted: **113
-items drive at least one comparison**, three of those drive two
-(`test_actual_store_roundtrip_accepts_canonical_nulls_and_typed_objects`,
-`test_an_observer_snapshot_preserves_the_replay_seal`,
-`test_non_finite_metadata_keeps_its_sign_on_both_paths`), which is the 116
-rows; and **133 drive none** — 124 of them added in this session's fix pass
-(the 121-case object-axis equality-class sweep, the two `__eq__`-subclass
-cases and the masked-integer case) and nine that assert a property rather than
-a comparison: the two seal-protocol guards, `SEAL_TYPE`, the flags fold, the
-two `RangeIndex` descriptor cases, `seal_identity`'s stability, the dtype
-census and `test_the_seal_is_proportional_to_columns_and_not_to_rows`. An
-earlier draft of this sentence said "122 tests ... six of them", and both
-halves were wrong.
+changes no assertion. The file is **248 collected items** driving **564
+comparisons**, and the decomposition is computed rather than asserted:
+**238 items drive at least one comparison** and **10 drive none** — the two
+seal-protocol guards, `SEAL_TYPE`, the flags fold, the two `RangeIndex`
+descriptor cases, `seal_identity`'s stability, the dtype head census, the
+non-finite axis name (whose whole point is that the two paths reach *different*
+codes, so it cannot go through the agreement driver) and
+`test_the_seal_is_proportional_to_columns_and_not_to_rows`. Two earlier drafts
+of this sentence were wrong — "122 tests ... six of them", then "113 items ...
+133 drive none" — and both were written before the fix pass changed the file.
 
 | verdict both paths reached | comparisons |
 |---|---|
-| `AXIS` | 16 |
-| **accepted by both** | **14** |
+| `AXIS` | 402 |
+| `OBJECT_VALUE` | 43 |
+| **accepted by both** | **42** |
 | `NATIVE_BITS` | 13 |
 | `POPULATION_CONTEXT` | 12 |
 | `FRAME_CONTEXT` | 9 |
-| `OBJECT_VALUE` | 9 |
 | `NONCANONICAL_NULL_BACKING` | 7 |
 | `AXIS_NAME` | 6 |
 | `SERIES_DTYPE_OR_LENGTH` | 6 |
@@ -223,6 +221,11 @@ halves were wrong.
 | `STRING_VALUE` | 2 |
 | `UNSUPPORTED_EXTENSION_DTYPE` | 2 |
 | `POPULATION_TYPE`, `PRESENT_BITS`, `STRATA_NAME`, `STRING_MASK`, `TABLE_TYPE_OR_FLAGS`, `UNSUPPORTED_OBJECT` | 1 each |
+
+`AXIS` and `OBJECT_VALUE` dominate because the object-axis equality-class sweep
+is 121 parametrisations each crossing the members of two classes: every
+cross-class pair refuses `AXIS`, and every within-class pair either is accepted
+or reaches `OBJECT_VALUE` through the byte arm.
 
 Two codes are **unreachable**, and the receipt says so rather than leaving a
 gap that reads like coverage: `FRAME_TYPE`, because `Population` validates that
