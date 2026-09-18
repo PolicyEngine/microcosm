@@ -23,10 +23,14 @@ RUNS = (
     ),
     (
         "retention seal (this lane)",
-        pathlib.Path(
-            "/Users/maxghenis/PolicyEngine/_worktrees/microcosm-retention-after"
-            "/.measure/after/repeated-verification-measurement.json"
-        ),
+        # The committed copy, which is byte-identical to the one the run wrote
+        # into its throwaway measurement worktree
+        # (~/PolicyEngine/_worktrees/microcosm-retention-after/.measure/after/
+        # repeated-verification-measurement.json, sha256 acd55d7c1f462ffa...).
+        # Reading the committed copy keeps this table re-derivable after that
+        # worktree is removed.
+        ROOT
+        / "experiments/native-retention-seal/measurement-after-1-1000-with-replay.json",
     ),
 )
 ROWS = (
