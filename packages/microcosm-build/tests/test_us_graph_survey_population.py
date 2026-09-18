@@ -402,6 +402,48 @@ def test_the_preparation_consumer_ceiling_is_the_producers_own():
     assert graph.PREPARATION_MAX_BYTES == 64 * 1024**2
 
 
+@pytest.mark.parametrize("document", _roster_documents())
+def test_json_matches_streams_the_comparison_a_consumer_used_to_re_encode(document):
+    """_json_matches is ``_bounded_json(value) == payload`` without a second copy."""
+    whole = graph._bounded_json(document, 64 * 1024**2)
+    assert graph._json_matches(document, whole, maximum=len(whole)) is True
+    assert graph._json_matches(document, whole, maximum=2**40) is True
+    # Every way the bytes can differ from the stream is a mismatch, not a refusal.
+    assert graph._json_matches(document, whole[:-1], maximum=len(whole)) is False
+    assert graph._json_matches(document, whole + b" ", maximum=2**40) is False
+    assert graph._json_matches(document, b"", maximum=len(whole)) is False
+    for position in (0, len(whole) // 2, len(whole) - 1):
+        flipped = bytearray(whole)
+        flipped[position] ^= 0x01
+        assert graph._json_matches(document, bytes(flipped), maximum=2**40) is False
+    # The total is bounded as the digest bounds it; a stream over the maximum
+    # refuses with the roster code before it could be compared.
+    with pytest.raises(
+        graph.SurveyPopulationGraphError, match="TRANSPORT_ROSTER_LIMIT"
+    ):
+        graph._json_matches(document, whole, maximum=len(whole) - 1)
+    with pytest.raises(graph.SurveyPopulationGraphError, match="TRANSPORT_ENCODING"):
+        graph._json_matches(document, whole.decode(), maximum=2**40)
+
+
+def test_json_matches_holds_no_second_copy_of_the_payload(monkeypatch):
+    """Nothing larger than one token is allocated from the payload side."""
+    document = {"ids": list(range(200_000)), "k": "\u00e9"}
+    whole = graph._bounded_json(document, 64 * 1024**2)
+    seen = []
+    original = graph._canonical_pieces
+
+    def observed(value, segment):
+        for piece in original(value, segment):
+            seen.append(len(piece))
+            yield piece
+
+    monkeypatch.setattr(graph, "_canonical_pieces", observed)
+    assert graph._json_matches(document, whole, maximum=len(whole)) is True
+    assert sum(seen) == len(whole)
+    assert max(seen) < 64
+
+
 def test_allocation_payload_is_byte_identical_to_the_unsegmented_stream():
     """The predecessor accumulation, verbatim, against the shipped transport."""
     plan, origins = plan_and_origins()

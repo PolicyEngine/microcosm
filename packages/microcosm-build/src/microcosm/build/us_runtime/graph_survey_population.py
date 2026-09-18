@@ -322,7 +322,7 @@ def _segmented_json(value, *, segment, maximum):
     segmented stream can still reach, one token larger than one segment; the
     total refuses ``TRANSPORT_ROSTER_LIMIT``.
     """
-    _require(type(maximum) is int and segment <= maximum, "TRANSPORT_ROSTER_LIMIT")
+    _require(type(maximum) is int and 0 < maximum, "TRANSPORT_ROSTER_LIMIT")
     segments, current, total = [], bytearray(), 0
     for encoded in _canonical_pieces(value, segment):
         if current and len(current) + len(encoded) > segment:
@@ -338,15 +338,41 @@ def _segmented_json(value, *, segment, maximum):
     return payload
 
 
-def _json_sha256(value, *, segment=64 * 1024**2, maximum):
-    """``_sha(_bounded_json(value, maximum))`` without holding the bytes."""
-    _require(type(maximum) is int and segment <= maximum, "TRANSPORT_ROSTER_LIMIT")
+def _json_sha256(value, *, maximum):
+    """``_sha(_bounded_json(value, maximum))`` without holding the bytes.
+
+    A digest has no accumulation, so there is no segment: each token is
+    bounded by the encoder's own 64 MiB and the stream's total by ``maximum``.
+    """
+    _require(type(maximum) is int and 0 < maximum, "TRANSPORT_ROSTER_LIMIT")
     digest, total = hashlib.sha256(), 0
-    for encoded in _canonical_pieces(value, segment):
+    for encoded in _canonical_pieces(value, 64 * 1024**2):
         _require(total + len(encoded) <= maximum, "TRANSPORT_ROSTER_LIMIT")
         digest.update(encoded)
         total += len(encoded)
     return digest.hexdigest()
+
+
+def _json_matches(value, payload, *, maximum):
+    """``_bounded_json(value, maximum) == payload`` without a second copy of the bytes.
+
+    A consumer that re-encodes an issued whole-roster document to prove the
+    decoded document is the issued bytes would otherwise hold the document
+    twice, once as the issued payload and once as its own re-encoding. The
+    canonical stream is compared token by token against the payload instead;
+    the total is bounded by ``maximum`` and each token by the encoder's own
+    64 MiB, exactly as ``_json_sha256`` bounds them.
+    """
+    _require(type(maximum) is int and 0 < maximum, "TRANSPORT_ROSTER_LIMIT")
+    _require(type(payload) is bytes, "TRANSPORT_ENCODING")
+    view, offset = memoryview(payload), 0
+    for encoded in _canonical_pieces(value, 64 * 1024**2):
+        end = offset + len(encoded)
+        _require(end <= maximum, "TRANSPORT_ROSTER_LIMIT")
+        if end > len(payload) or view[offset:end] != encoded:
+            return False
+        offset = end
+    return offset == len(payload)
 
 
 def _source_owner():

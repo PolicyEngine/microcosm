@@ -927,7 +927,14 @@ class SamplingOriginBudget:
         # document; validate both after construction, without borrowing again.
         _pure_budget_state(entry[2])
         _require(_entry(self, SamplingOriginBudget) is entry, "FINAL_BUDGET_SEAL")
-        _require(_json(document) == entry[1], "FINAL_BUDGET_VIEW_DOCUMENT")
+        # The issued document is a whole-roster stream under MAX_ROSTER_BYTES;
+        # its consumer proves the decoded document is the issued bytes by
+        # streaming the same canonical tokens against them, never by holding
+        # a second encoding of a document that outgrew one accumulation.
+        _require(
+            graph._json_matches(document, entry[1], maximum=MAX_ROSTER_BYTES),
+            "FINAL_BUDGET_VIEW_DOCUMENT",
+        )
         _check_view_constraint(constraint, document)
         return CheckedSamplingOriginBudget(
             entry[1],
