@@ -15,7 +15,10 @@ must exist between observation and comparison — about 290 GiB at full source �
 unless the comparison becomes a comparison of content seals.
 
 Every line number is at this branch's head unless it names another. Line
-numbers move; re-derive the ones you rely on.
+numbers move; re-derive the ones you rely on. In `survey_population_replay.py`
+specifically, the seal's `import hashlib` shifted every line from 10 onward by
+**one** against the base, so a citation into that file taken from the base
+branch reads one line early.
 
 ## 0. The report's proposed mechanism does not hold, and this is the first thing to say
 
@@ -80,7 +83,7 @@ predicate about one side that can be asserted on arrival, `binary` for a
 comparison between the two sides that a seal must fold, and `directional` for
 the one predicate that is not symmetric.
 
-### 1a. Population level (`:179-208`)
+### 1a. Population level (`:180-209`)
 
 | # | predicate | code | kind |
 |---|---|---|---|
@@ -96,7 +99,7 @@ the one predicate that is not symmetric.
 | P10 | `tuple(design_weights)` equal — key **order** | `POPULATION_CONTEXT` | binary |
 | P11 | per entity `_array_bytes_equal(design_weights[e], …)`: `type is np.ndarray`, dtype equal, `not hasobject`, shape equal, `tobytes()` equal | `DESIGN_BYTES` | unary + binary |
 
-### 1b. Frame level (`:132-176`)
+### 1b. Frame level (`:133-177`)
 
 | # | predicate | code | kind |
 |---|---|---|---|
@@ -114,7 +117,7 @@ the one predicate that is not symmetric.
 | F12 | per weighted entity `left.kind is right.kind` | `WEIGHT_BYTES` | binary |
 | F13 | per weighted entity `_array_bytes_equal(values)` | `WEIGHT_BYTES` | unary + binary |
 
-### 1c. Axis (`:121-129`), applied to every table index, every table columns
+### 1c. Axis (`:122-130`), applied to every table index, every table columns
 axis, and the strata index
 
 | # | predicate | code | kind |
@@ -125,7 +128,7 @@ axis, and the strata index
 | A4 | `_name_bytes(name)` equal — `canonical_json(_axis_name_payload(name))` | `AXIS_NAME` | binary, plus unary encodability (`UNSUPPORTED_AXIS_NAME`) |
 | A5 | `_series` over the axis array | the S codes | |
 
-### 1d. Series (`:48-111`), applied to every table column, every axis array and the strata
+### 1d. Series (`:49-112`), applied to every table column, every axis array and the strata
 
 | # | predicate | code | kind |
 |---|---|---|---|
@@ -405,7 +408,7 @@ observations, and hands them to `atomic._states`, which reads
 
 So the base run takes a private flag, `_retain_every_node_population`, whose
 only caller is `run_atomic_survey_financial`'s own recursive base call when
-`child_property is not None` (`:1339-1357`). With it set, the declared-consumer
+`child_property is not None` (`:1356-1371`). With it set, the declared-consumer
 roster is every node and the run retains exactly what it retains today. The
 flag and `child_property` are mutually exclusive, which the runner requires.
 `_node_population_seals` accepts both shapes.
@@ -432,7 +435,7 @@ unnoticed.
 `_observer_snapshot` (`executor.py:356-408`) detaches by round-tripping every
 entity and link table plus the strata through `pickle.loads(pickle.dumps(...,
 protocol=5))` — one full independent copy per reached node, cache hits included
-(`:2773-2774`). An observer that only seals never retains and never mutates, so
+(`executor.py:373`, inside `_observer_snapshot` at `:356`). An observer that only seals never retains and never mutates, so
 it needs no detached copy.
 
 `run_graph` gains `_population_observer_detach: bool = True`, private and

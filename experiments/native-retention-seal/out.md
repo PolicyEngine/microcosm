@@ -52,7 +52,7 @@ under `experiments/native-retention-seal/`, run at this head:
   ```
 
   The comparison **accepts** that pair, because `NONCANONICAL_NULL_BACKING`
-  (`survey_population_replay.py:79-82`) deliberately permits the actual side's
+  (`survey_population_replay.py:80-83`) deliberately permits the actual side's
   null backing to be canonically zeroed — which is exactly what the store
   does (`store.py:456`). The stamp refuses it. **A stamp-equality seal would
   turn every `resume="require"` replay red.** `_population_stamp`'s own
