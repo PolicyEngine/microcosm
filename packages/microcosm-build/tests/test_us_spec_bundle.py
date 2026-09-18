@@ -191,7 +191,7 @@ EXPECTED_RUNGS = [
 
 LEGACY_COMPATIBILITY_SHA256 = {
     "source_stages.json": (
-        "7935d891ed16eac618f04813a7b8a3ceb9a971c8b4c4273683594ba61e7dd631"
+        "b3ad16b1adb77a2cac6deae6c4d0f1779e4cf36a3f18820d9887a5434daaff1a"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
@@ -401,7 +401,7 @@ def test_constant_derived_domain_counts_are_complete(
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "7be038d34f228d66c12b53558fc5f30c93f1b376f1058c5e4fd7e7563a88d67f"
+        == "d35ebb433f16e976c0d6e2210c99a36ca042a52c422c0968128678932d999735"
     )
 
     assert len(take_up["programs"]) == 17
