@@ -772,21 +772,22 @@ $ uv run ruff check .
 All checks passed!
 
 $ uv lock --check
-Resolved 125 packages in 4ms
+Resolved 125 packages in 5ms
 
-$ uv run ruff format --check <every .py this branch touches>
-12 files already formatted
+$ git diff --name-only a64f7b733...HEAD | grep '\.py$' | tr '\n' '\0' \
+    | xargs -0 uv run ruff format --check
+18 files already formatted
 
 $ uv run python tools/ci_test_groups.py --verify
 verification=ok
 
 $ python3 -I -B -S packages/microcosm-build/tests/test_ci_test_groups.py
-Ran 15 tests in 0.357s
+Ran 15 tests in 0.375s
 
 OK
 
 $ uv run python -m pytest packages/microcosm-graph/tests
-783 passed, 1 skipped in 48.89s
+783 passed, 1 skipped in 44.46s
 
 $ uv run python experiments/native-retention-seal/battery_receipt.py \
     experiments/native-retention-seal/battery-receipt.json
