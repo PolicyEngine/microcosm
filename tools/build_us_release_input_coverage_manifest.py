@@ -80,6 +80,7 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "is_self_employed",
     "pre_subsidy_care_expenses",
     "is_incapable_of_self_care",
+    "is_spm_independent_minor_role",
 )
 
 # Per-column annotations for post-reference hard requirements whose absence
@@ -122,6 +123,20 @@ POST_REFERENCE_COLUMN_NOTES = {
         "adult care scores exactly $0 (the #368 absent-input class). "
         "Currently absent — the intended red gate until the next base "
         "rebuild carries the stage through."
+    ),
+    "is_spm_independent_minor_role": (
+        "The one dataset source input policyengine_us.spm.DATASET_SOURCE_INPUTS "
+        "declares: the measured Census SPM independence role, stored before "
+        "any age gate, that lets spm-calculator classify a 15-to-17-year-old "
+        "SPM unit head or spouse as an adult. Without it one such unit "
+        "refuses the whole population's SPM measurement "
+        "(SPM_COMPOSITION_REQUIRED) and the 104 state SPM poverty rows cannot "
+        "be validated. Written by the spm_independence_role base-builder "
+        "stage from the SHA-pinned complete Census ASEC person files through "
+        "the certified derive_spm_role_source; the certified default carries "
+        "it through the Build P source enrichment. Required with NO reviewed "
+        "exclusion: the anti-rot check would fail an exclusion whose column "
+        "carries signal, and the certified default's does."
     ),
     "is_incapable_of_self_care": (
         "Section 21 qualifying-individual flag for the CDCC adult-care leg "
@@ -1527,7 +1542,9 @@ def build_manifest() -> dict:
             "meets_ssi_disability_criteria required by shipped validation "
             "probes, and the #282 Schedule-D capital-gain-distributions "
             "route leg schedule_d_capital_gain_distributions "
-            "(PolicyEngine/microcosm#462). "
+            "(PolicyEngine/microcosm#462), and the engine's declared dataset "
+            "source input is_spm_independent_minor_role (the spm_independence_"
+            "role base-builder stage; PolicyEngine/microcosm#893). "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
             "(reason+issue from that register); EXCEPT every primary-source "
             "restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS "

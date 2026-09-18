@@ -90,6 +90,9 @@ from microcosm.build.us_runtime.sipp_head_start import (
     US_SIPP_HEAD_START_OUTPUT_COLUMNS,
 )
 from microcosm.build.us_runtime.sipp_vehicles import US_SIPP_VEHICLE_OUTPUT_COLUMNS
+from microcosm.build.us_runtime.spm_independence_role import (
+    US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.ssi_disability_criteria import (
     US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS,
 )
@@ -157,6 +160,14 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "is_incapable_of_self_care",
         "health_insurance_premiums",
         "is_self_employed",
+        # The engine's one declared dataset source input
+        # (policyengine_us.spm.DATASET_SOURCE_INPUTS): without it a 15-to-17-
+        # year-old heading an SPM unit is unclassified and the whole
+        # population's SPM measurement refuses (SPM_COMPOSITION_REQUIRED).
+        # Written by the spm_independence_role base-builder stage from the
+        # pinned Census ASEC person files; the certified default carries it
+        # through the Build P source enrichment.
+        *US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
     }
 )
 
@@ -634,12 +645,8 @@ def _ecps_populated_layers() -> frozenset[str]:
             f"{_ECPS_PARITY_REFERENCE_RESOURCE}: 'nonzero_shares' must be a "
             "non-empty JSON object."
         )
-    historical = {
-        str(name) for name, share in shares.items() if float(share) > 0.0
-    }
-    projected = {
-        REFERENCE_ECPS_LAYER_RENAMES.get(name, name) for name in historical
-    }
+    historical = {str(name) for name, share in shares.items() if float(share) > 0.0}
+    projected = {REFERENCE_ECPS_LAYER_RENAMES.get(name, name) for name in historical}
     if len(projected) != len(historical):
         raise ValueError(
             f"{_ECPS_PARITY_REFERENCE_RESOURCE}: reference-layer rename "
