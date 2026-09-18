@@ -356,9 +356,19 @@ type TargetFamilies = Mapping[str, Mapping[str, Sequence[str]]]
 
 # The production QRF surface is an ACS-transfer contract, not the release
 # export-coverage contract.  Runtime-owned leaves (take-up draws, immigration,
-# hours-before-LSR, and marketplace-plan inputs) are deliberately absent: the
-# fiscal-refresh runtime seeds them after the raw donor/base-pool stage.  A raw
-# donor therefore cannot provide a meaningful QRF target for those columns.
+# and marketplace-plan inputs) are deliberately absent: the fiscal-refresh
+# runtime seeds them after the raw donor/base-pool stage, so a raw donor
+# cannot provide a meaningful QRF target for those columns.
+#
+# weekly_hours_worked_before_lsr is the exception that proves the rule
+# (populace#626). It is runtime-seeded on the fiscal-refresh/pool lane by the
+# hours_worked stage, but the ACS local-area overlay has no such re-seed step:
+# it transfers from the already-built donor pool and stops. That pool carries
+# real HRSWK-derived usual weekly hours (unlike a raw donor), so it IS a
+# meaningful QRF target here. Leaving it out shipped the engine's constant-40
+# default to ~96% of the ACS spine, silently no-op'ing every hours-conditioned
+# rule (SNAP's 20-hour ABAWD and 30-hour general work-requirement tests). It is
+# fit alongside hours_worked_last_week, its measured-in-the-same-donor sibling.
 #
 # Keep this declaration entity- and family-scoped so the donor-readiness gate,
 # transfer, and post-transfer coverage audit all consume the exact same plan.
@@ -404,6 +414,7 @@ _DECLARED_ACS_TRANSFER_TARGET_FAMILIES: dict[str, dict[str, tuple[str, ...]]] = 
             "tax_exempt_private_pension_income",
             "unemployment_compensation",
             "veterans_benefits",
+            "weekly_hours_worked_before_lsr",
         ),
         "model_required_boolean": (
             "has_champva_health_coverage_at_interview",

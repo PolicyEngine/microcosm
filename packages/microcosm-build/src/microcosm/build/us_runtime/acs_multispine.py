@@ -136,6 +136,7 @@ def build_optional_acs_multispine(
     )
     del mapped_frame
     adult_care_gate = _require_recipient_adult_care_structure(transferred.frame)
+    hours_signal_gate = _require_recipient_hours_signal(transferred.frame)
     fit_records = tuple(transferred.fit_records)
     imputed_provenance = _json_ready_sequence(transferred.imputed_inputs)
     deferred_inputs = tuple(transferred.deferred_inputs)
@@ -172,6 +173,9 @@ def build_optional_acs_multispine(
         "native_inputs": native_provenance,
         "imputed_inputs": imputed_provenance,
         "deferred_inputs": deferred_provenance,
+        "hours_signal_recipient_gate": _json_ready(hours_signal_gate)
+        if hours_signal_gate is not None
+        else None,
         "adult_care_recipient_gate": _json_ready(adult_care_gate)
         if adult_care_gate is not None
         else None,
@@ -248,6 +252,49 @@ def _require_recipient_adult_care_structure(
         raise ValueError(
             "Transferred ACS adult-care surface failed the statute-structure "
             "gate:\n  " + "\n  ".join(gate.failures)
+        )
+    return {"passed": True, "details": dict(gate.details)}
+
+
+def _require_recipient_hours_signal(
+    frame: Frame,
+) -> dict[str, Any] | None:
+    """Hard-gate the transferred ACS usual-weekly-hours surface (microcosm#626).
+
+    Runs on the recipient (ACS-only) frame, whose rows carry the engine's
+    constant-40 ``weekly_hours_worked_before_lsr`` default until the transfer
+    fills them. Build o/p shipped that default to ~96% of the ACS spine
+    because the column was not a transfer target and this lane never re-seeds
+    hours; the constant then no-op'd SNAP's 20-hour ABAWD and 30-hour general
+    work-requirement tests. The gate scopes to the two hours columns the pool
+    surface carries (``weeks_worked`` is dropped there) and fails on a missing,
+    constant, or out-of-band worked distribution.
+
+    A transfer that never produced the hours columns (custom test plans) is
+    not gated; the production plan always transfers them, so production always
+    binds.
+    """
+
+    from microcosm.build.us_runtime.hours_worked import (
+        US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
+        us_hours_worked_signal_gate,
+    )
+
+    person = frame.table("person")
+    if any(
+        column not in person.columns
+        for column in US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
+    ):
+        return None
+    gate = us_hours_worked_signal_gate(
+        frame,
+        required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
+    )
+    if not gate.passed:
+        raise ValueError(
+            "Transferred ACS usual-weekly-hours surface failed the signal "
+            "gate (constant-40 default or out-of-band distribution):\n  "
+            + "\n  ".join(gate.failures)
         )
     return {"passed": True, "details": dict(gate.details)}
 

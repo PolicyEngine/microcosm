@@ -242,6 +242,11 @@ metric_registry:
   clone_index: 0
   metric: monetary_sign_separated
 - entity: person
+  family: model_required_numeric
+  column: weekly_hours_worked_before_lsr
+  clone_index: 0
+  metric: monetary_sign_separated
+- entity: person
   family: puf_tax_itemization
   column: taxable_interest_income
   clone_index: 0
@@ -556,11 +561,6 @@ metric_registry:
   column: is_pursuing_credential_for_american_opportunity_credit
   clone_index: 0
   metric: boolean_incidence
-- entity: person
-  family: source_operator_hours_worked
-  column: weekly_hours_worked_before_lsr
-  clone_index: 0
-  metric: monetary_sign_separated
 - entity: person
   family: source_operator_immigration
   column: immigration_status_str

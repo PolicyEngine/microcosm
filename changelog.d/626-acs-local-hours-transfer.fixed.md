@@ -1,0 +1,1 @@
+Transfer weekly_hours_worked_before_lsr onto the ACS local-area spine and gate its distribution, so the ACS overlay no longer ships the engine's constant-40 default (which silently no-op'd SNAP work-requirement rules for ~96% of persons).

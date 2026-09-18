@@ -521,9 +521,14 @@ class _DefaultsEngine:
 
 
 def test_dense_donor_ignores_default_runtime_column_not_consumed_by_transfer() -> None:
+    # takes_up_eitc is a runtime-owned draw deliberately excluded from the
+    # transfer plan, so a donor carrying only its engine default is fine when
+    # the active plan never targets it. (weekly_hours_worked_before_lsr is no
+    # longer such an example: the ACS local-area overlay now transfers it —
+    # microcosm#626 — see test_dense_donor_default_weekly_hours_fails_hard.)
     builder = _load_builder_module()
     base = _frame()
-    base.person["weekly_hours_worked_before_lsr"] = [40.0, 40.0]
+    base.person["takes_up_eitc"] = [True, True]
 
     builder._require_dense_donor_coverage(
         base,
@@ -535,6 +540,32 @@ def test_dense_donor_ignores_default_runtime_column_not_consumed_by_transfer() -
             }
         },
     )
+
+
+def test_dense_donor_default_weekly_hours_fails_hard() -> None:
+    # microcosm#626: weekly_hours_worked_before_lsr is now a transfer target,
+    # so a donor carrying only the constant-40 engine default must fail the
+    # consumption gate rather than silently shipping the default to the ACS
+    # spine (where it no-op'd every SNAP work-requirement rule).
+    builder = _load_builder_module()
+    base = _frame()
+    base.person["weekly_hours_worked_before_lsr"] = [40.0, 40.0]
+
+    with pytest.raises(SystemExit) as exc:
+        builder._require_dense_donor_coverage(
+            base,
+            engine=_DefaultsEngine(),
+            donor_channel=None,
+            target_families={
+                "person": {
+                    "model_required_numeric": ("weekly_hours_worked_before_lsr",),
+                }
+            },
+        )
+
+    message = str(exc.value)
+    assert "person.weekly_hours_worked_before_lsr" in message
+    assert "every observed donor value equals the engine default" in message
 
 
 def test_dense_donor_missing_transfer_consumed_column_fails_hard() -> None:

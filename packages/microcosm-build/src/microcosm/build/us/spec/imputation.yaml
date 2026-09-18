@@ -777,6 +777,17 @@ families:
       order_index: 5
       execution_scope: cps_source
       stage: prepare_multispine_source_inputs_for_clone
+  - name: weekly_hours_worked_before_lsr
+    entity: person
+    value_kind: amount
+    dtype: float
+    period: year
+    requires_concepts: []
+    producer_binding:
+      operator: with_us_hours_worked_inputs
+      order_index: 1
+      execution_scope: cps_source
+      stage: prepare_multispine_source_inputs_for_clone
 - id: early/asec_survey_to_acs/person/model_required_boolean
   stage: gap_fill_stacked_spine
   entities:
@@ -1039,39 +1050,6 @@ families:
     producer_binding:
       operator: derive_us_cps_carried_inputs
       order_index: 0
-      execution_scope: cps_source
-      stage: prepare_multispine_source_inputs_for_clone
-- id: early/asec_survey_to_acs/person/source_operator_hours_worked
-  stage: gap_fill_stacked_spine
-  entities:
-  - person
-  direction: asec_survey_to_acs
-  donor:
-    channel: asec
-  donor_contract:
-    spine: asec_puf
-    selection: all_rows_in_declared_donor_channel
-  recipient:
-    channel: acs
-  recipient_contract:
-    selection: all_rows_in_declared_recipient_channel
-  model: regime_gated_qrf
-  predictors:
-  - acs_person_required
-  - acs_person_optional_income
-  - acs_person_optional_structure
-  max_targets_per_fit: 8
-  execution_contract: acs_transfer_early
-  targets:
-  - name: weekly_hours_worked_before_lsr
-    entity: person
-    value_kind: amount
-    dtype: float
-    period: year
-    requires_concepts: []
-    producer_binding:
-      operator: with_us_hours_worked_inputs
-      order_index: 1
       execution_scope: cps_source
       stage: prepare_multispine_source_inputs_for_clone
 - id: early/asec_survey_to_acs/person/source_operator_prior_year_income

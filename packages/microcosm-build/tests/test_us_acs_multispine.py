@@ -94,8 +94,9 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
     base = object()
     raw_acs = object()
     mapped_acs = object()
-    # The post-transfer adult-care gate probes the transferred frame's person
-    # table; an empty table means "columns absent", so the gate scopes out.
+    # The post-transfer adult-care and hours-signal gates probe the transferred
+    # frame's person table; an empty table means "columns absent", so both
+    # gates scope out.
     transferred_acs = SimpleNamespace(table=lambda entity: pd.DataFrame())
     pooled = object()
     source = AcsPumsSource(
@@ -219,6 +220,7 @@ def test__given_source__then_stages_run_in_order_and_provenance_is_json_ready(
             }
         ],
         "deferred_inputs": ["congressional_district_geoid"],
+        "hours_signal_recipient_gate": None,
         "adult_care_recipient_gate": None,
         "fit_records": [
             {
@@ -444,3 +446,67 @@ def _raw_acs_frame() -> Frame:
         {"household": Weights(np.asarray([50.0]), WeightKind.DESIGN)},
         pd.Series("acs_2024_1yr", index=person.index, dtype=object),
     )
+
+
+def _recipient_frame_with_hours(
+    weekly: list[float] | None,
+    last_week: list[float] | None,
+) -> Frame:
+    """A minimal recipient-shaped US frame for the hours-signal gate.
+
+    Passing ``None`` for a column omits it, exercising the "columns absent"
+    scope-out path a custom transfer plan takes.
+    """
+
+    n = 8
+    ids = np.arange(1, n + 1)
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+        }
+    )
+    if weekly is not None:
+        person["weekly_hours_worked_before_lsr"] = np.asarray(weekly, dtype=float)
+    if last_week is not None:
+        person["hours_worked_last_week"] = np.asarray(last_week, dtype=float)
+    return Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame({"household_id": ids}),
+            "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+            "family": pd.DataFrame({"family_id": ids}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+        },
+        US_SCHEMA,
+        {"household": Weights(np.ones(n, dtype=np.float64), WeightKind.DESIGN)},
+    )
+
+
+def test_hours_signal_gate_passes_on_a_plausible_recipient() -> None:
+    frame = _recipient_frame_with_hours(
+        weekly=[40, 38, 20, 45, 0, 0, 0, 0],
+        last_week=[40, 35, 22, 40, 0, 0, 0, 5],
+    )
+    gate = acs_multispine._require_recipient_hours_signal(frame)
+    assert gate is not None and gate["passed"] is True
+
+
+def test_hours_signal_gate_raises_on_constant_forty() -> None:
+    # The build-o/p ACS-spine failure: weekly hours at the engine's 40 default.
+    frame = _recipient_frame_with_hours(
+        weekly=[40.0] * 8,
+        last_week=[40.0] * 8,
+    )
+    with pytest.raises(ValueError, match="usual-weekly-hours"):
+        acs_multispine._require_recipient_hours_signal(frame)
+
+
+def test_hours_signal_gate_scopes_out_when_columns_absent() -> None:
+    frame = _recipient_frame_with_hours(weekly=None, last_week=None)
+    assert acs_multispine._require_recipient_hours_signal(frame) is None

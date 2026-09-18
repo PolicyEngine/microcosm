@@ -348,10 +348,10 @@ EXPECTED_LEGACY_RELEASE_REGEX = EXPECTED_RELEASE_REGEX.replace(
 EXPECTED_HASHES = {
     "acs_group_predictors": "a927bb7ecf3e84f54c93583ab79318654514ac546aefafba67da5285615fbd60",
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
-    "authority": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2",
-    "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "c66844ca246fb0277e648691a91fe7bea2a21c26980b398017af90f3128521c5",
-    "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
+    "authority": "26b6348698e8ff05665007ec39eb18b153ab64030755a12e89154b59b8bfc467",
+    "early_families": "95673d89a30103fcd81a47df72884a0cfb1a252a4f68c0b614bcdc81518a09b9",
+    "full_checkpoint": "c55dd0bd7724e3bfac7ef575dbaf8a3384d352cd6bec615d481c10275d908f8e",
+    "gap_fill_schedule": "6459c8f1a4b7c82f1e320a48b5af133bedc4db0763307bb6ffd7770c95823217",
     "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
     "geography_assignment": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
@@ -359,8 +359,8 @@ EXPECTED_HASHES = {
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "987b501c695e31f45521c4a178528f75ab3df22c09bc407b182213b2de99ee57",
-    "seed_map": "86cecb19281446d2b505fb975c822c60a604e18f44baded5dc9d62d508a8197e",
-    "seed_protocol": "55d6b907dd44613a5498dd7156f1ce9e78758835255bc7c336b4c327bb40e9bf",
+    "seed_map": "7b4f593ad56178d4c67516152b11729dc9f9e6c64cc74ba2fc43b201ca9b362b",
+    "seed_protocol": "db369b9b83929726bb2501367a22bd03fc3b5f00832466720c00227673eaa95c",
     "source_manifest": "d6849714bb9d6f64c000193a871c324b6b82850100db6cb3196f5f6e417dc494",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
     "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
@@ -417,7 +417,7 @@ EXPECTED_INVENTORY_ITEMS = frozenset(
 EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "adapter_surfaces": 13,
     "authority_components": 9,
-    "early_families": 13,
+    "early_families": 12,
     "early_targets": 48,
     "itemization_batches": 5,
     "itemization_targets": 37,
@@ -723,7 +723,7 @@ def build_inventory_coverage(
     add(
         "early_gap_fill_plan_exact",
         clauses={
-            "early family count differs": len(early) == 13,
+            "early family count differs": len(early) == 12,
             "early target count differs": early_targets == 48,
             "early family content digest differs": sha256_json(early)
             == EXPECTED_HASHES["early_families"],

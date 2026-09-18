@@ -738,8 +738,18 @@ def test_declared_families_are_independent_of_release_coverage_surface() -> None
             "takes_up_medicaid_if_eligible",
             "takes_up_snap_if_eligible",
             "takes_up_tanf_if_eligible",
-            "weekly_hours_worked_before_lsr",
         }
+    )
+    # weekly_hours_worked_before_lsr IS a transfer target on the ACS local-area
+    # overlay (populace#626): that lane never re-seeds hours after the transfer,
+    # so leaving it out shipped the constant-40 engine default to the ACS spine
+    # and no-op'd every hours-conditioned SNAP work-requirement rule. It is fit
+    # alongside its measured-in-the-same-donor sibling hours_worked_last_week.
+    assert "weekly_hours_worked_before_lsr" in (
+        production_declared["person"]["model_required_numeric"]
+    )
+    assert "hours_worked_last_week" in (
+        production_declared["person"]["model_required_numeric"]
     )
     assert "has_esi" in production_declared["person"]["model_required_boolean"]
     assert "receives_wic" in production_declared["person"]["model_required_boolean"]

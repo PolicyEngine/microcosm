@@ -2060,7 +2060,11 @@ def _assert_invariants(
     for family in families:
         by_stage.setdefault(str(family["stage"]), []).append(family)
     expected = {
-        "gap_fill_stacked_spine": (13, 48),
+        # weekly_hours_worked_before_lsr moved from its own
+        # source_operator_hours_worked family to model_required_numeric when it
+        # became an ACS transfer target (microcosm#626), collapsing the
+        # stacked-spine family count 13 -> 12; target count is unchanged.
+        "gap_fill_stacked_spine": (12, 48),
         "primary_puf_qrf": (1, 65),
         "late_producer_dag": (19, 70),
     }

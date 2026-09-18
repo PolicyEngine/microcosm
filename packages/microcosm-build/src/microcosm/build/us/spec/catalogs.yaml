@@ -1511,7 +1511,7 @@ columns:
     definition_period: year
     vintage: vintage:target_2024
     nullable: false
-    domain: source_operator_hours_worked
+    domain: model_required_numeric
     public_stability: internal
     unit_waiver: policyengine_us_unit_unavailable
 - key: person.weeks_unemployed

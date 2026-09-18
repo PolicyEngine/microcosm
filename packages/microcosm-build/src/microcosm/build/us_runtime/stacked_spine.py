@@ -2594,6 +2594,11 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
                 "unemployment_compensation",
             ),
             ("person", "model_required_numeric", "veterans_benefits"),
+            (
+                "person",
+                "model_required_numeric",
+                "weekly_hours_worked_before_lsr",
+            ),
             ("person", "puf_tax_itemization", "taxable_interest_income"),
             ("person", "puf_tax_itemization", "qualified_dividend_income"),
             ("person", "puf_tax_itemization", "non_qualified_dividend_income"),
@@ -2727,11 +2732,6 @@ _EXPLICIT_ORIGIN_BATTERY_METRIC_DECLARATIONS: Mapping[
                 "person",
                 "source_operator_education_inputs",
                 "educational_assistance",
-            ),
-            (
-                "person",
-                "source_operator_hours_worked",
-                "weekly_hours_worked_before_lsr",
             ),
             (
                 "person",
