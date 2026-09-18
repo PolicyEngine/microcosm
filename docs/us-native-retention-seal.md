@@ -8,7 +8,9 @@ transport lane's report §10 question 2
 The problem, restated from that authority and re-derived here: the financial
 runner compares its own replay against the executor's observation with
 `atomic.same_replayed_population(expected[n], observed[n])`
-(`graph_atomic_survey_financial.py:1796`, `:1948`), and the replay cannot be
+(`graph_atomic_survey_financial.py:1796` and `:1948` **at the base**, now the
+two `same_replayed_population_seals` calls at `:1882` and `:2042`), and the
+replay cannot be
 built until `run_graph` has returned. So nineteen detached `Population` objects
 must exist between observation and comparison — about 290 GiB at full source —
 unless the comparison becomes a comparison of content seals.
@@ -43,7 +45,7 @@ _frame_identity  equal  : True 774ed8184472 774ed8184472
 ```
 
 `same_replayed_population` **accepts** that pair, because
-`NONCANONICAL_NULL_BACKING` (`survey_population_replay.py:79-82`) deliberately
+`NONCANONICAL_NULL_BACKING` (`survey_population_replay.py:80-83`) deliberately
 permits the actual side's null backing to be canonically zeroed. The stamp
 refuses it. `_population_stamp`'s own docstring says exactly this
 (`survey_atomic_geography.py:231-237`): "Never persist it or compare it across
@@ -55,9 +57,12 @@ A stamp-equality seal would turn every `resume="require"` replay red.
 makes that `_frame_identity` does not:
 
 ```
-nan payload 0x...11 vs 0x...12     same_replayed_frame=REFUSES NATIVE_BITS           _frame_identity=same
-flags allows_duplicate_labels      same_replayed_frame=REFUSES TABLE_TYPE_OR_FLAGS   _frame_identity=same
-quiet vs signalling NaN            same_replayed_frame=REFUSES NATIVE_BITS           _frame_identity=same
+nan payload 0x...11 vs 0x...12     same_replayed_frame=REFUSES NATIVE_BITS
+_frame_identity=same
+flags allows_duplicate_labels      same_replayed_frame=REFUSES
+TABLE_TYPE_OR_FLAGS   _frame_identity=same
+quiet vs signalling NaN            same_replayed_frame=REFUSES NATIVE_BITS
+_frame_identity=same
 ```
 
 `_cell` (`survey_population_preparation.py:732-745`) maps **every** NaN to
@@ -110,7 +115,8 @@ the one predicate that is not symmetric.
 | F12 | per weighted entity `left.kind is right.kind` | `WEIGHT_BYTES` | binary |
 | F13 | per weighted entity `_array_bytes_equal(values)` | `WEIGHT_BYTES` | unary + binary |
 
-### 1c. Axis (`:121-129`), applied to every table index, every table columns axis, and the strata index
+### 1c. Axis (`:121-129`), applied to every table index, every table columns
+axis, and the strata index
 
 | # | predicate | code | kind |
 |---|---|---|---|
@@ -311,7 +317,8 @@ adversarial pass over the finished seal, not by writing it.
 
 None of the four is a narrowing of what a run proves about the data — every
 defect is still refused, and item 4 is a refusal moving from one code to
-another — so this note does not stop and ask. The report §10's *stated mechanism* was wrong and this note
+another — so this note does not stop and ask. The report §10's *stated
+mechanism* was wrong and this note
 says so in §0 and replaces it; the *decision* — compare content seals, not
 objects — is implemented as chosen.
 
@@ -348,8 +355,9 @@ population changed after issuance — and neither arm is vacuous, because the
 seal record is re-digested rather than merely re-read.
 
 **The declared-consumer roster.** `result.financial_population is
-observed[final_node]` (`graph_atomic_survey_financial.py:1897`) is an identity
-check, so the objects a caller holds must be the objects the observer saw. The
+observed[final_node]` (`graph_atomic_survey_financial.py:1897` at the base,
+`:1986` here) is an
+identity check, so the objects a caller holds must be the objects the observer saw. The
 base financial run declares three: the final node (`financial.ATTACH_NODE`, or
 `_tax_module().GATE_NODE` when the tax rebase is enabled),
 `financial.ATTACH_NODE` itself (`legacy_population`, `:1821`), and the property
