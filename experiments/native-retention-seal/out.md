@@ -86,23 +86,71 @@ work. `np.longlong` against `np.int64` is the sharpest: equal dtypes, equal
 refuses `SERIES_DTYPE_OR_LENGTH`; a seal keyed on spellings would have missed
 it; this one retains `type(dtype)` and compares it with `is`.
 
-**(4) What is no longer proved.** Nothing about the content. Four things change
-in character, and the note states all four:
+**(4) What is no longer proved.** Nothing about the content. Three things
+change in character:
 
 1. Byte equality becomes sha256 equality — the substitution the whole runtime
    already rests on.
 2. One-sided assertions fire when the population is observed rather than when
    it is compared, with the same code.
 3. When a population carries both a one-sided defect and a two-sided
-   difference, the one-sided refusal now takes precedence. Same codes,
-   different order between them.
-4. On an **object-dtype axis**, a difference refuses under `AXIS` rather than
-   under `OBJECT_VALUE`, because `Index.equals` there is an element-wise `!=`
-   over arbitrary Python objects — it holds `True` equal to `1` and `-0.0`
-   equal to `0.0` — which no digest reproduces. The fold there is the store
-   codec's bytes: never weaker than `equals`, stricter on exactly those pairs.
-   Every non-object axis kind is exact, including the three `array_equivalent`
-   is byte-tolerant for (`float`, `complex`, `bool`).
+   difference, **the one-sided refusal now takes precedence.** Both refuse, so
+   nothing goes unrefused, but the code between them can differ. The two
+   instances found are an object axis carrying a `datetime64` leaf *and* a value
+   difference (comparison `AXIS`, seal `UNSUPPORTED_OBJECT`) and a non-finite
+   axis name (comparison `AXIS`, seal `UNSUPPORTED_AXIS_NAME`); the second is
+   pinned by
+   `test_a_non_finite_axis_name_refuses_on_both_paths_under_different_codes`.
+
+**A fourth item was here and is now gone, which is the part worth reading.**
+It said that on an object-dtype axis a difference refuses under `AXIS` rather
+than `OBJECT_VALUE`, and that the fold there — the store codec's bytes — is
+"never weaker than `equals`, stricter on exactly those pairs". **Both halves of
+that sentence were false**, and an adversarial pass over the finished seal
+proved it by running both paths:
+
+* **weaker**, because two values with equal codec bytes need not be `==` when
+  one carries its own `__eq__`, so the comparison refused `AXIS` and the seal
+  **accepted** — a run accepting a replay the comparison refuses;
+* **stricter** in a case the sentence did not name, because pandas holds `None`
+  and every NaN interchangeable there and the codec spells them apart, so the
+  comparison **accepted** and the seal refused.
+
+The fold now reproduces the equivalence classes `Index.equals` actually has,
+measured on this pin, and refuses `AXIS` when a seal is built over the one case
+a digest cannot represent. The consequence for this answer is that **the
+object-axis code no longer moves**: `True` against `1` and `-0.0` against `0.0`
+now reach `OBJECT_VALUE` on both paths, through the byte arm the comparison
+itself falls through to, and a genuine value difference reaches `AXIS` on both.
+Every non-object axis kind is exact, including the three `array_equivalent` is
+byte-tolerant for (`float`, `complex`, `bool`) and — since the same pass — a
+masked-integer axis above `2**53`, which was folding through float64.
+
+**Checked wider than the cases that were fixed.**
+`experiments/native-retention-seal/agreement_fuzz.py` walks a seeded
+pseudo-random sweep over seven axis kinds, a 21-value object pool and nine
+column mutations, driving every pair through both paths:
+
+```
+$ uv run python experiments/native-retention-seal/agreement_fuzz.py \
+    experiments/native-retention-seal/agreement-fuzz-receipt.json 4000
+pairs=3852 disagreements=0
+   2842  SURVEY_POPULATION_REPLAY_AXIS
+    466  None
+    130  SURVEY_POPULATION_REPLAY_MASKED_STORAGE
+    112  SURVEY_POPULATION_REPLAY_OBJECT_VALUE
+     99  SURVEY_POPULATION_REPLAY_PRESENT_BITS
+     91  SURVEY_POPULATION_REPLAY_STRING_MASK
+     49  SURVEY_POPULATION_REPLAY_SERIES_DTYPE_OR_LENGTH
+     46  SURVEY_POPULATION_REPLAY_NONCANONICAL_NULL_BACKING
+     16  SURVEY_POPULATION_REPLAY_STRING_VALUE
+      1  SURVEY_POPULATION_REPLAY_NATIVE_BITS
+```
+
+**3,852 pairs, nine refusal codes, 466 mutual acceptances, 0 disagreements.**
+What it does not cover is the item-3 precedence class: its value pool holds no
+`datetime64`, because that leaf refuses at seal construction and the sweep
+would report every such pair rather than the pairs it is looking for.
 
 **The brief's stop-condition, evaluated.** It said: if the honest answer to (4)
 is not "nothing", stop and put it to Max as a question with options *before*
