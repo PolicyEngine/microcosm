@@ -435,7 +435,9 @@ unnoticed.
 `_observer_snapshot` (`executor.py:356-408`) detaches by round-tripping every
 entity and link table plus the strata through `pickle.loads(pickle.dumps(...,
 protocol=5))` — one full independent copy per reached node, cache hits included
-(`executor.py:373`, inside `_observer_snapshot` at `:356`). An observer that only seals never retains and never mutates, so
+(the round trip is `executor.py:373`, inside `_observer_snapshot` at
+`:356`; the call that takes one per reached node is `:2787-2791`, which at
+the base was the single line `:2774`). An observer that only seals never retains and never mutates, so
 it needs no detached copy.
 
 `run_graph` gains `_population_observer_detach: bool = True`, private and
