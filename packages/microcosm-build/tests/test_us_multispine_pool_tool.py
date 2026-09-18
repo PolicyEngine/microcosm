@@ -2519,7 +2519,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "54aa5d96b062a66207dfe49d4a03817e9658bd0ac11acb37546b1bf2a01f533d",
+            "spec_sha256": "fa6d62e783446ada4998edaad7d182fc15e4b56763c9bf4778e2cf0594b1c1de",
         },
     }
 
@@ -4547,9 +4547,13 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # checkpoint metadata).
         "pool_h5": "ced797ecdd44a638c2a3945f07ad612098a7095ca53a5f458699bca6d6e38b3e",
         "agreement": "f39f0d918bf7ee01dddb5517d8830b8adb541273c5be084307be91397caca3cb",
-        # The PE-US 1.819.0 compatibility edits legitimately move the pool-code
-        # checkpoint identities embedded in the otherwise legacy publication.
-        "manifest": "63c6e6973079f0b793d5435113aaae66184564b70271f8af120fecdbb5015f63",
+        # The engine-lock move to PolicyEngine-US 2.2.1 legitimately moves the
+        # pool-code checkpoint identities embedded in the otherwise legacy
+        # publication: the checkpoint identity carries policyengine_us_version,
+        # and the pool engine contracts it binds were re-derived for 2.2.1.
+        # pool_h5 and agreement above are unchanged, so only the identity
+        # surface moved, not the pool content.
+        "manifest": "e4692aa45f05826eb0097a7ae76dcbc712c13886a4d23a9c6a62b53752e323f1",
     }
 
 

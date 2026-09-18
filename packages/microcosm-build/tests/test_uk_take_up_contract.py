@@ -36,6 +36,8 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         "extended_childcare",
         "universal_childcare",
         "targeted_childcare",
+        "uc_childcare_single",
+        "uc_childcare_couple",
         "scp_under_6",
         "scp_6_plus",
     ]
@@ -49,6 +51,8 @@ def test_uk_contract_loads_and_selects_build_year_rates() -> None:
         0.6054,
         0.4539,
         0.597,
+        0.441,
+        0.2682,
         0.97,
         0.85,
     ]

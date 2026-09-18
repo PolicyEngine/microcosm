@@ -33,7 +33,7 @@ US_ASEC_ENGINE_EVALUATION_TYPE = ArtifactType("microcosm.us.asec_engine_evaluati
 ENGINE_PACKAGE = "policyengine-us"
 ENGINE_DEFAULTS_RESOURCE = "asec_current_money_engine_defaults_v1.json"
 ENGINE_DEFAULTS_SHA256 = (
-    "090dd200ecdb837127dba1d1f22903d152cef8a434085e4ead4d379350ee5b82"
+    "448fe39eb6f8237a7b7da457ac76e7f81c666987a3dee0c37390861f60498626"
 )
 ENGINE_DEFAULTS_ARTIFACT_KIND = "microcosm.us.asec_current_money_engine_defaults.v1"
 EVALUATION_MAGIC = b"MCASECEV\x01"
@@ -70,37 +70,37 @@ ADMITTED_ENGINE_OUTPUT_CONTRACTS: tuple[EngineOutputContract, ...] = (
     EngineOutputContract(
         root="capital_gains",
         entity="person",
-        engine_version="1.819.0",
+        engine_version="2.2.1",
         input_leaves=(
             "long_term_capital_gains_before_response",
             "short_term_capital_gains",
         ),
         formula_node_count=4,
         edge_count=6,
-        sha256="1768cb833b183b3898567910b463e645a2744c2138688c50b5fc1cc17c3319df",
+        sha256="5d08e6e07d6a093011840dca4addb6ef3c3d51502f97e2e8455474dbef002721",
     ),
     EngineOutputContract(
         root="dividend_income",
         entity="person",
-        engine_version="1.819.0",
+        engine_version="2.2.1",
         input_leaves=("non_qualified_dividend_income", "qualified_dividend_income"),
         formula_node_count=2,
         edge_count=3,
-        sha256="a27f07536f4909361de7444831f7852a3f976e12d40d6afe4059c6a5fbdfbbe3",
+        sha256="baa3136a240f9821cdf7dd22d7ccff2159d798ebb51bbc9c1514b35b8fa81f04",
     ),
     EngineOutputContract(
         root="employment_income",
         entity="person",
-        engine_version="1.819.0",
+        engine_version="2.2.1",
         input_leaves=("employment_income_before_lsr",),
         formula_node_count=3,
         edge_count=4,
-        sha256="bdcd8da23a79ff228a610a4d0b483f5fd2068d968f31e96c07cea8a86cc3366b",
+        sha256="a4808b76e1d464d392993ea38acd593bbf9cc3ede0c6f16c48725f20f47b50d3",
     ),
     EngineOutputContract(
         root="social_security",
         entity="person",
-        engine_version="1.819.0",
+        engine_version="2.2.1",
         input_leaves=(
             "social_security_dependents",
             "social_security_disability",
@@ -109,7 +109,7 @@ ADMITTED_ENGINE_OUTPUT_CONTRACTS: tuple[EngineOutputContract, ...] = (
         ),
         formula_node_count=1,
         edge_count=4,
-        sha256="3f5a5304ac1e8c8d785614069867590176325b212a0a080457f80594a6fd53c0",
+        sha256="bf70a06ffcd864df1681ede1d416929f339fc49210a80cc34325ac2251506f76",
     ),
 )
 BLOCKED_ENGINE_OUTPUTS: tuple[str, ...] = (

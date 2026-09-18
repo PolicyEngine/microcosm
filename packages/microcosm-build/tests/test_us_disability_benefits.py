@@ -464,10 +464,10 @@ def test_signal_gate_rejects_either_dead_support_channel(dead_channel: str) -> N
 
 
 @requires_us
-def test_policyengine_us_1_819_0_contract_and_positive_annual_behavior() -> None:
+def test_policyengine_us_2_2_1_contract_and_positive_annual_behavior() -> None:
     from policyengine_us import CountryTaxBenefitSystem, Simulation
 
-    assert version("policyengine-us") == "1.819.0"
+    assert version("policyengine-us") == "2.2.1"
     variable = CountryTaxBenefitSystem().variables[_OUTPUT]
     assert variable.is_input_variable()
     assert variable.entity.key == "person"

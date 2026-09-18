@@ -178,7 +178,7 @@ def validate_uc_claimant_input(simulation: Any, person: Any, period: int | str) 
     except metadata.PackageNotFoundError:
         installed = "unavailable"
     guidance = (
-        f"Supplied {name} requires policyengine-uk>=2.97.0 with explicit "
+        f"Supplied {name} requires policyengine-uk>=2.98.0 with explicit "
         f"person/Boolean/year input support (installed {installed})."
     )
     definition = simulation.tax_benefit_system.variables.get(name)

@@ -555,7 +555,7 @@ def test_policyengine_contract_and_live_wic_neutralization() -> None:
 
     from microcosm.build.us_runtime.reform_coverage_smoke import _build_reform
 
-    assert version("policyengine-us") == "1.819.0"
+    assert version("policyengine-us") == "2.2.1"
     system = CountryTaxBenefitSystem()
     variable = system.variables[_OUTPUT]
     assert variable.is_input_variable()

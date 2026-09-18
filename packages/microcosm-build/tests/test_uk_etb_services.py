@@ -15,6 +15,7 @@ from microcosm.build.uk_runtime.etb_services import (
     impute_etb_services,
     load_etb_services_anchors,
     parse_nhs_age_bounds,
+    rail_fare_index_denominator_key,
     support_clip_to_donor,
 )
 
@@ -176,8 +177,8 @@ def test_services_support_clip_ranges_and_rail_ratio() -> None:
         "support_clip": clip_result.receipt.evidence(),
         "nhs_cells": {},
     }
-    fare_index = load_etb_services_anchors()["rail_fare_index_2023"]["value"]
-    assert 111.0 / fare_index == pytest.approx(100.0)
+    fare_index = load_etb_services_anchors()[rail_fare_index_denominator_key()]["value"]
+    assert 116.5 / fare_index == pytest.approx(100.0)
 
 
 def _nhs_raw() -> pd.DataFrame:
@@ -290,9 +291,7 @@ def test_recipient_predictors_derive_education_counts_and_aggregate() -> None:
         }
     )
     benunit = pd.DataFrame({"benunit_id": [100, 200], "benunit_household_id": [10, 20]})
-    household = pd.DataFrame(
-        {"household_id": [10, 20], "household_weight": [1.0, 1.0]}
-    )
+    household = pd.DataFrame({"household_id": [10, 20], "household_weight": [1.0, 1.0]})
     frame = uk_national_frame(
         person=person,
         benunit=benunit,
