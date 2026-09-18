@@ -365,9 +365,104 @@ commit and its own future PR.
 *(in flight when this section was written; §7 is completed below once the
 replay's verdict is in)*
 
-## 8. The 1/15 run
+## 8. The 1/15 run, and the ceiling that stops it
 
-*(queued behind the 1/1000 at its own memory gate)*
+**The base branch's own 1/10 run failed while this lane was working, and
+chasing why produced this lane's largest finding.** That run had been queued at
+a 70 GB memory gate since 20:39Z on 2026-09-17. The gate opened at 22:58:25Z,
+the run started, and 573 CPU-s later it stopped at 8.17 GB with
+
+```
+"status": "STOPPED_SurveyPopulationPreparationError: PREPARATION_ISSUANCE_REFUSED"
+```
+
+Its snapshots directory holds the ACS housing capture and no `preparation/`
+roster spill, so it refused inside source authentication, before the transport
+this lane's base branch rewrote.
+
+### 8a. Three nested catch-alls, and how the cause was recovered anyway
+
+`PREPARATION_ISSUANCE_REFUSED` is `raise ... from None`
+(`survey_population_preparation.py:2084`), so the artifact cannot name its
+cause. Three rounds, each recorded in
+`experiments/native-retention-seal/RUN-RECORD-diagnostic.txt`:
+
+1. **Patch that one catch-all to carry its cause** (throwaway tree, never
+   committed to the branch). Result: `ACSNativeCoverageBindingError:
+   NATIVE_ISSUANCE_REFUSED` — *another* catch-all.
+2. **Patch the others too.** Refused in **3 CPU-s** with
+   `ACSNativeCoverageBindingError: UNREVIEWED_PREPARATION`, because
+   `acs_native_coverage_binding._producer()` pins the sha256 of four named ACS
+   module files (`_ACCEPTED`, `:232-237`). **Those modules cannot be
+   instrumented at all**, which is itself worth recording.
+3. **Observe the raise instead of changing the code.** `harness19_diag.py` is
+   the tenth harness plus one block that installs a `sys.monitoring` `RAISE`
+   callback. It changes no byte of the measured tree, so no source pin moves
+   and no producer refuses. Its trace is committed at
+   `experiments/native-retention-seal/diagnostic-1-10-raises.json`.
+
+### 8b. What refused
+
+```
+ACSCoverageAuthenticationError: CANONICAL_SIZE
+  acs_person_coverage_authentication.py :: _require
+  acs_person_coverage_authentication.py :: _json.<locals>.charge
+  acs_person_coverage_authentication.py :: _json.<locals>.visit
+  acs_person_coverage_authentication.py :: _json.<locals>.visit
+  acs_person_coverage_authentication.py :: _json
+  acs_native_coverage_binding.py        :: issue_acs_native_coverage
+```
+
+**Exactly two `visit` frames**, which identifies the call: a flat list, not the
+deeply nested evidence receipt further down the same function. That is the
+guard at `acs_native_coverage_binding.py:562-564`:
+
+```python
+coverage._json(serialnos, min(MAX_EVIDENCE_BYTES, housing.ACS_HU_RECEIPT_MAX_BYTES))
+```
+
+`MAX_EVIDENCE_BYTES` is 2 MiB and `ACS_HU_RECEIPT_MAX_BYTES` is **1 MiB**, so
+the bound on the selected-ACS-`SERIALNO` list is 1 MiB — and
+`survey_population_preparation.py:1959-1961` always passes
+`serialnos=acs_keys`, never `None`.
+
+### 8c. Where it binds, computed from measured inputs
+
+`experiments/native-retention-seal/acs_serialno_ceiling_receipt.py` reads the
+`SERIALNO` width off the staged ACS source (uniformly 13 characters over
+20,000 rows, so 16 canonical-JSON bytes per entry) and the ACS share of a
+selection off the recovered 1/1000 pilot's own committed preparation receipt
+(1,529 ACS of 1,584 selected, 96.53%):
+
+```
+1 MiB admits            : 65,535 ACS serialnos
+=> refuses above ~67,892 selected households (4.28% of source)
+   against the transport lane's lifted ceiling #1 of 96,860 (6.10%)
+
+    1/1000:      1,587 selected,      1,532 ACS ->       24,516 B  fits
+      1/30:     52,913 selected,     51,075 ACS ->      817,205 B  fits
+      1/24:     66,141 selected,     63,844 ACS ->    1,021,506 B  fits
+      1/20:     79,369 selected,     76,613 ACS ->    1,225,807 B  REFUSES
+      1/15:    105,825 selected,    102,151 ACS ->    1,634,409 B  REFUSES
+      1/10:    158,738 selected,    153,226 ACS ->    2,451,614 B  REFUSES
+       1/1:  1,587,376 selected,  1,532,259 ACS ->   24,516,140 B  REFUSES
+```
+
+**So the binding ceiling on this path is lower than the one the base branch
+lifted, and was in no census.** That lane's §5 enumerated row-count ceilings
+and its §2e the transport ones; this is a canonical-JSON byte budget in the ACS
+coverage binding, and it refuses every run above about 1/24. Its report's
+headline is true of the ceilings it measured and does not hold for the path:
+**no fraction both clears this one and exercises the 96,860 the lane lifted.**
+
+### 8d. What that means for the 1/15 run this brief asked for
+
+The arithmetic above predicts the 1/15 run refuses the same way, at about
+1.63 MB against the 1 MiB cap. It is armed, gated and queued behind the 1/1000
+anyway, because a prediction that is not run is not a measurement, and because
+a refusal brackets the ceiling from the other side.
+
+*(the run's own outcome follows once it has run)*
 
 ## 10. Tests, as CI runs them
 
