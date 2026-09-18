@@ -162,6 +162,7 @@ from microcosm.build.us_runtime import (
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
+    us_spm_independence_role_signal_gate,
     us_ssi_disability_criteria_signal_gate,
     us_ssi_take_up_delivery_gate,
     us_ssi_take_up_diagnostics,
@@ -197,6 +198,7 @@ from microcosm.build.us_runtime import (
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_state_take_up,
     with_us_snap_take_up_inputs,
+    with_us_spm_independence_role,
     with_us_ssi_disability_criteria,
     with_us_ssi_take_up,
     with_us_take_up_inputs,
@@ -5084,11 +5086,12 @@ def _spm_composition_report(frame: Frame) -> CheckResult:
     ``check_spm_composition`` reproduces spm-calculator 1.0.0's rule
     (``adult = (age >= 18) | ((age >= 15) & role)``) over frame columns. The
     role resolution it mirrors is exactly what this export can produce:
-    ``is_spm_independent_minor_role`` is formula-owned in the engine adapter
-    (``microcosm.frame.adapters.policyengine_us._GENERATED_VARIABLE_GROUPS``)
-    and therefore *cannot* be written by ``write_dataset``, while
-    ``is_household_head`` and ``is_household_spouse`` can — so a frame check
-    here and the engine's own reading of the written H5 agree.
+    ``is_spm_independent_minor_role`` is the engine's declared dataset source
+    input (``policyengine_us.spm.DATASET_SOURCE_INPUTS``), which the adapter
+    classifies as an input leaf and ``write_dataset`` persists when the frame
+    carries it (the ``spm_independence_role`` stage writes it), and
+    ``is_household_head`` / ``is_household_spouse`` are persisted too — so a
+    frame check here and the engine's own reading of the written H5 agree.
     """
 
     from microcosm.build.us_runtime.release_gate_preflight import (
@@ -9628,6 +9631,37 @@ def _main(argv: Sequence[str] | None = None) -> None:
             + "; ".join(
                 f"Relationship-input signal failed: {failure}"
                 for failure in relationship_inputs_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "spm_independence_role",
+            message=(
+                "Restoring the measured SPM independence role from the pinned "
+                "Census ASEC person files."
+            ),
+        )
+    if pool_frame is None:
+        base_frame = with_us_spm_independence_role(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
+    spm_independence_role_gate = us_spm_independence_role_signal_gate(base_frame)
+    if not spm_independence_role_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "spm_independence_role_gate",
+                status="failed",
+                message="SPM independence role signal gate failed.",
+                failures=list(spm_independence_role_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SPM independence role signal failed: {failure}"
+                for failure in spm_independence_role_gate.failures
             )
         )
     if telemetry is not None:
