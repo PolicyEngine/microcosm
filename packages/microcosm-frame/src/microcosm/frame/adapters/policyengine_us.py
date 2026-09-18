@@ -123,7 +123,9 @@ _PERIOD_BY_DEFINITION: dict[str, str] = {"year": "year", "month": "month"}
 # declarations, so the snapshot is tied to every source and activation
 # surface that produced it: a changed wheel fails closed until this
 # audit is refreshed, and never silently omits a newly generated
-# formula-owned output.
+# formula-owned output. A name policyengine_us.spm.DATASET_SOURCE_INPUTS
+# declares source-deliverable is recorded as an input leaf despite its
+# fallback formula; spm.py is pinned so that declaration cannot drift.
 _GENERATED_SOURCE_VERSION = "2.2.1"
 _GENERATED_SOURCE_SHA256: dict[str, str] = {
     "model_api.py": "d7edb7436b84733f179fe223376fb588bb7a3ad6817d119703faeb599d4bb9c7",
@@ -133,6 +135,7 @@ _GENERATED_SOURCE_SHA256: dict[str, str] = {
     "reforms/states/mi/surtax.py": (
         "e1d0c0207c46243d3509b22b15fbdc07aa02b4df9461f7b93bec872dc7124ea9"
     ),
+    "spm.py": "baa69c0d1163bdc55f7dc9ac85645c2b75e5519c8b72ec54fd57787a22164d5a",
     "system.py": "1c8539dcb8aeba4973823887895f5cd42bb9a2ee1270b0a947c9e7c185571302",
     "variables/gov/puf.py": (
         "17545c43549ecf34016107bc8ed2dce25a53610afb802431a1b0ea6724215e7b"
@@ -201,18 +204,11 @@ _GENERATED_VARIABLE_GROUPS: tuple[tuple[tuple[str, ...], str, str, str, bool], .
         True,
     ),
     (
-        ("is_household_spouse",),
+        tuple("is_household_spouse is_spm_independent_minor_role".split()),
         "person",
         "bool",
         "point",
         False,
-    ),
-    (
-        ("is_spm_independent_minor_role",),
-        "person",
-        "bool",
-        "point",
-        True,
     ),
     (
         tuple(
@@ -523,6 +519,49 @@ class PolicyEngineUSVariableMetadataIndex:
         }
 
 
+def _engine_dataset_source_inputs(policyengine_us: Any) -> frozenset[str]:
+    """The engine's declared dataset source inputs, read off the engine itself.
+
+    ``policyengine_us.spm.DATASET_SOURCE_INPUTS`` names the variables a
+    population producer must deliver from the source even though the engine
+    carries a fallback formula for them ("A population producer must retain
+    its observed boolean instead of treating the fallback formula as
+    ownership of the input"). The formula's presence is therefore not
+    ownership, and this adapter classifies such a name as an input leaf. The
+    declaration must be a non-empty frozenset of variable names disjoint from
+    ``REJECTED_DATASET_INPUTS``; anything else fails closed rather than
+    letting a malformed upstream declaration widen the persisted surface.
+    """
+
+    import importlib
+
+    module_name = f"{policyengine_us.__name__}.spm"
+    spm = importlib.import_module(module_name)
+    declared = getattr(spm, "DATASET_SOURCE_INPUTS", None)
+    rejected = getattr(spm, "REJECTED_DATASET_INPUTS", None)
+    if (
+        not isinstance(declared, frozenset)
+        or not declared
+        or not all(isinstance(name, str) and name for name in declared)
+    ):
+        raise RuntimeError(
+            f"{module_name}.DATASET_SOURCE_INPUTS must be a non-empty frozenset "
+            f"of variable names; got {declared!r}."
+        )
+    if not isinstance(rejected, frozenset):
+        raise RuntimeError(
+            f"{module_name}.REJECTED_DATASET_INPUTS must be a frozenset; got "
+            f"{type(rejected).__name__}."
+        )
+    overlap = sorted(declared & rejected)
+    if overlap:
+        raise RuntimeError(
+            f"{module_name} declares {overlap} both as dataset source inputs and "
+            "as rejected dataset inputs; the adapter cannot classify them."
+        )
+    return frozenset(declared)
+
+
 def _is_engine_computed(variable: Any, period: int | str | None = None) -> bool:
     """Return whether a PolicyEngine variable is computed by a formula.
 
@@ -671,11 +710,12 @@ class PolicyEngineUSEngine:
             ImportError: If ``policyengine_us`` is not installed.
         """
         system_variables = self._tax_benefit_system().variables
+        source_inputs = self._dataset_source_inputs()
         return sorted(
             name
             for name, variable in system_variables.items()
             if name not in _FORMULA_OWNED_COMPAT_COLUMNS
-            and not _is_engine_computed(variable)
+            and (name in source_inputs or not _is_engine_computed(variable))
         )
 
     def formula_owned_outputs(self, names: Iterable[str]) -> set[str]:
@@ -701,10 +741,13 @@ class PolicyEngineUSEngine:
             ImportError: If ``policyengine_us`` is not installed.
         """
         variables = self._tax_benefit_system().variables
+        source_inputs = self._dataset_source_inputs()
         flagged: set[str] = set()
         for name in names:
             if name in _FORMULA_OWNED_COMPAT_COLUMNS:
                 flagged.add(name)
+                continue
+            if name in source_inputs:
                 continue
             variable = variables.get(name)
             if variable is not None and _is_engine_computed(variable):
@@ -987,6 +1030,15 @@ class PolicyEngineUSEngine:
     # Lazy engine plumbing
     # ------------------------------------------------------------------
 
+    def _dataset_source_inputs(self) -> frozenset[str]:
+        """Names the engine declares source-deliverable despite a fallback formula."""
+
+        cached = getattr(self, "_dataset_source_inputs_cache", None)
+        if cached is None:
+            cached = _engine_dataset_source_inputs(self._import_policyengine_us())
+            self._dataset_source_inputs_cache = cached
+        return cached
+
     def _import_policyengine_us(self) -> Any:
         try:
             import policyengine_us
@@ -1070,12 +1122,14 @@ class PolicyEngineUSEngine:
         writer is called, after checking aggregate deltas.
         """
         variables = self._tax_benefit_system().variables
+        source_inputs = self._dataset_source_inputs()
         present = {column for frame in tables.values() for column in frame.columns}
         structural = self._structural_columns()
         return set(present & _FORMULA_OWNED_COMPAT_COLUMNS) | {
             column
             for column in present
             if column not in structural
+            and column not in source_inputs
             and column in variables
             and _is_engine_computed(variables[column], period=period)
         }

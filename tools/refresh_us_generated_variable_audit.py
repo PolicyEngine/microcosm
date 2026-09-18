@@ -62,11 +62,14 @@ END_SENTINEL = "# --- END GENERATED VARIABLE AUDIT ---"
 
 #: Files that *activate* generation without declaring the variables themselves:
 #: the system constructor that calls every generator, the reform registry that
-#: routes the Michigan surtax, and the star-export surface the generators are
-#: written against.  Defining files are derived, never listed; these three are
-#: the reviewed activation surface, so adding one is a deliberate edit here.
+#: routes the Michigan surtax, the star-export surface the generators are
+#: written against, and ``spm.py``, whose ``DATASET_SOURCE_INPUTS`` declares
+#: which generated variables a producer delivers from the source despite a
+#: fallback formula (the snapshot records those as input leaves).  Defining
+#: files are derived, never listed; these are the reviewed activation surface,
+#: so adding one is a deliberate edit here.
 ACTIVATION_FILES: Mapping[str, tuple[str, ...]] = {
-    "policyengine-us": ("model_api.py", "reforms/reforms.py", "system.py"),
+    "policyengine-us": ("model_api.py", "reforms/reforms.py", "spm.py", "system.py"),
     "spm-calculator": (),
 }
 
@@ -146,6 +149,36 @@ def _formula_owned(variable: object) -> bool:
     )
 
 
+def _dataset_source_inputs(generated: Mapping[str, object]) -> frozenset[str]:
+    """The engine's declared source-deliverable inputs, validated like the adapter.
+
+    ``policyengine_us.spm.DATASET_SOURCE_INPUTS`` overrides formula presence:
+    a producer must retain its observed value for these names, so the
+    snapshot records them as input leaves.  The declaration is read off the
+    installed engine through the same validation the adapter's live path
+    applies, and every declared name must be one of the generated variables
+    this snapshot covers — a declared ordinary class would need the static
+    parser to learn the rule, which is a review event, not a silent regenerate.
+    """
+
+    sys.path.insert(0, str(REPOSITORY_ROOT / "packages" / "microcosm-frame" / "src"))
+    import policyengine_us
+
+    from microcosm.frame.adapters.policyengine_us import (
+        _engine_dataset_source_inputs,
+    )
+
+    declared = _engine_dataset_source_inputs(policyengine_us)
+    unknown = sorted(declared - set(generated))
+    if unknown:
+        raise AuditError(
+            "policyengine_us.spm.DATASET_SOURCE_INPUTS names variable(s) the "
+            f"generated-variable snapshot does not cover: {unknown}. Extend the "
+            "static parser before regenerating."
+        )
+    return declared
+
+
 _EPOCH_START = "0001-01-01"
 _DTYPE_BY_VALUE_TYPE = {float: "float", int: "int", bool: "bool", str: "str"}
 _PERIOD_BY_DEFINITION = {"year": "year", "month": "month"}
@@ -176,6 +209,7 @@ def _derive_groups(
     buckets: dict[tuple[str, str, str, str, str, bool], list[str]] = (
         collections.defaultdict(list)
     )
+    source_inputs = _dataset_source_inputs(variables)
     for name, variable in sorted(variables.items()):
         formulas = getattr(variable, "formulas", None) or {}
         dated = [start for start in formulas if start != _EPOCH_START]
@@ -195,7 +229,7 @@ def _derive_groups(
                 variable.entity.key,
                 dtype,
                 period,
-                _formula_owned(variable),
+                name not in source_inputs and _formula_owned(variable),
             )
         ].append(name)
     return tuple(
@@ -311,7 +345,9 @@ def render_block() -> str:
         "# declarations, so the snapshot is tied to every source and activation",
         "# surface that produced it: a changed wheel fails closed until this",
         "# audit is refreshed, and never silently omits a newly generated",
-        "# formula-owned output.",
+        "# formula-owned output. A name policyengine_us.spm.DATASET_SOURCE_INPUTS",
+        "# declares source-deliverable is recorded as an input leaf despite its",
+        "# fallback formula; spm.py is pinned so that declaration cannot drift.",
     ]
     for name, (version_symbol, digest_symbol) in PIN_SYMBOLS.items():
         sections.append(f'{version_symbol} = "{_version(name)}"')
