@@ -92,17 +92,65 @@ name it rather than infer it. The discrimination battery is 116 comparisons,
   claim that the committed 1/10 trace came from a round that patches the
   catch-all. It came from the round that patches nothing.
 
+## Done (2026-09-17, second session) — the adversarial pass
+
+**68 agents over six review dimensions, every finding put to two independent
+verifiers whose default answer is refuted: 31 findings, 25 survived.** Five
+answered in code, four in tests, sixteen in the documents, none left open.
+Receipt: `experiments/native-retention-seal/adversarial-verification-receipt.json`.
+
+The three that mattered, each reproduced before being believed and again after
+being fixed:
+
+- **The seal ACCEPTED a pair the comparison refuses.** An object-axis value
+  carrying its own `__eq__` has equal codec bytes to the plain int of the same
+  value and is not `==` to it. That is the dangerous direction — a run
+  accepting a replay the comparison refuses.
+- **The seal REFUSED a pair the comparison accepts.** pandas holds `None` and
+  every NaN interchangeable on an object axis; the codec spelled them apart, so
+  a green run would have turned red.
+- **A masked-integer axis folded through float64**, because `np.asarray` on a
+  masked integer array returns float64 with NA as NaN — lossy above `2**53`,
+  and the refusal code moved.
+
+The fold now reproduces the equivalence classes `Index.equals` actually has,
+**measured** rather than read off pandas' source, and refuses `AXIS` at seal
+construction for the one case a digest cannot represent. 124 new battery cases
+pin all three; each half of the fix was reverted to confirm its own cases go
+red.
+
+**And the change broke a gate that passes at the base.**
+`test_us_spine_blindness.py::test_runtime_population_operators_are_source_spine_blind`
+refuses a statically unresolvable subscript on a name it infers to be a column
+container; every seal record is a positional tuple, so it reported 48 sites.
+Verified both ways: `1 passed` at `a64f7b733`, red here. The records are now
+unpacked into named fields, the one dynamic `getattr` reads through a literal
+reader per comparable, and the gate passes (`1 passed in 217.42s`). Nothing
+moved: no record changed shape, order or `repr`.
+
+**Two tests were vacuous.** An executor test's default-mode arm compared one
+run's objects against another run's; the dtype census asserted the same
+predicate twice and called no seal function. Both now fail against the defect
+they pin.
+
+**Four documents described mechanisms that are not in the code** — a dtype
+token, a `_comparables` digest, a `repr()` fallback and the residual risk built
+on it — and the design note's own §4(1) had argued the token would be wrong.
+
 ## Next
 
-1. The 21-file dependent battery, one pytest process per file, as CI runs them.
-   Exactly two of the 21 files changed after it started, both test files; both
-   were re-run individually at the final head (122 passed; 13 passed in 144.61 s)
-   and the report says so rather than quoting a mixed-head run.
-2. An adversarial verification pass over the finished head, across six
-   dimensions, each finding refuted or kept by two independent verifiers.
-3. The final CI-shaped verification at the finished head, and the PR body's
-   Runs section, which is still a placeholder.
-4. Max's rulings on the report's seven open questions.
+1. The **quiet-machine 1/1000 re-run at the finished head** (pid 7656, launched
+   2026-09-18T01:58:01Z at 79.8 GB available, head `6e3b3091c`). It re-proves
+   the replay at the head that ships and answers question 5's request for a
+   repeat without contention. `RUN-RECORD-after2.txt` states what it must
+   reproduce before the outcome.
+2. The 21-file dependent battery, **re-run clean**. The first run had three red
+   files: the spine-blindness failure was real and is fixed; the completion-host
+   and person-status results were invalidated by my own concurrent edits to
+   `survey_population_replay.py` during the run, which an implementation hash
+   is over — the report says so rather than quoting them.
+3. The final CI-shaped verification at the finished head, the PR body, and the
+   report's remaining open questions (now eight).
 
 ## Inherited defect, repaired here (for the report and for Max)
 
