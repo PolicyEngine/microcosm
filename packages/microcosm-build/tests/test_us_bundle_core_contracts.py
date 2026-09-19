@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.util
 import json
 from collections import Counter
@@ -26,6 +27,7 @@ from microcosm.build.spec_engine.resolver import (
     SpecResolutionError,
     resolve_cross_references,
 )
+from microcosm.build.spec_engine.yaml12 import load_yaml12_file
 
 Mutation = Callable[[dict[str, Any]], None]
 ROOT = Path(__file__).resolve().parents[3]
@@ -108,6 +110,109 @@ def _walk_values(value: object, path: str = "") -> list[tuple[str, object]]:
     return rows
 
 
+def test_source_only_generator_reproduces_packaged_source_authority() -> None:
+    """Source JSON/YAML drift must fail even without the optional country engine."""
+    from tools import generate_us_bundle_from_constants as generator
+
+    documents = generator.build_documents(kinds=("sources",))
+    assert set(documents) == {"sources.yaml"}
+    generated = documents["sources.yaml"]
+    path = generator.DEFAULT_OUTPUT_DIR / "sources.yaml"
+    authored = load_yaml12_file(path)
+    raw = (generator.US_PACKAGE_ROOT / "source_stages.json").read_bytes()
+    assert {**authored["stage_manifest"], "stages": authored["stages"]} == (
+        json.loads(raw)
+    )
+    assert authored == generated
+    assert path.read_bytes() == generator.render_yaml("sources.yaml", generated)
+    assert generated["stage_asset"]["sha256"] == hashlib.sha256(raw).hexdigest()
+    assert (
+        generated["stage_asset"]["sha256"]
+        == (generator.FROZEN_LEGACY_RESOURCE_SHA256["source_stages.json"])
+    )
+
+
+def _immigration_operation(sources: dict[str, Any]) -> dict[str, Any]:
+    return next(
+        operation
+        for stage in sources["stages"]
+        for operation in stage["operations"]
+        if operation["kind"] == "derive_immigration_status"
+    )
+
+
+def test_humanitarian_stock_values_are_normative_and_citations_operational() -> None:
+    sources = build_sources()
+    before, _, surfaces = _source_surface_hashes(sources)
+    normative = _immigration_operation(surfaces["normative"])
+    operational = next(
+        operation
+        for stage in surfaces["operational"]["stages"]
+        for operation in stage.get("operations", [])
+        if "humanitarian_status_stocks" in operation
+    )
+    stocks = _immigration_operation(sources)["humanitarian_status_stocks"]
+    assert normative["humanitarian_status_stocks"]["refugee"] == {
+        "target": stocks["refugee"]["target"]
+    }
+    assert operational["humanitarian_status_stocks"]["refugee"] == {
+        "source": stocks["refugee"]["source"]
+    }
+    stocks["refugee"]["source"] += "#citation-only-change"
+    assert _source_surface_hashes(sources)[0] == before
+    stocks["refugee"]["target"] += 1
+    assert _source_surface_hashes(sources)[0] != before
+
+
+def test_humanitarian_stock_schema_matches_runtime_category_and_origin_rosters() -> (
+    None
+):
+    from microcosm.build.us_runtime import immigration
+
+    schema = load_schema_registry().schema("sources.schema.json")
+    operation = next(
+        value
+        for value in schema["$defs"]["source_parameter_record"]["oneOf"]
+        if value["properties"]["kind"].get("const") == "derive_immigration_status"
+    )
+    stocks = operation["properties"]["humanitarian_status_stocks"]
+    assert (
+        set(stocks["properties"])
+        == set(stocks["required"])
+        == set(immigration.HUMANITARIAN_STATUS_CATEGORIES)
+    )
+    for category, origins in immigration._PER_ORIGIN_HUMANITARIAN_CATEGORIES.items():
+        block = stocks["properties"][category]
+        assert set(block["properties"]) == set(block["required"]) == set(origins)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda stocks: stocks.pop("refugee"),
+        lambda stocks: stocks.update({"unknown_status": {"target": 0, "source": "x"}}),
+        lambda stocks: stocks["tps"].pop("nepal"),
+        lambda stocks: stocks["tps"].update(
+            {"unknown_origin": {"target": 0, "source": "x"}}
+        ),
+        lambda stocks: stocks["refugee"].update({"target": -1}),
+        lambda stocks: stocks["refugee"].update({"target": True}),
+        lambda stocks: stocks["refugee"].update({"source": ""}),
+        lambda stocks: stocks["refugee"].update({"source": 123}),
+        lambda stocks: stocks["refugee"].pop("target"),
+        lambda stocks: stocks["refugee"].pop("source"),
+        lambda stocks: stocks["refugee"].update({"unreviewed": True}),
+    ],
+)
+def test_humanitarian_stock_schema_refuses_malformed_controls(
+    mutation: Mutation,
+) -> None:
+    sources = build_sources()
+    mutation(_immigration_operation(sources)["humanitarian_status_stocks"])
+    with pytest.raises(SpecValidationError):
+        load_schema_registry().validate(sources, "sources.schema.json")
+
+
 def test_source_surface_classification_is_complete() -> None:
     sources = build_sources()
     _, _, surfaces = _source_surface_hashes(sources)
@@ -129,7 +234,7 @@ def test_source_surface_classification_is_complete() -> None:
     }
     assert normative["stage_asset"] == {
         "id": "source_stages",
-        "sha256": "7935d891ed16eac618f04813a7b8a3ceb9a971c8b4c4273683594ba61e7dd631",
+        "sha256": "b3ad16b1adb77a2cac6deae6c4d0f1779e4cf36a3f18820d9887a5434daaff1a",
     }
     assert operational["stage_asset"] == {
         "path": "microcosm.build.us/source_stages.json"

@@ -1594,6 +1594,84 @@
         "source",
         "target"
        ]
+      },
+      "humanitarian_status_stocks": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "paroled_one_year": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "afghanistan": {
+           "$ref": "#/$defs/immigration_stock_target"
+          },
+          "ukraine": {
+           "$ref": "#/$defs/immigration_stock_target"
+          },
+          "nicaragua": {
+           "$ref": "#/$defs/immigration_stock_target"
+          },
+          "venezuela": {
+           "$ref": "#/$defs/immigration_stock_target"
+          }
+         },
+         "required": [
+          "afghanistan",
+          "ukraine",
+          "nicaragua",
+          "venezuela"
+         ]
+        },
+        "refugee": {
+         "$ref": "#/$defs/immigration_stock_target"
+        },
+        "asylee": {
+         "$ref": "#/$defs/immigration_stock_target"
+        },
+        "deportation_withheld": {
+         "$ref": "#/$defs/immigration_stock_target"
+        },
+        "tps": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "venezuela": {
+           "$ref": "#/$defs/immigration_stock_target"
+          },
+          "el_salvador": {
+           "$ref": "#/$defs/immigration_stock_target"
+          },
+          "honduras": {
+           "$ref": "#/$defs/immigration_stock_target"
+          },
+          "nicaragua": {
+           "$ref": "#/$defs/immigration_stock_target"
+          },
+          "nepal": {
+           "$ref": "#/$defs/immigration_stock_target"
+          },
+          "other_designated": {
+           "$ref": "#/$defs/immigration_stock_target"
+          }
+         },
+         "required": [
+          "venezuela",
+          "el_salvador",
+          "honduras",
+          "nicaragua",
+          "nepal",
+          "other_designated"
+         ]
+        }
+       },
+       "required": [
+        "paroled_one_year",
+        "refugee",
+        "asylee",
+        "deportation_withheld",
+        "tps"
+       ]
       }
      },
      "required": [
@@ -1602,7 +1680,8 @@
       "time_period_from_build_config",
       "undocumented_population_anchor",
       "undocumented_students",
-      "undocumented_workers"
+      "undocumented_workers",
+      "humanitarian_status_stocks"
      ]
     },
     {
@@ -8280,6 +8359,25 @@
     }
    ],
    "description": "Closed kind-discriminated source artifact and operation records, covering the packaged US, UK, and BE source vocabularies."
+  },
+  "immigration_stock_target": {
+   "type": "object",
+   "additionalProperties": false,
+   "properties": {
+    "target": {
+     "type": "number",
+     "minimum": 0
+    },
+    "source": {
+     "type": "string",
+     "minLength": 1,
+     "x-spec-surface": "operational"
+    }
+   },
+   "required": [
+    "target",
+    "source"
+   ]
   }
  }
 }
