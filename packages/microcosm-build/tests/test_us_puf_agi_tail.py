@@ -247,3 +247,111 @@ def test_selection_receipt_round_trip_and_resealed_arithmetic_tampering() -> Non
         node[path[-1]] = value
         with pytest.raises(ValueError, match="AGI tail"):
             agi_tail.validate_puf_agi_tail_selection_receipt(changed)
+
+
+def _mass_manifest() -> dict:
+    from microcosm.build.us_runtime.puf_capital_gains_tail import puf_tail_owned_columns
+
+    owned = puf_tail_owned_columns(2)
+    cg_owned = puf_tail_owned_columns(1)
+    cg_columns = (*cg_owned["person"], *cg_owned["tax_unit"])
+    head = dict.fromkeys(owned["person"], 0.0)
+    spouse = head.copy()
+    head["employment_income_before_lsr"] = 6_000_000.0
+    head["short_term_capital_gains"] = 10.0
+    spouse["short_term_capital_gains"] = 5.0
+    unit = dict.fromkeys(owned["tax_unit"], 0.0)
+    records = [
+        {
+            "arm": 1,
+            "donor_source_id": 1,
+            "donor_weight": 5.0,
+            "assigned_weight": 15.0,
+            "joint_vector": dict.fromkeys(cg_columns, 3.0),
+            "tail_person_count": 2,
+        },
+        {
+            "arm": 2,
+            "donor_source_id": 2,
+            "donor_weight": 2.0,
+            "assigned_weight": 6.0,
+            "person_vectors": {"head": head, "spouse": spouse},
+            "tax_unit_vector": unit,
+            "joint_vector": {
+                column: head[column] + spouse[column]
+                if column in head
+                else unit[column]
+                for column in cg_columns
+            },
+            "tail_person_count": 3,
+        },
+    ]
+    full_masses = {}
+    for column in (*owned["person"], *owned["tax_unit"]):
+        if column in cg_columns:
+            continue
+        value = head[column] + spouse[column] if column in head else unit[column]
+        full_masses[column] = {
+            "scope": "agi_arm",
+            "donor_weighted_signed_mass": value * 2.0,
+            "expected_frame_weighted_signed_mass": value * 6.0,
+            "transferred_frame_weighted_signed_mass": value * 6.0,
+            "difference": 0.0,
+        }
+    signed = {}
+    for column in cg_columns:
+        donor_mass = sum(
+            row["joint_vector"][column] * row["donor_weight"] for row in records
+        )
+        transferred = sum(
+            row["joint_vector"][column] * row["assigned_weight"] for row in records
+        )
+        signed[column] = {
+            "donor_weighted_signed_mass": donor_mass,
+            "design_weight_normalization": 3.0,
+            "expected_frame_weighted_signed_mass": donor_mass * 3.0,
+            "transferred_frame_weighted_signed_mass": transferred,
+            "difference": transferred - donor_mass * 3.0,
+        }
+    return {
+        "records": records,
+        "weight_domain": {"design_weight_normalization": 3.0},
+        "full_vector_reconciliation": {
+            "passed": True,
+            "owned_cell_count": len(owned["person"]) * 3 + len(owned["tax_unit"]),
+            "signed_mass": full_masses,
+        },
+        "signed_leg_reconciliation": {**signed, **full_masses},
+    }
+
+
+def test_full_vector_mass_receipts_rederive_every_column_from_records() -> None:
+    import copy
+
+    manifest = _mass_manifest()
+    agi_tail.validate_puf_tail_vector_mass_receipts(manifest)
+    column = "employment_income_before_lsr"
+    for path, value in (
+        (("full_vector_reconciliation",), None),
+        (("full_vector_reconciliation", "passed"), 1),
+        (("full_vector_reconciliation", "owned_cell_count"), 1),
+        (("full_vector_reconciliation", "signed_mass", column), None),
+        (("signed_leg_reconciliation", "short_term_capital_gains", "difference"), 1.0),
+        (
+            (
+                "signed_leg_reconciliation",
+                column,
+                "expected_frame_weighted_signed_mass",
+            ),
+            123.0,
+        ),
+        (("records", 1, "tail_person_count"), 4),
+        (("records", 1, "person_vectors", "head", column), 7_000_000.0),
+    ):
+        changed = copy.deepcopy(manifest)
+        node = changed
+        for key in path[:-1]:
+            node = node[key]
+        node[path[-1]] = value
+        with pytest.raises(ValueError, match="PUF tail"):
+            agi_tail.validate_puf_tail_vector_mass_receipts(changed)

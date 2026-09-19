@@ -560,3 +560,169 @@ def validate_puf_agi_tail_selection_receipt(receipt: Mapping[str, object]) -> No
         raise ValueError("AGI tail selected/skipped/thinned count equation failed.")
     if validated["projection_status"] != "available" and candidates:
         raise ValueError("AGI tail candidates require an available person projection.")
+
+
+def validate_puf_tail_vector_mass_receipts(manifest: Mapping[str, object]) -> None:
+    """Recompute every transferred-column receipt from the bound donor records."""
+
+    from microcosm.build.us_runtime.puf_capital_gains_tail import puf_tail_owned_columns
+
+    def numeric(value: object, label: str, *, boolean: bool = False) -> float:
+        if (
+            not isinstance(value, (int, float))
+            or (isinstance(value, bool) and not boolean)
+            or not np.isfinite(value)
+        ):
+            raise ValueError(f"PUF tail {label} must be a finite numeric value.")
+        return float(value)
+
+    def mapping(value: object, label: str, keys: set[str] | None = None) -> Mapping:
+        if not isinstance(value, Mapping) or (keys is not None and set(value) != keys):
+            raise ValueError(f"PUF tail {label} has an invalid receipt surface.")
+        return value
+
+    records = manifest.get("records")
+    if not isinstance(records, list):
+        raise ValueError("PUF tail vector mass validation requires donor records.")
+    domain = mapping(manifest.get("weight_domain"), "weight domain")
+    normalization = numeric(domain.get("design_weight_normalization"), "normalization")
+    if normalization <= 0:
+        raise ValueError("PUF tail weight normalization must be positive.")
+    cg_owned = puf_tail_owned_columns(1)
+    agi_owned = puf_tail_owned_columns(2)
+    cg_columns = (*cg_owned["person"], *cg_owned["tax_unit"])
+    full_columns = (*agi_owned["person"], *agi_owned["tax_unit"])
+    additional = set(full_columns) - set(cg_columns)
+    expected_full: dict[str, dict[str, object]] = {}
+    source_ids, donor_weights, assigned_weights = [], [], []
+    joint = {column: [] for column in cg_columns}
+    checked_cells = 0
+    for raw_record in records:
+        record = mapping(raw_record, "donor record")
+        arm = record.get("arm")
+        try:
+            puf_tail_owned_columns(arm)
+        except ValueError as error:
+            raise ValueError(
+                "PUF tail vector receipt has unknown arm provenance."
+            ) from error
+        source_id = record.get("donor_source_id")
+        if type(source_id) is not int:
+            raise ValueError("PUF tail vector donor source IDs must be integers.")
+        source_ids.append(source_id)
+        donor_weight = numeric(record.get("donor_weight"), "donor weight")
+        assigned_weight = numeric(record.get("assigned_weight"), "assigned weight")
+        if donor_weight <= 0 or assigned_weight != donor_weight * normalization:
+            raise ValueError(
+                "PUF tail donor/assigned weights do not match normalization."
+            )
+        donor_weights.append(donor_weight)
+        assigned_weights.append(assigned_weight)
+        count = record.get("tail_person_count")
+        if type(count) is not int or count <= 0:
+            raise ValueError("PUF tail person count must be a positive integer.")
+        vector = mapping(record.get("joint_vector"), "joint vector", set(cg_columns))
+        for column in cg_columns:
+            joint[column].append(numeric(vector[column], f"joint vector {column}"))
+        if arm == 1:
+            continue
+        roles = mapping(record.get("person_vectors"), "person vectors")
+        if "head" not in roles or set(roles) - {"head", "spouse"} or len(roles) > count:
+            raise ValueError("PUF tail person count/roles cannot represent the vector.")
+        for role, role_vector in roles.items():
+            mapping(role_vector, f"{role} vector", set(agi_owned["person"]))
+        unit = mapping(
+            record.get("tax_unit_vector"), "tax-unit vector", set(agi_owned["tax_unit"])
+        )
+        totals = {
+            column: sum(
+                numeric(role[column], f"person vector {column}", boolean=True)
+                for role in roles.values()
+            )
+            for column in agi_owned["person"]
+        }
+        totals.update(
+            {
+                column: numeric(unit[column], f"tax-unit vector {column}")
+                for column in agi_owned["tax_unit"]
+            }
+        )
+        for column in cg_columns:
+            if totals[column] != vector[column]:
+                raise ValueError(
+                    f"PUF tail AGI and joint vectors disagree for {column}."
+                )
+        checked_cells += len(agi_owned["person"]) * count + len(agi_owned["tax_unit"])
+        for column in sorted(additional):
+            receipt = expected_full.setdefault(
+                column,
+                {
+                    "scope": "agi_arm",
+                    "donor_weighted_signed_mass": 0.0,
+                    "expected_frame_weighted_signed_mass": 0.0,
+                    "transferred_frame_weighted_signed_mass": 0.0,
+                    "difference": 0.0,
+                },
+            )
+            receipt["donor_weighted_signed_mass"] += totals[column] * donor_weight
+            receipt["expected_frame_weighted_signed_mass"] += (
+                totals[column] * assigned_weight
+            )
+            receipt["transferred_frame_weighted_signed_mass"] += (
+                totals[column] * assigned_weight
+            )
+    if source_ids != sorted(set(source_ids)):
+        raise ValueError("PUF tail vector donor source IDs must be unique and ordered.")
+    full = mapping(
+        manifest.get("full_vector_reconciliation"),
+        "full-vector reconciliation",
+        {"passed", "owned_cell_count", "signed_mass"},
+    )
+    if full["passed"] is not True:
+        raise ValueError("PUF tail full-vector reconciliation must pass.")
+    if (
+        type(full["owned_cell_count"]) is not int
+        or full["owned_cell_count"] != checked_cells
+    ):
+        raise ValueError(
+            "PUF tail full-vector checked cell count differs from records."
+        )
+    expected_signed = dict(expected_full)
+    for column in cg_columns:
+        donor_mass = float(np.dot(joint[column], donor_weights))
+        expected = donor_mass * normalization
+        transferred = float(np.dot(joint[column], assigned_weights))
+        # Preserve the reviewed CG normalization arithmetic tolerance exactly.
+        if not np.isclose(transferred, expected, rtol=1e-12, atol=1e-6):
+            raise ValueError(
+                f"PUF tail joint-vector signed mass is not conserved for {column}."
+            )
+        expected_signed[column] = {
+            "donor_weighted_signed_mass": donor_mass,
+            "design_weight_normalization": normalization,
+            "expected_frame_weighted_signed_mass": expected,
+            "transferred_frame_weighted_signed_mass": transferred,
+            "difference": transferred - expected,
+        }
+
+    def compare(observed: object, expected: Mapping, label: str) -> None:
+        columns = mapping(observed, label, set(expected))
+        for column, expected_receipt in expected.items():
+            row = mapping(columns[column], f"{label}/{column}", set(expected_receipt))
+            for name, value in expected_receipt.items():
+                if name == "scope":
+                    if row[name] != value:
+                        raise ValueError(
+                            f"PUF tail {label}/{column} has the wrong arm scope."
+                        )
+                elif numeric(row[name], f"{label}/{column}/{name}") != value:
+                    raise ValueError(
+                        f"PUF tail {label}/{column}/{name} differs from donor records."
+                    )
+
+    compare(full["signed_mass"], expected_full, "full-vector signed mass")
+    compare(
+        manifest.get("signed_leg_reconciliation"),
+        expected_signed,
+        "signed-leg reconciliation",
+    )
