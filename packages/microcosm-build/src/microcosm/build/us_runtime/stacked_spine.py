@@ -5236,10 +5236,16 @@ def validate_stacked_post_puf_transfer_receipt(
             owner_receipt = target_receipt.get("post_transfer_calibration")
             spec = expected_calibrations.get(target_key)
             target = target_key.rsplit("/", 1)[1]
-            is_immigration = _is_immigration_transfer_target(
-                entity=group.entity,
-                family=group.family,
-                target=target,
+            # Attested schema-9 pools sealed their immigration targets as
+            # ordinary transfer targets: the paired reconciliation and QRF
+            # evidence did not exist, so requiring it would reject history.
+            is_immigration = (
+                legacy_worker_authentication is None
+                and _is_immigration_transfer_target(
+                    entity=group.entity,
+                    family=group.family,
+                    target=target,
+                )
             )
             if is_immigration:
                 group_immigration_reconciliations.append(

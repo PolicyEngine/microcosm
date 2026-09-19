@@ -21,6 +21,8 @@ import json
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from functools import cache
+from importlib.resources import files
 from types import MappingProxyType
 
 from microcosm.build.us_runtime.acs_income_universe import (
@@ -2215,26 +2217,38 @@ def us_late_producer_schedule_receipt() -> Mapping[str, object]:
     )
 
 
-def legacy_us_late_producer_schedule_receipt() -> Mapping[str, object]:
-    """Reconstruct the exact schema-16 schedule for attested legacy scoring."""
+#: Content hash of the schema-16 schedule that attested schema-9 pools sealed.
+#: History is data: the receipt is loaded from a frozen resource and checked
+#: against this digest, never rebuilt from the current registry, so a later
+#: contract change (microcosm #767 changed the immigration stage's inputs and
+#: transfer evidence) cannot silently redefine what a historical pool sealed.
+LEGACY_SCHEMA16_LATE_PRODUCER_SCHEDULE_PAYLOAD_SHA256 = (
+    "02e618cc656eb39990ed99dca2b30a52794e01e2b06a3c2df87ca4a7d85ab086"
+)
+_LEGACY_SCHEDULE_DERIVED_KEYS = frozenset(
+    {
+        "payload_sha256",
+        "producer_count",
+        "source_producer_count",
+        "transfer_group_count",
+        "transfer_target_count",
+        "status",
+    }
+)
 
-    receipt = json.loads(json.dumps(dict(us_late_producer_schedule_receipt())))
-    receipt["schema_version"] = 16
-    contract = receipt["execution_receipt_contract"]
-    contract["version"] = 3
-    contract["transition_authority"]["version"] = 1
+
+@cache
+def legacy_us_late_producer_schedule_receipt() -> Mapping[str, object]:
+    """Load the frozen schema-16 schedule for attested legacy scoring."""
+
+    resource = files("microcosm.build.us").joinpath(
+        "legacy_schema16_late_producer_schedule.json"
+    )
+    receipt = json.loads(resource.read_text(encoding="utf-8"))
     payload = {
         key: value
         for key, value in receipt.items()
-        if key
-        not in {
-            "payload_sha256",
-            "producer_count",
-            "source_producer_count",
-            "transfer_group_count",
-            "transfer_target_count",
-            "status",
-        }
+        if key not in _LEGACY_SCHEDULE_DERIVED_KEYS
     }
     canonical = json.dumps(
         payload,
@@ -2242,5 +2256,13 @@ def legacy_us_late_producer_schedule_receipt() -> Mapping[str, object]:
         separators=(",", ":"),
         allow_nan=False,
     ).encode("utf-8")
-    receipt["payload_sha256"] = hashlib.sha256(canonical).hexdigest()
+    observed = hashlib.sha256(canonical).hexdigest()
+    if (
+        observed != LEGACY_SCHEMA16_LATE_PRODUCER_SCHEDULE_PAYLOAD_SHA256
+        or receipt.get("payload_sha256") != observed
+    ):
+        raise ValueError(
+            "frozen schema-16 late-producer schedule does not match its "
+            "sealed content hash."
+        )
     return MappingProxyType(receipt)
