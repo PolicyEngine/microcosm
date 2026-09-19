@@ -452,6 +452,9 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_survey_spm_source.py",
         "current_survey_spm_projection.py",
         "graph_current_survey_spm.py",
+        # Selected original ACS literal/age/sex/state view; no assignment,
+        # stock, graph or weight authority.
+        "current_acs_immigration_source_projection.py",
         # Retained housing observations, original-design donors and exact clone joins
         "current_survey_housing.py",
         # Qualified original reference-person observations and exact clone bind.
