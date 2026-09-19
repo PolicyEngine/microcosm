@@ -20,12 +20,16 @@ Final report output: `docs/implementation/us-958/FINAL_REPORT.md`.
   make the PUF donor their owner. The retirement finalizer actually overwrites
   the two contribution fields; terminal preservation enforces clone-1 equality.
 - Left production code, tests, generated specs and pins unchanged.
-- Started focused existing contract tests and a synthetic overwrite probe.
+- Existing tail/ownership/stacked contract tests passed: 23 passed, no skips,
+  one joblib core-detection warning; pytest exit 0.
+- Synthetic overwrite probe passed (exit 0), reproducing clone-2 retirement
+  values 999.0 -> 101.25 and 777.0 -> -0.0 under current ownership.
 - Repository lint passed (exit 0).
+- Wrote `FINAL_REPORT.md` with conflict evidence, exact verification commands,
+  unchanged pins and the scope left unimplemented.
 
 ## Next
 
-- Finish the contract checks and write the final report to the declared output.
 - Implementation requires a resolution of final ownership: whether AGI-arm
   donor values supersede the clone-1 inheritance/mirroring doctrine for all PUF
   outputs. That requires arm-specific ownership, callback and terminal contracts.
@@ -34,6 +38,7 @@ Final report output: `docs/implementation/us-958/FINAL_REPORT.md`.
 
 ## Verification
 
-Focused tests/probe are in progress; their exact commands and results will be
-recorded in the final report. No base build was run. Real-data behavior remains
-unverified.
+Focused tests/probe and lint passed; exact commands and results are recorded in
+`FINAL_REPORT.md`. The full build shard suite was not run because implementation
+stopped at the contract conflict. No base build was run. Real-data behavior
+remains unverified.
