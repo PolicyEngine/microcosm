@@ -1,11 +1,9 @@
 # Static aging
 
 `microcosm.calibrate.static_aging` projects a base-year frame to later years.
-It is the cross-sectional special case of the charter's longitudinal rule,
-built now because the country models extend the single-year file themselves
-and get it wrong (policyengine-us #9526 and #9527 record the double count of
-population growth that led here, and microcosm#333 carries the decision this
-step needs before it can merge).
+It reweights a fixed cross-section independently for each year. The proposed
+operator remains subject to the cross-sectional-versus-longitudinal design
+decision in [#333](https://github.com/PolicyEngine/microcosm/issues/333).
 
 ## The split
 
@@ -13,9 +11,9 @@ Two things change between years, and the step keeps them apart.
 
 **Weights carry who exists.** For each projection year the weight entity's
 weights are recalibrated to that year's projected population by demographic
-cell: age and sex from SSA's Trustees Report projection for the US, ONS for
-the UK. Nothing else is targeted. A program count or an income total is an
-output of rules, take-up and demographics; a weight vector forced to match
+cell. The US reader supplies age and sex from SSA's Trustees Report; a UK
+projection reader is not included. Nothing else is targeted. A program count
+or an income total is an output of rules, take-up and demographics; a weight vector forced to match
 one can no longer be wrong about it, so it can no longer be checked. Filers
 by income bin has the same problem in income form.
 
@@ -45,11 +43,22 @@ the projection's level.
 
 ## Bounds
 
+The frame must store weights only for `weight_entity`. Other entities derive
+their weights from it, so explicit stale person or tax-unit weights cannot
+override the projected weights. The operator supports person-level weights
+as well as group weights, and preserves the frame's link tables.
+
 `max_weight_ratio` (default 5) bounds how far any record's weight may move
 from its base-year value across the whole horizon, since each year is fitted
 from the base-year weights, not from the previous year's. Cells no record
 supports are skipped rather than targeted; they appear in the year's
 `demographic_fit` with a zero base.
+
+Signed monetary columns need a finite positive factor. If reweighting makes
+a signed weighted total cancel to zero or change sign, the operator raises
+an error. A single proportional factor cannot preserve each record's sign
+and achieve the requested aggregate growth in those cases. An all-zero
+column stays zero; the operator cannot create missing income support.
 
 ## What it is not
 
@@ -62,10 +71,10 @@ when it lands.
 
 ## Country adapters
 
-`microcosm.frame.adapters.policyengine_us.uprating_series` reads the series
-each PolicyEngine-US variable uprates by and evaluates them at the projection
-years: national totals under the calibration tree (directly or through the
-`_per_capita` series PolicyEngine-US derives) come back as totals, everything
-else as indices. `multi_year_dataset` exports a base-year bundle plus its
-projected years as a `USMultiYearDataset`, which the engine treats as already
-extended.
+`microcosm.frame.adapters.policyengine_us.uprating_series` reads the engine's
+dataset-extension overrides before each variable's declared uprating series.
+It evaluates those series at the projection years. CBO and IRS SOI calibration
+series, including the source totals behind derived `_per_capita` parameters,
+come back as totals; other series come back as indices.
+`multi_year_dataset` exports a base-year bundle plus its projected years as a
+`USMultiYearDataset`, which the engine treats as already extended.

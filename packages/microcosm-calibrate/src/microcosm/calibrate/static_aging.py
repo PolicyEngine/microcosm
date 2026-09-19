@@ -23,10 +23,10 @@ and :func:`score_predictions` compares them with an external projection
 without ever feeding it back.
 
 The base-year cross-section is reweighted once per year with no person
-identity across years. That is the cross-sectional special case of the
-charter's longitudinal rule, not a replacement for the Dynamics operator: an
-employment or marriage transition never happens here, and a projected
-downturn shows up only as slower per-capita income growth.
+identity across years. The operator performs no employment or marriage
+transitions, so a projected downturn shows up only as slower per-capita
+income growth. The design decision in microcosm#333 governs its use before
+the planned Dynamics operator.
 """
 
 from __future__ import annotations
@@ -217,6 +217,7 @@ class StaticAgingResult:
             ),
         )
         tables = {entity: aged.table(entity).copy() for entity in aged.entities}
+        tables.update({name: aged.link(name).copy() for name in aged.links})
         for column, factor in projection.factors.items():
             entity = aged.column_entity(column)
             tables[entity][column] = tables[entity][column].to_numpy() * factor
@@ -235,6 +236,8 @@ class StaticAgingResult:
 
 def _group_positions(frame: Frame, group: str) -> np.ndarray:
     """Position of each person's ``group`` row within the group table."""
+    if group == "person":
+        return np.arange(frame.n("person"))
     schema = frame.schema
     membership = frame.person[schema.membership_column(group)].to_numpy()
     ids = frame.table(group)[schema.id_column(group)].to_numpy()
@@ -297,7 +300,8 @@ def static_aging(
         column_series: ``column -> series`` for the columns that follow a
             series. Every series must be in ``series``. Unmapped columns carry
             over unchanged.
-        weight_entity: The entity whose weights carry the demographics.
+        weight_entity: The sole entity with stored weights. Its weights carry
+            the demographics; all other entity weights derive from it.
         anchor: ``"frame"`` (default) targets each cell at the frame's own
             base-year weighted count times the projection's growth for that
             cell, so the base-year calibration is kept and only projected
@@ -312,6 +316,11 @@ def static_aging(
     """
     if anchor not in ("frame", "projection"):
         raise ValueError(f"anchor must be 'frame' or 'projection', got {anchor!r}.")
+    if set(frame.weighted_entities) != {weight_entity}:
+        raise ValueError(
+            f"Static aging requires {weight_entity!r} to be the sole stored "
+            "weight entity; other entity weights must derive from it."
+        )
     years = tuple(int(year) for year in years)
     if not years:
         raise ValueError("years must name at least one projection year.")
@@ -436,16 +445,35 @@ def _factors(
     for column, name in column_series.items():
         entity = base.column_entity(column)
         values = base.table(entity)[column].to_numpy(dtype=float)
+        if not np.isfinite(values).all():
+            raise ValueError(f"Column {column!r} contains non-finite values.")
+        base_value = series.value(name, base_year)
+        projected_value = series.value(name, year)
+        if base_value == 0.0:
+            raise ValueError(f"Series {name!r} has a zero base-year value.")
+        growth = projected_value / base_value
+        if not np.isfinite(growth) or growth <= 0.0:
+            raise ValueError(f"Series {name!r} must have finite positive growth.")
         if name in series.totals:
             base_total = float((base.resolve_weights(entity).values * values).sum())
             aged_total = float((aged.resolve_weights(entity).values * values).sum())
-            if base_total == 0.0 or aged_total == 0.0:
+            if not np.any(values):
                 factors[column] = 1.0
                 continue
-            growth = series.value(name, year) / series.value(name, base_year)
-            factors[column] = growth * base_total / aged_total
+            if base_total == 0.0 or aged_total == 0.0:
+                raise ValueError(
+                    f"Column {column!r} has no identifiable positive aging factor: "
+                    "a signed weighted total cancels to zero."
+                )
+            factor = growth * base_total / aged_total
+            if not np.isfinite(factor) or factor <= 0.0:
+                raise ValueError(
+                    f"Column {column!r} has no finite positive aging factor; "
+                    "reweighting must preserve the sign of its weighted total."
+                )
+            factors[column] = factor
         else:
-            factors[column] = series.value(name, year) / series.value(name, base_year)
+            factors[column] = growth
     return factors
 
 

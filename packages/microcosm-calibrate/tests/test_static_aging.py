@@ -392,3 +392,136 @@ def test_ssa_population_projection_parses_and_top_codes(tmp_path) -> None:
         sum(1_000 + age + 1 for age in range(0, 91))
     )
     assert "SSPopJul_TR2024.csv" in projection.source
+
+
+@pytest.mark.parametrize(
+    "values, year_weights",
+    [
+        ([100.0, -100.0], [1.0, 2.0]),  # Base net cancels; aged net does not.
+        ([100.0, -50.0], [1.0, 2.0]),  # Aged net cancels; base net does not.
+        ([100.0, -50.0], [1.0, 3.0]),  # Reweighting reverses the net sign.
+    ],
+)
+def test_signed_totals_require_a_positive_identifiable_factor(values, year_weights):
+    from microcosm.calibrate.static_aging import _factors
+    from microcosm.frame import MassChange
+
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2],
+                    "person_household_id": [1, 2],
+                    "business_income": values,
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [1, 2]}),
+        },
+        SCHEMA,
+        {"household": Weights(np.ones(2), WeightKind.CALIBRATED)},
+    )
+    aged = frame.with_weights(
+        "household",
+        Weights(np.array(year_weights), WeightKind.CALIBRATED),
+        mass=MassChange(factor=None, reason="test demographic change"),
+    )
+    series = SeriesProjection(totals={"income": {2024: 1000.0, 2025: 1100.0}})
+    with pytest.raises(ValueError, match="business_income.*positive.*factor"):
+        _factors(aged, frame, 2024, 2025, series, {"business_income": "income"})
+
+
+def test_zero_signal_still_validates_series():
+    from microcosm.calibrate.static_aging import _factors
+
+    frame = _frame(n_households=2)
+    frame.person["employment_income"] = 0.0
+    mapping = {"employment_income": "income"}
+    valid = SeriesProjection(totals={"income": {2024: 1000.0, 2025: 1100.0}})
+    assert _factors(frame, frame, 2024, 2025, valid, mapping) == {
+        "employment_income": 1.0
+    }
+    missing = SeriesProjection(totals={"income": {2024: 1000.0}})
+    with pytest.raises(KeyError, match="no value for 2025"):
+        _factors(frame, frame, 2024, 2025, missing, mapping)
+
+
+def test_static_aging_rejects_stale_secondary_weights():
+    frame = _frame(n_households=4)
+    both = Frame(
+        {entity: frame.table(entity).copy() for entity in frame.entities},
+        frame.schema,
+        {
+            "household": frame.weights_for("household"),
+            "person": frame.resolve_weights("person"),
+        },
+    )
+    with pytest.raises(ValueError, match="sole stored weight entity"):
+        static_aging(
+            both, base_year=2024, years=(2025,), demographics=_projection(frame)
+        )
+
+
+def test_person_weighted_frame_can_age_demographics():
+    frame = _frame(n_households=4)
+    person_frame = Frame(
+        {entity: frame.table(entity).copy() for entity in frame.entities},
+        frame.schema,
+        {"person": frame.resolve_weights("person")},
+    )
+    result = static_aging(
+        person_frame,
+        base_year=2024,
+        years=(2025,),
+        demographics=_projection(person_frame, growth_old=1.1, growth_young=1.1),
+        weight_entity="person",
+        epochs=400,
+    )
+    fit = result.year(2025).demographic_fit
+    np.testing.assert_allclose(fit["achieved"], fit["target"], rtol=0.01)
+    np.testing.assert_allclose(
+        result.frame_for(person_frame, 2025).weights_for("person").values,
+        person_frame.weights_for("person").values * 1.1,
+        rtol=0.01,
+    )
+
+
+def test_projected_frame_preserves_link_tables():
+    from microcosm.frame import LinkSpec
+
+    schema = EntitySchema(
+        group_entities=("household", "firm"),
+        links=(LinkSpec(name="jobs", left_entity="person", right_entity="firm"),),
+    )
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [0, 1],
+                    "person_household_id": [1, 1],
+                    "person_firm_id": [1, 2],
+                    "age": [30, 70],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [1]}),
+            "firm": pd.DataFrame({"firm_id": [1, 2]}),
+            "jobs": pd.DataFrame({"person_id": [0, 0, 1], "firm_id": [1, 2, 2]}),
+        },
+        schema,
+        {"household": Weights(np.array([100.0]), WeightKind.DESIGN)},
+    )
+    demographics = DemographicProjection(
+        pd.DataFrame(
+            {
+                "year": [2024, 2024, 2025, 2025],
+                "age": [30, 70, 30, 70],
+                "count": [100.0, 100.0, 110.0, 110.0],
+            }
+        ),
+        ("age",),
+    )
+    result = static_aging(
+        frame, base_year=2024, years=(2025,), demographics=demographics, epochs=50
+    )
+    pd.testing.assert_frame_equal(
+        result.frame_for(frame, 2025).link("jobs"), frame.link("jobs")
+    )

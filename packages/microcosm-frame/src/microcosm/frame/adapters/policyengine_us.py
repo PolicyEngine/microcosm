@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, distribution
+from numbers import Integral
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -48,6 +49,7 @@ from microcosm.frame.materialize import (
 from microcosm.frame.rules import ExportContract
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 from microcosm.frame.units import US_SCHEMA
+from microcosm.frame.weights import Weights
 
 __all__ = [
     "ConsumerReceipt",
@@ -1218,6 +1220,25 @@ class PolicyEngineUSEngine:
 
 _POPULATION_SERIES = "calibration.gov.census.populations.total"
 _PER_CAPITA_SUFFIX = "_per_capita"
+_NATIONAL_TOTAL_PREFIXES = ("calibration.gov.cbo.", "calibration.gov.irs.soi.")
+
+
+def _dataset_uprating_path(system: Any, column: str) -> str | None:
+    """Use the same override precedence as PolicyEngine's dataset extension."""
+    from policyengine_us.data.economic_assumptions import MICRODATA_UPRATING_OVERRIDES
+
+    variable = system.variables.get(column)
+    if variable is None:
+        return None
+    return MICRODATA_UPRATING_OVERRIDES.get(column) or getattr(
+        variable, "uprating", None
+    )
+
+
+def _is_national_total(path: str) -> bool:
+    return path.startswith(_NATIONAL_TOTAL_PREFIXES) and not path.endswith(
+        _PER_CAPITA_SUFFIX
+    )
 
 
 def uprating_series(
@@ -1228,9 +1249,9 @@ def uprating_series(
 ) -> tuple[dict[str, dict[int, float]], dict[str, dict[int, float]], dict[str, str]]:
     """The series PolicyEngine-US uprates ``columns`` by, evaluated at ``years``.
 
-    Reads each variable's ``uprating`` parameter path. A path under the
-    calibration tree that names a national total (directly, or through a
-    ``<total>_per_capita`` series PolicyEngine-US derives) is returned as a
+    Reads the dataset-extension override, then the variable's ``uprating``
+    parameter path. A CBO or IRS SOI path that names a national total (directly,
+    or through a ``<total>_per_capita`` series PolicyEngine-US derives) is returned as a
     total, so static aging can solve its factor against the reweighted frame.
     Any other path is a per-person rate or a price index and is returned as
     an index. The population series that uprates the weights is skipped:
@@ -1256,15 +1277,14 @@ def uprating_series(
     indices: dict[str, dict[int, float]] = {}
     column_series: dict[str, str] = {}
     for column in columns:
-        variable = system.variables.get(column)
-        path = getattr(variable, "uprating", None) if variable is not None else None
+        path = _dataset_uprating_path(system, column)
         if not path or path == _POPULATION_SERIES:
             continue
         parameter = get_parameter(system.parameters, path)
         derived_from = getattr(parameter, "metadata", {}).get("derived_from")
-        if derived_from:
+        if derived_from and _is_national_total(derived_from):
             series_path, is_total = derived_from, True
-        elif path.startswith("calibration.gov.") and _PER_CAPITA_SUFFIX not in path:
+        elif _is_national_total(path):
             series_path, is_total = path, True
         else:
             series_path, is_total = path, False
@@ -1290,7 +1310,9 @@ def multi_year_dataset(
         bundle: The base-year US-schema bundle.
         base_year: The bundle's year.
         years: ``year -> (household weights, column factors)`` for each
-            projected year, as static aging produces them.
+            projected year after ``base_year``, as static aging produces them.
+            Factors may target numeric columns with a dataset uprating rule;
+            identifiers, memberships, weights and demographics remain fixed.
 
     Returns:
         A ``policyengine_us.data.USMultiYearDataset`` holding the base year
@@ -1300,12 +1322,29 @@ def multi_year_dataset(
     """
     from policyengine_us.data import USMultiYearDataset
 
+    if any(not isinstance(year, Integral) or year <= base_year for year in years):
+        raise ValueError(
+            f"Projection years must be integers after base year {base_year}."
+        )
     engine = PolicyEngineUSEngine()
     base_tables = engine._engine_tables(bundle)
+    protected_columns = (
+        {bundle.schema.entity_id_column(entity) for entity in bundle.entities}
+        | {
+            bundle.schema.membership_column(group)
+            for group in bundle.schema.group_entities
+        }
+        | {f"{entity}_weight" for entity in bundle.entities}
+    )
     datasets = [engine._build_dataset(base_tables, base_year)]
     for year in sorted(years):
         weights, factors = years[year]
-        weights = np.asarray(weights, dtype=np.float64)
+        try:
+            weights = Weights(
+                values=weights, kind=bundle.weights_for("household").kind
+            ).values
+        except ValueError as exc:
+            raise ValueError(f"{year}: invalid household weights: {exc}") from exc
         if len(weights) != len(base_tables["household"]):
             raise ValueError(
                 f"{year}: {len(weights)} household weights for "
@@ -1322,8 +1361,22 @@ def multi_year_dataset(
                 raise ValueError(
                     f"{year}: factored column {column!r} is not in the bundle."
                 )
-            tables[owner][column] = tables[owner][column].to_numpy(dtype=float) * float(
-                factor
-            )
+            if (
+                column in protected_columns
+                or not _dataset_uprating_path(engine._tax_benefit_system(), column)
+                or engine.variable_metadata(column).dtype not in ("float", "int")
+                or pd.api.types.is_bool_dtype(tables[owner][column].dtype)
+            ):
+                raise ValueError(f"{year}: column {column!r} cannot be factored.")
+            factor = float(factor)
+            if not np.isfinite(factor):
+                raise ValueError(f"{year}: factor for {column!r} must be finite.")
+            with np.errstate(over="ignore", invalid="ignore"):
+                values = tables[owner][column].to_numpy(dtype=float) * factor
+            if not np.isfinite(values).all():
+                raise ValueError(
+                    f"{year}: factored values for {column!r} must be finite."
+                )
+            tables[owner][column] = values
         datasets.append(engine._build_dataset(tables, year))
     return USMultiYearDataset(datasets=datasets)
