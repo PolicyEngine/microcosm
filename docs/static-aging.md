@@ -41,6 +41,15 @@ Census-calibrated total), and forcing the level would move the base year.
 `anchor="projection"` targets absolute counts for a frame that should adopt
 the projection's level.
 
+Match the projection cells to the survey's age codes before fitting. Census
+CPS ASEC codes age 80 for ages 80–84 and age 85 for ages 85 and above
+([2024 data dictionary, page 35](https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf#page=35)).
+For such a frame, call `ssa_population_projection(..., age_top=85,
+age_bands={80: 84})`. The reader sums SSA counts within each band before
+calculating growth; it leaves the frame's stored age values unchanged.
+Applying single-age-80 growth to the entire 80–84 group would misstate its
+projected population.
+
 ## Bounds
 
 The frame must store weights only for `weight_entity`. Other entities derive

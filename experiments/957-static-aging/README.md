@@ -25,6 +25,13 @@ cell's projected growth. It uses seed 0, 300 calibration epochs and a maximum
 weight ratio of 5. SSA and Census population definitions differ, so the two
 projection paths need not produce the same total population.
 
+The Current Population Survey (CPS) codes ages 80–84 as 80 and ages 85 or older
+as 85 ([Census ASEC 2024 data dictionary, physical PDF page 35](https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf#page=35)).
+The certified frame preserves those age codes. The runner passes
+`age_bands={80: 84}` and `age_top=85` to pool SSA ages 80–84 into code 80 and
+ages 85 or older into code 85 before calibration. It preserves every record's
+age and requires support for every resulting age-and-sex cell.
+
 For mixed-sign inputs that follow a national-total series, static aging assumes
 that gross positive amounts and gross losses each follow that series' growth.
 It calculates a separate positive factor for each side. This preserves record

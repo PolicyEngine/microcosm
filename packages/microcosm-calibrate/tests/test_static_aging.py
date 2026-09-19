@@ -394,6 +394,41 @@ def test_ssa_population_projection_parses_and_top_codes(tmp_path) -> None:
     assert "SSPopJul_TR2024.csv" in projection.source
 
 
+def test_ssa_population_projection_matches_cps_age_bands(tmp_path):
+    # Code 80 represents five ages in CPS. Their growth differs, so the
+    # projection must sum their counts before taking the group's growth.
+    table = pd.DataFrame(
+        {
+            "Year": np.repeat([2024, 2025], 8),
+            "Age": list(range(79, 87)) * 2,
+            "M Tot": [100] * 8 + [100, 200, 300, 400, 500, 600, 700, 800],
+            "F Tot": [200] * 8 + [200, 300, 400, 500, 600, 700, 800, 900],
+        }
+    )
+    path = tmp_path / "SSA.csv"
+    table.to_csv(path, index=False)
+    projection = ssa_population_projection(path, age_top=85, age_bands={80: 84})
+    base = projection.for_year(2024)
+    future = projection.for_year(2025)
+    assert sorted(future["age"].unique()) == [79, 80, 85]
+    male = ~future["is_female"]
+    assert future.loc[male & future["age"].eq(79), "count"].item() == 100
+    assert future.loc[male & future["age"].eq(80), "count"].item() == 2000
+    assert future.loc[male & future["age"].eq(85), "count"].item() == 1500
+    assert base.loc[~base["is_female"] & base["age"].eq(80), "count"].item() == 500
+    for year in (2024, 2025):
+        expected = table.loc[table["Year"].eq(year), ["M Tot", "F Tot"]].sum().sum()
+        assert projection.total(year) == expected
+
+
+@pytest.mark.parametrize(
+    "bands", [{80: 85}, {80: 79}, {-1: 4}, {70: 75, 75: 79}, {80: 84.5}]
+)
+def test_ssa_population_projection_rejects_invalid_age_bands(tmp_path, bands):
+    with pytest.raises(ValueError, match="disjoint integer ranges"):
+        ssa_population_projection(tmp_path / "unused.csv", age_bands=bands)
+
+
 @pytest.mark.parametrize(
     "values, year_weights",
     [

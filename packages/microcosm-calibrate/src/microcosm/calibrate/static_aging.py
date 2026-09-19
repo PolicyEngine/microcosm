@@ -572,21 +572,40 @@ def ssa_population_projection(
     path: str | Path,
     *,
     age_top: int = 85,
+    age_bands: Mapping[int, int] | None = None,
     sex_column: str = "is_female",
     age_column: str = "age",
 ) -> DemographicProjection:
     """Read SSA's single-year-of-age population projection into cells.
 
     The file is the Trustees Report population table (``SSPopJul_TR<year>.csv``)
-    with ``Year``, ``Age``, ``M Tot`` and ``F Tot`` columns. Ages at or above
-    ``age_top`` are pooled into one cell, matching survey top-coding.
+    with ``Year``, ``Age``, ``M Tot`` and ``F Tot`` columns. Pool ages at or
+    above ``age_top`` into one cell. ``age_bands`` maps a lower age to an
+    inclusive upper age; pool each range into its lower age code. For CPS
+    ASEC coding, pass ``age_bands={80: 84}`` alongside ``age_top=85``.
+    Bands must not overlap each other or the open-ended top-coded cell.
     """
+    bands = sorted((age_bands or {}).items())
+    previous_upper = -1
+    for lower, upper in bands:
+        if (
+            not isinstance(lower, (int, np.integer))
+            or not isinstance(upper, (int, np.integer))
+            or not 0 <= lower <= upper < age_top
+            or lower <= previous_upper
+        ):
+            raise ValueError(
+                "age_bands must contain disjoint integer ranges below age_top."
+            )
+        previous_upper = upper
     table = pd.read_csv(path)
     required = {"Year", "Age", "M Tot", "F Tot"}
     missing = sorted(required - set(table.columns))
     if missing:
         raise ValueError(f"SSA population file is missing columns {missing}.")
     age = table["Age"].astype(int).clip(upper=age_top)
+    for lower, upper in bands:
+        age = age.mask(age.between(lower, upper), lower)
     long = pd.concat(
         [
             pd.DataFrame(

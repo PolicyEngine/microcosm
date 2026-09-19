@@ -83,6 +83,7 @@ H5: Path
 SSA: Path
 BASE = 2024
 YEARS = (2025, 2030, 2035)
+AGE_BANDS = {80: 84}
 EXPECTED_H5 = "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84"
 EXPECTED_SSA = "cb6ab96eba35554e92e279e839662106602078ba7ff0dfaa306a8a0ca5a919e5"
 SOURCE_FILES = {
@@ -173,6 +174,9 @@ def provenance():
         "epochs": 300,
         "max_weight_ratio": 5.0,
         "anchor": "frame",
+        "ssa_age_bands": AGE_BANDS,
+        "ssa_age_top": 85,
+        "cps_age_coding_source": "https://www2.census.gov/programs-surveys/cps/techdocs/cpsmar24.pdf#page=35",
         "runtime_scope": "PR integration benchmark: PE-US 2.6.10 and custom projected datasets, outside wrapper 6.0.0 model pin 2.2.1",
     }
 
@@ -200,7 +204,7 @@ def project(frame, year):
         if c in system.variables
     ]
     totals, indices, mapping = uprating_series(columns, (BASE, year), system=system)
-    demo = ssa_population_projection(SSA, age_top=85)
+    demo = ssa_population_projection(SSA, age_top=85, age_bands=AGE_BANDS)
     assert frame.person["age"].max() <= 85
     result = static_aging(
         frame,
@@ -360,6 +364,9 @@ def preflight():
                 check_exact=True,
             )
         fit = result.year(year).demographic_fit
+        assert int((fit["base"] == 0).sum()) == 0, (
+            "Certified CPS frame should support every pooled age/sex cell"
+        )
         supported = fit["target"] > 0
         wmape = float(
             (fit.loc[supported, "achieved"] - fit.loc[supported, "target"]).abs().sum()
