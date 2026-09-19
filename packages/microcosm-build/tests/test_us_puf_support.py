@@ -388,6 +388,177 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
     ].tolist() == [0.0, 0.0]
 
 
+def _tail_person_projection_arrays() -> dict[str, np.ndarray]:
+    return {
+        "tax_unit_id": np.array([20, 10], dtype=np.int64),
+        "household_weight": np.array([2.0, 1.0]),
+        "filing_status": np.array(["JOINT", "SINGLE"]),
+        "person_id": np.array([203, 201, 202, 101], dtype=np.int32),
+        "person_tax_unit_id": np.array([20, 20, 20, 10], dtype=np.int64),
+        "is_tax_unit_head": np.array([False, True, False, True]),
+        "is_tax_unit_spouse": np.array([False, False, True, False]),
+        "is_tax_unit_dependent": np.array([True, False, False, False]),
+        "employment_income": np.array([0, 6_000_000, 100, 5], dtype=np.float32),
+        "partnership_s_corp_income": np.array([2_000, -1_000, 0, 0], dtype=np.float64),
+        "qualified_reit_and_ptp_income": np.array([2_000, 0, 0, 0], dtype=np.float64),
+        "partnership_s_corp_income_would_be_qualified": np.array(
+            [True, True, True, False]
+        ),
+        "home_mortgage_interest": np.array([0, 60, 40, 10_000_000], dtype=np.float64),
+        "investment_interest_expense": np.zeros(4),
+    }
+
+
+_TAIL_PROJECTION_TEST_OUTPUTS = (
+    "employment_income_before_lsr",
+    "partnership_income",
+    "qualified_reit_and_ptp_income",
+    "partnership_s_corp_income_would_be_qualified",
+    "home_mortgage_interest",
+    "investment_interest_expense",
+)
+
+
+def test_tail_person_projection_preserves_roles_values_dtypes_and_aggregate() -> None:
+    arrays = _tail_person_projection_arrays()
+    donor = puf_tax_unit_donor_from_arrays(
+        arrays,
+        adjusted_gross_income=[7_000_000, 100_000],
+        person_outputs=_TAIL_PROJECTION_TEST_OUTPUTS,
+        tax_unit_outputs=(),
+    )
+    no_roles = {
+        name: value
+        for name, value in arrays.items()
+        if not name.startswith("is_tax_unit_")
+    }
+    legacy = puf_tax_unit_donor_from_arrays(
+        no_roles,
+        adjusted_gross_income=[7_000_000, 100_000],
+        person_outputs=_TAIL_PROJECTION_TEST_OUTPUTS,
+        tax_unit_outputs=(),
+    )
+    pd.testing.assert_frame_equal(donor, legacy)
+    projection = puf_support_module.puf_tail_person_projection(donor)
+    rows = projection.set_index("person_id")
+    assert rows["role"].to_dict() == {
+        101: "head",
+        201: "head",
+        202: "spouse",
+        203: "dependent",
+    }
+    assert str(rows["employment_income_before_lsr"].dtype) == "float64"
+    assert rows["partnership_s_corp_income_would_be_qualified"].dtype == bool
+    assert (
+        donor.set_index("tax_unit_id").loc[
+            20, "partnership_s_corp_income_would_be_qualified"
+        ]
+        == 3
+    )
+    assert rows.loc[203, "partnership_income"] == 2_000
+    assert rows.loc[201, "partnership_income"] == -1_000
+    assert rows.loc[203, "qualified_reit_and_ptp_income"] == 2_000
+    assert rows.loc[202, "employment_income_before_lsr"] == 100
+    assert rows.loc[101, "home_mortgage_interest"] == 0
+    assert rows.loc[101, "investment_interest_expense"] == 0
+    for column in _TAIL_PROJECTION_TEST_OUTPUTS:
+        sums = projection.groupby("tax_unit_id")[column].sum()
+        np.testing.assert_allclose(
+            sums.reindex(donor.tax_unit_id), donor[column], rtol=1e-14
+        )
+    assert rows.loc[201, "home_mortgage_interest"] / rows.loc[
+        202, "home_mortgage_interest"
+    ] == pytest.approx(1.5)
+    assert rows.loc[201, "investment_interest_expense"] / rows.loc[
+        202, "investment_interest_expense"
+    ] == pytest.approx(1.5)
+
+
+def test_tail_person_projection_identity_and_serialization_fail_closed() -> None:
+    import json
+
+    donor = puf_tax_unit_donor_from_arrays(
+        _tail_person_projection_arrays(),
+        adjusted_gross_income=[7_000_000, 100_000],
+        person_outputs=_TAIL_PROJECTION_TEST_OUTPUTS,
+        tax_unit_outputs=(),
+    )
+    identity = puf_support_module.puf_tail_person_projection_identity(donor)
+    assert identity["available"]
+    assert identity["row_count"] == 4
+    assert identity["dtypes"]["employment_income_before_lsr"] == "float64"
+    assert len(identity["sha256"]) == 64
+    roundtrip = donor.copy()
+    roundtrip.attrs = json.loads(json.dumps(donor.attrs))
+    assert puf_support_module.puf_tail_person_projection_identity(roundtrip) == identity
+    pd.testing.assert_frame_equal(
+        puf_support_module.puf_tail_person_projection(donor),
+        puf_support_module.puf_tail_person_projection(roundtrip),
+    )
+    retyped = puf_support_module.puf_tail_person_projection(donor)
+    retyped["employment_income_before_lsr"] = retyped[
+        "employment_income_before_lsr"
+    ].astype("float32")
+    puf_support_module.attach_puf_tail_person_projection(roundtrip, retyped)
+    assert (
+        puf_support_module.puf_tail_person_projection_identity(roundtrip)["sha256"]
+        != identity["sha256"]
+    )
+    corrupt = donor.copy()
+    corrupt.attrs[puf_support_module.PUF_TAIL_PERSON_PROJECTION_ATTR]["data"][
+        "role"
+    ] = "!"
+    with pytest.raises(ValueError, match="physical values are malformed"):
+        puf_support_module.puf_tail_person_projection(corrupt)
+    changed = puf_support_module.puf_tail_person_projection(donor)
+    changed.loc[changed.person_id.eq(201), "employment_income_before_lsr"] += 1
+    puf_support_module.attach_puf_tail_person_projection(roundtrip, changed)
+    assert (
+        puf_support_module.puf_tail_person_projection_identity(roundtrip)["sha256"]
+        != identity["sha256"]
+    )
+    changed.loc[changed.person_id.eq(202), "role"] = "unclassified"
+    puf_support_module.attach_puf_tail_person_projection(roundtrip, changed)
+    assert (
+        "unclassified"
+        in puf_support_module.puf_tail_person_projection(roundtrip).role.tolist()
+    )
+    with pytest.raises(ValueError, match="missing identity/role"):
+        puf_support_module.attach_puf_tail_person_projection(
+            roundtrip, changed.drop(columns="role")
+        )
+    with pytest.raises(ValueError, match="missing person projection"):
+        puf_support_module.puf_tail_person_projection(
+            pd.DataFrame({"tax_unit_id": [20]})
+        )
+    assert puf_support_module.puf_tail_person_projection_identity(pd.DataFrame()) == {
+        "schema_version": 1,
+        "available": False,
+    }
+
+
+def test_tail_proxy_agi_components_are_declared_additive_output_leaves() -> None:
+    components = puf_support_module.PUF_TAX_DETAIL_PROXY_AGI_COMPONENTS
+    assert len(components) == len(set(components))
+    assert set(components) <= set(PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS)
+    assert {
+        "employment_income_before_lsr",
+        "self_employment_income_before_lsr",
+        "sstb_self_employment_income_before_lsr",
+        "partnership_income",
+        "s_corp_income",
+        "farm_income",
+        "farm_rent_income",
+    } <= set(components)
+    assert not {
+        "farm_operations_income",
+        "qualified_reit_and_ptp_income",
+        "tax_exempt_interest_income",
+        "social_security_retirement",
+        "long_term_capital_gains_on_collectibles",
+    } & set(components)
+
+
 def test_puf_tax_unit_donor_quarantines_only_mortgage_fields() -> None:
     assert US_PUF_DONOR_MORTGAGE_OUTLIER_CEILING == 10_000_000.0
     carved_below_ceiling = split_us_puf_e19200_by_agi_band(
@@ -1291,16 +1462,12 @@ def test_policyengine_broadcasts_annual_reported_enrollment_to_each_month(
         "spm_units": {
             "unit_100": {
                 "members": ["person_1", "person_2"],
-                "receives_tanf": {
-                    "2024": bool(spm_flags.loc[100, "receives_tanf"])
-                },
+                "receives_tanf": {"2024": bool(spm_flags.loc[100, "receives_tanf"])},
                 "receives_snap": {"2024": bool(spm_flags.loc[100, "receives_snap"])},
             },
             "unit_200": {
                 "members": ["person_3"],
-                "receives_tanf": {
-                    "2024": bool(spm_flags.loc[200, "receives_tanf"])
-                },
+                "receives_tanf": {"2024": bool(spm_flags.loc[200, "receives_tanf"])},
                 "receives_snap": {"2024": bool(spm_flags.loc[200, "receives_snap"])},
             },
         },

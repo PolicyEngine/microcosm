@@ -145,3 +145,54 @@ def test_loader_surfaces_source_year_recid_order_refusal(tmp_path: Path) -> None
         match="Processed PUF regular RECID order does not match the TY2015 source",
     ):
         load_puf_tax_unit_donor(processed_path, source_path)
+
+
+def test_loader_retains_typed_person_surface_for_agi_tail(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    from microcosm.build.us_runtime.puf_support import (
+        PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+        PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+        puf_tail_person_projection,
+        puf_tail_person_projection_identity,
+    )
+    from microcosm.build.us_runtime.qbi_inputs import US_QBI_BOOLEAN_OUTPUT_COLUMNS
+
+    arrays = {
+        column: np.zeros(
+            3, dtype=bool if column in US_QBI_BOOLEAN_OUTPUT_COLUMNS else np.float32
+        )
+        for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    }
+    arrays.update(
+        {column: np.zeros(1) for column in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS}
+    )
+    arrays.update(
+        {
+            "tax_unit_id": np.array([10], dtype=np.int64),
+            "household_weight": np.array([2.0]),
+            "filing_status": np.array([b"JOINT"]),
+            "person_id": np.array([1, 2, 3], dtype=np.int64),
+            "person_tax_unit_id": np.array([10, 10, 10], dtype=np.int64),
+            "is_tax_unit_head": np.array([True, False, False]),
+            "is_tax_unit_spouse": np.array([False, True, False]),
+            "is_tax_unit_dependent": np.array([False, False, True]),
+        }
+    )
+    arrays["employment_income_before_lsr"][:] = [6_000_000, 5_000, 0]
+    arrays["partnership_s_corp_income_would_be_qualified"][:] = True
+    path = tmp_path / "typed_persons.h5"
+    _write_processed_arrays(path, arrays)
+    monkeypatch.setattr(
+        puf_donor_io,
+        "source_year_puf_adjusted_gross_income",
+        lambda *args, **kwargs: np.array([6_005_000.0]),
+    )
+
+    donor = load_puf_tax_unit_donor(path, tmp_path / "unused_source.csv")
+    persons = puf_tail_person_projection(donor)
+    assert persons["role"].tolist() == ["head", "spouse", "dependent"]
+    assert persons["employment_income_before_lsr"].dtype == np.float64
+    assert persons["partnership_s_corp_income_would_be_qualified"].dtype == bool
+    assert donor["partnership_s_corp_income_would_be_qualified"].tolist() == [3.0]
+    assert puf_tail_person_projection_identity(donor)["available"]
