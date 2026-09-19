@@ -627,10 +627,16 @@ def validate_puf_tail_vector_mass_receipts(manifest: Mapping[str, object]) -> No
         if arm == 1:
             continue
         roles = mapping(record.get("person_vectors"), "person vectors")
-        if "head" not in roles or set(roles) - {"head", "spouse"} or len(roles) > count:
+        if "head" not in roles or set(roles) - {"head", "spouse"}:
             raise ValueError("PUF tail person count/roles cannot represent the vector.")
         for role, role_vector in roles.items():
             mapping(role_vector, f"{role} vector", set(agi_owned["person"]))
+        # Keep a zero-valued source spouse in donor provenance even when the
+        # recipient has only a head. The eligibility rule requires an actual
+        # spouse carrier only for a nonzero owned source-spouse value.
+        required_people = 1 + int(any(roles.get("spouse", {}).values()))
+        if count < required_people:
+            raise ValueError("PUF tail person count/roles cannot represent the vector.")
         unit = mapping(
             record.get("tax_unit_vector"), "tax-unit vector", set(agi_owned["tax_unit"])
         )

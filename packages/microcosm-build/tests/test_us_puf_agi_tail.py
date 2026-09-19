@@ -355,3 +355,23 @@ def test_full_vector_mass_receipts_rederive_every_column_from_records() -> None:
         node[path[-1]] = value
         with pytest.raises(ValueError, match="PUF tail"):
             agi_tail.validate_puf_tail_vector_mass_receipts(changed)
+
+
+def test_mass_receipt_allows_zero_source_spouse_on_head_only_recipient() -> None:
+    from microcosm.build.us_runtime.puf_capital_gains_tail import puf_tail_owned_columns
+
+    manifest = _mass_manifest()
+    record = manifest["records"][1]
+    record["person_vectors"]["head"]["short_term_capital_gains"] = 15.0
+    record["person_vectors"]["spouse"]["short_term_capital_gains"] = 0.0
+    record["tail_person_count"] = 1
+    owned = puf_tail_owned_columns(2)
+    manifest["full_vector_reconciliation"]["owned_cell_count"] = len(
+        owned["person"]
+    ) + len(owned["tax_unit"])
+    agi_tail.validate_puf_tail_vector_mass_receipts(manifest)
+
+    record["person_vectors"]["head"]["short_term_capital_gains"] = 10.0
+    record["person_vectors"]["spouse"]["short_term_capital_gains"] = 5.0
+    with pytest.raises(ValueError, match="person count/roles"):
+        agi_tail.validate_puf_tail_vector_mass_receipts(manifest)
