@@ -18,6 +18,11 @@ are not used. Missing required headers and contradictory codes refuse.
 `recode_asec_age15_hours(row)` accepts one supplied original March2025/income2024
 age15 donor. It checks HRSWK/WKSWORK and final WRK_CK/WTEMP history, allowing
 temporary work after initial WORKYN2. Source allocation flags stay separate.
+The [Census 2025 FL_665 codebook](https://api.census.gov/data/2025/cps/asec/mar/variables/FL_665.json)
+defines 0 as complete supplement nonresponse, alongside codes 1, 2 and 3.
+All four codes are retained as valid source response-status evidence. This
+recoding does not exclude nonrespondents or relabel their values as observed;
+donor-cohort qualification remains the source owner's separate responsibility.
 WTEMP0 is NIU, not an explicit no: positive hours/weeks and final WRK_CK1 remain
 consistent with WORKYN2 unless WTEMP2 explicitly contradicts work. This retains
 the reviewed donor rule, without claiming any supplied record actually occurred.
