@@ -153,6 +153,210 @@ def _scan(rows, *, wanted=None):
     return count, selected
 
 
+def _records_raw_table(origins, selected):
+    """Pre-iteration implementation, retained only as a parity oracle."""
+    owner.require(
+        set(selected) == set(origins.anchor_source_key), "SELECTED_SOURCE_ROSTER"
+    )
+    raw = pd.DataFrame(
+        [selected[k] for k in origins.anchor_source_key],
+        index=origins.index.copy(),
+        columns=owner.COLUMNS,
+        dtype=object,
+    )
+    owner.require(
+        all(
+            owner._key(row) == key
+            for row, key in zip(
+                raw.to_dict("records"), origins.anchor_source_key, strict=True
+            )
+        ),
+        "SOURCE_COORDINATE_CHANGED",
+    )
+    return raw
+
+
+def _records_parsed_table(raw, origins):
+    """Old anchor order, pandas dtypes and record boxing for exact comparison."""
+    result = raw.copy(deep=True)
+    result["native_person_id"] = origins.selected_receiving_person_id.to_numpy(
+        copy=True
+    )
+    result["source_year"] = 2024
+    result["dollar_year"] = 2024
+    for column, flag, prefix, _output in owner.ANCHORS:
+        values = [
+            owner.parse_anchor(
+                row[column],
+                age=row["AGEP"],
+                adjustment=row["ADJINC"],
+                allocation=row[flag],
+                field=column,
+            )
+            for row in raw.to_dict("records")
+        ]
+        parsed = pd.DataFrame(values, index=raw.index)
+        for name in parsed:
+            dtype = (
+                "Float64"
+                if name == "amount"
+                else (
+                    bool
+                    if name in ("known", "adjustment_known", "in_income_universe")
+                    else owner.STRING_DTYPE
+                )
+            )
+            result[prefix + "_" + name] = pd.array(parsed[name], dtype=dtype)
+    return result
+
+
+def _iteration_fixture():
+    rows = _literal_rows()
+    for i, overrides in enumerate(
+        (
+            {"INTP": "", "RETP": "4", "AGEP": "14"},
+            {"INTP": "１２", "RETP": "−4", "FINTP": "é", "FRETP": "未"},
+            {"INTP": "-10000", "RETP": "999999", "ADJINC": "9999999"},
+            {"INTP": "-4", "RETP": "4", "ADJINC": "1"},
+            {"INTP": "0", "RETP": "0", "ADJINC": ""},
+            {"INTP": "9" * 64, "RETP": "-4", "ADJINC": "0"},
+        ),
+        start=3,
+    ):
+        rows.append({**rows[0], "SERIALNO": f"2024HU{i:07d}", **overrides})
+    _, selected = _scan(rows)
+    origins = pd.DataFrame(
+        {
+            "anchor_source_key": list(reversed(selected)),
+            "selected_receiving_person_id": np.arange(len(rows), dtype="int64") + 2**60,
+        },
+        index=pd.Index(
+            np.iinfo("int64").max - np.arange(len(rows), dtype="int64") * 3,
+            name="person_id",
+        ),
+    )
+    return origins, selected
+
+
+def _assert_exact_anchor_parity(actual, expected):
+    pd.testing.assert_frame_equal(actual, expected, check_exact=True)
+    for column in ("property_income_amount", "retirement_income_amount"):
+        assert (
+            actual[column].array._data.tobytes()
+            == expected[column].array._data.tobytes()
+        )
+        assert (
+            actual[column].array._mask.tobytes()
+            == expected[column].array._mask.tobytes()
+        )
+    projections = [
+        table.reset_index().to_json(orient="table", index=False).encode()
+        for table in (actual, expected)
+    ]
+    assert projections[0] == projections[1]
+    qualified = [
+        owner.QualifiedAcsIncomeAnchors(
+            table,
+            projection,
+            {"projection_sha256": owner.hashlib.sha256(projection).hexdigest()},
+        )
+        for table, projection in zip((actual, expected), projections, strict=True)
+    ]
+    assert owner.income_anchor_seal(qualified[0]) == owner.income_anchor_seal(
+        qualified[1]
+    )
+
+
+def test_column_iteration_matches_records_projection_bits_and_digest():
+    origins, selected = _iteration_fixture()
+    raw = owner._raw_table(origins, selected)
+    expected_raw = _records_raw_table(origins, selected)
+    pd.testing.assert_frame_equal(raw, expected_raw, check_exact=True)
+    _assert_exact_anchor_parity(
+        owner._parsed_table(raw, origins), _records_parsed_table(expected_raw, origins)
+    )
+
+
+def test_source_tables_do_not_expand_a_full_record_dictionary_list(monkeypatch):
+    origins, selected = _iteration_fixture()
+    original = pd.DataFrame.to_dict
+
+    def refuse_records(self, orient="dict", *args, **kwargs):
+        assert orient != "records", "whole-roster records allocation"
+        return original(self, orient, *args, **kwargs)
+
+    monkeypatch.setattr(pd.DataFrame, "to_dict", refuse_records)
+    parsed = owner._parsed_table(owner._raw_table(origins, selected), origins)
+    assert len(parsed) == len(origins)
+
+
+@pytest.mark.parametrize(
+    "column,value",
+    [
+        ("INTP", None),
+        ("INTP", pd.NA),
+        ("INTP", np.nan),
+        ("INTP", np.int64(4)),
+        ("RETP", np.float64(4)),
+        ("AGEP", "１５"),
+        ("ADJINC", 1000133),
+        ("FRETP", pd.NA),
+    ],
+)
+def test_iteration_preserves_invalid_literal_refusals(column, value):
+    origins, selected = _iteration_fixture()
+    raw = owner._raw_table(origins, selected)
+    raw.loc[raw.index[1], column] = value
+    with pytest.raises(ValueError) as previous:
+        _records_parsed_table(raw, origins)
+    with pytest.raises(ValueError) as current:
+        owner._parsed_table(raw, origins)
+    assert str(current.value) == str(previous.value)
+
+
+@pytest.mark.parametrize("defect", ["missing", "coordinate", "household", "person"])
+def test_iteration_preserves_roster_and_coordinate_refusals(defect):
+    origins, selected = _iteration_fixture()
+    key = origins.anchor_source_key.iloc[0]
+    if defect == "missing":
+        del selected[key]
+    elif defect == "coordinate":
+        selected[key]["SPORDER"] = "20"
+    elif defect == "household":
+        selected[key]["SERIALNO"] = "bad"
+    else:
+        selected[key]["SPORDER"] = "21"
+    with pytest.raises(ValueError) as previous:
+        _records_raw_table(origins, selected)
+    with pytest.raises(ValueError) as current:
+        owner._raw_table(origins, selected)
+    assert str(current.value) == str(previous.value)
+
+
+def test_iteration_preserves_anchor_then_row_validation_order(monkeypatch):
+    origins, selected = _iteration_fixture()
+    raw = owner._raw_table(origins, selected)
+    # A RETP failure in the first row must not precede a later INTP failure.
+    raw.loc[raw.index[0], "RETP"] = None
+    raw.loc[raw.index[2], "INTP"] = None
+    parse = owner.parse_anchor
+    calls = []
+
+    def record_parse(token, **kwargs):
+        calls.append((token, kwargs))
+        return parse(token, **kwargs)
+
+    monkeypatch.setattr(owner, "parse_anchor", record_parse)
+    with pytest.raises(ValueError):
+        _records_parsed_table(raw, origins)
+    previous = calls.copy()
+    calls.clear()
+    with pytest.raises(ValueError):
+        owner._parsed_table(raw, origins)
+    assert calls == previous
+    assert [kwargs["field"] for _, kwargs in calls] == ["INTP"] * 3
+
+
 def test_literal_scan_is_keyed_and_keeps_every_original_token():
     count, values = _scan(_literal_rows()[::-1])
     assert count == 5
@@ -222,6 +426,15 @@ def test_actual_qualifier_binds_originals_and_adjusted_bits(tmp_path, monkeypatc
         == "malformed_source_amount"
     )
     assert pd.isna(first.loc[("2024HU0000002", "1"), "property_income_amount"])
+    entry = prepared._checked()
+    origins = owner._origins(entry[2], owner.json.loads(entry[1]))
+    _, selected = _scan(_literal_rows())
+    expected = _records_parsed_table(_records_raw_table(origins, selected), origins)
+    _assert_exact_anchor_parity(qualified.anchors, expected)
+    assert (
+        qualified.projection
+        == expected.reset_index().to_json(orient="table", index=False).encode()
+    )
     assert owner.preparation._frame_identity(original) == before
     fresh = owner.qualify_current_acs_income_anchors(prepared)
     assert owner.income_anchor_seal(fresh) == owner.income_anchor_seal(qualified)

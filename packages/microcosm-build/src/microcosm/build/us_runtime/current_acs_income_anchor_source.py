@@ -209,9 +209,9 @@ def _raw_table(origins, selected):
     )
     require(
         all(
-            _key(row) == key
-            for row, key in zip(
-                raw.to_dict("records"), origins.anchor_source_key, strict=True
+            _key({"SERIALNO": serial, "SPORDER": order}) == key
+            for serial, order, key in zip(
+                raw["SERIALNO"], raw["SPORDER"], origins.anchor_source_key, strict=True
             )
         ),
         "SOURCE_COORDINATE_CHANGED",
@@ -297,13 +297,15 @@ def _parsed_table(raw, origins):
     for column, flag, prefix, _output in ANCHORS:
         values = [
             parse_anchor(
-                r[column],
-                age=r["AGEP"],
-                adjustment=r["ADJINC"],
-                allocation=r[flag],
+                token,
+                age=age,
+                adjustment=adjustment,
+                allocation=allocation,
                 field=column,
             )
-            for r in raw.to_dict("records")
+            for token, age, adjustment, allocation in zip(
+                raw[column], raw["AGEP"], raw["ADJINC"], raw[flag], strict=True
+            )
         ]
         parsed = pd.DataFrame(values, index=raw.index)
         for name in parsed:
