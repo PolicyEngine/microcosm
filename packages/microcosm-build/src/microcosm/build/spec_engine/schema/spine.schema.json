@@ -191,7 +191,7 @@
        "policy": {
         "const": "declared_min_support_with_receipt"
        },
-       "manifest_schema_version": {"const": 2},
+       "manifest_schema_version": {"const": 3},
        "legacy_contract": {
         "$ref": "#/$defs/tail_support_contract"
        }
@@ -260,6 +260,34 @@
   }
  },
  "$defs": {
+  "tail_owned_columns": {
+   "type": "object",
+   "additionalProperties": false,
+   "required": [
+    "person",
+    "tax_unit"
+   ],
+   "properties": {
+    "person": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {
+      "type": "string",
+      "minLength": 1
+     }
+    },
+    "tax_unit": {
+     "type": "array",
+     "minItems": 1,
+     "uniqueItems": true,
+     "items": {
+      "type": "string",
+      "minLength": 1
+     }
+    }
+   }
+  },
   "pipeline_contract": {
    "type": "object",
    "additionalProperties": false,
@@ -424,7 +452,10 @@
     "required_minimum",
     "insufficient_support_action",
     "candidate_universe",
-    "agi_band_policy"
+    "agi_band_policy",
+    "recipient_role_minimum_age",
+    "role_compatibility",
+    "arm_owned_columns"
    ],
    "properties": {
     "contract_id": {"type": "string", "minLength": 1},
@@ -447,7 +478,35 @@
     "required_minimum": {"type": "string", "minLength": 1},
     "insufficient_support_action": {"type": "string", "minLength": 1},
     "candidate_universe": {"type": "string", "minLength": 1},
-    "agi_band_policy": {"type": "string", "minLength": 1}
+    "agi_band_policy": {"type": "string", "minLength": 1},
+    "recipient_role_minimum_age": {
+     "type": "integer",
+     "minimum": 0
+    },
+    "role_compatibility": {
+     "type": "string",
+     "minLength": 1
+    },
+    "arm_owned_columns": {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "1",
+      "2",
+      "3"
+     ],
+     "properties": {
+      "1": {
+       "$ref": "#/$defs/tail_owned_columns"
+      },
+      "2": {
+       "$ref": "#/$defs/tail_owned_columns"
+      },
+      "3": {
+       "$ref": "#/$defs/tail_owned_columns"
+      }
+     }
+    }
    }
   },
   "support_spine_manifest_body": {

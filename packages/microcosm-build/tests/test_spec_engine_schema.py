@@ -362,3 +362,47 @@ def test_ambiguous_one_of_never_leaks_a_branch_default(tmp_path: Path) -> None:
         catalog.validate_and_inject_defaults(authored, "bundle.schema.json")
 
     assert authored["ambiguous"] == {}
+
+
+def test_agi_tail_contract_schema_requires_complete_closed_selection() -> None:
+    from microcosm.build.us_runtime.puf_agi_tail import puf_agi_tail_selection_identity
+
+    catalog = load_schema_registry()
+    identity = puf_agi_tail_selection_identity()
+    schema_id = "imputation.schema.json#/$defs/agi_tail_selection_contract"
+    catalog.validate(identity, schema_id)
+    missing_budget = copy.deepcopy(identity)
+    del missing_budget["maximum_agi_only_donors"]
+    with pytest.raises(SpecValidationError, match="maximum_agi_only_donors"):
+        catalog.validate(missing_budget, schema_id)
+    unknown = copy.deepcopy(identity)
+    unknown["allow_dependent_folding"] = True
+    with pytest.raises(SpecValidationError, match="Additional properties"):
+        catalog.validate(unknown, schema_id)
+    invalid_budget = copy.deepcopy(identity)
+    invalid_budget["maximum_agi_only_donors"] = 0
+    with pytest.raises(SpecValidationError, match="maximum_agi_only_donors"):
+        catalog.validate(invalid_budget, schema_id)
+
+
+def test_agi_tail_support_schema_requires_each_arm_owned_surface() -> None:
+    from microcosm.build.us_runtime.puf_capital_gains_tail import (
+        puf_capital_gains_tail_support_contract_identity,
+    )
+
+    catalog = load_schema_registry()
+    contract = puf_capital_gains_tail_support_contract_identity()
+    schema_id = "spine.schema.json#/$defs/tail_support_contract"
+    catalog.validate(contract, schema_id)
+    missing_both = copy.deepcopy(contract)
+    del missing_both["arm_owned_columns"]["3"]
+    with pytest.raises(SpecValidationError, match="required property"):
+        catalog.validate(missing_both, schema_id)
+    unknown = copy.deepcopy(contract)
+    unknown["arm_owned_columns"]["4"] = unknown["arm_owned_columns"]["1"]
+    with pytest.raises(SpecValidationError, match="Additional properties"):
+        catalog.validate(unknown, schema_id)
+    missing_grain = copy.deepcopy(contract)
+    del missing_grain["arm_owned_columns"]["2"]["person"]
+    with pytest.raises(SpecValidationError, match="required property"):
+        catalog.validate(missing_grain, schema_id)
