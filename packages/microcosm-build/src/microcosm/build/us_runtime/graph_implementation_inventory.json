@@ -1,5 +1,24 @@
 {
   "contracts": {
+    "microcosm.build/acs_spm_partition.py": {
+      "imports": [
+        "numpy",
+        "pandas",
+        "spm_calculator"
+      ],
+      "resource_accesses_sha256": "0c505e584b3ef29a13667cc5fccc337dc5878b54c3550a11a2df0e9dc422e5a9",
+      "unbound_uses_sha256": "a34df25f5d029627bcd1213b449fc7de3c4161163ef6cc1e2ff3473464556cf5"
+    },
+    "microcosm.build/acs_spm_source_assembly.py": {
+      "imports": [
+        "microcosm.build",
+        "microcosm.frame",
+        "numpy",
+        "pandas"
+      ],
+      "resource_accesses_sha256": "62e43145bbae154b7f627a1dcd771aa6109a736bfc029a736124304d2e2cf4f6",
+      "unbound_uses_sha256": "55d0023bb7453b6f3c2a5f97c93ac01f131b65468c110ab3e5403886d2d4d5cb"
+    },
     "microcosm.build/cd_benchmark/canonical.py": {
       "imports": [],
       "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
@@ -106,6 +125,8 @@
     },
     "microcosm.build/us_runtime/acs_housing_universe_source.py": {
       "imports": [
+        "microcosm.build.acs_spm_partition",
+        "microcosm.build.acs_spm_source_assembly",
         "microcosm.build.serialization_dtypes",
         "microcosm.build.us_runtime.acs_housing_universe",
         "microcosm.build.us_runtime.acs_inputs",
@@ -135,11 +156,13 @@
     },
     "microcosm.build/us_runtime/acs_native_coverage_binding.py": {
       "imports": [
+        "microcosm.build.acs_spm_source_assembly",
         "microcosm.build.us_runtime",
-        "microcosm.frame"
+        "microcosm.frame",
+        "spm_calculator"
       ],
       "resource_accesses_sha256": "493c1a38451cc17c161232077fcea53211dc46f91695d6ec2485d755da52b291",
-      "unbound_uses_sha256": "937ac46755604aef55c18570df2520f92e51dd0486b93e2316a160cdaa67ad6a"
+      "unbound_uses_sha256": "4300eedc246b59f9426c7f9ddccf1b8d2cb3fc9073b125bf6bb5567c466c0998"
     },
     "microcosm.build/us_runtime/acs_person_coverage_authentication.py": {
       "imports": [
@@ -171,7 +194,9 @@
     },
     "microcosm.build/us_runtime/acs_pums.py": {
       "imports": [
+        "microcosm.build.acs_spm_source_assembly",
         "microcosm.build.serialization_dtypes",
+        "microcosm.build.us_runtime.operator_column_contracts",
         "microcosm.frame",
         "microcosm.frame.units",
         "numpy",
@@ -938,6 +963,7 @@
     "microcosm.build/us_runtime/survey_population_preparation.py": {
       "imports": [
         "microcosm.build",
+        "microcosm.build.acs_spm_source_assembly",
         "microcosm.build.us_runtime",
         "microcosm.build.us_runtime.support_provenance",
         "microcosm.frame",
@@ -947,7 +973,7 @@
         "pandas"
       ],
       "resource_accesses_sha256": "0071f934801d15c14e4be66af12ff73daee5f65c89f61d655a23e462afdcd061",
-      "unbound_uses_sha256": "d114117ca19e9b866982147e5497d601ed91ca603d0568730d4051bdd4005910"
+      "unbound_uses_sha256": "edfa27387e71d546926845414cf646d239834ded5ecd5d6148c03dd054c0b572"
     },
     "microcosm.frame/__init__.py": {
       "imports": [
@@ -1399,6 +1425,8 @@
     "axiom_rules_engine": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "h5py": "versioned dependency in explicit stages",
     "microcosm.build": "package namespace import of explicitly bound frame_checkpoint; other package exports are inactive in this slice",
+    "microcosm.build.acs_spm_partition": "Whole-module source partition helper bound wherever ACS parsing is included. Optional assembler import is inactive for default v1; explicit construction is separately capability checked and exact callable SHA pinned by the captured ACS owner.",
+    "microcosm.build.acs_spm_source_assembly": "Whole-module ID-only opt-in ACS source construction, bound wherever ACS parsing is included; no engine roles or annual scope. Actual rowwise evidence retained by the captured native source owner.",
     "microcosm.build.cd_benchmark": "package-relative original source-member identity alias; origin and its pure canonical helper are explicitly whole-module bound in authenticated_survey_population_v1",
     "microcosm.build.cd_benchmark.canonical": "whole-module pure canonical JSON and source digest validation in authenticated_survey_population_v1; no benchmark targets or data",
     "microcosm.build.cd_benchmark.origin": "whole-module original source-member identity in authenticated_survey_population_v1; no benchmark targets or data",
@@ -1551,6 +1579,7 @@
     "policyengine_uk.data": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "policyengine_us": "live evaluation only, explicitly pinned installed runtime and parameter identity; inactive in other shared adapter routes",
     "policyengine_us.data": "live evaluation dataset adapter only, bound by pinned installed PE-US runtime identity; inactive in other stages",
+    "spm_calculator": "Optional explicit ACS development construction only; default v1 never imports it. Captured source owner requires the reviewed PR45 defining-file SHA and native verifier checks the actual loaded callable. No global installed-package dependency or lock migration.",
     "yaml": "versioned dependency in explicit stages"
   },
   "package_resources": {
@@ -1614,6 +1643,7 @@
   "reviewed_base": "c71e31654faf0e3f874e68e8c100b09c7eb9955f",
   "schema": "microcosm.us.implementation-inventory.v1",
   "scope_notes": {
+    "acs_spm_construction": "Explicit request v2 binds development source SPM options to actual captured-source construction before native input mapping. Whole helper bytes, parser/owner bytes and native evidence bytes change implementation/source identities. The optional assembler remains unimported on v1; v2 separately checks exact reviewed defining-file bytes and live callable. Retained rowwise membership, links, uncertainty and native crosswalks grant no detached authority, engine role or annual universe. Historical receipts are not byte-parity claims across this revision.",
     "asec_prepared_engine": "PE-US/Core are live only in the evaluation kernel. That kernel adds their dependencies and verifies pinned installed implementation/parameter bytes in its implementation identity before cache lookup. The common prepared scope can be hashed without engine extras; its local adapter/source-index modules and empty-defaults resource are bound.",
     "asec_prepared_v3": "Full P/H/T1 restoration, unchanged money recipe, separate S authentication/attachment before tax units, housing authentication against original T1, lossless dtype promotion, typed whole-household selection, corrected CPS leaves and four admitted PE outputs. Graph/Frame/microunit rosters are bound conservatively. Only declared source codec registration and frame column declarations run from graph_sources; ACS and stack assembly routes remain inactive. Alimony's pure ASEC split and cps_carried's split constants are bound, while their legacy consumer/source-manifest routes are inactive. V2 additionally authenticates HU from original T1, attaches it after housing status, preserves the pre-HU parent signature and carries native HU bytes plus selected-row ancestry with exact int64 promotion; pure ACS HU remains inactive. V3 additionally issues separate PAW_VAL/PAW_YN observations from the same official members and a derived six-column reported-income branch. The 33-field body, T1/S definitions, selected-money v1 and selection v2 payload contract remain sealed; historical v2 artifacts are preserved, but v3 runtime keys invalidate old caches.",
     "authenticated_survey_population_v1": "Complete ACS and ASEC catalogues authenticate original source records before one domain draw. Selected native issuers produce original DESIGN anchors, which are stacked without share normalization; the graph applies share/inclusion probability once. Explicit narrow source closure includes pure origin canonical encoding and the original household/person custody helpers, not the legacy prepared ASEC resource union. Original source JSONs and microunit YAML are the only packaged data. The isolated real source-codec loader is declared separately from the unchanged global five codecs. The runner reconstructs source authority on cold and warm invocations and checks actual populations, design ancestry, owners, weight kinds, mass ledgers and typed artifact descriptors. Optional PUF support cloning follows over both survey arms under existing clone implementation identities. No donor fit/draw, policy engine, calibration or target measurement is part of this stage. Initial source and graph snapshots remain preliminary pending integrated invented execution and independent review.",
@@ -1636,6 +1666,8 @@
         "pyarrow"
       ],
       "modules": [
+        "microcosm.build/acs_spm_partition.py",
+        "microcosm.build/acs_spm_source_assembly.py",
         "microcosm.build/serialization_dtypes.py",
         "microcosm.build/us_runtime/acs_inputs.py",
         "microcosm.build/us_runtime/acs_pums.py",
@@ -1704,6 +1736,8 @@
         "pyarrow"
       ],
       "modules": [
+        "microcosm.build/acs_spm_partition.py",
+        "microcosm.build/acs_spm_source_assembly.py",
         "microcosm.build/serialization_dtypes.py",
         "microcosm.build/us_runtime/acs_housing_universe.py",
         "microcosm.build/us_runtime/acs_housing_universe_source.py",
@@ -1993,6 +2027,8 @@
         "pyarrow"
       ],
       "modules": [
+        "microcosm.build/acs_spm_partition.py",
+        "microcosm.build/acs_spm_source_assembly.py",
         "microcosm.build/frame_checkpoint.py",
         "microcosm.build/frame_sampling.py",
         "microcosm.build/gates.py",
@@ -2075,6 +2111,8 @@
         "pyarrow"
       ],
       "modules": [
+        "microcosm.build/acs_spm_partition.py",
+        "microcosm.build/acs_spm_source_assembly.py",
         "microcosm.build/cd_benchmark/canonical.py",
         "microcosm.build/cd_benchmark/origin.py",
         "microcosm.build/frame_checkpoint.py",
@@ -2189,6 +2227,8 @@
         "pyarrow"
       ],
       "modules": [
+        "microcosm.build/acs_spm_partition.py",
+        "microcosm.build/acs_spm_source_assembly.py",
         "microcosm.build/frame_checkpoint.py",
         "microcosm.build/frame_sampling.py",
         "microcosm.build/gates.py",
@@ -2311,6 +2351,8 @@
         "pyarrow"
       ],
       "modules": [
+        "microcosm.build/acs_spm_partition.py",
+        "microcosm.build/acs_spm_source_assembly.py",
         "microcosm.build/frame_checkpoint.py",
         "microcosm.build/frame_sampling.py",
         "microcosm.build/gates.py",

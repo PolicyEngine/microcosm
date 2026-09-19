@@ -17,7 +17,7 @@ import stat
 import tempfile
 import zipfile
 from contextlib import contextmanager, suppress
-from dataclasses import InitVar, dataclass
+from dataclasses import InitVar, asdict, dataclass
 from pathlib import Path
 
 import numpy as np
@@ -31,7 +31,14 @@ from microcosm.graph.store import ContentStore
 
 from .acs_housing_universe import classify_acs_housing_universe
 from .acs_inputs import map_acs_native_inputs
-from .acs_pums import AcsPumsSource, _validate_person_counts, build_acs_pums_unit_frame
+from .acs_pums import (
+    AcsPumsSource,
+    _build_acs_pums_unit_frame_with_evidence,
+    _validate_person_counts,
+)
+from .acs_pums import (
+    build_acs_pums_unit_frame as build_acs_pums_unit_frame,
+)
 from .acs_sources import load_acs_source_manifest
 from .graph_implementation import implementation_hash
 from .operator_boundary import assert_operator_free_source_frame
@@ -59,6 +66,12 @@ _LINEAGE = ("source_member", "source_row_ordinal")
 # Invented tests replace this private slot; public callers have no pin argument.
 _ARCHIVE_PINS = None
 _TOKEN = object()
+# Explicit development option only. Default source preparation never imports
+# the optional assembler. This exact callable implementation is PR45 bcf45768.
+_SPM_ASSEMBLER_SHA256 = (
+    "ce0d328d856ca81862b4e80947b6f6269a89bbd842cbdbb1569411b319da5a33"
+)
+_SPM_EVIDENCE_MAX_BYTES = 256 * 1024**2
 
 
 class ACSHousingSourceError(ValueError):
@@ -96,6 +109,61 @@ def _definition() -> tuple[dict, str]:
 def _implementation() -> str:
     _require(capture_csv_reader(csv) is not None, "SOURCE_CSV_READER_CHANGED")
     return implementation_hash(ACS_HU_STAGE)
+
+
+def _spm_implementation(options):
+    """Refuse an unreviewed optional callable before reading population files."""
+    if options is None:
+        return None
+    from microcosm.build.acs_spm_partition import probe_acs_spm_assembler
+    from microcosm.build.acs_spm_source_assembly import (
+        require_acs_spm_source_capability,
+    )
+
+    require_acs_spm_source_capability(options)
+    probe = probe_acs_spm_assembler()
+    _require(probe.module_sha256 == _SPM_ASSEMBLER_SHA256, "SPM_ASSEMBLER_UNREVIEWED")
+    return {"options": asdict(options), "assembler": probe.as_provenance()}
+
+
+def _construction_evidence(constructed, source, implementation):
+    """Serialize actual constructor objects; hashes never recreate authority."""
+    if constructed is None:
+        _require(implementation is None, "SPM_CONSTRUCTION_MISSING")
+        return None
+    from microcosm.build.acs_spm_source_assembly import _bytes
+
+    def table(value):
+        return {
+            "columns": list(value.columns),
+            "dtypes": [str(dtype) for dtype in value.dtypes],
+            "index": list(value.index),
+            "rows": list(value.itertuples(index=False, name=None)),
+        }
+
+    payload = _bytes(
+        {
+            "protocol": "microcosm.acs-spm-native-construction-evidence.v1",
+            "implementation": implementation,
+            "source_receipt_sha256": _sha(source.receipt_json),
+            "archives": json.loads(source.receipt_json)["archives"],
+            "source_binding": "actual_construction_from_owner_captured_archives",
+            "construction_receipt": constructed.receipt,
+            "registry": asdict(constructed.registry),
+            "partition": {
+                name: table(getattr(constructed.partition, name))
+                for name in ("membership", "links", "crosswalk", "regrouping")
+            },
+            "partition_provenance": constructed.partition.provenance,
+            "native_crosswalk": table(constructed.crosswalk),
+            "unit_evidence": table(constructed.unit_evidence),
+            "engine_role_delivered": False,
+            "annual_universe_declared": False,
+            "release_eligible": False,
+        }
+    )
+    _require(len(payload) <= _SPM_EVIDENCE_MAX_BYTES, "SPM_EVIDENCE_LIMIT")
+    return payload
 
 
 def _pins():
@@ -818,14 +886,27 @@ class PreparedACSHousingPopulation:
     frame: Frame
     source: AuthenticatedACSHousingSource
     receipt_json: bytes
+    construction_evidence_json: bytes | None = None
 
     @property
     def receipt(self):
         return json.loads(self.receipt_json)
 
+    @property
+    def construction_evidence(self):
+        """Defensive values only; detached evidence grants no source authority."""
+        return (
+            None
+            if self.construction_evidence_json is None
+            else json.loads(self.construction_evidence_json)
+        )
 
-def prepare_acs_housing_population(source_dir, *, snapshot_root, serialnos=None):
+
+def prepare_acs_housing_population(
+    source_dir, *, snapshot_root, serialnos=None, spm_construction=None
+):
     """Validate the full lexical source; construct only exact selected native rows."""
+    spm_implementation = _spm_implementation(spm_construction)
     try:
         serialnos = AcsPumsSource.snapshot_serialnos(serialnos)
         implementation = _implementation()
@@ -833,17 +914,41 @@ def prepare_acs_housing_population(source_dir, *, snapshot_root, serialnos=None)
             source = _reconstruct(private, paths, pins, serialnos, implementation)
             projection = json.loads(source.projection_json)
             _require(bool(projection["persons"]), "EMPTY_GRAPH_POPULATION")
-            raw, _builder_receipt = build_acs_pums_unit_frame(
-                AcsPumsSource(
-                    paths["household"],
-                    paths["person"],
-                    vintage=2024,
-                    max_households=None,
-                ),
-                serialnos=serialnos,
+            raw, _builder_receipt, constructed = (
+                _build_acs_pums_unit_frame_with_evidence(
+                    AcsPumsSource(
+                        paths["household"],
+                        paths["person"],
+                        vintage=2024,
+                        max_households=None,
+                    ),
+                    serialnos=serialnos,
+                    spm_construction=spm_construction,
+                )
+            )
+            construction_evidence = _construction_evidence(
+                constructed, source, spm_implementation
             )
             mapped = map_acs_native_inputs(raw)
             frame = mapped.frame
+            if construction_evidence is not None:
+                from microcosm.build.acs_spm_source_assembly import RECEIPT_KEY
+
+                # This aggregate observation is not normative operator authority.
+                # Actual receipt and rowwise evidence remain with the issued owner.
+                metadata = dict(frame.metadata)
+                _require(
+                    _json(metadata.pop(RECEIPT_KEY)) == _json(constructed.receipt),
+                    "SPM_AGGREGATE_RECEIPT_CHANGED",
+                )
+                frame = Frame(
+                    {entity: frame.table(entity) for entity in frame.entities},
+                    frame.schema,
+                    dict(frame._weights),
+                    frame.strata,
+                    mass_log=frame.mass_log,
+                    metadata=metadata,
+                )
             assert_operator_free_source_frame(
                 frame,
                 label="ACS HU authenticated source",
@@ -888,6 +993,10 @@ def prepare_acs_housing_population(source_dir, *, snapshot_root, serialnos=None)
                         )
             verify_acs_frame_projection(frame, projection)
             _require(_implementation() == implementation, "IMPLEMENTATION_CHANGED")
+            _require(
+                _spm_implementation(spm_construction) == spm_implementation,
+                "SPM_IMPLEMENTATION_CHANGED",
+            )
             receipt = {
                 "format": "microcosm.acs_housing_preparation.v2",
                 "release_eligible": False,
@@ -910,7 +1019,18 @@ def prepare_acs_housing_population(source_dir, *, snapshot_root, serialnos=None)
                 "weight_kind": "design",
                 "HU_columns": "artifact_only",
             }
-            return PreparedACSHousingPopulation(frame, source, _json(receipt))
+            if construction_evidence is not None:
+                receipt["spm_construction"] = {
+                    "implementation": spm_implementation,
+                    "evidence_sha256": _sha(construction_evidence),
+                    "evidence_bytes": len(construction_evidence),
+                    "evidence_max_bytes": _SPM_EVIDENCE_MAX_BYTES,
+                    "scope": "development_source_structure_only",
+                    "metadata_transport": "aggregate_and_rowwise_evidence_retained_by_owner_not_normative_frame_metadata",
+                }
+            return PreparedACSHousingPopulation(
+                frame, source, _json(receipt), construction_evidence
+            )
     except ACSHousingSourceError:
         raise
     except (

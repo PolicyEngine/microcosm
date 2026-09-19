@@ -41,9 +41,9 @@ MAX_EVIDENCE_BYTES = 2 * 1024**2
 # Exact accepted direct AGEP -> A_AGE and AGEP -> age implementation, and owners.
 # A new transform/owner version requires explicit review of this successor.
 _ACCEPTED = {
-    "acs_pums.py": "893fd570cf74bf87c133d98e2a450793ad031ce60a40778fb5ea03b3cb9280c8",
+    "acs_pums.py": "82fc2d3ca969b0c9f68f86efeb0a68a58271fb5d141f1b2eee93106e1b002814",
     "acs_inputs.py": "aa4a8aeaba63dfef2f3e04fb89de59766deb088ed7f4d290aeba0425739916da",
-    "acs_housing_universe_source.py": "beb46a4a05a13580a868be423809a77946441dcafc3a0f57160561157e93e9a3",
+    "acs_housing_universe_source.py": "0e6ed87395837ccf852611229010a5c021dd75ae8e4ca8d30f206b8f85f588bd",
     "acs_person_coverage_authentication.py": "b8400706d44fd76f6d9495dafde984c37d261041c38efd5803286a67ca124977",
 }
 _TOKEN = object()
@@ -352,6 +352,10 @@ def _producer():
             sys.modules[housing.AcsPumsSource.__module__].MAX_EXACT_PERSON_ROWS,
         ],
         "accepted_age_transform": "literal_numeric_identity_AGEP_to_AGEP_A_AGE_age",
+        "optional_spm_construction": {
+            "assembler_sha256": housing._SPM_ASSEMBLER_SHA256,
+            "evidence_max_bytes": housing._SPM_EVIDENCE_MAX_BYTES,
+        },
     }
 
 
@@ -466,6 +470,12 @@ class AuthenticatedACSNativeCoverage:
         return _owned(self).frame
 
     @property
+    def construction_evidence(self):
+        """Defensive rowwise values from the checked actual source owner."""
+        verify_acs_native_coverage(self)
+        return _owned(self).prepared.construction_evidence
+
+    @property
     def coverage_table(self):
         return _owned(self).literal.table
 
@@ -556,7 +566,38 @@ def _verify_prepared_frame(prepared):
         housing.frame_content_sha256(prepared.frame) == recorded,
         "PREPARATION_FRAME_CHANGED",
     )
+    _verify_prepared_construction(prepared)
     return recorded
+
+
+def _verify_prepared_construction(prepared):
+    recorded = prepared.receipt.get("spm_construction")
+    evidence = prepared.construction_evidence_json
+    if recorded is None:
+        _require(evidence is None, "UNREQUESTED_SPM_CONSTRUCTION")
+        return
+    _require(
+        type(evidence) is bytes
+        and len(evidence) == recorded["evidence_bytes"]
+        and len(evidence) <= housing._SPM_EVIDENCE_MAX_BYTES
+        and coverage._sha(evidence) == recorded["evidence_sha256"],
+        "SPM_CONSTRUCTION_EVIDENCE_CHANGED",
+    )
+    from spm_calculator import spm_unit_id
+
+    from microcosm.build.acs_spm_source_assembly import AcsSpmSourceAssemblyOptions
+
+    options = AcsSpmSourceAssemblyOptions(**recorded["implementation"]["options"])
+    _require(
+        housing._spm_implementation(options) == recorded["implementation"],
+        "SPM_IMPLEMENTATION_CHANGED",
+    )
+    # The probe/file identity alone cannot detect a replaced live callable.
+    module = sys.modules[spm_unit_id.__module__]
+    _require(
+        getattr(module, "spm_unit_id", None) is spm_unit_id, "SPM_CALLABLE_CHANGED"
+    )
+    _live_code(module, {})
 
 
 def _verify_frame(owned):
@@ -629,7 +670,12 @@ def verify_acs_native_coverage(issuance, frame=None):
 
 
 def issue_acs_native_coverage(
-    source_dir, *, snapshot_root, serialnos=None, candidate_path=None
+    source_dir,
+    *,
+    snapshot_root,
+    serialnos=None,
+    candidate_path=None,
+    spm_construction=None,
 ):
     """Run real closed owners with optional exact engineering household selection.
 
@@ -637,6 +683,8 @@ def issue_acs_native_coverage(
     source validation and lexical projection remain. Candidate bytes, if given,
     are compared only after independent real reconstruction and never decoded.
     """
+    # Preserve the dedicated unsupported-capability exception before capture.
+    spm_implementation = housing._spm_implementation(spm_construction)
     try:
         serialnos = housing.AcsPumsSource.snapshot_serialnos(serialnos)
         # Snapshot path-like inputs once too, before producer/capture work.
@@ -662,7 +710,10 @@ def issue_acs_native_coverage(
                 for prefix in ("acs-native-preparation-", "acs-native-coverage-")
             ]
             prepared = housing.prepare_acs_housing_population(
-                private, snapshot_root=roots[0], serialnos=serialnos
+                private,
+                snapshot_root=roots[0],
+                serialnos=serialnos,
+                spm_construction=spm_construction,
             )
             _verify_prepared_frame(prepared)
             _require(
@@ -792,6 +843,13 @@ def issue_acs_native_coverage(
                 "projection_sha256": coverage._sha(prepared.source.projection_json),
                 "coverage_payload_sha256": coverage._sha(literal.payload),
             }
+            if spm_implementation is not None:
+                _require(
+                    prepared.receipt["spm_construction"]["implementation"]
+                    == spm_implementation,
+                    "SPM_PREPARATION_OPTIONS",
+                )
+                receipt["spm_construction"] = prepared.receipt["spm_construction"]
             # The receipt embeds the selected-key list, so it is a whole-roster
             # document: the same canonical bytes, accumulated in segments.
             payload = coverage._json_roster(receipt)
