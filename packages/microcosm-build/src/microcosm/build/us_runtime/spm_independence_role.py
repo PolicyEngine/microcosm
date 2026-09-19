@@ -202,6 +202,14 @@ def _sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def _role_binding_sha256(person: pd.DataFrame) -> str:
+    """Bind the gate receipt to the ordered person/age/unit/role surface."""
+
+    columns = ["person_id", "person_spm_unit_id", "age", NATIVE_SPM_ROLE]
+    hashes = pd.util.hash_pandas_object(person[columns], index=False)
+    return hashlib.sha256(hashes.to_numpy(dtype="<u8").tobytes()).hexdigest()
+
+
 def derive_us_spm_independence_role_from_manifest(
     frame: pd.DataFrame | None,
     operation: SourceOperationSpec,
@@ -290,7 +298,7 @@ def derive_us_spm_independence_role_from_manifest(
                 expected_parent_sha256=digest,
                 source_pins=None if pins is None else dict(pins),
             )
-        except ValueError as error:
+        except (ValueError, OSError) as error:
             raise SourceRuntimeError(
                 f"US SPM independence role derivation refused: {error}"
             ) from error
@@ -312,15 +320,9 @@ def derive_us_spm_independence_role_from_manifest(
         **result.provenance,
         "frame_projection_sha256": digest,
         "frame_projection_columns": list(columns),
+        "person_role_binding_sha256": _role_binding_sha256(output),
     }
     return output
-
-
-def _role_surface_carries_signal(frame: Frame) -> bool:
-    person = frame.table("person")
-    if NATIVE_SPM_ROLE not in person:
-        return False
-    return person[NATIVE_SPM_ROLE].dropna().nunique() > 1
 
 
 def _frame_income_years(person: pd.DataFrame) -> tuple[int, ...]:
@@ -340,7 +342,8 @@ def with_us_spm_independence_role(
 ) -> Frame:
     """Materialize the measured SPM independence role on a US frame.
 
-    A frame already carrying a non-degenerate role column is returned as is.
+    An existing role is checked against the pinned source again, never treated
+    as evidence that source reconciliation has already happened.
     ``asec_spm_role_source_paths`` maps income years to the pinned complete
     Census ASEC person CSVs; years without a path are fetched and verified.
     ``source_pins`` exists for synthetic tests and defaults to the certified
@@ -349,10 +352,16 @@ def with_us_spm_independence_role(
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US SPM independence role requires the US schema.")
-    if _role_surface_carries_signal(frame):
-        return frame
-
     person = frame.table("person")
+    existing_role = person.get(NATIVE_SPM_ROLE)
+    if existing_role is not None and (
+        existing_role.isna().any()
+        or pd.api.types.infer_dtype(existing_role, skipna=False) != "boolean"
+    ):
+        raise ValueError(
+            "US SPM independence role requires an existing role to contain "
+            "only non-null Boolean observations."
+        )
     if "source_year" not in person:
         raise ValueError(
             "US SPM independence role requires the person table to carry source_year."
@@ -400,6 +409,14 @@ def with_us_spm_independence_role(
         raise ValueError(
             "US SPM independence role stage output does not cover every person "
             f"for {NATIVE_SPM_ROLE!r}."
+        )
+    if existing_role is not None and not np.array_equal(
+        existing_role.to_numpy(dtype=bool),
+        aligned[NATIVE_SPM_ROLE].to_numpy(dtype=bool),
+    ):
+        raise ValueError(
+            "US SPM independence role disagrees with the pinned Census source; "
+            "refusing to overwrite existing observations."
         )
     provenance = output.attrs.get(_PROVENANCE_ATTR)
     if not isinstance(provenance, Mapping):
@@ -473,7 +490,9 @@ def us_spm_independence_role_summary(frame: Frame) -> dict[str, object]:
                 "n_units_without_member_aged_18_or_over"
             ],
         },
-        "derivation": None if provenance is None else dict(provenance),
+        "derivation": (
+            _json_ready(provenance) if isinstance(provenance, Mapping) else None
+        ),
     }
 
 
@@ -481,19 +500,43 @@ def us_spm_independence_role_signal_gate(frame: Frame) -> GateResult:
     """Require a source-delivered, non-degenerate role that classifies every unit."""
 
     person = frame.table("person")
-    if NATIVE_SPM_ROLE not in person:
+    missing = [name for name in (NATIVE_SPM_ROLE, "age") if name not in person]
+    if missing:
         return GateResult(
             name="spm_independence_role_signal",
             passed=False,
-            failures=(f"person columns missing: [{NATIVE_SPM_ROLE!r}].",),
-            details={"missing": [NATIVE_SPM_ROLE]},
+            failures=(f"person columns missing: {missing!r}.",),
+            details={"missing": missing},
+        )
+
+    values = person[NATIVE_SPM_ROLE].dropna()
+    if len(values) and pd.api.types.infer_dtype(values, skipna=False) != "boolean":
+        return GateResult(
+            name="spm_independence_role_signal",
+            passed=False,
+            failures=(f"{NATIVE_SPM_ROLE} carries non-Boolean values.",),
+            details={"role_dtype": str(person[NATIVE_SPM_ROLE].dtype)},
         )
 
     summary = us_spm_independence_role_summary(frame)
     failures: list[str] = []
-    values = person[NATIVE_SPM_ROLE].dropna()
-    if not values.isin((True, False)).all():
-        failures.append(f"{NATIVE_SPM_ROLE} carries non-Boolean values.")
+    provenance = summary["derivation"]
+    if provenance is None:
+        failures.append("SPM independence role has no source derivation provenance.")
+    else:
+        counts = {
+            "persons_joined": len(person),
+            "table_rows": len(person),
+            "native_spm_units": frame.n(_SPM_UNIT_TABLE),
+            "true_role_persons": int(values.sum()),
+        }
+        for key, expected in counts.items():
+            if provenance.get(key) != expected:
+                failures.append(f"SPM role provenance {key} differs from the frame.")
+        if provenance.get("person_role_binding_sha256") != _role_binding_sha256(person):
+            failures.append(
+                "SPM role provenance does not match the person/age/unit/role surface."
+            )
     missing_values = int(summary["role_missing_values"])
     if missing_values:
         failures.append(

@@ -82,6 +82,10 @@ Part 1 complete and tested. Part 2 (design note) in progress. PR open as draft.
 
 # Step 2 — the role as a build-stage input leaf (2026-09-18)
 
+> Historical note (2026-09-19): this section records the earlier session.
+> Implementation and actual-wrapper acceptance have since advanced; see the
+> dated continuation at the end. Check GitHub for current PR/CI status.
+
 Branch `us-spm-role-stage`, cut from `spm-composition-preflight` at
 `0e4b20de7` (PR #948's head, CI green on run 35346454375, mergeable).
 
@@ -116,3 +120,36 @@ note next, then the stage.
 3. Stage module + manifest + registries + adapter carve-out + coverage manifest
    + export list + base/release tool wiring; regenerate every moved pin through
    its generator; tests; changelog; draft PR.
+
+# Continuation — September 19, 2026
+
+Resumed Claude's `us-spm-role-stage` at `cff157729599c41f7ccfdadf32145d9679ffe796`
+and preserved its uncommitted fixture/doc/changelog work. Initial focused
+battery: 442 passed.
+
+Independent source review found missing operator-boundary registration and
+an impermissible synthesized default for the measured source role. Added
+boundary rejection and a regression that failed before the fix. Source inputs
+remain exportable but receive no generic default. The simulation projection
+refuses an incomplete role, and its audit records 926 inputs / 925 defaults.
+Existing role columns are now rederived and compared with the pinned Census
+source, rather than trusted because they are nonconstant. Missing provenance
+fails the signal gate. Regenerated engine/projection contracts with the
+repository generator.
+
+Revised relevant battery: **936 passed**, one country-model divide warning,
+167.45 seconds. CI test-group verification passes. Generated bundle/coverage
+checks and Fable review are underway at this journal entry.
+
+The new `experiments/spm_role_stage_wrapper_proof.py` invokes the actual stage
+and signal gate. Both pinned populations pass: Build P 166,321 persons,
+28 unresolved units to zero; base-q3 907,382 persons, 222 to zero. Every role
+matches the original derivation; Build P also reproduces the reference CSV
+bytes. Every existing column/table/weight/stratum/mass log and every input
+file remains unchanged. Receipts record exact source fingerprints and engine
+versions. The two original direct-derivation receipts are unchanged.
+
+Remaining: complete generated-artifact checks and review; push a stacked draft
+PR; integrate after acceptance. ACS-origin source roles, full-base calibration,
+incumbent comparisons and release certification remain open. These proofs do
+not establish a new released file.

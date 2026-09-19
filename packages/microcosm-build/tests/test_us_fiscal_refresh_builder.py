@@ -4262,7 +4262,15 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
 
 @pytest.mark.parametrize(
     "terminal_mode",
-    ["merge", "integrity", "retirement", "crash", "telemetry", "puf_tail"],
+    [
+        "merge",
+        "integrity",
+        "retirement",
+        "crash",
+        "telemetry",
+        "puf_tail",
+        "spm_missing_pool",
+    ],
 )
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch, tmp_path, terminal_mode
@@ -4290,11 +4298,16 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     ``puf_tail``: exact-k selection loses the original PUF capital-gains tail;
     the failure is batched while diagnostics and final-weight evidence remain,
     every later terminal group runs, and release artifacts stay suppressed.
+    ``spm_missing_pool``: a prepared pool without the source role fails at
+    the real SPM signal gate before calibration or terminal coverage checks.
     """
     builder = _load_builder_module()
+    prepared_pool = terminal_mode in {"puf_tail", "spm_missing_pool"}
     release_id = (
         "populace-us-2024-k2-gate-failure-test"
         if terminal_mode == "puf_tail"
+        else "populace-us-2024-k4-gate-failure-test"
+        if terminal_mode == "spm_missing_pool"
         else "populace-us-2024-gate-failure-test"
     )
     base_h5 = tmp_path / "base.h5"
@@ -4333,6 +4346,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "health_stage_events": [],
         "source_stage_events": [],
         "terminal_gate_events": [],
+        "spm_stage_calls": [],
     }
     retirement_missing_failure = (
         "person columns missing: ['taxable_403b_distributions', 'keogh_distributions']."
@@ -4351,6 +4365,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             return 2 if terminal_mode == "puf_tail" else 4
 
         def table(self, entity):
+            if terminal_mode == "spm_missing_pool" and entity == "person":
+                return pd.DataFrame(
+                    {"person_id": [1, 2, 3, 4], "age": [30, 40, 16, 17]}
+                )
             if entity != "household":
                 raise ValueError(
                     f"Unknown entity {entity!r}; schema declares "
@@ -4382,7 +4400,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             assert entity == "household"
             return pd.DataFrame({"household_id": np.asarray([10, 20], dtype="int64")})
 
-    if terminal_mode == "puf_tail":
+    if prepared_pool:
         loss_basis = builder._fiscal_target_loss_basis(registry, np.ones(1))
         incumbent = tmp_path / "incumbent.json"
         incumbent.write_text(
@@ -4446,7 +4464,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             str(weeks_source),
             "--no-target-frame-checkpoint",
         ]
-    if terminal_mode not in {"telemetry", "puf_tail"}:
+    if terminal_mode != "telemetry" and not prepared_pool:
         argv.append("--no-staging")
     argv += [
         "--acs-person-zip",
@@ -4470,7 +4488,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
 
     def fake_sha256(path):
-        if terminal_mode == "puf_tail" and Path(path) == pool_manifest:
+        if prepared_pool and Path(path) == pool_manifest:
             return "a" * 64
         if Path(path) == weeks_source:
             return "weeks-source-sha"
@@ -4528,7 +4546,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "_staging_telemetry",
             lambda *args, **kwargs: live_telemetry,
         )
-    if terminal_mode in {"integrity", "retirement", "telemetry", "puf_tail"}:
+    if terminal_mode in {
+        "integrity",
+        "retirement",
+        "telemetry",
+        "puf_tail",
+        "spm_missing_pool",
+    }:
         monkeypatch.setattr(
             builder,
             "PolicyEngineUSEngine",
@@ -4645,7 +4669,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         return FakeFrame()
 
     monkeypatch.setattr(builder, "_load_frame", fake_load_frame)
-    if terminal_mode == "puf_tail":
+    if prepared_pool:
 
         def fake_load_pool(path, *, expected_manifest_sha256):
             assert path == pool_manifest
@@ -5023,6 +5047,16 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "with_us_relationship_inputs",
         lambda frame, *, seed, time_period: frame,
     )
+
+    def fake_with_spm_independence_role(frame, *, seed, time_period):
+        # The release wrapper deliberately resolves the pinned local cache;
+        # source-path overrides belong to the base builder's CLI.
+        captured["spm_stage_calls"].append({"seed": seed, "time_period": time_period})
+        return frame
+
+    monkeypatch.setattr(
+        builder, "with_us_spm_independence_role", fake_with_spm_independence_role
+    )
     monkeypatch.setattr(
         builder,
         "with_us_medicare_take_up_input",
@@ -5108,6 +5142,27 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+    if terminal_mode == "spm_missing_pool":
+        real_spm_gate = builder.us_spm_independence_role_signal_gate
+
+        def recording_spm_gate(frame):
+            gate = real_spm_gate(frame)
+            captured["spm_signal_gate"] = gate
+            return gate
+
+        monkeypatch.setattr(
+            builder, "us_spm_independence_role_signal_gate", recording_spm_gate
+        )
+    else:
+        monkeypatch.setattr(
+            builder,
+            "us_spm_independence_role_signal_gate",
+            lambda frame: builder.GateResult(
+                name="spm_independence_role_signal",
+                passed=True,
+                details={"checked": True},
+            ),
+        )
     monkeypatch.setattr(
         builder,
         "us_medicare_take_up_signal_gate",
@@ -6018,6 +6073,22 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # coverage/parity evaluation errors on the fake frame may append
         # further lines after them.
         message = str(exc)
+        if terminal_mode == "spm_missing_pool":
+            assert message == (
+                "Release gates failed: SPM independence role signal failed: "
+                "person columns missing: ['is_spm_independent_minor_role']."
+            )
+            assert not captured["spm_signal_gate"].passed
+            assert captured["spm_signal_gate"].details == {
+                "missing": ["is_spm_independent_minor_role"]
+            }
+            assert captured["spm_stage_calls"] == []
+            assert captured["terminal_gate_events"] == []
+            assert not captured.get("sipp_scf_wealth_blend_called", False)
+            return
+        assert captured["spm_stage_calls"] == (
+            [] if prepared_pool else [{"seed": 0, "time_period": builder.PERIOD}]
+        )
         if terminal_mode == "puf_tail":
             assert message.startswith(
                 "Release gates failed: Exact-k PUF capital-gains tail failed: "
@@ -9534,6 +9605,7 @@ def test_pool_owned_fiscal_transforms_are_guarded_for_prepared_pool_input() -> N
         "with_us_take_up_inputs",
         "with_us_hours_worked_inputs",
         "with_us_relationship_inputs",
+        "with_us_spm_independence_role",
         "with_us_medicare_take_up_input",
         "with_us_retirement_distribution_inputs",
         "with_us_eligibility_inputs",

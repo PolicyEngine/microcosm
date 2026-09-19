@@ -13,6 +13,7 @@ stage's role equals the derivation's and the raw rule's on random populations.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import replace
 from pathlib import Path
 
@@ -612,6 +613,11 @@ class TestDerivation:
         with pytest.raises(SourceRuntimeError, match="CSV SHA-256"):
             _run(frame, path, replace(pin, csv_sha256="0" * 64))
 
+    def test_missing_csv_refusal_names_the_stage(self, population) -> None:
+        _source, path, pin, frame = population
+        with pytest.raises(SourceRuntimeError, match="US SPM independence role"):
+            _run(frame, path.with_name("missing.csv"), pin)
+
 
 # ---------------------------------------------------------------------------
 # Frame integration, summary and gate
@@ -619,6 +625,54 @@ class TestDerivation:
 
 
 class TestFrameAndGate:
+    def test_gate_details_are_json_serializable(self, population) -> None:
+        _source, path, pin, frame = population
+        gate = us_spm_independence_role_signal_gate(_run(frame, path, pin))
+        serialized = json.loads(json.dumps(gate.details, allow_nan=False))
+        assert serialized["derivation"]["persons_joined"] == frame.n("person")
+        assert serialized["derivation"]["source_checks"]
+
+    @pytest.mark.parametrize("change", ["swap_roles", "change_age", "stale_count"])
+    def test_gate_refuses_stale_derivation(self, population, change) -> None:
+        _source, path, pin, frame = population
+        result = _run(frame, path, pin)
+        tables = {entity: result.table(entity).copy() for entity in result.entities}
+        metadata = json.loads(
+            json.dumps(us_spm_independence_role_summary(result)["derivation"])
+        )
+        person = tables["person"]
+        if change == "swap_roles":
+            indices = [
+                person.index[person[_ROLE]].tolist()[0],
+                person.index[~person[_ROLE]].tolist()[0],
+            ]
+            person.loc[indices, _ROLE] = ~person.loc[indices, _ROLE]
+        elif change == "change_age":
+            person.loc[person.index[0], "age"] += 1
+        else:
+            metadata["persons_joined"] += 1
+        altered = Frame(
+            tables,
+            result.schema,
+            {entity: result.weights_for(entity) for entity in result.weighted_entities},
+            result.strata,
+            metadata={US_SPM_INDEPENDENCE_ROLE_PROVENANCE_KEY: metadata},
+        )
+        gate = us_spm_independence_role_signal_gate(altered)
+        assert not gate.passed
+        assert any("provenance" in failure for failure in gate.failures)
+
+    def test_gate_refuses_integer_role_and_missing_age(self, population) -> None:
+        _source, path, pin, frame = population
+        person = _run(frame, path, pin).table("person").copy()
+        person[_ROLE] = person[_ROLE].astype(int)
+        gate = us_spm_independence_role_signal_gate(_frame(person))
+        assert not gate.passed
+        assert any("non-Boolean" in failure for failure in gate.failures)
+        gate = us_spm_independence_role_signal_gate(_frame(person.drop(columns="age")))
+        assert not gate.passed
+        assert gate.details["missing"] == ["age"]
+
     def test_idempotent_and_leaves_everything_else_untouched(self, population) -> None:
         _source, path, pin, frame = population
 
@@ -636,7 +690,46 @@ class TestFrameAndGate:
             result.table("person")["person_spm_unit_id"].to_numpy(),
             frame.table("person")["person_spm_unit_id"].to_numpy(),
         )
-        assert with_us_spm_independence_role(result, seed=0, time_period=2024) is result
+        repeated = _run(result, path, pin)
+        assert repeated.table("person").equals(result.table("person"))
+        assert (
+            repeated.metadata[US_SPM_INDEPENDENCE_ROLE_PROVENANCE_KEY][
+                "unmatched_persons"
+            ]
+            == 0
+        )
+
+    def test_existing_role_cannot_bypass_the_source_checks(self, population) -> None:
+        _source, path, pin, frame = population
+        result = _run(frame, path, pin)
+        with pytest.raises(SourceRuntimeError, match="CSV SHA-256"):
+            _run(result, path, replace(pin, csv_sha256="0" * 64))
+
+        person = result.table("person").copy()
+        person.loc[person.index[0], _ROLE] = not person.loc[person.index[0], _ROLE]
+        with pytest.raises(ValueError, match="disagrees with the pinned Census"):
+            _run(_frame(person), path, pin)
+
+    @pytest.mark.parametrize("invalid", [None, "False", 0])
+    def test_existing_role_refuses_non_boolean_or_missing_values(
+        self, population, invalid
+    ) -> None:
+        _source, path, pin, frame = population
+        person = _run(frame, path, pin).table("person").copy()
+        person[_ROLE] = person[_ROLE].astype(object)
+        person.loc[person.index[0], _ROLE] = invalid
+        with pytest.raises(ValueError, match="non-null Boolean observations"):
+            _run(_frame(person), path, pin)
+
+    def test_role_without_source_provenance_fails_gate(self, population) -> None:
+        _source, path, pin, frame = population
+        person = _run(frame, path, pin).table("person")
+        gate = us_spm_independence_role_signal_gate(_frame(person))
+        assert not gate.passed
+        assert (
+            "SPM independence role has no source derivation provenance."
+            in gate.failures
+        )
 
     def test_requires_the_us_schema_and_source_year(self, population) -> None:
         _source, path, pin, frame = population
@@ -817,7 +910,7 @@ class TestCoverageAndExport:
         assert index.formula_owned_outputs([_ROLE, "spm_measurement_adults"]) == {
             "spm_measurement_adults"
         }
-        assert engine.default_values([_ROLE]) == {_ROLE: False}
+        assert engine.default_values([_ROLE]) == {}
 
         _source, path, pin, frame = population
         result = _run(frame, path, pin)

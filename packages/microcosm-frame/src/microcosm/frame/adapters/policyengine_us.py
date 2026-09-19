@@ -851,7 +851,9 @@ class PolicyEngineUSEngine:
         Only names the tax-benefit system knows as non-formula input
         variables with a declared default are returned; unknown names and
         formula-owned variables are silently omitted, so callers can pass a
-        whole export surface. Enum defaults are normalized to their stored
+        whole export surface. Declared dataset source inputs are also omitted:
+        permission to store an observation is not permission to invent one.
+        Enum defaults are normalized to their stored
         member name (the representation datasets persist).
 
         Raises:
@@ -862,8 +864,10 @@ class PolicyEngineUSEngine:
         defaults: dict[str, object] = {}
         for name in names:
             variable = variables.get(name)
-            if variable is None or (
-                name not in source_inputs and _is_engine_computed(variable)
+            if (
+                variable is None
+                or name in source_inputs
+                or _is_engine_computed(variable)
             ):
                 continue
             default = getattr(variable, "default_value", None)

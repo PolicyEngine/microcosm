@@ -1588,9 +1588,7 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
         entry for entry in manifest if entry.consumer == "_simulation_projection"
     ]
 
-    assert (
-        len(projection) == POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count == 925
-    )
+    assert len(projection) == POOL_ENGINE_INPUT_PROJECTION_CONTRACT.input_count == 926
     assert {(entry.entity, entry.variable) for entry in projection} == {
         (index.variable_metadata(variable).entity, variable)
         for variable in index.variables()
@@ -1605,6 +1603,7 @@ def test_remaining_stage_manifest_enumerates_every_simulation_projection_input()
             "preserved_stacked_engine_input": 4,
             "derived_schedule_d_input": 1,
             "declared_absent_engine_input": 763,
+            "unprovisioned_source_input": 1,
         }
     )
     preserved = {
@@ -1643,7 +1642,7 @@ def test_simulation_projection_defaults_match_pinned_engine_surface() -> None:
 
     assert receipt == {
         "engine_version": "2.2.1",
-        "input_count": 925,
+        "input_count": 926,
         "default_count": 925,
         "defaults_sha256": (POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256),
     }
@@ -1652,9 +1651,9 @@ def test_simulation_projection_defaults_match_pinned_engine_surface() -> None:
 def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     manifest = pool_remaining_stage_input_manifest(_installed_variable_metadata_index())
 
-    assert len(manifest) == 1058
+    assert len(manifest) == 1059
     assert Counter(entry.stage for entry in manifest) == Counter(
-        {"derive": 34, "seed": 33, "simulate": 991}
+        {"derive": 34, "seed": 33, "simulate": 992}
     )
     assert len(
         {
@@ -1667,15 +1666,15 @@ def test_remaining_stage_manifest_is_unique_complete_and_stable() -> None:
     receipt = pool_remaining_stage_input_manifest_receipt(
         _installed_variable_metadata_index()
     )
-    assert receipt["entry_count"] == 1058
+    assert receipt["entry_count"] == 1059
     assert receipt["stage_counts"] == {
         "derive": 34,
         "seed": 33,
-        "simulate": 991,
+        "simulate": 992,
     }
     assert receipt["engine_input_projection_contract"] == {
         "engine_version": "2.2.1",
-        "input_count": 925,
+        "input_count": 926,
         "default_count": 925,
         "sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.sha256,
         "defaults_sha256": POOL_ENGINE_INPUT_PROJECTION_CONTRACT.defaults_sha256,
@@ -3047,11 +3046,11 @@ def test_derive_stage_keeps_whole_pool_qbi_reconciliation() -> None:
     derived = result.frame.table("person")
 
     assert result.receipt["operator_order"] == list(POOL_DERIVE_OPERATOR_ORDER)
-    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 1058
+    assert result.receipt["remaining_stage_input_manifest"]["entry_count"] == 1059
     assert result.receipt["remaining_stage_input_manifest"]["stage_counts"] == {
         "derive": 34,
         "seed": 33,
-        "simulate": 991,
+        "simulate": 992,
     }
     assert (
         result.receipt["qbi_input_reconciliation"]["recipient_source_universe"][
@@ -3810,9 +3809,10 @@ def test_pool_seed_stage_preserves_inputs_and_receipts_disclosed_defaults() -> N
         after_person.loc[measured_person, "takes_up_medicare_if_eligible"].tolist()
         == before_person.loc[measured_person, "takes_up_medicare_if_eligible"].tolist()
     )
-    assert after_person["takes_up_wic_if_eligible"].tolist() == before_person[
-        "takes_up_wic_if_eligible"
-    ].tolist()
+    assert (
+        after_person["takes_up_wic_if_eligible"].tolist()
+        == before_person["takes_up_wic_if_eligible"].tolist()
+    )
     assert (
         after_spm.loc[measured_spm, "takes_up_tanf_if_eligible"].tolist()
         == before_spm.loc[measured_spm, "takes_up_tanf_if_eligible"].tolist()
@@ -3898,6 +3898,21 @@ def test_simulation_defaults_are_disposable_and_receipted() -> None:
         "value": 0.0,
         "persisted_to_pool": False,
     }
+
+
+@pytest.mark.requires_us
+def test_simulation_projection_refuses_missing_measured_spm_role() -> None:
+    frame = _assembled_cloned_with_partial_take_up()
+    person = frame.table("person").copy()
+    role = "is_spm_independent_minor_role"
+    person[role] = pd.Series(True, index=person.index, dtype="boolean")
+    person.loc[person.index[0], role] = pd.NA
+    frame = _replace_person(frame, person)
+
+    with pytest.raises(ValueError, match=rf"{role}; the engine declares no default"):
+        multispine_pool_module._simulation_projection(frame, PolicyEngineUSEngine())
+
+    assert frame.table("person")[role].isna().sum() == 1
 
 
 def test_deferred_asset_defaults_exist_only_on_disposable_simulation_view() -> None:
