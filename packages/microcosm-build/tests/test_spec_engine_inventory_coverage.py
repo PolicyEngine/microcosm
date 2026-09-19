@@ -127,7 +127,7 @@ EXPECTED_COUNTS = {
     "seed_sites": 53,
     "seed_streams": 14,
     "source_operators": 16,
-    "source_stages": 37,
+    "source_stages": 38,
     "stacked_checkpoint_full_components": 13,
     "stacked_checkpoint_pool_code_components": 19,
     "stacked_checkpoint_static_components": 10,

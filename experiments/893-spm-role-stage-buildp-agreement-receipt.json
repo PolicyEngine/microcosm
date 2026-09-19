@@ -1,0 +1,192 @@
+{
+  "receipt": "spm_role_stage_proof.buildp",
+  "parent_build_id": "populace-us-2024-buildp-sparse-rmloss100-cae8640-20260728T011454Z",
+  "parent_h5": "/Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/blobs/48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+  "parent_sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+  "reference_evidence_csv": "/Users/maxghenis/spm-rebuild-20260908/rollout/recertify-221-range-20260915/certified/releases/populace-us-2024-spm-20260915/source_spm_person_independence.csv",
+  "reference_evidence_sha256": "22b5968d90fecfeef7614583e493fe10cc16bda8b5be82e6f49a5bc2102d3ce5",
+  "reference_evidence_sha256_pinned": "22b5968d90fecfeef7614583e493fe10cc16bda8b5be82e6f49a5bc2102d3ce5",
+  "reference_matches_pin": true,
+  "environment": {
+    "python": "3.14.4",
+    "policyengine-us": "2.2.1",
+    "spm-calculator": "1.0.0",
+    "policyengine-core": "3.32.5",
+    "pandas": "3.0.3",
+    "numpy": "2.4.6",
+    "tables": "3.11.1"
+  },
+  "derivation": {
+    "dataset_sha256": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+    "primitive_column": "is_spm_independent_minor_role",
+    "evidence_column": "is_spm_independence_role",
+    "primitive_rule": "SPM_HEAD == 1 OR (A_FAMTYP in {1,4} AND A_FAMREL in {1,2})",
+    "adult_rule": "age >= 18 OR (age >= 15 AND is_spm_independent_minor_role)",
+    "evidence_status": "Inference from documented primitive relationships, reconciled against every SPM count in pinned complete Census ASEC sources; Census production program not retrieved.",
+    "source_join": [
+      "source_year (income year)",
+      "PERIDNUM (exact 22-digit string)"
+    ],
+    "source_checks": [
+      {
+        "income_year": 2022,
+        "survey_year": 2023,
+        "csv_sha256": "19b56537e50e7663f954361ef2bb5ce9cef8d9d45f156fe1a69a99b654198ffe",
+        "csv_size_bytes": 281065733,
+        "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2023/march/asecpub23csv.zip",
+        "archive_sha256": "d2e000250782adfbdd7f29c82b66d866591a30f0d330496698ec19f9c784ce11",
+        "member": "pppub23.csv",
+        "persons": 146133,
+        "units": 59181,
+        "adult_child_person_count_mismatch_units": 0,
+        "extra_independent_minor_people_vs_head_only": 0,
+        "extra_independent_minor_units_vs_head_only": 0
+      },
+      {
+        "income_year": 2023,
+        "survey_year": 2024,
+        "csv_sha256": "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
+        "csv_size_bytes": 277250415,
+        "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2024/march/asecpub24csv.zip",
+        "archive_sha256": "cdb39cdac34bef99dd0940ab28e306f692404c2eea44d85dfd634214872a0a09",
+        "member": "pppub24.csv",
+        "persons": 144265,
+        "units": 58711,
+        "adult_child_person_count_mismatch_units": 0,
+        "extra_independent_minor_people_vs_head_only": 1,
+        "extra_independent_minor_units_vs_head_only": 1
+      },
+      {
+        "income_year": 2024,
+        "survey_year": 2025,
+        "csv_sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+        "csv_size_bytes": 277882549,
+        "official_archive_url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asecpub25csv.zip",
+        "archive_sha256": "318845a2b5e0034eb2973898de1738f4df0025727de38499e7669cb9c0deef0b",
+        "member": "pppub25.csv",
+        "persons": 142125,
+        "units": 58147,
+        "adult_child_person_count_mismatch_units": 0,
+        "extra_independent_minor_people_vs_head_only": 6,
+        "extra_independent_minor_units_vs_head_only": 5
+      }
+    ],
+    "total_source_people": 432523,
+    "total_source_units": 176039,
+    "persons_joined": 166321,
+    "unmatched_persons": 0,
+    "all_rows_equal_source_columns": [
+      "A_AGE",
+      "A_LINENO",
+      "P_SEQ",
+      "SPM_HAGE",
+      "SPM_NUMADULTS",
+      "SPM_NUMKIDS",
+      "SPM_NUMPER"
+    ],
+    "nonmissing_optional_raw_fields_checked": {
+      "A_FAMTYP": 57203,
+      "A_FAMREL": 57203,
+      "A_SPOUSE": 166321,
+      "PECOHAB": 57203
+    },
+    "native_spm_units": 59900,
+    "complete_source_membership_units": 59900,
+    "adult_child_person_count_mismatch_units": 0,
+    "independent_minor_persons": 132,
+    "classification_changed_units_vs_age_only": 132,
+    "minor_only_units_resolved": 28,
+    "true_role_persons": 94224,
+    "table_rows": 166321,
+    "table_key": [
+      "person_id",
+      "person_spm_unit_id"
+    ],
+    "table_order": "exact original HDF person order; verified",
+    "weights_used": false,
+    "ages_changed": false,
+    "period_handling": "Store the role before the age gate; model age supplies the requested period."
+  },
+  "expected_counts": {
+    "persons_joined": 166321,
+    "native_spm_units": 59900,
+    "total_source_people": 432523,
+    "total_source_units": 176039,
+    "minor_only_units_resolved": 28,
+    "classification_changed_units_vs_age_only": 132
+  },
+  "expected_counts_match": {
+    "persons_joined": true,
+    "native_spm_units": true,
+    "total_source_people": true,
+    "total_source_units": true,
+    "minor_only_units_resolved": true,
+    "classification_changed_units_vs_age_only": true
+  },
+  "agreement": {
+    "stage_evidence_sha256": "22b5968d90fecfeef7614583e493fe10cc16bda8b5be82e6f49a5bc2102d3ce5",
+    "stage_evidence_bytes_equal_reference": true,
+    "rows_stage": 166321,
+    "rows_certified": 166321,
+    "rows_in_both": 166321,
+    "rows_only_in_stage": 0,
+    "rows_only_in_certified": 0,
+    "roles_equal": 166321,
+    "roles_differ": 0
+  },
+  "frame": {
+    "households": 57240,
+    "persons": 166321,
+    "spm_units": 59900
+  },
+  "before": {
+    "status": "FAIL",
+    "summary": "28 of 59,900 spm_units in the base pool have no classified adult; the whole population's SPM measurement would raise SPM_COMPOSITION_REQUIRED",
+    "n_units": 59900,
+    "n_units_without_classified_adult": 28,
+    "n_units_without_member_aged_18_or_over": 28,
+    "role_source": "household_structure_fallback",
+    "fallback_columns_present": [
+      "is_household_head"
+    ],
+    "offending_unit_ids_reported": [
+      11494,
+      51421,
+      61533,
+      61718,
+      64384,
+      67813,
+      80093,
+      120195,
+      131780,
+      136162,
+      155348,
+      1010486,
+      1018423,
+      1023298,
+      1035795,
+      1045639,
+      1045719,
+      1061533,
+      1064384,
+      1067813
+    ]
+  },
+  "after": {
+    "status": "PASS",
+    "summary": "all 59,900 spm_units in the base pool have a classified adult (role source: source_column)",
+    "n_units": 59900,
+    "n_units_without_classified_adult": 0,
+    "n_units_without_member_aged_18_or_over": 28,
+    "role_source": "source_column",
+    "fallback_columns_present": [],
+    "offending_unit_ids_reported": []
+  },
+  "timing_seconds": {
+    "frame_load": 1.53,
+    "derive_role": 6.02,
+    "total": 7.92
+  },
+  "parent_sha256_after": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+  "parent_unchanged": true
+}

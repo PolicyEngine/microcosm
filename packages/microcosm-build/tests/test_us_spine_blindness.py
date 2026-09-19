@@ -290,6 +290,12 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "spine_assembly.py",
         # Data-only live battery authority extraction; never reads or mutates Frames.
         "stacked_battery_contract.py",
+        # Pure SPM measurement composition check over frame columns (age and the
+        # role); no population treatment. Re-exported by release_gate_preflight.
+        "spm_composition.py",
+        # Measured SPM independence role restored by exact pinned Census identity
+        # through spm_role_source; a manifest stage shaped like relationship_inputs.
+        "spm_independence_role.py",
         "spm_resources.py",
         # Pinned ASEC role reconstruction and exact parent join; no population
         # treatment. Remains subject to the all-runtime source-identity scan.

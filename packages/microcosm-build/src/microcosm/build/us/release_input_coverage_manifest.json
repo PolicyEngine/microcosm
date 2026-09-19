@@ -243,6 +243,10 @@
   "is_separated": {
    "status": "required"
   },
+  "is_spm_independent_minor_role": {
+   "note": "The one dataset source input policyengine_us.spm.DATASET_SOURCE_INPUTS declares: the measured Census SPM independence role, stored before any age gate, that lets spm-calculator classify a 15-to-17-year-old SPM unit head or spouse as an adult. Without it one such unit refuses the whole population's SPM measurement (SPM_COMPOSITION_REQUIRED) and the 104 state SPM poverty rows cannot be validated. Written by the spm_independence_role base-builder stage from the SHA-pinned complete Census ASEC person files through the certified derive_spm_role_source; the certified default carries it through the Build P source enrichment. Required with NO reviewed exclusion: the anti-rot check would fail an exclusion whose column carries signal, and the certified default's does.",
+   "status": "required"
+  },
   "is_surviving_spouse": {
    "status": "required"
   },
@@ -534,11 +538,11 @@
   }
  },
  "counts": {
-  "required": 163,
+  "required": 164,
   "reviewed_exclusion": 7,
-  "total": 170
+  "total": 171
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, and the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, and the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462), and the engine's declared dataset source input is_spm_independent_minor_role (the spm_independence_role base-builder stage; PolicyEngine/microcosm#893). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (microcosm.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/microcosm#368",
  "reference": {

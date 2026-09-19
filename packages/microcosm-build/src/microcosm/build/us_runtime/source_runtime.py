@@ -85,6 +85,9 @@ from microcosm.build.us_runtime.snap_discretionary_exemption import (
 from microcosm.build.us_runtime.snap_take_up import (
     derive_us_snap_take_up_from_manifest,
 )
+from microcosm.build.us_runtime.spm_independence_role import (
+    derive_us_spm_independence_role_from_manifest,
+)
 from microcosm.build.us_runtime.weeks_unemployed import (
     derive_us_weeks_unemployed_from_manifest,
     impute_us_weeks_unemployed_to_puf_support_from_manifest,
@@ -318,6 +321,7 @@ def us_source_operation_handlers() -> Mapping[str, SourceOperationHandler]:
         "derive_pregnancy": derive_us_pregnancy_from_manifest,
         "derive_prior_year_income": derive_us_prior_year_income_from_manifest,
         "derive_relationship_inputs": derive_us_relationship_inputs_from_manifest,
+        "derive_spm_independence_role": (derive_us_spm_independence_role_from_manifest),
         "derive_retirement_distributions": (
             derive_us_retirement_distributions_from_manifest
         ),

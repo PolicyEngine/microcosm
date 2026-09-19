@@ -4,6 +4,11 @@ Branch `spm-composition-preflight`, cut from `origin/main` at `d1196af10`.
 
 ## State
 
+> Historical note (2026-09-18): the state and "Next" sections below describe
+> the first session. Part 2's design note shipped in PR #948
+> (`docs/us-spm-role-for-a-fresh-base.md`); Max chose its Option 1 (shape b)
+> on 2026-09-18. The current state is in "Step 2" at the end of this file.
+
 Part 1 complete and tested. Part 2 (design note) in progress. PR open as draft.
 
 ## Measured on the phase-2 base (read-only, `~/PolicyEngine/_buildq-runtime/out/base-q3/`)
@@ -68,8 +73,114 @@ Part 1 complete and tested. Part 2 (design note) in progress. PR open as draft.
       (55 passed, was 42); `ci_test_groups.py --verify` = ok, new file in
       `us-qs`, not `[defaulted]`; changelog fragment; ruff clean.
 
+## Next (historical, superseded 2026-09-18)
+
+1. Part 2 design note `docs/us-spm-role-for-a-fresh-base.md`. — shipped in #948.
+2. Decide (a) declared-parent generalisation vs (b) source stage; implement (a)
+   in this PR if it closes without a decision from Max. — Max chose (b) on
+   2026-09-18; implemented on branch `us-spm-role-stage` (see Step 2 below).
+
+# Step 2 — the role as a build-stage input leaf (2026-09-18)
+
+> Historical note (2026-09-19): this section records the earlier session.
+> Implementation and actual-wrapper acceptance have since advanced; see the
+> dated continuation at the end. Check GitHub for current PR/CI status.
+
+Branch `us-spm-role-stage`, cut from `spm-composition-preflight` at
+`0e4b20de7` (PR #948's head, CI green on run 35346454375, mergeable).
+
+## State
+
+Step 1 (make #948 green) was already complete on arrival: the first session's
+`0e4b20de7` fixed the seven red jobs' one cause (the gate-failure test's fake
+frame lacked a schema; repaired in the fake, not the guard), and the rerun is
+green on every job. Step 2 design reading done; proof scripts written; design
+note next, then the stage.
+
+## Done
+
+- [x] Verified `gh pr checks 948` all pass on head `0e4b20de7`; mergeable.
+- [x] Read at this head: `spm_role_source.py` (byte-identical to main),
+      `asec_pool.py`, `relationship_inputs.py`, `education_inputs.py` (sidecar
+      pattern), the adapter's two classification paths, the engine's
+      `DATASET_SOURCE_INPUTS` declaration, the enrichment lane's pins, the
+      coverage manifest generator, the bundle generator's frozen digests, the
+      raw ASEC inputs' columns (no vintage carries `SPM_HEAD`; only 2024
+      carries `A_FAMTYP`/`A_FAMREL`).
+- [x] Located every artifact the proofs need on disk: the three pinned Census
+      person CSVs (`~/.cache/microcosm/cps/asec_education/`), the Build P
+      parent (HF blob named by its pinned digest), the certified reference
+      evidence CSV (digest matches pin 5).
+- [x] `experiments/spm_role_stage_proof.py` written (base + buildp receipts).
+
 ## Next
 
-1. Part 2 design note `docs/us-spm-role-for-a-fresh-base.md`.
-2. Decide (a) declared-parent generalisation vs (b) source stage; implement (a)
-   in this PR if it closes without a decision from Max.
+1. Run the two proofs (foreground), commit receipts.
+2. `docs/us-spm-role-stage.md`.
+3. Stage module + manifest + registries + adapter carve-out + coverage manifest
+   + export list + base/release tool wiring; regenerate every moved pin through
+   its generator; tests; changelog; draft PR.
+
+# Continuation — September 19, 2026
+
+Resumed Claude's `us-spm-role-stage` at `cff157729599c41f7ccfdadf32145d9679ffe796`
+and preserved its uncommitted fixture/doc/changelog work. Initial focused
+battery: 442 passed.
+
+Independent source review found missing operator-boundary registration and
+an impermissible synthesized default for the measured source role. Added
+boundary rejection and a regression that failed before the fix. Source inputs
+remain exportable but receive no generic default. The simulation projection
+refuses an incomplete role, and its audit records 926 inputs / 925 defaults.
+Existing role columns are now rederived and compared with the pinned Census
+source, rather than trusted because they are nonconstant. Missing provenance
+fails the signal gate. Regenerated engine/projection contracts with the
+repository generator.
+
+Revised relevant battery: **936 passed**, one country-model divide warning,
+167.45 seconds. CI test-group verification passes. Generated bundle/coverage
+checks and Fable review are underway at this journal entry.
+
+The new `experiments/spm_role_stage_wrapper_proof.py` invokes the actual stage
+and signal gate. Both pinned populations pass: Build P 166,321 persons,
+28 unresolved units to zero; base-q3 907,382 persons, 222 to zero. Every role
+matches the original derivation; Build P also reproduces the reference CSV
+bytes. Every existing column/table/weight/stratum/mass log and every input
+file remains unchanged. Receipts record exact source fingerprints and engine
+versions. The two original direct-derivation receipts are unchanged.
+
+Remaining: complete generated-artifact checks and review; push a stacked draft
+PR; integrate after acceptance. ACS-origin source roles, full-base calibration,
+incumbent comparisons and release certification remain open. These proofs do
+not establish a new released file.
+
+## Final wrapper verification and second review
+
+Fable reproduced a builder JSON failure caused by nested frozen provenance.
+The first failing serialization regression is preserved outside the repository;
+recursive conversion fixes it. The signal gate now checks provenance counts
+and an ordered person/age/unit/role binding; it rejects integer roles and
+returns a failed result for missing age. Both builder modes explicitly test
+source-path forwarding, and the prepared-pool path tests its real refusal.
+75 stage tests and 10 focused builder tests pass after these changes.
+
+The second Fable source review closed all eight original findings and reported
+no new high or medium defect. Remaining scope notes about dtype-sensitive
+bindings, historical pre-clone provenance and JSON-only metadata are in the
+design note. Review did not substitute for execution.
+
+Final v2 wrapper proofs ran at clean committed source `6a6d53b2f`: all 166,321
+Build P and 907,382 base-q3 roles match, both gates pass and serialize their
+complete details, all existing data are preserved. Peak RSS was 8.42 and
+13.28 GiB respectively. Earlier receipts remain unchanged. Generated tests
+found two stale golden counts: 38 source stages and 1,059 remaining input
+rows (992 simulation rows); the generated lock was already correct. These
+test expectations now follow the reviewed source addition.
+
+All nine selected generated-contract test files now pass across the focused
+reruns. The final three-file run passed **300 tests in 556.47 seconds**;
+earlier failure logs remain preserved and are not relabeled as green runs.
+The bundle generator's `--check` passes at spec SHA `c1893460afccc6c1c4291efe2fc4d6091f60a15079043882dfbfd2bbc09e7e00`;
+coverage is 42,174/42,174 fields and 41/41 inventory checks. Ruff and test-group
+verification pass. Draft #959 is stacked on #948; the main-only CI workflow
+does not run on that stacked base, so local checks are not a PR CI claim.

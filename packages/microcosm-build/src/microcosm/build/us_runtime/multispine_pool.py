@@ -97,6 +97,9 @@ from microcosm.build.us_runtime.spine_agreement import (
     spine_agreement_gate,
 )
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
+from microcosm.build.us_runtime.spm_independence_role import (
+    US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.support_provenance import (
     SPINE_ASSEMBLY_MANIFEST_KEY,
     spine_assembly_receipt,
@@ -339,10 +342,10 @@ POOL_SSI_DEPENDENCY_CONTRACT = PoolSsiDependencyContract(
 
 POOL_ENGINE_INPUT_PROJECTION_CONTRACT = PoolEngineInputProjectionContract(
     engine_version="2.2.1",
-    input_count=925,
+    input_count=926,
     default_count=925,
-    sha256="d0f660fdbe3ae839dc5e68b3b4887ff07013ccfe321a3bf7ea99fc6de3a9af4f",
-    defaults_sha256="5a209930880c1dd03caba90feee358b1057aeed55b99b26b6ebee47d530689ee",
+    sha256="cefb137f164c6629589a887bbb56831ebc463cd46909a72ead4dbe0557961e61",
+    defaults_sha256="f938af6506623f453ca55922cf4a8ba6443d5f780f85e4381b777083a90396a0",
 )
 """Exact installed input registry scanned by the disposable projection."""
 
@@ -370,6 +373,7 @@ POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
     ("materialized_pool_input_surface", 122),
     ("preserved_stacked_engine_input", 4),
     ("seed_stage_program_contract", 17),
+    ("unprovisioned_source_input", 1),
 )
 """How every installed engine input is provisioned, by count.
 
@@ -378,9 +382,9 @@ tool re-derives every engine-pinned quantity this module carries.
 """
 
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "df42a6d95e4b98ce158334014dc9524de8f7791757eeaf3c6392d8d9b8469edf"
+    "0a84565a659a6404cb17715dda36f094a87431c713c7a37bf65a936b16937325"
 )
-"""Pinned content digest of all 1,058 post-transfer consumer/input rows."""
+"""Pinned content digest of all 1,059 post-transfer consumer/input rows."""
 
 
 @dataclass(frozen=True)
@@ -894,9 +898,8 @@ def _resolve_take_up_program_bindings(
             for program in load_take_up_contract().programs
         )
     for index, binding in enumerate(bindings):
-        if (
-            len(binding) != 3
-            or not all(isinstance(value, str) and value for value in binding)
+        if len(binding) != 3 or not all(
+            isinstance(value, str) and value for value in binding
         ):
             raise ValueError(
                 "Take-up manifest program binding must contain three non-empty "
@@ -1086,7 +1089,7 @@ def _pool_engine_input_projection(
 def pool_engine_input_projection_receipt(
     engine: _PoolRulesEngine | None = None,
 ) -> dict[str, object]:
-    """Validate every installed simulation input and its declared default."""
+    """Validate defaults, keeping required source observations without a default."""
 
     rules_engine = engine
     if rules_engine is None:
@@ -1095,18 +1098,26 @@ def pool_engine_input_projection_receipt(
         rules_engine = PolicyEngineUSEngine()
     variables = list(rules_engine.variables())
     defaults = dict(rules_engine.default_values(variables))
-    missing_defaults = sorted(set(variables) - set(defaults))
+    required_source_inputs = set(US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS)
+    missing_defaults = sorted(set(variables) - set(defaults) - required_source_inputs)
     extra_defaults = sorted(set(defaults) - set(variables))
-    if missing_defaults or extra_defaults:
+    defaulted_sources = sorted(required_source_inputs & set(defaults))
+    missing_sources = sorted(required_source_inputs - set(variables))
+    if missing_defaults or extra_defaults or defaulted_sources or missing_sources:
         raise ValueError(
             "PolicyEngine-US simulation input default surface is not exact; "
-            f"missing={missing_defaults}, extra={extra_defaults}."
+            f"missing={missing_defaults}, extra={extra_defaults}, "
+            f"defaulted_sources={defaulted_sources}, missing_sources={missing_sources}."
         )
     rows = [
         {
             "entity": rules_engine.variable_metadata(variable).entity,
             "variable": variable,
-            "default": defaults[variable],
+            **(
+                {"source_required": True}
+                if variable in required_source_inputs
+                else {"default": defaults[variable]}
+            ),
         }
         for variable in variables
     ]
@@ -1366,9 +1377,7 @@ def pool_remaining_stage_input_manifest(
             variable,
             execution_scope="whole_pool",
             provision=provision,
-            available_by=(
-                "transferred" if variable in transfer_owned else "seeded"
-            ),
+            available_by=("transferred" if variable in transfer_owned else "seeded"),
             fallback=fallback,
         )
 
@@ -1553,7 +1562,11 @@ def pool_remaining_stage_input_manifest(
         fallback: str | None = (
             "ephemeral_simulation_projection_engine_default_if_present_null"
         )
-        if variable in POOL_DEFERRED_TRANSFER_INPUTS:
+        if variable in US_SPM_INDEPENDENCE_ROLE_OUTPUT_COLUMNS:
+            provision = "unprovisioned_source_input"
+            available_by = "release"
+            fallback = "refuse_null_if_present_no_default"
+        elif variable in POOL_DEFERRED_TRANSFER_INPUTS:
             provision = "declared_deferred_null_input"
             available_by = "transferred"
             fallback = "ephemeral_simulation_projection_engine_default"

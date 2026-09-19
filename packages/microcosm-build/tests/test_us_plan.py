@@ -1256,6 +1256,12 @@ class TestBaseStageSourceClosure:
             "person_family_id",
             "person_spm_unit_id",
             "source_household_id",
+            # asec_pool.pool_asec_sources attaches the exact-identity carries
+            # (source_person_id = PERIDNUM, source_row_id) beside
+            # source_household_id; the SPM independence role stage joins the
+            # pinned Census person files through them.
+            "source_person_id",
+            "source_row_id",
             "person_source_id",
         }
     )

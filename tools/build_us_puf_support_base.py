@@ -120,6 +120,7 @@ from microcosm.build.us_runtime import (
     us_retirement_distributions_signal_gate,
     us_salt_refund_income_signal_gate,
     us_source_operation_handlers,
+    us_spm_independence_role_signal_gate,
     us_weeks_unemployed_signal_gate,
     us_wic_claim_signal_gate,
     us_workers_compensation_signal_gate,
@@ -142,6 +143,7 @@ from microcosm.build.us_runtime import (
     with_us_relationship_inputs,
     with_us_retirement_contribution_inputs,
     with_us_retirement_distribution_inputs,
+    with_us_spm_independence_role,
     with_us_weeks_unemployed,
     with_us_wic_claim_input,
     with_us_workers_compensation,
@@ -205,6 +207,7 @@ STAGE_BOUNDARIES: tuple[tuple[str, tuple[str, ...]], ...] = (
             "derive_us_cps_carried_inputs",
             "with_us_prior_year_income_inputs",
             "with_us_relationship_inputs",
+            "with_us_spm_independence_role",
             "with_us_medicare_take_up_input",
             "with_us_housing_inputs[includes_acs_rent_in_current_order]",
             "with_us_eligibility_inputs",
@@ -925,6 +928,18 @@ def _run_all(
             "Relationship-input signal gate failed:\n  "
             + "\n  ".join(relationship_inputs_gate.failures)
         )
+    base = with_us_spm_independence_role(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+        asec_spm_role_source_paths=_asec_education_source_paths(args),
+    )
+    spm_independence_role_gate = us_spm_independence_role_signal_gate(base)
+    if not spm_independence_role_gate.passed:
+        raise SystemExit(
+            "SPM independence role signal gate failed:\n  "
+            + "\n  ".join(spm_independence_role_gate.failures)
+        )
     base = with_us_medicare_take_up_input(
         base,
         seed=args.seed,
@@ -1615,6 +1630,11 @@ def _run_all(
             "failures": list(relationship_inputs_gate.failures),
             "details": dict(relationship_inputs_gate.details),
         },
+        "spm_independence_role_signal": {
+            "passed": spm_independence_role_gate.passed,
+            "failures": list(spm_independence_role_gate.failures),
+            "details": dict(spm_independence_role_gate.details),
+        },
         "medicare_take_up_input_signal": {
             "passed": medicare_take_up_gate.passed,
             "failures": list(medicare_take_up_gate.failures),
@@ -2027,6 +2047,16 @@ def _pre_clone_enrichment_stage(
             "Relationship-input signal gate failed",
         )
     }
+    base = with_us_spm_independence_role(
+        base,
+        seed=args.seed,
+        time_period=args.target_year,
+        asec_spm_role_source_paths=_asec_education_source_paths(args),
+    )
+    signals["spm_independence_role_signal"] = _checked_gate_payload(
+        us_spm_independence_role_signal_gate(base),
+        "SPM independence role signal gate failed before support cloning",
+    )
     base = with_us_medicare_take_up_input(
         base,
         seed=args.seed,
