@@ -12,7 +12,13 @@ import pytest
 
 pytest.importorskip("policyengine_us")
 
-from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights  # noqa: E402
+from microcosm.frame import (  # noqa: E402
+    US_SCHEMA,
+    Frame,
+    SignedScale,
+    WeightKind,
+    Weights,
+)
 from microcosm.frame.adapters.policyengine_us import (  # noqa: E402
     multi_year_dataset,
     uprating_series,
@@ -225,6 +231,44 @@ def test_multi_year_dataset_rejects_bad_inputs() -> None:
     with pytest.raises(ValueError, match="not in the bundle"):
         multi_year_dataset(
             bundle, BASE_YEAR, {2025: (np.array([1.0, 2.0]), {"missing": 1.1})}
+        )
+
+
+def test_multi_year_dataset_applies_signed_scale_without_changing_base() -> None:
+    bundle = _bundle()
+    bundle.person["partnership_income"] = [200.0, -100.0, 0.0]
+    dataset = multi_year_dataset(
+        bundle,
+        BASE_YEAR,
+        {
+            2025: (
+                np.array([1_010.0, 2_050.0]),
+                {"partnership_income": SignedScale(positive=1.25, negative=1.5)},
+            )
+        },
+    )
+    assert dataset.datasets[2025].person["partnership_income"].tolist() == [
+        250.0,
+        -150.0,
+        0.0,
+    ]
+    assert dataset.datasets[BASE_YEAR].person["partnership_income"].tolist() == [
+        200.0,
+        -100.0,
+        0.0,
+    ]
+    assert bundle.person["partnership_income"].tolist() == [200.0, -100.0, 0.0]
+
+
+@pytest.mark.parametrize("factor", [0.0, -1.0])
+def test_multi_year_dataset_rejects_nonpositive_scale(factor) -> None:
+    with pytest.raises(
+        ValueError, match="2025:.*employment_income_before_lsr.*positive"
+    ):
+        multi_year_dataset(
+            _bundle(),
+            BASE_YEAR,
+            {2025: (np.array([1.0, 2.0]), {"employment_income_before_lsr": factor})},
         )
 
 

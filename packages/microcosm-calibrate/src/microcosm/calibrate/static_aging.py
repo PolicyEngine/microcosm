@@ -14,7 +14,9 @@ keeps them apart:
   weights grow, from the base year, by exactly the total's projected growth,
   so the factor absorbs only what the reweighting did not explain. The
   series' level never enters: a column may follow a series for a broader
-  concept than its own. A column that follows a per-person rate or a price
+  concept than its own. Mixed-sign inputs apply the same projected growth
+  separately to positive amounts and losses, preserving each record's sign
+  even when the net total cancels. A column that follows a per-person rate or a price
   index gets the index ratio. Applying the factors to the base-year values
   gives the year's values.
 
@@ -40,7 +42,15 @@ import pandas as pd
 
 from microcosm.calibrate.solve import FREE_MASS, CalibrationResult, calibrate
 from microcosm.calibrate.target import Target, TargetSet
-from microcosm.frame import Frame, MassChange, WeightKind, Weights
+from microcosm.frame import (
+    Frame,
+    MassChange,
+    ScaleFactor,
+    SignedScale,
+    WeightKind,
+    Weights,
+    apply_scale,
+)
 
 __all__ = [
     "DemographicProjection",
@@ -129,7 +139,8 @@ class SeriesProjection:
         totals: National totals, ``series -> {year: value}``. A column mapped
             to one of these gets the factor that makes its weighted total
             under the year's weights grow from the base year by the series'
-            growth; the series' level is never imposed.
+            growth; the series' level is never imposed. Mixed-sign columns
+            assume that positive amounts and losses share this growth rate.
         indices: Per-person rates and price indices, ``series -> {year:
             value}``. A column mapped to one of these gets the ratio of the
             year's value to the base year's.
@@ -168,7 +179,8 @@ class YearProjection:
     Attributes:
         year: The projection year.
         weights: The weight entity's weights for the year.
-        factors: ``column -> factor`` to multiply base-year values by. Columns
+        factors: ``column -> factor`` to apply to base-year values. Mixed-sign
+            total inputs use separate positive and negative factors. Columns
             without a mapped series are absent and carry over unchanged.
         demographic_fit: One row per cell with ``target`` and ``achieved``
             weighted person counts.
@@ -177,7 +189,7 @@ class YearProjection:
 
     year: int
     weights: Weights
-    factors: Mapping[str, float]
+    factors: Mapping[str, ScaleFactor]
     demographic_fit: pd.DataFrame
     calibration: CalibrationResult
 
@@ -220,7 +232,7 @@ class StaticAgingResult:
         tables.update({name: aged.link(name).copy() for name in aged.links})
         for column, factor in projection.factors.items():
             entity = aged.column_entity(column)
-            tables[entity][column] = tables[entity][column].to_numpy() * factor
+            tables[entity][column] = apply_scale(tables[entity][column], factor)
         weights = {
             entity: aged.weights_for(entity) for entity in aged.weighted_entities
         }
@@ -440,8 +452,8 @@ def _factors(
     year: int,
     series: SeriesProjection,
     column_series: Mapping[str, str],
-) -> dict[str, float]:
-    factors: dict[str, float] = {}
+) -> dict[str, ScaleFactor]:
+    factors: dict[str, ScaleFactor] = {}
     for column, name in column_series.items():
         entity = base.column_entity(column)
         values = base.table(entity)[column].to_numpy(dtype=float)
@@ -455,26 +467,62 @@ def _factors(
         if not np.isfinite(growth) or growth <= 0.0:
             raise ValueError(f"Series {name!r} must have finite positive growth.")
         if name in series.totals:
-            base_total = float((base.resolve_weights(entity).values * values).sum())
-            aged_total = float((aged.resolve_weights(entity).values * values).sum())
+            base_weights = base.resolve_weights(entity).values
+            aged_weights = aged.resolve_weights(entity).values
             if not np.any(values):
                 factors[column] = 1.0
                 continue
-            if base_total == 0.0 or aged_total == 0.0:
-                raise ValueError(
-                    f"Column {column!r} has no identifiable positive aging factor: "
-                    "a signed weighted total cancels to zero."
+            positive, negative = values > 0, values < 0
+            if positive.any() and negative.any():
+                # A net series does not identify gross income/loss growth.
+                # Apply its growth to both gross components, preserving record
+                # signs and the net-growth contract even when the net cancels.
+                factors[column] = SignedScale(
+                    positive=_component_factor(
+                        values[positive],
+                        base_weights[positive],
+                        aged_weights[positive],
+                        growth,
+                        column,
+                    ),
+                    negative=_component_factor(
+                        values[negative],
+                        base_weights[negative],
+                        aged_weights[negative],
+                        growth,
+                        column,
+                    ),
                 )
-            factor = growth * base_total / aged_total
-            if not np.isfinite(factor) or factor <= 0.0:
-                raise ValueError(
-                    f"Column {column!r} has no finite positive aging factor; "
-                    "reweighting must preserve the sign of its weighted total."
+            else:
+                factors[column] = _component_factor(
+                    values, base_weights, aged_weights, growth, column
                 )
-            factors[column] = factor
         else:
             factors[column] = growth
     return factors
+
+
+def _component_factor(
+    values: np.ndarray,
+    base_weights: np.ndarray,
+    aged_weights: np.ndarray,
+    growth: float,
+    column: str,
+) -> float:
+    """Scale one sign's gross total without creating or removing support."""
+    base_total = float((base_weights * values).sum())
+    aged_total = float((aged_weights * values).sum())
+    if base_total == 0.0 and aged_total == 0.0:
+        return 1.0
+    if base_total == 0.0 or aged_total == 0.0:
+        raise ValueError(
+            f"Column {column!r} cannot preserve gross growth with a positive "
+            "factor because a component has zero weighted support."
+        )
+    factor = growth * base_total / aged_total
+    if not np.isfinite(factor) or factor <= 0.0:
+        raise ValueError(f"Column {column!r} has no finite positive aging factor.")
+    return factor
 
 
 def score_predictions(

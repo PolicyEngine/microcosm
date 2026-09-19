@@ -400,9 +400,11 @@ def test_ssa_population_projection_parses_and_top_codes(tmp_path) -> None:
         ([100.0, -100.0], [1.0, 2.0]),  # Base net cancels; aged net does not.
         ([100.0, -50.0], [1.0, 2.0]),  # Aged net cancels; base net does not.
         ([100.0, -50.0], [1.0, 3.0]),  # Reweighting reverses the net sign.
+        ([100.0, -50.0], [2.0, 1.0]),  # Positive net stays positive.
+        ([100.0, -100.0], [2.0, 2.0]),  # Both nets cancel.
     ],
 )
-def test_signed_totals_require_a_positive_identifiable_factor(values, year_weights):
+def test_signed_totals_preserve_gross_growth_and_record_signs(values, year_weights):
     from microcosm.calibrate.static_aging import _factors
     from microcosm.frame import MassChange
 
@@ -426,8 +428,83 @@ def test_signed_totals_require_a_positive_identifiable_factor(values, year_weigh
         mass=MassChange(factor=None, reason="test demographic change"),
     )
     series = SeriesProjection(totals={"income": {2024: 1000.0, 2025: 1100.0}})
-    with pytest.raises(ValueError, match="business_income.*positive.*factor"):
-        _factors(aged, frame, 2024, 2025, series, {"business_income": "income"})
+    factors = _factors(aged, frame, 2024, 2025, series, {"business_income": "income"})
+    factor = factors["business_income"]
+    # Each gross component follows the same 10% growth even when the net
+    # total cancels to zero or reweighting reverses its sign.
+    projected = np.array([values[0] * factor.positive, values[1] * factor.negative])
+    assert np.sign(projected).tolist() == np.sign(values).tolist()
+    assert projected[0] * year_weights[0] == pytest.approx(values[0] * 1.1)
+    assert projected[1] * year_weights[1] == pytest.approx(values[1] * 1.1)
+    assert np.dot(projected, year_weights) == pytest.approx(sum(values) * 1.1)
+
+
+@pytest.mark.parametrize(
+    "base_weights, year_weights",
+    [([0.0, 0.0], [1.0, 1.0]), ([1.0, 1.0], [0.0, 0.0])],
+)
+def test_component_factor_rejects_gaining_or_losing_weighted_support(
+    base_weights, year_weights
+):
+    from microcosm.calibrate.static_aging import _component_factor
+
+    with pytest.raises(ValueError, match="zero weighted support"):
+        _component_factor(
+            np.array([-100.0, -50.0]),
+            np.array(base_weights),
+            np.array(year_weights),
+            1.1,
+            "losses",
+        )
+
+
+def test_component_without_weighted_support_stays_unchanged():
+    from microcosm.calibrate.static_aging import _component_factor
+
+    assert (
+        _component_factor(
+            np.array([-100.0, -50.0]), np.zeros(2), np.zeros(2), 1.1, "losses"
+        )
+        == 1.0
+    )
+
+
+def test_projected_frame_preserves_signed_gross_totals_and_index_ratios():
+    from microcosm.frame import SignedScale
+
+    frame = _frame(n_households=20)
+    values = np.where(frame.person["age"] >= 65, -100.0, 200.0).astype(np.float32)
+    values[0] = 0.0
+    frame.person["business_income"] = values
+    frame.person["indexed_amount"] = values
+    original = frame.person.copy(deep=True)
+    result = static_aging(
+        frame,
+        base_year=2024,
+        years=(2025,),
+        demographics=_projection(frame),
+        series=SeriesProjection(
+            totals={"business": {2024: 1000, 2025: 1100}},
+            indices={"prices": {2024: 100, 2025: 105}},
+        ),
+        column_series={"business_income": "business", "indexed_amount": "prices"},
+        epochs=50,
+    )
+    assert isinstance(result.year(2025).factors["business_income"], SignedScale)
+    projected = result.frame_for(frame, 2025)
+    base_weights = frame.resolve_weights("person").values
+    year_weights = projected.resolve_weights("person").values
+    after = projected.person["business_income"].to_numpy()
+    assert after.dtype == np.float64
+    np.testing.assert_array_equal(np.sign(after), np.sign(values))
+    for mask in (values > 0, values < 0, np.ones(len(values), dtype=bool)):
+        assert np.dot(after[mask], year_weights[mask]) == pytest.approx(
+            np.dot(values[mask], base_weights[mask]) * 1.1, rel=1e-10
+        )
+    np.testing.assert_allclose(
+        projected.person["indexed_amount"], values.astype(float) * 1.05
+    )
+    pd.testing.assert_frame_equal(frame.person, original, check_exact=True)
 
 
 def test_zero_signal_still_validates_series():

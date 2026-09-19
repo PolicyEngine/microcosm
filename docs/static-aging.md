@@ -9,10 +9,10 @@ decision in [#333](https://github.com/PolicyEngine/microcosm/issues/333).
 
 Two things change between years, and the step keeps them apart.
 
-**Weights carry who exists.** For each projection year the weight entity's
-weights are recalibrated to that year's projected population by demographic
-cell. The US reader supplies age and sex from SSA's Trustees Report; a UK
-projection reader is not included. Nothing else is targeted. A program count
+**Weights carry who exists.** For each projection year the operator recalibrates
+the weight entity's weights to that year's projected population by demographic
+cell. The US reader supplies age and sex from SSA's Trustees Report; the package
+does not yet include a UK projection reader. It targets demographics only. A program count
 or an income total is an output of rules, take-up and demographics; a weight vector forced to match
 one can no longer be wrong about it, so it can no longer be checked. Filers
 by income bin has the same problem in income form.
@@ -48,17 +48,31 @@ their weights from it, so explicit stale person or tax-unit weights cannot
 override the projected weights. The operator supports person-level weights
 as well as group weights, and preserves the frame's link tables.
 
-`max_weight_ratio` (default 5) bounds how far any record's weight may move
-from its base-year value across the whole horizon, since each year is fitted
-from the base-year weights, not from the previous year's. Cells no record
-supports are skipped rather than targeted; they appear in the year's
+`max_weight_ratio` (default 5) caps each record's weight at that multiple of
+its base-year weight. It imposes no reciprocal lower bound. The operator fits
+each year from the base-year weights. It skips cells that no record supports;
+they appear in the year's
 `demographic_fit` with a zero base.
 
-Signed monetary columns need a finite positive factor. If reweighting makes
-a signed weighted total cancel to zero or change sign, the operator raises
-an error. A single proportional factor cannot preserve each record's sign
-and achieve the requested aggregate growth in those cases. An all-zero
-column stays zero; the operator cannot create missing income support.
+## Income and losses
+
+For a national-total column with both positive and negative values, the operator
+applies the series' growth to each gross component separately. If `g` is the
+series growth ratio, `B+` and `B-` are the base weighted positive and negative
+totals, and `A+` and `A-` are those totals under the projected weights before
+scaling, the factors are `g * B+ / A+` and `g * B- / A-`.
+
+Both factors remain positive. Each record keeps its sign, each gross component
+grows by `g`, and their sum preserves the projected net growth, including when
+the base net is zero or reweighting changes its sign. This assumes that positive
+amounts and losses share the same growth rate; a net projection alone does not
+identify their separate growth rates. `YearProjection.factors` represents these
+pairs with `microcosm.frame.SignedScale`. Index columns retain one common ratio.
+
+An all-zero column stays zero. A component with zero weighted support in both
+years uses an identity factor. If only one year has weighted support, the
+operator raises an error: positive factors cannot create or remove support.
+Both `frame_for` and the US dataset exporter apply factors in float64.
 
 ## What it is not
 

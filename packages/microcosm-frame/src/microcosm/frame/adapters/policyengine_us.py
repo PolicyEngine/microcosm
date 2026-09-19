@@ -47,6 +47,7 @@ from microcosm.frame.materialize import (
     read_frame_table,
 )
 from microcosm.frame.rules import ExportContract
+from microcosm.frame.scaling import ScaleFactor, apply_scale
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 from microcosm.frame.units import US_SCHEMA
 from microcosm.frame.weights import Weights
@@ -1301,7 +1302,7 @@ def uprating_series(
 def multi_year_dataset(
     bundle: Frame,
     base_year: int,
-    years: Mapping[int, tuple[np.ndarray, Mapping[str, float]]],
+    years: Mapping[int, tuple[np.ndarray, Mapping[str, ScaleFactor]]],
 ) -> Any:
     """Build a ``USMultiYearDataset`` from a base-year bundle and its
     projected years.
@@ -1313,6 +1314,8 @@ def multi_year_dataset(
             projected year after ``base_year``, as static aging produces them.
             Factors may target numeric columns with a dataset uprating rule;
             identifiers, memberships, weights and demographics remain fixed.
+            A ``SignedScale`` applies separate positive factors to positive
+            and negative base-year amounts, preserving each record's sign.
 
     Returns:
         A ``policyengine_us.data.USMultiYearDataset`` holding the base year
@@ -1368,15 +1371,14 @@ def multi_year_dataset(
                 or pd.api.types.is_bool_dtype(tables[owner][column].dtype)
             ):
                 raise ValueError(f"{year}: column {column!r} cannot be factored.")
-            factor = float(factor)
-            if not np.isfinite(factor):
-                raise ValueError(f"{year}: factor for {column!r} must be finite.")
-            with np.errstate(over="ignore", invalid="ignore"):
-                values = tables[owner][column].to_numpy(dtype=float) * factor
-            if not np.isfinite(values).all():
-                raise ValueError(
-                    f"{year}: factored values for {column!r} must be finite."
+            try:
+                values = apply_scale(
+                    tables[owner][column].to_numpy(dtype=float), factor
                 )
+            except ValueError as exc:
+                raise ValueError(
+                    f"{year}: cannot scale column {column!r}: {exc}"
+                ) from exc
             tables[owner][column] = values
         datasets.append(engine._build_dataset(tables, year))
     return USMultiYearDataset(datasets=datasets)
