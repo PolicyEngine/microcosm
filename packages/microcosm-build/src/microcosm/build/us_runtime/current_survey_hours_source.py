@@ -1,7 +1,7 @@
-"""ACS-only hours proposals borrowed from actual retained survey source owners.
+"""Original-person hours proposals borrowed from retained survey source owners.
 
 This is not an all-person engine input, a source issuer, or release admission.
-Selected ASEC literals remain uninterpreted for a later own-arm qualification.
+Both arms retain raw history and explicit completion/imputation provenance.
 Consumers retain this object and validate after their final relevant I/O.
 """
 
@@ -20,20 +20,21 @@ from types import CodeType, FunctionType
 import pandas as pd
 
 from . import asec_current_money_source as physical
+from . import current_asec_usual_hours as asec_hours
 from . import current_survey_health_source as original
 from . import current_survey_hours as hours
 from . import source_csv_builtin
 from . import survey_population_preparation as source
 
 require = hours._require
-PROTOCOL = "microcosm.us.native-usual-hours-source.v1"
+PROTOCOL = "microcosm.us.native-usual-hours-source.v2"
 _EXPECTED_DONORS = 2174
 STRING = pd.StringDtype(storage="python", na_value=pd.NA)
 
 
 def _live():
     functions = {}
-    for module in (sys.modules[__name__], hours, original):
+    for module in (sys.modules[__name__], hours, asec_hours, original):
         for name, value in vars(module).items():
             if isinstance(value, FunctionType):
                 functions[module.__name__, name] = source._function_seal(value)
@@ -57,6 +58,10 @@ def _live():
         hours.ACS_FIELDS,
         hours.ASEC_FIELDS,
         hours.ALLOCATION_FLAGS,
+        asec_hours.PROTOCOL,
+        asec_hours.COMPLETION_PROTOCOL,
+        asec_hours.EARNINGS_FIELDS,
+        asec_hours.SOURCE_FIELDS,
         _REVALIDATE_CODE,
         repr(STRING),
     )
@@ -65,7 +70,7 @@ def _live():
 def _implementation():
     return {
         module.__name__: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
-        for module in (sys.modules[__name__], hours, original, physical)
+        for module in (sys.modules[__name__], hours, asec_hours, original, physical)
     }
 
 
@@ -73,7 +78,7 @@ def _scan(stream, *, survey, wanted, selected, donors, maximum):
     """Exhaust every record; donors are never filtered by selected support."""
     require(survey in ("asec", "acs"), "SURVEY")
     require(source_csv_builtin.capture_csv_reader(csv) is not None, "CSV_BINDING")
-    columns = hours.ASEC_FIELDS if survey == "asec" else hours.ACS_FIELDS
+    columns = asec_hours.SOURCE_FIELDS if survey == "asec" else hours.ACS_FIELDS
     header, count = None, 0
     for raw in original.records._records(stream):
         values = original.records._decode_record(raw, first=header is None)
@@ -215,22 +220,46 @@ def _combine(frame, origins, keys, selected, donors, *, age15_policy, under15_po
         age15_policy=age15_policy,
         under15_policy=under15_policy,
     )
+    asec_batch = hours.HoursProposalBatch(
+        tuple(
+            asec_hours.propose_asec_usual_hours(row, under15_policy=under15_policy)
+            for row in asec_rows
+        ),
+        None,
+        under15_policy,
+        0,
+    )
+    by_person = dict(zip(acs_index, batch.proposals, strict=True))
+    by_person.update(zip(asec_index, asec_batch.proposals, strict=True))
+    require(set(by_person) == set(origins.index), "PERSON_HOURS_COVERAGE")
+    ordered = [by_person[pid] for pid in origins.index]
+    require(all(p.hours is not None for p in ordered), "PERSON_HOURS_UNRESOLVED")
+    person_hours = pd.DataFrame(
+        {
+            hours.TARGET: pd.array([p.hours for p in ordered], dtype="float64"),
+            "hours_provenance": pd.array([p.provenance for p in ordered], dtype=STRING),
+            "hours_policy": pd.array([p.policy for p in ordered], dtype=STRING),
+        },
+        index=origins.index.copy(),
+    )
     return (
         _table(acs_rows, hours.ACS_FIELDS, acs_index),
-        _table(asec_rows, hours.ASEC_FIELDS, asec_index),
+        _table(asec_rows, asec_hours.SOURCE_FIELDS, asec_index),
         _table(
             donor_rows, hours.ASEC_FIELDS, pd.RangeIndex(len(donor_rows), name="donor")
         ),
         batch,
+        asec_batch,
+        person_hours,
     )
 
 
 @dataclass(frozen=True, eq=False)
-class QualifiedAcsHoursProposals:
-    """Borrowed custody of ACS proposals, private literals and the full donor cohort.
+class QualifiedSurveyHoursProposals:
+    """Borrowed original-person proposals, private literals and full donor cohort.
 
     Exact object/callback identity is required. Neither a copied object nor
-    this object's receipt is a source capability. There is no ASEC hours leaf.
+    this object's receipt is a source capability. Clone transport remains separate.
     """
 
     source_frame: object
@@ -239,13 +268,15 @@ class QualifiedAcsHoursProposals:
     asec_selected_raw: pd.DataFrame
     donor_raw: pd.DataFrame
     proposals: hours.HoursProposalBatch
+    asec_proposals: hours.HoursProposalBatch
+    person_hours: pd.DataFrame
     receipt: bytes
     _revalidate: object = field(default=None, repr=False, compare=False)
 
     def validate(self):
         require(_live() == _LIVE, "IMPLEMENTATION_CHANGED")
         require(
-            type(self) is QualifiedAcsHoursProposals
+            type(self) is QualifiedSurveyHoursProposals
             and type(self._revalidate) is FunctionType
             and self._revalidate.__code__ is _REVALIDATE_CODE,
             "RETAINED_OWNER_REQUIRED",
@@ -371,7 +402,7 @@ def qualify_current_survey_hours(preparation, *, age15_policy, under15_policy):
             and original.housing._persisted_sha(captured, acs_size) == acs_digest,
             "ACS_CAPTURE_CHANGED",
         )
-    acs_raw, asec_raw, donor_raw, proposals = _combine(
+    acs_raw, asec_raw, donor_raw, proposals, asec_proposals, person_hours = _combine(
         state.frame,
         origins,
         keys,
@@ -380,13 +411,16 @@ def qualify_current_survey_hours(preparation, *, age15_policy, under15_policy):
         age15_policy=age15_policy,
         under15_policy=under15_policy,
     )
-    tables = (origins, acs_raw, asec_raw, donor_raw)
+    tables = (origins, acs_raw, asec_raw, donor_raw, person_hours)
     seals = tuple(_table_seal(table) for table in tables)
     proposal_seal = _proposal_seal(proposals)
+    asec_proposal_seal = _proposal_seal(asec_proposals)
     receipt = source._encode(
         {
             "protocol": PROTOCOL,
             "proposal_protocol": hours.PROTOCOL,
+            "asec_observation_protocol": asec_hours.PROTOCOL,
+            "asec_completion_protocol": asec_hours.COMPLETION_PROTOCOL,
             "implementation_sha256": implementation,
             "preparation_sha256": source._sha(entry[1]),
             "asec_native_sha256": source._sha(issued[1]),
@@ -400,29 +434,46 @@ def qualify_current_survey_hours(preparation, *, age15_policy, under15_policy):
             "age15_policy": age15_policy,
             "under15_policy": under15_policy,
             "seed": hours.SEED,
-            "projection_scope": "selected_original_acs_only",
+            "projection_scope": "selected_original_survey_people",
             "selected_acs_rows": len(acs_raw),
             "selected_asec_literal_rows": len(asec_raw),
             "full_age15_donor_rows": len(donor_raw),
             "donor_roster_relation": "exact_full_income2024_age15_coverage_native_keys",
             "donor_keys_sha256": source._digest(sorted(expected_donors)),
-            "raw_columns": {"acs": hours.ACS_FIELDS, "asec": hours.ASEC_FIELDS},
+            "raw_columns": {"acs": hours.ACS_FIELDS, "asec": asec_hours.SOURCE_FIELDS},
             "tables_sha256": dict(
                 zip(
-                    ("origins", "acs_raw", "asec_selected_raw", "donor_raw"),
+                    (
+                        "origins",
+                        "acs_raw",
+                        "asec_selected_raw",
+                        "donor_raw",
+                        "person_hours",
+                    ),
                     seals,
                     strict=True,
                 )
             ),
             "proposals_sha256": proposal_seal,
+            "asec_proposals_sha256": asec_proposal_seal,
+            "selected_original_person_hours_qualified": True,
+            "selected_person_rows": len(person_hours),
             "all_person_engine_input_qualified": False,
-            "asec_own_arm_hours_qualified": False,
+            "asec_own_arm_hours_qualified": True,
             "source_admission_issued": False,
             "release_eligible": False,
         }
     )
-    result = QualifiedAcsHoursProposals(
-        state.frame, origins, acs_raw, asec_raw, donor_raw, proposals, receipt
+    result = QualifiedSurveyHoursProposals(
+        state.frame,
+        origins,
+        acs_raw,
+        asec_raw,
+        donor_raw,
+        proposals,
+        asec_proposals,
+        person_hours,
+        receipt,
     )
 
     def revalidate(candidate):
@@ -459,8 +510,11 @@ def qualify_current_survey_hours(preparation, *, age15_policy, under15_policy):
             and candidate.asec_selected_raw is asec_raw
             and candidate.donor_raw is donor_raw
             and candidate.proposals is proposals
+            and candidate.asec_proposals is asec_proposals
+            and candidate.person_hours is person_hours
             and tuple(_table_seal(table) for table in tables) == seals
-            and _proposal_seal(proposals) == proposal_seal,
+            and _proposal_seal(proposals) == proposal_seal
+            and _proposal_seal(asec_proposals) == asec_proposal_seal,
             "PROJECTION_CHANGED",
         )
 

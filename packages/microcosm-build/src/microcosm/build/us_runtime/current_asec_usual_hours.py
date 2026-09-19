@@ -8,10 +8,14 @@ unresolved here; an explicit modeled assumption is a separate operation.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 
 from . import current_survey_hours as common
 
 PROTOCOL = "microcosm.us.asec-usual-hours-observation.v1"
+COMPLETION_PROTOCOL = "microcosm.us.asec-usual-hours-completion.v1"
+EARNINGS_FIELDS = ("WSAL_VAL", "SEMP_VAL", "FRSE_VAL")
+SOURCE_FIELDS = (*common.ASEC_FIELDS, *EARNINGS_FIELDS)
 
 
 def recode_asec_usual_hours(row: Mapping[str, str]) -> common.HoursProposal:
@@ -51,3 +55,34 @@ def recode_asec_usual_hours(row: Mapping[str, str]) -> common.HoursProposal:
             else "asec_source_nonwork_completion"
         )
     return common.HoursProposal(key, output, provenance, raw, flags)
+
+
+def propose_asec_usual_hours(
+    row: Mapping[str, str], *, under15_policy: str | None = None
+) -> common.HoursProposal:
+    """Complete a child only under an explicit zero policy and zero earnings.
+
+    Earnings are conflict checks, never predictors or hours substitutes. Preserve
+    their literal values alongside the source work history. Adult NIU remains a
+    refusal in this complete-input proposal even though observation can describe
+    it without imputing a value.
+    """
+    common._require(under15_policy in (None, common.UNDER15_POLICY), "UNDER15_POLICY")
+    raw = common._literals(row, SOURCE_FIELDS)
+    earnings = tuple(
+        common._integer(row[name], low=-(2**63), high=2**63 - 1)
+        for name in EARNINGS_FIELDS
+    )
+    proposal = replace(recode_asec_usual_hours(row), raw=raw)
+    if proposal.hours is not None:
+        return proposal
+    age = common._integer(row["A_AGE"], low=0, high=85)
+    common._require(age < 15, "UNRESOLVED_ADULT")
+    common._require(under15_policy == common.UNDER15_POLICY, "UNDER15_POLICY_REQUIRED")
+    common._require(all(value == 0 for value in earnings), "UNDER15_EARNINGS")
+    return replace(
+        proposal,
+        hours=0.0,
+        provenance="under15_explicit_modeled_zero",
+        policy=under15_policy,
+    )

@@ -40,7 +40,26 @@ last-week hours or historical engine default fills a gap here. In particular,
 under-15 zero imputation needs a separately explicit assumption and earnings
 conflict checks. This routine is not the all-person release input producer.
 
-The original source owner still retains selected ASEC literals without consuming
-this recoder. Its next successor must bind this implementation and observation
-protocol, preserve actual source identity, qualify remaining cells, and use the
-existing exact clone attachment contract. All public release flags remain false.
+`propose_asec_usual_hours` adds a separate, explicit completion operation. It
+requires the original wage, nonfarm self-employment and farm self-employment
+literals. It preserves observed adult hours independently of earnings. For an
+under-15 person with NIU work history, it produces zero only when the caller
+selects `us_hours_under15_zero_completion_v1` and all three earnings fields are
+known zero. Nonzero earnings, missing columns or unknown earnings refuse that
+completion. An unanswered adult remains unresolved and cannot produce a complete
+proposal. The child's result stays labeled `under15_explicit_modeled_zero`.
+
+An aggregate diagnostic of the complete current ASEC person member found
+142,125 records: 72,460 with positive source hours, 41,986 with source nonwork,
+and 27,679 under-15 records with NIU history. No work-history contradiction or
+zero/missing-hours record with nonzero earnings appeared in those three fields.
+The diagnostic source hash matches the maintained 2025 member pin:
+`06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5`.
+These are unweighted source counts, not population estimates. A source scan does
+not issue source authority or qualify a release.
+
+The version-2 retained source owner binds this observation/completion code and
+its protocols, preserves raw earnings alongside work history, and returns a
+complete selected-original-person hours projection for both survey arms.
+Transport to clones, graph integration and all-person engine input qualification
+remain separate. Public release flags remain false.

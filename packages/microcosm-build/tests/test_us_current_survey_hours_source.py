@@ -36,6 +36,10 @@ def source_arguments(tmp_path, monkeypatch):
         path = folder / member
         raw = pd.read_csv(path, dtype=str, keep_default_na=False)
         raw["MARSUPWT"] = "10000"
+        for name in owner.asec_hours.EARNINGS_FIELDS:
+            if name not in raw:
+                raw[name] = "0"
+            raw.loc[raw.A_AGE.map(int).lt(15), name] = "0"
         for name in (
             "HRSWK",
             "WKSWORK",
@@ -134,12 +138,72 @@ def test_full_donor_roster_is_preserved_outside_selected_support(actual):
     assert dict(teenager.raw)["WKHP"] == ""
     assert not left.proposals.source_authenticated
     evidence = json.loads(left.receipt)
-    assert evidence["projection_scope"] == "selected_original_acs_only"
+    assert evidence["projection_scope"] == "selected_original_survey_people"
     assert evidence["full_age15_donor_rows"] == 1
     assert evidence["selected_acs_rows"] == len(left.proposals.proposals)
     assert not evidence["all_person_engine_input_qualified"]
-    assert not evidence["asec_own_arm_hours_qualified"]
+    assert evidence["asec_own_arm_hours_qualified"]
+    assert evidence["selected_original_person_hours_qualified"]
     assert not evidence["source_admission_issued"] and not evidence["release_eligible"]
+
+
+def test_both_original_arms_have_complete_ordered_hours_without_mutating_frame(actual):
+    value = actual.values
+    assert value.person_hours.index.equals(value.origins.index)
+    assert not value.person_hours[owner.hours.TARGET].isna().any()
+    assert owner.hours.TARGET not in value.source_frame.person
+    asec_ids = value.origins.index[value.origins.source.eq("asec")]
+    for pid, proposal in zip(asec_ids, value.asec_proposals.proposals, strict=True):
+        row = value.asec_selected_raw.loc[pid]
+        assert proposal.key == owner.hours._asec_key(row)
+        assert value.person_hours.at[pid, owner.hours.TARGET] == proposal.hours
+        assert value.person_hours.at[pid, "hours_provenance"] == proposal.provenance
+        if int(row.A_AGE) < 15:
+            assert proposal.hours == 0.0
+            assert proposal.policy == owner.hours.UNDER15_POLICY
+            assert proposal.provenance == "under15_explicit_modeled_zero"
+            assert dict(proposal.raw)["HRSWK"] == "0"
+        else:
+            assert proposal.hours == 12.0
+            assert proposal.policy is None
+    expected = value.person_hours.loc[actual.smaller.person_hours.index]
+    pd.testing.assert_frame_equal(actual.smaller.person_hours, expected)
+    evidence = json.loads(value.receipt)
+    assert evidence["selected_person_rows"] == len(value.person_hours)
+    assert evidence["asec_completion_protocol"] == owner.asec_hours.COMPLETION_PROTOCOL
+
+
+def test_nested_asec_proposal_mutation_refuses(actual):
+    proposal = actual.values.asec_proposals.proposals[0]
+    previous = proposal.hours
+    try:
+        object.__setattr__(proposal, "hours", 99.0)
+        with pytest.raises(ValueError, match="PROJECTION_CHANGED"):
+            actual.values.validate()
+    finally:
+        object.__setattr__(proposal, "hours", previous)
+    actual.values.validate()
+
+
+def test_asec_completion_policy_change_cannot_reuse_source_owner(actual, monkeypatch):
+    with monkeypatch.context() as patch:
+        patch.setattr(owner.asec_hours, "COMPLETION_PROTOCOL", "different")
+        with pytest.raises(ValueError, match="IMPLEMENTATION_CHANGED"):
+            actual.values.validate()
+    actual.values.validate()
+
+
+def test_numeric_person_hours_mutation_refuses(actual):
+    table = actual.values.person_hours
+    pid = table.index[0]
+    previous = table.at[pid, owner.hours.TARGET]
+    try:
+        table.at[pid, owner.hours.TARGET] = previous + 1
+        with pytest.raises(ValueError, match="PROJECTION_CHANGED"):
+            actual.values.validate()
+    finally:
+        table.at[pid, owner.hours.TARGET] = previous
+    actual.values.validate()
 
 
 @pytest.mark.parametrize("which", ["owner", "callback", "preparation", "receipt"])
@@ -174,6 +238,8 @@ def test_copies_callbacks_and_receipts_cannot_replace_the_live_owner(actual, whi
         ("asec_selected_raw", "HRSWK"),
         ("donor_raw", "HRSWK"),
         ("origins", "source"),
+        ("person_hours", "hours_provenance"),
+        ("asec_selected_raw", "WSAL_VAL"),
     ],
 )
 def test_mutated_source_projection_refuses(actual, field, column):
@@ -233,11 +299,17 @@ def test_final_io_cannot_mutate_then_hide_a_projection(actual, monkeypatch):
     value.validate()
 
 
-@pytest.mark.parametrize("field", ["acs_raw", "donor_raw", "proposals"])
+@pytest.mark.parametrize(
+    "field", ["acs_raw", "donor_raw", "proposals", "asec_proposals", "person_hours"]
+)
 def test_equal_detached_projection_cannot_replace_owned_identity(actual, field):
     value = actual.values
     previous = getattr(value, field)
-    detached = replace(previous) if field == "proposals" else previous.copy(deep=True)
+    detached = (
+        replace(previous)
+        if field in ("proposals", "asec_proposals")
+        else previous.copy(deep=True)
+    )
     try:
         object.__setattr__(value, field, detached)
         with pytest.raises(ValueError, match="PROJECTION_CHANGED"):
