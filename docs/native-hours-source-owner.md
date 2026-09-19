@@ -47,6 +47,16 @@ earnings; it is never relabeled observed zero. Missing adult hours refuse comple
 projection construction. Historical engine defaults, last-week hours and prior
 wages are not substitutes for current source evidence.
 
+`borrow_cloned_hours_columns(qualified, receiving_people)` reuses the existing
+exact two-clone attachment contract. It transports each original proposal and
+its provenance to both descendants without redrawing hours. It checks original
+IDs, native IDs, survey channels, complete clone pairs and output ownership.
+It validates the retained source owner before and after borrowing, then checks
+that source I/O changed neither the recipient table nor the borrowed output.
+The returned Series are independent copies. This helper does not issue receiving
+population authority: the graph host still needs to retain and authenticate its
+own receiving owner and bind these columns to execution and replay.
+
 ## Verification boundary
 
 The tests use the real source issuers, preparation, private capture and owner
@@ -61,7 +71,7 @@ is a private pre-issuance test seam; production retains the 2,174-key requiremen
 This change continues the native branch based on `fee4aac9d`, including pure
 hours and response-status correction `4f34495e5`. Fresh main was inspected and
 lacks these native APIs, so it is not an independent main-branch replacement.
-Actual full-source owner execution, graph integration, clone transport,
+Actual full-source owner execution, graph integration and clone-host binding,
 calibrated release comparisons and publication remain separate. A complete
 all-age ASEC source diagnostic supports the recoder but does not replace the
 retained source owner or qualify its production execution.
