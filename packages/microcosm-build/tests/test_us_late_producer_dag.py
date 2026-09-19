@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from collections import Counter, OrderedDict
+from importlib.resources import files
 
 import pytest
+import yaml
 
 import microcosm.build.us_runtime.acs_pums as acs_pums_module
 import microcosm.build.us_runtime.acs_transfer as acs_transfer_module
@@ -14,6 +16,9 @@ from microcosm.build.us_runtime.acs_income_universe import (
 from microcosm.build.us_runtime.education_inputs import (
     US_EDUCATION_INPUTS_OUTPUT_COLUMNS,
     US_EDUCATION_INPUTS_OWNED_OUTPUT_COLUMNS,
+)
+from microcosm.build.us_runtime.immigration import (
+    US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS,
 )
 from microcosm.build.us_runtime.late_producer_dag import (
     ProducerContract,
@@ -834,6 +839,54 @@ def test_every_post_clone_source_has_a_nonempty_full_input_inventory() -> None:
         assert "@education_assistance_sidecar" not in physical_columns
 
 
+@pytest.mark.parametrize(
+    "surface", ("source_inventory", "producer_dag", "packaged_spec")
+)
+def test_immigration_declared_raw_inputs_match_operator_requirements(
+    surface: str,
+) -> None:
+    operator = "with_us_immigration_inputs"
+    if surface == "source_inventory":
+        inventory = US_LATE_SOURCE_INPUT_INVENTORIES[operator]
+        columns = {
+            column.column
+            for requirement in inventory.requirements
+            if requirement.label.startswith("raw_person:")
+            for alternative in requirement.alternatives
+            for column in alternative
+            if column.entity == "person" and column.value_kind == "finite_numeric"
+        }
+    elif surface == "producer_dag":
+        contract = CANONICAL_US_LATE_PRODUCER_REGISTRY[source_producer_name(operator)]
+        columns = {
+            column.column
+            for requirement in contract.inputs
+            if requirement.column.startswith("@effective:raw_person:")
+            for alternative in requirement.alternatives
+            for column in alternative
+            if column.entity == "person" and column.value_kind == "finite_numeric"
+        }
+    else:
+        spec = yaml.safe_load(
+            files("microcosm.build.us").joinpath("spec/imputation.yaml").read_text()
+        )
+        node = next(
+            node
+            for node in spec["producer_graph"]["nodes"]
+            if node["id"] == source_producer_name(operator)
+        )
+        columns = {
+            column["column"]
+            for requirement in node["inputs"]
+            if requirement["column"].startswith("@effective:raw_person:")
+            for alternative in requirement.get("alternatives", ())
+            for column in alternative
+            if column["entity"] == "person" and column["value_kind"] == "finite_numeric"
+        }
+
+    assert columns == set(US_IMMIGRATION_REQUIRED_SOURCE_COLUMNS)
+
+
 def test_acs_earnings_universe_declares_every_receipt_affecting_input() -> None:
     inventory = US_LATE_ACS_EARNINGS_UNIVERSE_INPUT_INVENTORY
 
@@ -1063,7 +1116,7 @@ def test_every_origin_exclusive_raw_input_has_its_native_scope() -> None:
     assert receipts[("household", "TYPEHUGQ")] == set()
 
     execution_identity = acs_transfer_module.acs_transfer_execution_contract_identity()
-    assert execution_identity["schema_version"] == 2
+    assert execution_identity["schema_version"] == 4
     assert execution_identity["housing"]["head_source_precedence"] == [
         {"source": "is_household_head", "head_codes": [True]},
         {"source": "A_EXPRRP", "head_codes": [1, 2]},
@@ -1268,8 +1321,7 @@ def test_source_numeric_input_audit_is_fully_executable() -> None:
             "A_MARITL",
             "A_SPOUSE",
             "A_HSCOL",
-            "WSAL_VAL",
-            "SEMP_VAL",
+            "A_LFSR",
             "MCARE",
             "CAID",
             "IHSFLG",

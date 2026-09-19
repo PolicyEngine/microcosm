@@ -1,0 +1,1 @@
+Adopt the reviewed immigration rule and paired ACS reconciliation surface, with explicit per-person observation years, current labor-force inputs, year-independent absent-arrival features, and feature-bound checkpoint replay. Preserve existing control values and the default scalar observation year; native source assignment remains separate.
