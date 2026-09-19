@@ -200,9 +200,34 @@ def _acs_person_key(row):
     return source_reader._key(row, "acs")
 
 
-def _original_columns(preparation):
+def _original_columns(preparation, *, readsets=None):
     """Read the retained original members, never a native H5 or engine output."""
     before = live()
+    # Other source-only classifiers may borrow these same authenticated members.
+    # The housing caller retains its exact original readset and behavior.
+    if readsets is None:
+        readsets = (
+            ASEC_HOUSEHOLD_COLUMNS,
+            ASEC_PERSON_COLUMNS,
+            ACS_HOUSEHOLD_COLUMNS,
+            ACS_PERSON_COLUMNS,
+        )
+    require(
+        type(readsets) is tuple
+        and len(readsets) == 4
+        and all(
+            type(columns) is tuple
+            and columns
+            and len(set(columns)) == len(columns)
+            and all(type(name) is str and name for name in columns)
+            for columns in readsets
+        )
+        and {"H_SEQ"} <= set(readsets[0])
+        and {"PERIDNUM", "PH_SEQ", "A_LINENO"} <= set(readsets[1])
+        and {"SERIALNO"} <= set(readsets[2])
+        and {"SERIALNO", "SPORDER"} <= set(readsets[3]),
+        "ORIGINAL_READSETS",
+    )
     entry = preparation._checked()
     require(live() == before, "CODE_CHANGED_DURING_OWNER")
     state = entry[2]
@@ -273,7 +298,7 @@ def _original_columns(preparation):
         with path.open("rb") as stream:
             selected["asec_household"], count = _scan(
                 stream,
-                ASEC_HOUSEHOLD_COLUMNS,
+                readsets[0],
                 key=_hh_key,
                 wanted=asec_keys,
                 maximum=hpin.rows,
@@ -297,7 +322,7 @@ def _original_columns(preparation):
         with path.open("rb") as stream:
             selected["asec_person"], count = _scan(
                 stream,
-                ASEC_PERSON_COLUMNS,
+                readsets[1],
                 key=_person_key,
                 wanted=wanted,
                 maximum=prows,
@@ -311,13 +336,13 @@ def _original_columns(preparation):
         for role, columns, key, wanted in (
             (
                 "household",
-                ACS_HOUSEHOLD_COLUMNS,
+                readsets[2],
                 lambda r: r["SERIALNO"],
                 set(origins.loc[origins.source.eq("acs"), "raw_native_id"]),
             ),
             (
                 "person",
-                ACS_PERSON_COLUMNS,
+                readsets[3],
                 _acs_person_key,
                 {k for s, k in person_keys if s == "acs"},
             ),
