@@ -1,0 +1,106 @@
+{
+  "all_masks_match_pandas": true,
+  "benchmark_sha256": "5d50e685ea4ebeb2769bba6cd434eece17e126b436383726c1a6ae62d3beff86",
+  "chunks": 20,
+  "first_lookup": {
+    "cpu_seconds": 0.012153999999999998,
+    "wall_seconds": 0.013858875026926398
+  },
+  "index_deep_bytes_including_shared_strings": 17627112,
+  "keys": 200000,
+  "mode": "prepared",
+  "module_sha256": "893fd570cf74bf87c133d98e2a450793ad031ce60a40778fb5ea03b3cb9280c8",
+  "pandas": "3.0.3",
+  "preparation": {
+    "cpu_seconds": 0.011846000000000023,
+    "wall_seconds": 0.012051749974489212
+  },
+  "prepared_index_engine_reused": true,
+  "pyarrow": "25.0.0",
+  "python": "3.14.4 (main, Apr 14 2026, 14:46:33) [Clang 22.1.3 ]",
+  "rows_per_chunk": 20000,
+  "rss_after_lookups_bytes": 407994368,
+  "rss_before_lookup_bytes": 407060480,
+  "scope": "invented_arrays_only; not native preparation performance",
+  "total_cpu_seconds": 0.05246100000000009,
+  "total_wall_seconds": 0.05446754000149667,
+  "warm_lookups": [
+    {
+      "cpu_seconds": 0.0018370000000000886,
+      "wall_seconds": 0.0018601249903440475
+    },
+    {
+      "cpu_seconds": 0.0016259999999999053,
+      "wall_seconds": 0.0016246249433606863
+    },
+    {
+      "cpu_seconds": 0.0015140000000000153,
+      "wall_seconds": 0.001539166085422039
+    },
+    {
+      "cpu_seconds": 0.001682999999999879,
+      "wall_seconds": 0.0016859162133187056
+    },
+    {
+      "cpu_seconds": 0.001527000000000056,
+      "wall_seconds": 0.0015269580762833357
+    },
+    {
+      "cpu_seconds": 0.0015130000000000976,
+      "wall_seconds": 0.0015121668111532927
+    },
+    {
+      "cpu_seconds": 0.00143099999999996,
+      "wall_seconds": 0.001430625095963478
+    },
+    {
+      "cpu_seconds": 0.0013640000000001429,
+      "wall_seconds": 0.0013634159695357084
+    },
+    {
+      "cpu_seconds": 0.0016320000000000778,
+      "wall_seconds": 0.001649708952754736
+    },
+    {
+      "cpu_seconds": 0.001562999999999981,
+      "wall_seconds": 0.001562874997034669
+    },
+    {
+      "cpu_seconds": 0.0015339999999999243,
+      "wall_seconds": 0.0015337499789893627
+    },
+    {
+      "cpu_seconds": 0.0013920000000000599,
+      "wall_seconds": 0.001392250182107091
+    },
+    {
+      "cpu_seconds": 0.0013369999999999216,
+      "wall_seconds": 0.0013375419657677412
+    },
+    {
+      "cpu_seconds": 0.001346999999999987,
+      "wall_seconds": 0.001363749848678708
+    },
+    {
+      "cpu_seconds": 0.0015739999999999643,
+      "wall_seconds": 0.0015869159251451492
+    },
+    {
+      "cpu_seconds": 0.0015049999999998676,
+      "wall_seconds": 0.0015045409090816975
+    },
+    {
+      "cpu_seconds": 0.0014180000000001414,
+      "wall_seconds": 0.0014184580650180578
+    },
+    {
+      "cpu_seconds": 0.0013360000000000039,
+      "wall_seconds": 0.001335417153313756
+    },
+    {
+      "cpu_seconds": 0.0013279999999999959,
+      "wall_seconds": 0.0013287088368088007
+    }
+  ],
+  "whole_process_peak_rss_bytes_macos": 420200448
+}

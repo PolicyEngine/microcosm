@@ -401,6 +401,31 @@ def build_acs_pums_unit_frame(
     return frame, metadata
 
 
+def _serial_lookup(serials: frozenset[str] | None) -> pd.Index | None:
+    """Prepare one local lookup for the exact string-key profile.
+
+    Arrow-backed Series.isin rebuilds its value set on every chunk. An object
+    Index keeps a reusable exact-string hash table, without caching any source
+    rows or validation verdict. Other key types retain pandas' original rules.
+    """
+    if type(serials) is frozenset and all(type(key) is str for key in serials):
+        return pd.Index(tuple(serials), dtype=object)
+    return None
+
+
+def _serial_isin(
+    values: pd.Series, serials: frozenset[str], lookup: pd.Index | None
+) -> pd.Series:
+    if lookup is None or type(values.dtype) is not pd.StringDtype:
+        return values.isin(serials)
+    # The prepared keys are all strings, so every missing-value policy maps to
+    # an absent None key. Explicit object dtype avoids re-inferring Arrow strings.
+    targets = pd.Index(values.to_numpy(dtype=object, na_value=None), dtype=object)
+    return pd.Series(
+        lookup.get_indexer(targets) >= 0, index=values.index, name=values.name
+    )
+
+
 def _read_archive(
     path: Path,
     *,
@@ -416,6 +441,8 @@ def _read_archive(
         raise FileNotFoundError(f"ACS PUMS archive not found: {path}")
     pieces: list[pd.DataFrame] = []
     source_roster = {}
+    valid_lookup = _serial_lookup(valid_serials)
+    retained_lookup = _serial_lookup(retained_serials)
     with ZipFile(path) as archive:
         members = sorted(
             name
@@ -457,7 +484,9 @@ def _read_archive(
                         # coverage contract accepts only one/two ASCII digits.
                         chunk["AGEP"] = _original_source_ages(chunk["AGEP"])
                     if valid_serials is not None:
-                        orphan = ~chunk["SERIALNO"].isin(valid_serials)
+                        orphan = ~_serial_isin(
+                            chunk["SERIALNO"], valid_serials, valid_lookup
+                        )
                         if orphan.any():
                             examples = (
                                 chunk.loc[orphan, "SERIALNO"]
@@ -472,7 +501,11 @@ def _read_archive(
                     if validate_households is not None:
                         _validate_source_chunk(chunk, source_roster)
                     if retained_serials is not None:
-                        chunk = chunk.loc[chunk["SERIALNO"].isin(retained_serials)]
+                        chunk = chunk.loc[
+                            _serial_isin(
+                                chunk["SERIALNO"], retained_serials, retained_lookup
+                            )
+                        ]
                     if not chunk.empty:
                         pieces.append(chunk)
     if validate_households is not None:
