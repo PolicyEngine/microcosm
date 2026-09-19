@@ -446,6 +446,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         # Borrowed full/current ASEC and selected ACS immigration literals;
         # status assignment and source-weight/stock alignment remain separate.
         "current_asec_immigration_donor.py",  # Checked original donor projection; no status draw.
+        # One full original ASEC draw with retained design-weight/source authority.
+        "current_asec_immigration_assignment.py",
         "current_survey_immigration_source.py",
         # Retained original SPM literals, complete clone projection and graph
         # attachment; no country model or source-routed population treatment.
@@ -3579,6 +3581,8 @@ _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
         # Source joins are delegated to reviewed owners; direct provenance
         # reads remain guarded rather than exempting this whole module.
         "current_asec_immigration_donor.py",  # Checked original donor projection; no status draw.
+        # Fixed rule leaves, original-key projection and retained-owner records.
+        "current_asec_immigration_assignment.py",
         "current_survey_immigration_source.py",
         # Retained issuance tuples, original-source keys and complete-unit maps.
         # Direct provenance access remains guarded rather than exempted.
@@ -3667,6 +3671,7 @@ def _non_owner_source_spine_accesses(
         "current_child_property_income_source.py",
         "current_survey_hours.py",
         "current_asec_immigration_donor.py",  # Checked original donor projection; no status draw.
+        "current_asec_immigration_assignment.py",
         "current_survey_immigration_source.py",
         "current_survey_spm_source.py",
         "graph_current_survey_spm.py",
