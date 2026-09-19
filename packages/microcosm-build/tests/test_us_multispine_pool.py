@@ -28,6 +28,11 @@ from microcosm.build.us_runtime.acs_income_universe import (
 from microcosm.build.us_runtime.acs_transfer import (
     declared_acs_transfer_target_families,
 )
+from microcosm.build.us_runtime.immigration import (
+    IMMIGRATION_STATUS_VALUES,
+    SSN_CARD_TYPE_VALUES,
+    US_IMMIGRATION_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DEFERRED_TRANSFER_INPUTS,
@@ -1853,6 +1858,7 @@ def _producer_dtype_source_frame() -> Frame:
     person["PEINUSYR"] = [0, 24, 0, 24]
     person["PENATVTY"] = [57, 303, 57, 303]
     person["A_SPOUSE"] = 0
+    person["A_LFSR"] = [1, 0, 1, 0]
     person["CAID"] = 2
     person["IHSFLG"] = 2
     person["CHAMPVA"] = 2
@@ -1895,6 +1901,45 @@ def _producer_dtype_acs_source_frame() -> Frame:
         mass_log=frame.mass_log,
         metadata=frame.metadata,
     )
+
+
+def test_pool_bound_immigration_operator_accepts_raw_source_fixture() -> None:
+    frame = _producer_dtype_source_frame()
+    person = frame.table("person").drop(columns=["WSAL_VAL", "SEMP_VAL"])
+    frame = _replace_person(frame, person)
+
+    produced = multispine_pool_module._post_clone_source_operators()[
+        "with_us_immigration_inputs"
+    ](frame)
+
+    result = produced.table("person")
+    assert set(result.columns) - set(person.columns) == set(
+        US_IMMIGRATION_OUTPUT_COLUMNS
+    )
+    pd.testing.assert_frame_equal(result.loc[:, person.columns], person)
+    assert result["immigration_status_str"].isin(IMMIGRATION_STATUS_VALUES).all()
+    assert result["ssn_card_type"].isin(SSN_CARD_TYPE_VALUES).all()
+    assert (
+        result.loc[person["PRCITSHP"] == 1, "immigration_status_str"]
+        .eq("CITIZEN")
+        .all()
+    )
+    assert result.loc[person["PRCITSHP"] == 1, "ssn_card_type"].eq("CITIZEN").all()
+    assert (
+        result.loc[person["PRCITSHP"] == 5, "immigration_status_str"]
+        .ne("CITIZEN")
+        .all()
+    )
+    assert produced.metadata == frame.metadata
+    assert produced.mass_log == frame.mass_log
+    for entity in frame.entities:
+        if entity != "person":
+            pd.testing.assert_frame_equal(produced.table(entity), frame.table(entity))
+    for entity in frame.weighted_entities:
+        np.testing.assert_array_equal(
+            produced.weights_for(entity).values, frame.weights_for(entity).values
+        )
+        assert produced.weights_for(entity).kind == frame.weights_for(entity).kind
 
 
 def _primary_puf_dtype_donor() -> pd.DataFrame:
