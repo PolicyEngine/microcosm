@@ -69,6 +69,7 @@ __all__ = [
     "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS",
     "PUF_TAX_DETAIL_PROXY_AGI_COMPONENTS",
     "PUF_TAIL_PERSON_PROJECTION_ATTR",
+    "PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN",
     "US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS",
@@ -316,7 +317,7 @@ PUF_TAX_DETAIL_PROXY_AGI_COMPONENTS = (
 # tax-unit aggregation. Packed immutable strings avoid copying millions of
 # Python scalars whenever pandas propagates attrs. Only the AGI arm reads it.
 PUF_TAIL_PERSON_PROJECTION_ATTR = "puf_tail_person_projection"
-_PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION = 1
+PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION = 1
 _PUF_TAIL_PERSON_ROLE_COLUMNS = (
     "is_tax_unit_head",
     "is_tax_unit_spouse",
@@ -1508,7 +1509,7 @@ def attach_puf_tail_person_projection(
             zlib.compress(np.ascontiguousarray(values).tobytes())
         ).decode("ascii")
     donor.attrs[PUF_TAIL_PERSON_PROJECTION_ATTR] = {
-        "schema_version": _PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION,
+        "schema_version": PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION,
         "columns": list(persons.columns),
         "dtypes": {column: str(persons[column].dtype) for column in persons},
         "row_count": len(persons),
@@ -1528,7 +1529,7 @@ def puf_tail_person_projection(donor: pd.DataFrame) -> pd.DataFrame:
         or set(payload)
         != {"schema_version", "columns", "dtypes", "row_count", "role_values", "data"}
         or type(payload["schema_version"]) is not int
-        or payload["schema_version"] != _PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION
+        or payload["schema_version"] != PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION
     ):
         raise ValueError("PUF tail person projection schema is malformed.")
     columns = payload["columns"]
@@ -1586,7 +1587,7 @@ def puf_tail_person_projection_identity(donor: pd.DataFrame) -> dict[str, object
     """Bind person IDs, membership, role, values and physical dtypes for replay."""
 
     identity: dict[str, object] = {
-        "schema_version": _PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION,
+        "schema_version": PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION,
         "available": PUF_TAIL_PERSON_PROJECTION_ATTR in donor.attrs,
     }
     if not identity["available"]:
