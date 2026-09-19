@@ -47,7 +47,10 @@ district crosswalk, `target_period=2024`, `age_targets=True`.
 | `origin/main` | 32,866 | 2 |
 | PR #960 | 32,882 | 18 |
 
-The 16 new rows are in `results/compiled_table_1_1_specs.json`.
+The 16 new rows are in `results/compiled_table_1_1_specs.json`. These counts
+come from `compile_us_fiscal_target_registry` alone. The release driver then
+applies the reviewed Medicaid enrollment substitutions
+(`build_us_fiscal_refresh_release.py:8843-8862`), which this count excludes.
 
 ## Prototype validation
 
@@ -109,6 +112,34 @@ Findings:
    Candidates not tested: interest, dividend and pass-through shares by size
    of AGI, which the feed does not carry, deductions at the top, and the
    extrapolation itself.
+
+## Ten-year script against the candidate
+
+`ten_year_revenue_estimate_candidate.py` is the CRS template with one change,
+the dataset source: `create_datasets(..., allow_unmanaged=True)` on the thinned
+full-vector candidate reweighted to the Table 1.1 and Table 1.4 rows. It runs
+through policyengine 6.0.0 end to end, so it also checks the direct harness:
+both give +$30.6B for 2026. The script's header line still prints the
+package's certified bundle id; the data it scores is the candidate. Run time
+149 minutes, peak memory 64.2 GB.
+
+| Year | Certified file, $B | Prototype candidate, $B |
+|---|---:|---:|
+| 2026 | +23.5 | +30.6 |
+| 2027 | +25.3 | +32.6 |
+| 2028 | +27.0 | +34.2 |
+| 2029 | +29.6 | +37.0 |
+| 2030 | +31.8 | +39.3 |
+| 2031 | +34.0 | +41.6 |
+| 2032 | +36.4 | +44.0 |
+| 2033 | +38.7 | +46.5 |
+| 2034 | +41.2 | +49.1 |
+| 2035 | +43.9 | +51.8 |
+| **2026–2035** | **+331.4** | **+406.7** |
+
+CRS R49052 reports $459.4B (Yale TBL) and $465.0B (PSL) for the same option
+and window. The prototype closes about 58% of the certified file's gap to the
+midpoint of those two ($462.2B).
 
 Side effect to watch in a real solve: meeting the size classes moves about 7%
 more weight onto households below $100k in this prototype, because the
