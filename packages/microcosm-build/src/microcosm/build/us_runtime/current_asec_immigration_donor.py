@@ -302,6 +302,30 @@ def _numeric_literals(raw):
     return result
 
 
+def _check_demographic_coordinates(observed, positions, numeric, raw):
+    """Confirm every independent original coordinate at the person-id join."""
+    _require(
+        np.array_equal(observed.array("A_AGE")[positions], numeric.A_AGE.to_numpy())
+        and np.array_equal(
+            observed.array("A_LINENO")[positions], raw.A_LINENO.map(int).to_numpy()
+        )
+        and np.array_equal(
+            observed.array("source_household_id")[positions],
+            raw.PH_SEQ.map(int).to_numpy(),
+        ),
+        "SEX_SOURCE_COORDINATE_DISAGREE",
+    )
+
+
+def _state_column(household_projection, households, state_codes):
+    _require(
+        np.array_equal(household_projection.household_id, households.household_id)
+        and len(state_codes) == len(households),
+        "STATE_HOUSEHOLD_ALIGNMENT",
+    )
+    return np.array(state_codes, dtype=np.int64)
+
+
 class _State(NamedTuple):
     preparation: object
     preparation_entry: tuple
@@ -463,6 +487,7 @@ def borrow_full_asec_immigration_donor(preparation):
         (positions >= 0).all() and len(set(positions)) == len(positions),
         "SEX_FULL_ROSTER",
     )
+    _check_demographic_coordinates(observed, positions, numeric, raw)
     sex = observed.array("asec_sex_binding_state")[positions]
     _require(np.isin(sex, (1, 2)).all(), "SEX_UNRESOLVED")
     states, state_pin = demographics._load_current_state(
@@ -515,7 +540,9 @@ def borrow_full_asec_immigration_donor(preparation):
             .loc[:, [US_SCHEMA.id_column(entity)]]
             .copy(deep=True)
         )
-    tables["household"]["state_fips"] = np.array(state_codes, dtype=np.int64)
+    tables["household"]["state_fips"] = _state_column(
+        household_projection, tables["household"], state_codes
+    )
     frame = Frame(
         tables,
         US_SCHEMA,
@@ -550,7 +577,7 @@ def borrow_full_asec_immigration_donor(preparation):
             "households": frame.n("household"),
             "weight_kind": "design",
             "weight_source": "original_HSUP_WGT/100",
-            "person_weight_scale": 1,
+            "person_weight_authority": "none",
             "readset": literals.ASEC_VALUE_COLUMNS,
             "frame_sha256": frame_seal,
             "raw_sha256": raw_seal,

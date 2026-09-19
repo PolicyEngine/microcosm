@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 
 from microcosm.build.us_runtime import current_asec_immigration_donor as owner
-from microcosm.frame import WeightKind
+from microcosm.frame import US_SCHEMA, WeightKind
 
 
 def source_arguments(tmp_path, monkeypatch, *, defect=None):
@@ -44,6 +44,8 @@ def source_arguments(tmp_path, monkeypatch, *, defect=None):
                 raw.loc[selected, "MCARE"] = ""
             elif defect == "unresolved-owning-code":
                 raw.loc[selected, "PENATVTY"] = "-4"
+            elif defect == "unresolved-sex":
+                raw.loc[selected, "AXSEX"] = "1"
             elif defect == "missing-person":
                 raw = raw.loc[~selected]
             elif defect == "duplicate-person":
@@ -83,6 +85,12 @@ def source_arguments(tmp_path, monkeypatch, *, defect=None):
     path = root / "hhpub25.csv"
     households = pd.read_csv(path, dtype=str, keep_default_na=False)
     households["GESTFIPS"] = households.H_SEQ.map({"00007": "06", "00008": "36"})
+    state_defects = {"blank-state": "", "unnamed-state": "03", "territory-state": "72"}
+    if defect in state_defects:
+        source_household = "00007" if donor == 105 else "00008"
+        households.loc[households.H_SEQ.eq(source_household), "GESTFIPS"] = (
+            state_defects[defect]
+        )
     if defect == "unresolved-household-weight":
         source_household = "00007" if donor == 105 else "00008"
         households.loc[households.H_SEQ.eq(source_household), "HSUP_WGT"] = ""
@@ -153,6 +161,14 @@ def test_full_donor_is_selection_invariant_and_exactly_design_weighted(actual):
     assert right.frame.person.A_LFSR.tolist().count(7) == 1
     assert right.frame.person.PEAFEVER.tolist().count(-1) == 3
     for frame in (left.frame, right.frame):
+        assert tuple(frame.person) == (
+            US_SCHEMA.person_id_column,
+            *(US_SCHEMA.membership_column(e) for e in US_SCHEMA.group_entities),
+            *owner.literals.ASEC_VALUE_COLUMNS,
+            *owner.literals.original.ASEC_KEYS,
+            "age",
+            "is_female",
+        )
         assert not {
             "WSAL_VAL",
             "SEMP_VAL",
@@ -164,6 +180,8 @@ def test_full_donor_is_selection_invariant_and_exactly_design_weighted(actual):
     receipt = json.loads(right.receipt)
     assert receipt["observation_year"] == 2025 and receipt["income_year"] == 2024
     assert receipt["weight_source"] == "original_HSUP_WGT/100"
+    assert receipt["person_weight_authority"] == "none"
+    assert "person_weight_scale" not in receipt
     assert not receipt["national_stock_alignment_qualified"]
     assert not receipt["status_assignment_performed"]
 
@@ -328,29 +346,78 @@ def test_final_foreign_io_mutation_is_refused(actual, monkeypatch, surface):
 
 
 @pytest.mark.parametrize(
-    "defect",
+    "defect,reason",
     [
-        "blank-owning-token",
-        "unresolved-owning-code",
-        "missing-person",
-        "duplicate-person",
-        "unresolved-household-weight",
+        ("blank-owning-token", "MISSING_TOKEN_MCARE"),
+        ("unresolved-owning-code", "UNRESOLVED_DOMAIN_PENATVTY"),
     ],
 )
 def test_genuine_issuer_refuses_incomplete_or_unresolved_original_source(
-    tmp_path, monkeypatch, defect
+    tmp_path, monkeypatch, defect, reason
 ):
-    with pytest.raises(ValueError):
-        _, partial_args, _ = source_arguments(tmp_path, monkeypatch, defect=defect)
-        prepared = owner.source.prepare_authenticated_survey_population(**partial_args)
-        if defect in {"blank-owning-token", "unresolved-owning-code"}:
-            literal_owner = owner.literals.qualify_current_survey_immigration(prepared)
-            literal_owner.validate()
-            column, token = (
-                ("MCARE", "") if defect == "blank-owning-token" else ("PENATVTY", "-4")
-            )
-            assert token in literal_owner.asec_full_raw[column].tolist()
+    _, partial_args, _ = source_arguments(tmp_path, monkeypatch, defect=defect)
+    prepared = owner.source.prepare_authenticated_survey_population(**partial_args)
+    literal_owner = owner.literals.qualify_current_survey_immigration(prepared)
+    literal_owner.validate()
+    column, token = (
+        ("MCARE", "") if defect == "blank-owning-token" else ("PENATVTY", "-4")
+    )
+    assert token in literal_owner.asec_full_raw[column].tolist()
+    with pytest.raises(ValueError, match=reason):
         owner.borrow_full_asec_immigration_donor(prepared)
+
+
+@pytest.mark.parametrize(
+    "defect,reason",
+    [
+        ("unresolved-sex", "SEX_UNRESOLVED"),
+        ("blank-state", "STATE_UNRESOLVED"),
+        ("unnamed-state", "STATE_UNRESOLVED"),
+        ("territory-state", "STATE_UNRESOLVED"),
+    ],
+)
+def test_genuine_preparation_does_not_admit_unresolved_full_donor_predictors(
+    tmp_path, monkeypatch, defect, reason
+):
+    # The defect is on an original donor omitted by support selection. Actual
+    # preparation must succeed before this tests the full-donor boundary.
+    _, partial_args, _ = source_arguments(tmp_path, monkeypatch, defect=defect)
+    prepared = owner.source.prepare_authenticated_survey_population(**partial_args)
+    prepared.checked_view()
+    with pytest.raises(ValueError, match=reason):
+        owner.borrow_full_asec_immigration_donor(prepared)
+
+
+@pytest.mark.parametrize("coordinate", ["A_AGE", "A_LINENO", "source_household_id"])
+def test_independent_demographic_coordinate_join_refuses_mismatch(coordinate):
+    # Pure join control only: this stand-in has no issuer or source authority.
+    arrays = {
+        "A_AGE": np.array([12, 40]),
+        "A_LINENO": np.array([2, 1]),
+        "source_household_id": np.array([7, 7]),
+    }
+    observed = SimpleNamespace(array=arrays.__getitem__)
+    positions = np.array([1, 0])
+    numeric = pd.DataFrame({"A_AGE": [40, 12]})
+    raw = pd.DataFrame({"A_LINENO": ["1", "2"], "PH_SEQ": ["00007", "00007"]})
+    owner._check_demographic_coordinates(observed, positions, numeric, raw)
+    arrays[coordinate][0] += 1
+    with pytest.raises(ValueError, match="SEX_SOURCE_COORDINATE_DISAGREE"):
+        owner._check_demographic_coordinates(observed, positions, numeric, raw)
+
+
+@pytest.mark.parametrize("defect", ["order", "length"])
+def test_state_projection_requires_exact_household_axis(defect):
+    projection = pd.DataFrame({"household_id": [11, 12]})
+    households = projection.copy(deep=True)
+    assert owner._state_column(projection, households, [6, 36]).tolist() == [6, 36]
+    if defect == "order":
+        households = households.iloc[::-1]
+        codes = [6, 36]
+    else:
+        codes = [6]
+    with pytest.raises(ValueError, match="STATE_HOUSEHOLD_ALIGNMENT"):
+        owner._state_column(projection, households, codes)
 
 
 def test_changed_original_anchor_is_not_replaced_by_current_projection(actual):
