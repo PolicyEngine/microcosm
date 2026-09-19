@@ -1431,6 +1431,11 @@ def validate_puf_capital_gains_tail_manifest(
         raise ValueError(
             "PUF capital-gains tail manifest selected donor count is malformed."
         )
+    from microcosm.build.us_runtime.puf_agi_tail import (
+        validate_puf_tail_vector_mass_receipts,
+    )
+
+    validate_puf_tail_vector_mass_receipts(payload)
     _validate_recipient_support_receipt(
         payload.get("recipient_support"),
         records=records,
