@@ -2,7 +2,8 @@
 
 ## State
 
-2026-09-19: implementing increment 2 on `us-958-full-vector-agi-tail`.
+2026-09-19: stopped before implementation on `us-958-full-vector-agi-tail`
+under the task's explicit stop-on-unanticipated-design-conflict instruction.
 This is a local implementation journal, not data certification evidence.
 Final report output: `docs/implementation/us-958/FINAL_REPORT.md`.
 
@@ -12,16 +13,27 @@ Final report output: `docs/implementation/us-958/FINAL_REPORT.md`.
   charter, shared-constants guidance, and US fact-to-target contract.
 - Confirmed local-only execution: installed `.venv` tools, synthetic tests,
   no network, no base build/calibration/release, no publication.
-- Began complete tail implementation/test review and parallel contract inventory.
+- Read all 2,408 lines of the tail module and all 1,092 lines of its tests,
+  plus all supplied prototype scripts; completed a parallel contract inventory.
+- Found a reviewed final-owner conflict: clone-2 tuition and retirement fields
+  must inherit/mirror clone-1 values, while the requested AGI full vector would
+  make the PUF donor their owner. The retirement finalizer actually overwrites
+  the two contribution fields; terminal preservation enforces clone-1 equality.
+- Left production code, tests, generated specs and pins unchanged.
+- Started focused existing contract tests and a synthetic overwrite probe.
+- Repository lint passed (exit 0).
 
 ## Next
 
-- Finish reading the entire tail module and existing tests before designing.
-- Add failing behavioral tests, implement the AGI arm and deterministic thinning,
-  and extend transfer, provenance, manifests, identities and gates.
-- Run the build shard suite, regenerate legitimately changed pins, lint touched
-  files, and write the final report with commands, exit codes and limitations.
+- Finish the contract checks and write the final report to the declared output.
+- Implementation requires a resolution of final ownership: whether AGI-arm
+  donor values supersede the clone-1 inheritance/mirroring doctrine for all PUF
+  outputs. That requires arm-specific ownership, callback and terminal contracts.
+  Do not bypass the existing checks or silently restore values after an owner
+  write. Keep capital-gains-only ownership unchanged if this is authorized.
 
 ## Verification
 
-No tests or base builds run yet. Real-data behavior remains unverified.
+Focused tests/probe are in progress; their exact commands and results will be
+recorded in the final report. No base build was run. Real-data behavior remains
+unverified.
