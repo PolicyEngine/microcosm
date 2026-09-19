@@ -297,6 +297,77 @@ def _pre_652_all_adequate_reference_frame() -> Frame:
     return reference
 
 
+def _legacy_tail_payload_digest(frame: Frame) -> str:
+    """Hash typed scalar buffers without version-dependent pandas pickle bytes."""
+
+    def column_payload(values: pd.Series) -> dict[str, object]:
+        if pd.api.types.is_numeric_dtype(values.dtype):
+            array = values.to_numpy()
+            return {
+                "dtype": str(values.dtype),
+                "bytes": np.ascontiguousarray(array).tobytes().hex(),
+            }
+        # Text pointer buffers are not values. Canonicalize their scalar text
+        # while accepting pandas' equivalent object/string storage backends.
+        return {
+            "dtype": "text",
+            "values": [None if pd.isna(value) else str(value) for value in values],
+        }
+
+    payload = {
+        "entities": [
+            {
+                "entity": entity,
+                "columns": [
+                    {"name": str(column), **column_payload(frame.table(entity)[column])}
+                    for column in frame.table(entity)
+                    if column != tail_module.PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN
+                ],
+                "index": frame.table(entity).index.tolist(),
+            }
+            for entity in frame.entities
+        ],
+        "weights": [
+            {
+                "entity": entity,
+                "kind": frame.weights_for(entity).kind.value,
+                **column_payload(pd.Series(frame.weights_for(entity).values)),
+            }
+            for entity in frame.weighted_entities
+        ],
+        "strata": column_payload(frame.strata),
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+
+
+@pytest.mark.parametrize(
+    "fixture,expected",
+    [
+        (
+            _expanded_recipient_frame,
+            "b1692a06a15a018f93764964b2d744736a47d0731a82650742939504e3aef02d",
+        ),
+        (
+            _partially_attached_recipient_frame,
+            "d6e6d24ee9f71ac5d78bdd5f998867897fea5907d4cd4eb08bd5696ef9a17416",
+        ),
+    ],
+)
+def test_capital_gains_only_payload_matches_frozen_pre_958_bytes(
+    fixture,
+    expected: str,
+) -> None:
+    # Frozen from the actual puf_capital_gains_tail.py at 8e5c5461b, using the
+    # same original fixtures. The new arm-provenance column is the sole omitted
+    # field. No current transfer helper participates in the reference digest.
+    transferred, _manifest = transfer_puf_capital_gains_tail(
+        fixture(), _donor(), seed=567
+    )
+    assert _legacy_tail_payload_digest(transferred) == expected
+
+
 def _load_support_builder_module():
     root = Path(__file__).resolve().parents[3]
     path = root / "tools" / "build_us_puf_support_base.py"
@@ -842,6 +913,32 @@ def test_frozen_selection_must_retain_every_tail_donor() -> None:
             transferred,
             without_tail,
         )
+
+
+@pytest.mark.parametrize("agi_arm", [False, True])
+def test_frozen_selection_rejects_changed_donor_id_with_same_tail_count(
+    agi_arm: bool,
+) -> None:
+    donor, frame = (
+        _agi_donor_and_recipients()
+        if agi_arm
+        else (_donor(), _expanded_recipient_frame())
+    )
+    transferred, manifest = transfer_puf_capital_gains_tail(frame, donor, seed=567)
+    target = next(
+        record for record in manifest["records"] if (record["arm"] in (2, 3)) == agi_arm
+    )
+    tax_unit = transferred.table("tax_unit").copy()
+    target_rows = tax_unit.tax_unit_id.eq(target["tail_tax_unit_id"])
+    tax_unit.loc[target_rows, PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN] += (
+        9_000_000
+    )
+    changed = _replace_entity_table(transferred, "tax_unit", tax_unit)
+    assert changed.table("tax_unit")[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN].sum() == (
+        transferred.table("tax_unit")[PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN].sum()
+    )
+    with pytest.raises(ValueError, match=r"missing 1 donor\(s\), extra 1 donor\(s\)"):
+        assert_puf_capital_gains_tail_survives_selection(transferred, changed)
 
 
 def test_tail_vectors_feed_schedule_d_stage_without_changing_source_legs() -> None:
