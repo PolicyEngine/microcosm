@@ -5247,7 +5247,50 @@ producer_graph:
                 upper_bound: null
                 home_mortgage_share: 0.0396664121757123
           concentration_gate:
-            schema_version: 2
+            schema_version: 3
+            agi_arm:
+              version: 1
+              proxy_agi_components:
+              - employment_income_before_lsr
+              - self_employment_income_before_lsr
+              - sstb_self_employment_income_before_lsr
+              - taxable_interest_income
+              - qualified_dividend_income
+              - non_qualified_dividend_income
+              - short_term_capital_gains
+              - long_term_capital_gains_before_response
+              - non_sch_d_capital_gains
+              - taxable_private_pension_income
+              - taxable_ira_distributions
+              - partnership_income
+              - s_corp_income
+              - rental_income
+              - farm_income
+              - farm_rent_income
+              - miscellaneous_income
+              - estate_income
+              - alimony_income
+              - salt_refund_income
+              proxy_agi_floor: 5000000.0
+              floor_comparison: greater_than_or_equal
+              source_levels: donor_frame_build_period
+              maximum_agi_only_donors: 3000
+              arms:
+                '1': capital_gains
+                '2': agi
+                '3': both
+              eligibility: positive_weight_source_eligible; exactly_one_head_at_most_one_spouse; only_head_spouse_dependent_roles;
+                finite_typed_owned_values; dependent_monetary_owned_values_exact_zero; person_monetary_sums_equal_tax_unit_donor
+              person_transfer: head_to_head_spouse_to_spouse_other_members_zero_false
+              spouse_compatibility: spouse_required_if_any_owned_spouse_value_nonzero
+              ineligible_agi_candidate: skip_entire_donor_including_both_arm
+              thinning_cells: filing_status_and_unweighted_proxy_agi_rank_decile
+              decile_order: proxy_agi_then_source_id_over_agi_only_arm
+              quota: one_per_cell_then_capacity_proportional_largest_remainder
+              selection: systematic_midpoints_in_source_id_order_no_rng
+              weights: proportional_rescale_per_cell_with_exact_float_sum_residual
+              capital_gains_donors: never_thinned
+              legacy_input: incomplete_proxy_surface_without_projection_is_cg_only
             selection_quantile: 0.995
             selection_comparison: strictly_greater_than
             reference_quantile: 0.999
@@ -5305,13 +5348,14 @@ producer_graph:
       resolution: runtime_content_bound
       binding:
         resource_kind: puf_donor_tax_units
-        schema_version: 1
+        schema_version: 2
         runtime_identity:
           codec: canonical_scalar_v1
           fields:
           - table_content_sha256
           - ordered_columns
           - dtypes
+          - person_projection
           normalization: canonical_table_string_dtypes
         source_input_pins:
         - processed_puf

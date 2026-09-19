@@ -483,10 +483,10 @@ support_roles:
   tail_support:
     strata: filing_status
     policy: declared_min_support_with_receipt
-    manifest_schema_version: 2
+    manifest_schema_version: 3
     legacy_contract:
       contract_id: puf_capital_gains_tail_per_filing_status_support
-      version: 1
+      version: 2
       partition: filing_status
       filing_statuses:
       - filing_status_code: 1
@@ -501,7 +501,148 @@ support_roles:
         filing_status: SURVIVING_SPOUSE
       candidate_universe: unique single-tax-unit PUF-detail recipient households with weight capacity
         for the global maximum assigned tail-donor weight
-      required_minimum: selected_q99_5_tail_donor_count_in_filing_status
+      required_minimum: selected_union_tail_donor_count_in_filing_status
+      recipient_role_minimum_age: 15
+      role_compatibility: AGI_head_and_present_spouse_at_least_minimum_age_explicit_roles; nonzero_donor_spouse_requires_recipient_spouse
+      arm_owned_columns:
+        '1':
+          person:
+          - short_term_capital_gains
+          - long_term_capital_gains_before_response
+          - long_term_capital_gains_on_collectibles
+          - non_sch_d_capital_gains
+          tax_unit:
+          - unrecaptured_section_1250_gain
+        '2':
+          person:
+          - employment_income_before_lsr
+          - self_employment_income_before_lsr
+          - taxable_interest_income
+          - qualified_dividend_income
+          - non_qualified_dividend_income
+          - tax_exempt_interest_income
+          - short_term_capital_gains
+          - long_term_capital_gains_before_response
+          - long_term_capital_gains_on_collectibles
+          - non_sch_d_capital_gains
+          - taxable_private_pension_income
+          - taxable_ira_distributions
+          - social_security_retirement
+          - social_security_disability
+          - social_security_dependents
+          - social_security_survivors
+          - alimony_income
+          - alimony_expense
+          - salt_refund_income
+          - charitable_cash_donations
+          - charitable_non_cash_donations
+          - real_estate_taxes
+          - home_mortgage_interest
+          - investment_interest_expense
+          - investment_income_elected_form_4952
+          - student_loan_interest
+          - educator_expense
+          - casualty_loss
+          - unreimbursed_business_employee_expenses
+          - rental_income
+          - estate_income
+          - farm_income
+          - farm_operations_income
+          - farm_rent_income
+          - miscellaneous_income
+          - partnership_income
+          - s_corp_income
+          - partnership_self_employment_net_earnings
+          - estate_income_would_be_qualified
+          - farm_operations_income_would_be_qualified
+          - farm_rent_income_would_be_qualified
+          - partnership_s_corp_income_would_be_qualified
+          - rental_income_would_be_qualified
+          - self_employment_income_would_be_qualified
+          - sstb_self_employment_income_would_be_qualified
+          - business_is_sstb
+          - qualified_bdc_income
+          - qualified_reit_and_ptp_income
+          - sstb_self_employment_income_before_lsr
+          - sstb_unadjusted_basis_qualified_property
+          - sstb_w2_wages_from_qualified_business
+          - unadjusted_basis_qualified_property
+          - w2_wages_from_qualified_business
+          tax_unit:
+          - domestic_production_ald
+          - unrecaptured_section_1250_gain
+          - first_home_mortgage_balance
+          - second_home_mortgage_balance
+          - first_home_mortgage_interest
+          - second_home_mortgage_interest
+          - first_home_mortgage_origination_year
+          - second_home_mortgage_origination_year
+          - health_savings_account_ald
+        '3':
+          person:
+          - employment_income_before_lsr
+          - self_employment_income_before_lsr
+          - taxable_interest_income
+          - qualified_dividend_income
+          - non_qualified_dividend_income
+          - tax_exempt_interest_income
+          - short_term_capital_gains
+          - long_term_capital_gains_before_response
+          - long_term_capital_gains_on_collectibles
+          - non_sch_d_capital_gains
+          - taxable_private_pension_income
+          - taxable_ira_distributions
+          - social_security_retirement
+          - social_security_disability
+          - social_security_dependents
+          - social_security_survivors
+          - alimony_income
+          - alimony_expense
+          - salt_refund_income
+          - charitable_cash_donations
+          - charitable_non_cash_donations
+          - real_estate_taxes
+          - home_mortgage_interest
+          - investment_interest_expense
+          - investment_income_elected_form_4952
+          - student_loan_interest
+          - educator_expense
+          - casualty_loss
+          - unreimbursed_business_employee_expenses
+          - rental_income
+          - estate_income
+          - farm_income
+          - farm_operations_income
+          - farm_rent_income
+          - miscellaneous_income
+          - partnership_income
+          - s_corp_income
+          - partnership_self_employment_net_earnings
+          - estate_income_would_be_qualified
+          - farm_operations_income_would_be_qualified
+          - farm_rent_income_would_be_qualified
+          - partnership_s_corp_income_would_be_qualified
+          - rental_income_would_be_qualified
+          - self_employment_income_would_be_qualified
+          - sstb_self_employment_income_would_be_qualified
+          - business_is_sstb
+          - qualified_bdc_income
+          - qualified_reit_and_ptp_income
+          - sstb_self_employment_income_before_lsr
+          - sstb_unadjusted_basis_qualified_property
+          - sstb_w2_wages_from_qualified_business
+          - unadjusted_basis_qualified_property
+          - w2_wages_from_qualified_business
+          tax_unit:
+          - domestic_production_ald
+          - unrecaptured_section_1250_gain
+          - first_home_mortgage_balance
+          - second_home_mortgage_balance
+          - first_home_mortgage_interest
+          - second_home_mortgage_interest
+          - first_home_mortgage_origination_year
+          - second_home_mortgage_origination_year
+          - health_savings_account_ald
       insufficient_support_action: skip_entire_filing_status_attachment_without_widening
       agi_band_policy: nearest_band_first_then_all_agi_bands_within_filing_status
       agi_band_count: 22

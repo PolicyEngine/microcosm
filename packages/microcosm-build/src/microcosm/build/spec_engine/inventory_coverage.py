@@ -348,22 +348,22 @@ EXPECTED_LEGACY_RELEASE_REGEX = EXPECTED_RELEASE_REGEX.replace(
 EXPECTED_HASHES = {
     "acs_group_predictors": "a927bb7ecf3e84f54c93583ab79318654514ac546aefafba67da5285615fbd60",
     "acs_person_predictors": "878c788a6f037d7aca12b3586ea034eff04f3034ffa11935a736493042551f25",
-    "authority": "9d4a9672a0f03039b1fe874b9fe21ed575be0d29f14afc396d03cdf5c809bdd2",
+    "authority": "cc81ca6c49a35111e8945971067d1dd4d785fabb2e5b8752074347377d0c30c2",
     "early_families": "4aa9f736fd76e83955477ad1667e58f48f264783f05bdc7f0102cd32d61323bd",
-    "full_checkpoint": "c66844ca246fb0277e648691a91fe7bea2a21c26980b398017af90f3128521c5",
+    "full_checkpoint": "2a96c62c8a94b4ccdae282c5eebfaa190cd045f49da95acd72c116f7c6de8b30",
     "gap_fill_schedule": "1c31f9868f7884347cc19cf1ff65da43f950b9114941a715bab168246db414a7",
-    "graph_nodes": "40cd51ffdfe2e9d9d08d48c08e8ded9de1e4b134783bab05c4abc6ad5c72ca1e",
+    "graph_nodes": "8e81d9d14317bebb51b112ba2d55ee57a98c984cbd3f5b1945ccbde3e4cb7add",
     "geography_assignment": "f49425ca8734ac559c73cf44f6458d86d3162a48956b98a27e6e758959361585",
     "late_families": "d91f9ff0eb52f43e7b6eed3d5c58c37abe1620c3a11021da15dae9c10e16d382",
-    "late_resource_semantics": "895ffd419de464a761669a5c3bf68db66e3d1a273c47631de80778a6c7f73b57",
+    "late_resource_semantics": "92eb826911bc6c75586c5d4582e671769c017b339f0eb3bf297b395682d8a55a",
     "late_schedule": "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f",
     "ownership": "5f64f0aac49e2313177564f71876bffc8c81b3ded4df701e70930e60e9c98356",
     "primary_tuples": "987b501c695e31f45521c4a178528f75ab3df22c09bc407b182213b2de99ee57",
-    "seed_map": "86cecb19281446d2b505fb975c822c60a604e18f44baded5dc9d62d508a8197e",
-    "seed_protocol": "55d6b907dd44613a5498dd7156f1ce9e78758835255bc7c336b4c327bb40e9bf",
+    "seed_map": "3f4f536009fdd1dd56c539684020c6a030b6a4c409c6142ed4117b1eb2611897",
+    "seed_protocol": "89f3be8285c09d70e0b429e401be0f5b455cba7726505ec3f2bd105c20d28239",
     "source_manifest": "d6849714bb9d6f64c000193a871c324b6b82850100db6cb3196f5f6e417dc494",
     "take_up": "9522ce40f7dea569312dd7a7beb474e5a5afadd2f1e10cb5876534c3ef623d35",
-    "tail": "ac92829c88a1a4fb6460d61190918d5d99c6c377fc8dd8f62f02b332d09bf59c",
+    "tail": "1048a793d177c107277f37e0092d5d88ad47505e46927c7cfadfb47e4db07b5f",
 }
 
 INVENTORY_REPORT_SCHEMA_VERSION = 1
@@ -443,7 +443,7 @@ EXPECTED_INVENTORY_COUNTS: Mapping[str, int] = {
     "stacked_checkpoint_full_components": 13,
     "stacked_checkpoint_pool_code_components": 19,
     "stacked_checkpoint_static_components": 10,
-    "tail_control_fields": 934,
+    "tail_control_fields": 1_104,
     "take_up_pipeline_steps": 28,
     "take_up_programs": 17,
     "typed_artifacts": 84,
@@ -1411,7 +1411,7 @@ def build_inventory_coverage(
     add(
         "capital_gains_tail_contract_exact",
         clauses={
-            "tail terminal field count differs": tail_count == 934,
+            "tail terminal field count differs": tail_count == 1_104,
             "resolved calibration tails differ": _json_equal(
                 legacy.get("calibration_tail_contracts"),
                 expected_legacy["calibration_tail_contracts"],
@@ -1439,7 +1439,7 @@ def build_inventory_coverage(
             "legacy_adapter.stacked_checkpoint_static_components",
         ),
         observed={"terminal_fields": tail_count, "sha256": sha256_json(tail_bundle)},
-        expected={"terminal_fields": 934, "sha256": EXPECTED_HASHES["tail"]},
+        expected={"terminal_fields": 1_104, "sha256": EXPECTED_HASHES["tail"]},
     )
 
     add(
