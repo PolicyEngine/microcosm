@@ -1,0 +1,1 @@
+Pin the US Chronicle feed to a validated consumer artifact after recording publisher authorities for source-label facts. Preserve all 39,158 source values and 32,867 compiled target values; record the changed provenance keys and manifest digest so exact-k release builds can verify the artifact.

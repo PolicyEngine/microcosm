@@ -22,9 +22,8 @@ This tool:
 5. writes ``<out>/consumer_facts.jsonl`` with Chronicle's own line bytes,
    sorted by ``aggregate_fact_key``;
 6. runs ``chronicle build-consumer-artifact`` on it into ``<out>/artifact``
-   unless ``--skip-artifact`` (at Chronicle c5e5bf8 the artifact validator
-   refuses 994 rows whose ``concept_alignment`` lacks ``authority``; see
-   ``docs/us-chronicle-feed-repin.md``);
+   unless ``--skip-artifact`` (the pinned source-authority repair now validates
+   all rows; ``docs/us-chronicle-feed-repin.md`` records the previous refusal);
 7. writes ``<out>/receipt.json`` with the commands, row count and digests.
 
 Two runs at the same commit produce byte-identical feeds; the receipt's

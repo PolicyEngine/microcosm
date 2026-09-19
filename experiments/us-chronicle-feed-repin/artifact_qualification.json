@@ -1,0 +1,88 @@
+{
+  "qualification_date": "2026-09-19",
+  "chronicle_source_commit": "b571381fcd875393ea0dabc326558cfa2ca8e8fa",
+  "microcosm_comparison_commit": "18aaf256d5c5fd5fcc5825b804d6bd94a839b1cc",
+  "facts_sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
+  "manifest_sha256": "38ec5bf1efe5a0bd017ec5279065e2ea7645b37da237197f03ae2fbca28cadac",
+  "packaged_scope_sha256": "a2bca1a35206d0ff89ea9329e10288f60634f7d6286667f30cca55e1623df6e4",
+  "original_bare_feed_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+  "scope_pairs": 586,
+  "package_runs": 62,
+  "distinct_source_packages": 48,
+  "fact_rows": 39158,
+  "source_artifact_pin_count": 44,
+  "source_value_differences": 0,
+  "cells_added": 0,
+  "cells_removed": 0,
+  "source_changed_rows": 994,
+  "source_changed_field_paths": {
+    "concept_alignment.authority": 994,
+    "concept_alignment.concept_alignment_key": 994,
+    "layout.record_set_spec_hash": 994,
+    "legacy_fact_key": 994
+  },
+  "source_authority_additions": {
+    "cms": 515,
+    "census": 468,
+    "jct": 11
+  },
+  "compiled_targets": 32867,
+  "compiled_families": 32,
+  "target_value_differences": 0,
+  "target_keys_changed": false,
+  "target_changed_field_paths": {
+    "metadata.ledger_concept_authority": 166,
+    "metadata.ledger_legacy_fact_key": 165
+  },
+  "strict_full_target_equality": false,
+  "prior_registry_version": "b74d86d94a76",
+  "new_registry_version": "749a7b0627ce",
+  "canonical_artifact_repack_byte_identical": true,
+  "full_export_runs": 1,
+  "full_export_wall_seconds": 578.58,
+  "full_export_max_rss_bytes": 1748582400,
+  "qualification": "PASS_WITH_EXPECTED_PROVENANCE_CHANGES",
+  "release_certification_performed": false,
+  "local_evidence_directory": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/chronicle-us-artifact-b571381-20260919",
+  "notes": [
+    "All package exports and canonical row-schema validation passed; no source row was patched.",
+    "Strict TargetSpec equality failed on the two documented provenance paths; all other fields were identical.",
+    "Two canonical re-pack checks passed; only one full source export was run.",
+    "Initial validation-harness count assertion overlooked already-valid source-label rows; original failure preserved and corrected v2 passed.",
+    "Bundle cross-package label/duplicate-semantic-key warnings retained.",
+    "The artifact is external to Git; code review and release gates remain separate."
+  ],
+  "packaged_scope_replay": {
+    "same_pair_and_run_selection": true,
+    "reselected_package_runs": 62,
+    "rows": 39158,
+    "facts_and_manifest_hashes_unchanged": true,
+    "manifest_binds_scope_or_path": false,
+    "wall_seconds": 51.92,
+    "max_rss_bytes": 2450636800
+  },
+  "comparison_helper": "experiments/us-chronicle-feed-repin/qualify_artifact.py",
+  "portable_helper_qualification": {
+    "helper_sha256": "7225e1e2bc9ba1d6e222ba40c9792a874b938dfa997e95dad0290473c5fe2dae",
+    "facts_and_manifest_inputs_pinned": true,
+    "provenance_only_qualification_passed": true,
+    "strict_full_target_equality_passed": false,
+    "require_identical_targets_exit_code": 1,
+    "wall_seconds": 74.24,
+    "max_rss_bytes": 3812999168,
+    "canonical_spec_hashes_match_original_comparison": true
+  },
+  "integration_tests": {
+    "passed": 195,
+    "skipped": 0,
+    "seconds": 306.55,
+    "coverage_fields": [
+      42162,
+      42162
+    ],
+    "coverage_inventory": [
+      41,
+      41
+    ]
+  }
+}

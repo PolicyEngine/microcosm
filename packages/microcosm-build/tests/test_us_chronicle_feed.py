@@ -28,8 +28,9 @@ from microcosm.build.us_runtime.chronicle_feed import (
 )
 
 _ROOT = Path(__file__).resolve().parents[3]
-_CHRONICLE_COMMIT = "c5e5bf8aa84960c1a200ee47303b19c953092d0f"
-_FACTS_SHA256 = "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801"
+_CHRONICLE_COMMIT = "b571381fcd875393ea0dabc326558cfa2ca8e8fa"
+_FACTS_SHA256 = "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f"
+_MANIFEST_SHA256 = "38ec5bf1efe5a0bd017ec5279065e2ea7645b37da237197f03ae2fbca28cadac"
 _SCHEMA_SHA256 = "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d"
 
 
@@ -46,7 +47,7 @@ def _us_resource(name: str) -> dict:
     return json.loads(files("microcosm.build.us").joinpath(name).read_text())
 
 
-def test_pin_records_the_rebuilt_bare_feed() -> None:
+def test_pin_records_the_rebuilt_consumer_artifact() -> None:
     pin = load_us_chronicle_feed()
     raw = files("microcosm.build.us").joinpath("chronicle_feed.json").read_bytes()
     assert pin.source_repo == "PolicyEngine/chronicle"
@@ -56,15 +57,46 @@ def test_pin_records_the_rebuilt_bare_feed() -> None:
     assert pin.facts_sha256 == _FACTS_SHA256
     assert pin.consumer_fact_schema_versions == ("chronicle.consumer_fact.v3",)
     assert pin.consumer_fact_schema_sha256 == _SCHEMA_SHA256
-    assert pin.is_bare_feed
-    assert pin.manifest_sha256 is None
-    assert pin.artifact_schema_version is None
+    assert not pin.is_bare_feed
+    assert pin.manifest_sha256 == _MANIFEST_SHA256
+    assert pin.artifact_schema_version == "policyengine_ledger.consumer_artifact.v2"
     assert pin.scope_sha256 == us_chronicle_feed_scope_sha256()
     assert pin.resource_sha256 == hashlib.sha256(raw).hexdigest()
     assert pin.resource_size_bytes == len(raw)
     assert pin.to_dict()["consumer_fact_schema_versions"] == [
         "chronicle.consumer_fact.v3"
     ]
+
+
+def test_pin_still_accepts_a_bare_feed_declaration(monkeypatch, tmp_path) -> None:
+    raw = json.loads(chronicle_feed._feed_path().read_text())
+    raw.update(manifest_sha256=None, artifact_schema_version=None)
+    path = tmp_path / "bare-feed.json"
+    path.write_text(json.dumps(raw))
+    monkeypatch.setattr(chronicle_feed, "_feed_path", lambda: path)
+    assert load_us_chronicle_feed().is_bare_feed
+
+
+def test_real_artifact_matches_the_declared_fact_and_manifest_pins() -> None:
+    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+
+    artifact_path = _load_tool(
+        "build_us_target_parity_manifest"
+    ).DEFAULT_FEED_PATH.parent
+    if not (artifact_path / "manifest.json").is_file():
+        pytest.skip(f"pinned artifact not present at {artifact_path}")
+    pin = load_us_chronicle_feed()
+    artifact = load_ledger_consumer_artifact(
+        artifact_path,
+        expected_facts_sha256=pin.facts_sha256,
+        expected_manifest_sha256=pin.manifest_sha256,
+    )
+    assert artifact.fact_row_count == pin.fact_row_count
+    assert artifact.schema_version == pin.artifact_schema_version
+    assert artifact.fact_schema_versions == pin.consumer_fact_schema_versions
+    assert artifact.manifest["consumer_fact_schema_sha256"] == (
+        pin.consumer_fact_schema_sha256
+    )
 
 
 @pytest.mark.parametrize(
@@ -78,8 +110,8 @@ def test_pin_records_the_rebuilt_bare_feed() -> None:
         ("scope", "uk_calibration", "scope"),
         ("scope_sha256", "0" * 64, "scope_sha256 does not match"),
         ("manifest_sha256", "A" * 64, "manifest_sha256"),
-        ("manifest_sha256", "a" * 64, "both be set"),
-        ("artifact_schema_version", "policyengine_ledger.consumer_artifact.v2", "both"),
+        ("manifest_sha256", None, "both be set"),
+        ("artifact_schema_version", None, "both"),
         ("build", "  ", "build"),
         ("consumer_fact_schema_versions", [], "consumer_fact_schema_versions"),
     ],
