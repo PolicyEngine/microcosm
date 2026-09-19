@@ -100,7 +100,7 @@ def test_authority_projection_is_field_and_byte_identical_to_live_generation_zer
             "141519684c72ab84a077ae0f5716a0416f1e19da57262948e459633cbe560576"
         ),
         "puf_capital_gains_tail_support_contract": (
-            "91bc9272cb7f28c6271fb9695ddf6ec05fe55b4458070fc47ae4a1d9607f3c89"
+            "b4573cba793e6dd61c3da22d12afc84822ad4fc2dae39e93f15650358fa6f420"
         ),
         "support_profile": (
             "fd8b92353f53f7e562a829b4d7c82b888d3ce25a436195d3b334b14132b73e46"

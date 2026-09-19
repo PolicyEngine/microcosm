@@ -4532,7 +4532,9 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # and the pool engine contracts it binds were re-derived for 2.2.1.
         # pool_h5 and agreement above are unchanged, so only the identity
         # surface moved, not the pool content.
-        "manifest": "e4692aa45f05826eb0097a7ae76dcbc712c13886a4d23a9c6a62b53752e323f1",
+        # microcosm#958: the tail manifest schema 3 and the AGI-arm support
+        # contract (version 2) are embedded in the publication manifest.
+        "manifest": "de6ba1149b8e958b12c0e9bf084cf0e3a911a0a39f6280901df1b53aa417f559",
     }
 
 
