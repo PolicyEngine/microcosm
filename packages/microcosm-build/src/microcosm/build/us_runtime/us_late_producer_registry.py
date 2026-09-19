@@ -51,8 +51,7 @@ from microcosm.build.us_runtime.operator_boundary import (
     PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
-    PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
-    PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
+    puf_tail_owned_columns,
 )
 from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -1511,8 +1510,9 @@ def _assert_exhaustive_late_overlap_ownership() -> None:
         for target in group.targets
     }
     tail_owned = {
-        *(("person", column) for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS),
-        *(("tax_unit", column) for column in PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS),
+        (entity, column)
+        for entity, columns in puf_tail_owned_columns(3).items()
+        for column in columns
     }
     recipient_owned = {
         *(("person", column) for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS),

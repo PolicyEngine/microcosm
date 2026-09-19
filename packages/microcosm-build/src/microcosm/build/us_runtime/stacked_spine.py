@@ -141,18 +141,19 @@ from microcosm.build.us_runtime.puf_aggregate_records import (
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
-    PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
     PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL,
-    PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
     PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
     puf_capital_gains_tail_execution_inputs_identity,
     puf_capital_gains_tail_spec_identity,
     puf_capital_gains_tail_support_contract_identity,
     puf_capital_gains_tail_terminal_support_receipt,
+    puf_tail_owned_columns,
+    puf_tail_recipient_roles,
     resolve_puf_capital_gains_tail_execution_inputs,
     transfer_puf_capital_gains_tail,
     validate_puf_capital_gains_tail_manifest,
@@ -172,6 +173,7 @@ from microcosm.build.us_runtime.puf_qrf_chain import (
 from microcosm.build.us_runtime.puf_support import (
     PUF_ABSENT_CELLS_PRESERVE_NULLS,
     PUF_CLONE_ATTACHMENT_MANIFEST_KEY,
+    PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION,
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_PREDICTORS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
@@ -180,6 +182,7 @@ from microcosm.build.us_runtime.puf_support import (
     bind_puf_clone_attachment_tail_descendant,
     clone_us_frame_for_puf_support,
     impute_us_puf_tax_detail_support,
+    puf_tail_person_projection_identity,
     puf_tax_detail_tail_bound_quantiles_identity,
     validate_puf_clone_attachment,
 )
@@ -5405,6 +5408,7 @@ def _late_resource_binding_schema_version(
 
     kind = _late_virtual_resource_kind(column)
     versions = {
+        "puf_donor_tax_units": 2,
         "acs_pums_earnings_universe_execution_config": 2,
         "primary_puf_execution_config": 5,
         "post_clone_source_execution_config": 3,
@@ -5433,6 +5437,58 @@ def _late_contract_available_input_keys(
         and column.column != "@resolved_weight"
         and column.entity != "frame"
     }
+
+
+def _validate_late_puf_person_projection_binding(
+    binding: object, *, boundary: str
+) -> None:
+    """Require a typed donor-person identity even when the legacy donor has none."""
+
+    absent = {
+        "schema_version": PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION,
+        "available": False,
+    }
+    if (
+        isinstance(binding, Mapping)
+        and binding == absent
+        and type(binding["schema_version"]) is int
+        and binding["available"] is False
+    ):
+        return
+    expected = {
+        "schema_version",
+        "available",
+        "row_count",
+        "columns",
+        "dtypes",
+        "sha256",
+    }
+    if (
+        not isinstance(binding, Mapping)
+        or set(binding) != expected
+        or type(binding["schema_version"]) is not int
+        or binding["schema_version"] != PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION
+        or binding["available"] is not True
+        or isinstance(binding["row_count"], bool)
+        or not isinstance(binding["row_count"], int)
+        or binding["row_count"] <= 0
+    ):
+        raise ValueError(f"{boundary}: late PUF donor person projection is malformed.")
+    columns = binding["columns"]
+    dtypes = binding["dtypes"]
+    if (
+        not isinstance(columns, list)
+        or not columns
+        or any(not isinstance(column, str) or not column for column in columns)
+        or len(columns) != len(set(columns))
+        or not isinstance(dtypes, Mapping)
+        or set(dtypes) != set(columns)
+        or any(not isinstance(dtype, str) or not dtype for dtype in dtypes.values())
+    ):
+        raise ValueError(
+            f"{boundary}: late PUF donor person projection columns/dtypes are malformed."
+        )
+    _validate_sha256(binding["sha256"], boundary=f"{boundary} PUF person projection")
 
 
 def _validate_late_resource_binding(
@@ -5477,7 +5533,15 @@ def _validate_late_resource_binding(
 
     common = {"resource_kind", "schema_version"}
     if kind == "puf_donor_tax_units":
-        require_keys({*common, "table_content_sha256", "ordered_columns", "dtypes"})
+        require_keys(
+            {
+                *common,
+                "table_content_sha256",
+                "ordered_columns",
+                "dtypes",
+                "person_projection",
+            }
+        )
         _validate_sha256(
             binding.get("table_content_sha256"),
             boundary=f"{boundary} PUF donor content",
@@ -5495,6 +5559,9 @@ def _validate_late_resource_binding(
             raise ValueError(
                 f"{boundary}: late PUF donor binding has malformed columns/dtypes."
             )
+        _validate_late_puf_person_projection_binding(
+            binding.get("person_projection"), boundary=boundary
+        )
         return
     if kind == "primary_qrf_checkpoint":
         require_keys(
@@ -6172,10 +6239,15 @@ def _late_puf_donor_resource_semantics_binding() -> dict[str, object]:
 
     return {
         "resource_kind": "puf_donor_tax_units",
-        "schema_version": 1,
+        "schema_version": 2,
         "runtime_identity": {
             "codec": _LATE_TABLE_DIGEST_CODEC,
-            "fields": ["table_content_sha256", "ordered_columns", "dtypes"],
+            "fields": [
+                "table_content_sha256",
+                "ordered_columns",
+                "dtypes",
+                "person_projection",
+            ],
             "normalization": "canonical_table_string_dtypes",
         },
         "source_input_pins": ["processed_puf", "puf_source_year"],
@@ -6253,7 +6325,8 @@ def stacked_late_primary_resource_receipts(
     )
     donor_binding = {
         "resource_kind": "puf_donor_tax_units",
-        "schema_version": 1,
+        "schema_version": 2,
+        "person_projection": puf_tail_person_projection_identity(donor_tax_units),
         "table_content_sha256": _late_table_values_sha256(
             normalized_donor,
         ),
@@ -12339,6 +12412,197 @@ def prepare_stacked_tail_derivation(frame: Frame) -> tuple[Frame, dict[str, obje
     }
 
 
+def _stacked_tail_owned_cells(
+    person: pd.DataFrame,
+    tax_unit: pd.DataFrame,
+    record: Mapping[str, object],
+) -> list[dict[str, object]]:
+    """Read exact arm-owned cells from live tables, preserving donor scalar types."""
+
+    arm = record.get("arm")
+    owned = puf_tail_owned_columns(arm)
+    tail_tax_unit_id = int(record["tail_tax_unit_id"])
+    head_id = int(record["tail_person_id"])
+    people = person.loc[person["person_tax_unit_id"].eq(tail_tax_unit_id)]
+    units = tax_unit.loc[tax_unit["tax_unit_id"].eq(tail_tax_unit_id)]
+    if len(units) != 1 or int(people["person_id"].eq(head_id).sum()) != 1:
+        raise ValueError("Stacked tail-owned vector has no unique unit/head carrier.")
+    agi_arm = arm in (2, 3)
+    spouse_id = int(record.get("tail_spouse_person_id", -1))
+    if (
+        agi_arm
+        and spouse_id != -1
+        and (spouse_id == head_id or int(people["person_id"].eq(spouse_id).sum()) != 1)
+    ):
+        raise ValueError("Stacked tail-owned vector has no unique spouse carrier.")
+    if agi_arm:
+        person_vectors = record.get("person_vectors")
+        person_dtypes = record.get("person_dtypes")
+        unit_vector = record.get("tax_unit_vector")
+        unit_dtypes = record.get("tax_unit_dtypes")
+        if (
+            not isinstance(person_vectors, Mapping)
+            or set(person_vectors) != {"head", "spouse"}
+            or any(
+                not isinstance(person_vectors[role], Mapping)
+                or set(person_vectors[role]) != set(owned["person"])
+                for role in ("head", "spouse")
+            )
+            or not isinstance(person_dtypes, Mapping)
+            or set(person_dtypes) != set(owned["person"])
+            or any(
+                not isinstance(dtype, str) or not dtype
+                for dtype in person_dtypes.values()
+            )
+            or not isinstance(unit_vector, Mapping)
+            or set(unit_vector) != set(owned["tax_unit"])
+            or not isinstance(unit_dtypes, Mapping)
+            or set(unit_dtypes) != set(owned["tax_unit"])
+            or any(
+                not isinstance(dtype, str) or not dtype
+                for dtype in unit_dtypes.values()
+            )
+        ):
+            raise ValueError("Stacked AGI tail-owned typed vector schema changed.")
+        # Role identities are producer inputs, not an inference from row order.
+        roles = puf_tail_recipient_roles(people)
+        if (
+            not roles.isin(("head", "spouse", "dependent")).all()
+            or int(roles.eq("head").sum()) != 1
+            or int(roles.eq("spouse").sum()) > 1
+        ):
+            raise ValueError("Stacked AGI tail recipient roles changed.")
+        if roles.loc[people["person_id"].eq(head_id)].tolist() != ["head"]:
+            raise ValueError("Stacked AGI tail head role changed.")
+        if spouse_id != -1 and roles.loc[
+            people["person_id"].eq(spouse_id)
+        ].tolist() != ["spouse"]:
+            raise ValueError("Stacked AGI tail spouse role changed.")
+        if spouse_id == -1 and any(person_vectors["spouse"].values()):
+            raise ValueError("Stacked AGI tail omitted a nonzero donor spouse vector.")
+    else:
+        person_vectors = {"head": record["joint_vector"]}
+        person_dtypes = {}
+        unit_vector = record["joint_vector"]
+        unit_dtypes = {}
+
+    def exact_cell(
+        table: pd.DataFrame,
+        column: str,
+        actual: object,
+        expected: object,
+        *,
+        entity: str,
+        identity: int,
+        dtype: object,
+    ) -> dict[str, object]:
+        label = f"{entity}.{column} for {entity}_id={identity}"
+        if dtype is None:
+            actual_value = np.float64(actual)
+            expected_value = np.float64(expected)
+        else:
+            try:
+                expected_dtype = pd.api.types.pandas_dtype(dtype)
+            except (TypeError, ValueError) as error:
+                raise ValueError(
+                    f"Stacked tail-owned dtype {label} is invalid."
+                ) from error
+            if expected_dtype.kind not in "biuf":
+                raise ValueError(
+                    f"Stacked tail-owned dtype {label} is not numeric/boolean."
+                )
+            actual_dtype = table[column].dtype
+            boolean = pd.api.types.is_bool_dtype(expected_dtype)
+            if not (
+                pd.api.types.is_bool_dtype(actual_dtype)
+                if boolean
+                else actual_dtype == expected_dtype
+            ):
+                raise ValueError(
+                    f"Stacked tail-owned dtype {label} changed: expected "
+                    f"{expected_dtype}, got {actual_dtype}."
+                )
+            if boolean:
+                if not isinstance(actual, (bool, np.bool_)) or not isinstance(
+                    expected, (bool, np.bool_)
+                ):
+                    raise ValueError(f"Stacked tail-owned cell {label} is not boolean.")
+                actual_value = np.bool_(actual)
+                expected_value = np.bool_(expected)
+            else:
+                numpy_dtype = np.dtype(str(expected_dtype).lower())
+                actual_value = np.asarray(actual, dtype=numpy_dtype)
+                expected_value = np.asarray(expected, dtype=numpy_dtype)
+                if not np.isfinite(expected_value) or expected_value.item() != expected:
+                    raise ValueError(
+                        f"Stacked tail-owned cell {label} has an invalid typed donor value."
+                    )
+        if actual_value.tobytes() != expected_value.tobytes():
+            raise ValueError(
+                f"Stacked tail-owned cell {label} changed: expected {expected!r}, got {actual!r}."
+            )
+        cell = {
+            "kind": "cell",
+            "entity": entity,
+            "column": column,
+            "id": identity,
+            "value": actual_value.item(),
+        }
+        if dtype is not None:
+            cell["dtype"] = str(table[column].dtype)
+        return cell
+
+    cells: list[dict[str, object]] = []
+    for _, row in people.iterrows():
+        person_id = int(row["person_id"])
+        role = (
+            "head"
+            if person_id == head_id
+            else "spouse"
+            if agi_arm and person_id == spouse_id
+            else None
+        )
+        for column in owned["person"]:
+            if column not in person:
+                raise ValueError(
+                    f"Stacked tail-owned column person.{column} is absent."
+                )
+            dtype = person_dtypes.get(column)
+            zero = (
+                False
+                if dtype is not None
+                and pd.api.types.is_bool_dtype(pd.api.types.pandas_dtype(dtype))
+                else 0.0
+            )
+            expected = person_vectors[role][column] if role else zero
+            cells.append(
+                exact_cell(
+                    person,
+                    column,
+                    person.at[row.name, column],
+                    expected,
+                    entity="person",
+                    identity=person_id,
+                    dtype=dtype,
+                )
+            )
+    for column in owned["tax_unit"]:
+        if column not in tax_unit:
+            raise ValueError(f"Stacked tail-owned column tax_unit.{column} is absent.")
+        cells.append(
+            exact_cell(
+                tax_unit,
+                column,
+                tax_unit.at[units.index[0], column],
+                unit_vector[column],
+                entity="tax_unit",
+                identity=tail_tax_unit_id,
+                dtype=unit_dtypes.get(column),
+            )
+        )
+    return cells
+
+
 def assert_stacked_tail_cells_preserved(
     frame: Frame,
     tail_manifest: Mapping[str, object],
@@ -12378,6 +12642,8 @@ def assert_stacked_tail_cells_preserved(
 
     person = frame.table("person")
     tax_unit = frame.table("tax_unit")
+    if PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN not in tax_unit:
+        raise ValueError("Stacked tail arm provenance is absent from tax units.")
     household = frame.table("household")
     person_clone_column = support_clone_index_column("person")
     tax_unit_clone_column = support_clone_index_column("tax_unit")
@@ -12475,7 +12741,8 @@ def assert_stacked_tail_cells_preserved(
             record.get("joint_vector"), Mapping
         ):
             raise ValueError("Stacked tail preservation found a malformed record.")
-        joint_vector = record["joint_vector"]
+        arm = record.get("arm")
+        puf_tail_owned_columns(arm)
         tail_household_id = int(record["tail_household_id"])
         recipient_household_id = int(record["recipient_household_id"])
         tail_tax_unit_id = int(record["tail_tax_unit_id"])
@@ -12599,6 +12866,7 @@ def assert_stacked_tail_cells_preserved(
 
         provenance_expectations = (
             (PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN, True),
+            (PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN, arm),
             (
                 PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
                 int(record["donor_source_id"]),
@@ -12669,62 +12937,17 @@ def assert_stacked_tail_cells_preserved(
             raise ValueError(
                 f"Stacked tail carrier person_id={tail_person_id} is not unique."
             )
-        for _, row in tail_people.iterrows():
-            person_id = int(row["person_id"])
-            carrier = person_id == tail_person_id
-            for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS:
-                if column not in row:
-                    raise ValueError(
-                        f"Stacked tail-owned column person.{column} is absent."
-                    )
-                actual = assert_float_exact(
-                    row[column],
-                    joint_vector[column] if carrier else 0.0,
-                    label=f"cell person.{column} for person_id={person_id}",
-                )
-                observed_state.append(
-                    {
-                        "kind": "cell",
-                        "entity": "person",
-                        "column": column,
-                        "id": person_id,
-                        "value": actual,
-                    }
-                )
-                tail_owned_cell_count += 1
-        for column in PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS:
-            if column not in tail_tax_unit_row:
-                raise ValueError(
-                    f"Stacked tail-owned column tax_unit.{column} is absent."
-                )
-            actual = assert_float_exact(
-                tail_tax_unit_row[column],
-                joint_vector[column],
-                label=f"cell tax_unit.{column} for tax_unit_id={tail_tax_unit_id}",
-            )
-            observed_state.append(
-                {
-                    "kind": "cell",
-                    "entity": "tax_unit",
-                    "column": column,
-                    "id": tail_tax_unit_id,
-                    "value": actual,
-                }
-            )
-            tail_owned_cell_count += 1
+        owned_cells = _stacked_tail_owned_cells(person, tax_unit, record)
+        observed_state.extend(owned_cells)
+        tail_owned_cell_count += len(owned_cells)
 
     preserved_nonowned = 0
-    for entity, owned_columns, qrf_outputs in (
-        (
-            "person",
-            frozenset(PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS),
-            PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
-        ),
-        (
-            "tax_unit",
-            frozenset(PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS),
-            PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
-        ),
+    arm_by_tax_unit = {
+        int(record["tail_tax_unit_id"]): int(record["arm"]) for record in records
+    }
+    for entity, qrf_outputs in (
+        ("person", PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS),
+        ("tax_unit", PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS),
     ):
         table = frame.table(entity)
         clone_index = pd.to_numeric(
@@ -12742,25 +12965,38 @@ def assert_stacked_tail_cells_preserved(
                 f"Stacked tail {entity} clone-2 source rows have no clone-1 "
                 f"parent: {missing_sources}."
             )
-        for column in sorted(set(qrf_outputs) - owned_columns):
-            if column not in table:
-                continue
-            expected = primary.loc[tail.index, column].reset_index(drop=True)
-            actual = tail[column].reset_index(drop=True)
-            expected.name = column
-            actual.name = column
-            if _canonical_donor_series_payload(
-                actual,
-                boundary=f"stacked tail actual {entity}.{column}",
-            ) != _canonical_donor_series_payload(
-                expected,
-                boundary=f"stacked tail expected {entity}.{column}",
-            ):
-                raise ValueError(
-                    f"Stacked tail recipient-owned QRF column {entity}.{column} "
-                    "changed on clone 2."
+        membership = "person_tax_unit_id" if entity == "person" else "tax_unit_id"
+        arms = tail[membership].map(arm_by_tax_unit)
+        if arms.isna().any():
+            raise ValueError(f"Stacked tail {entity} has missing arm provenance.")
+        for arm in sorted(set(arms)):
+            owned_columns = frozenset(puf_tail_owned_columns(int(arm))[entity])
+            inherited_rows = tail.loc[arms.eq(arm)]
+            for column in sorted(set(qrf_outputs) - owned_columns):
+                if column not in table:
+                    if arm in (2, 3):
+                        raise ValueError(
+                            f"Stacked tail recipient-owned QRF column {entity}.{column} is absent."
+                        )
+                    continue
+                expected = primary.loc[inherited_rows.index, column].reset_index(
+                    drop=True
                 )
-            preserved_nonowned += int(len(actual))
+                actual = inherited_rows[column].reset_index(drop=True)
+                expected.name = column
+                actual.name = column
+                if _canonical_donor_series_payload(
+                    actual,
+                    boundary=f"stacked tail actual {entity}.{column}",
+                ) != _canonical_donor_series_payload(
+                    expected,
+                    boundary=f"stacked tail expected {entity}.{column}",
+                ):
+                    raise ValueError(
+                        f"Stacked tail recipient-owned QRF column {entity}.{column} "
+                        "changed on clone 2."
+                    )
+                preserved_nonowned += int(len(actual))
 
     return {
         "passed": True,

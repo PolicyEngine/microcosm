@@ -8819,6 +8819,39 @@ def test_run_stacked_puf_pass_applies_clone_two_capital_gains_tail() -> None:
     )
     assert preservation["passed"] is True
     assert preservation["tail_owned_cell_count"] == 14
+    # A valid manifest cannot excuse missing or unknown live arm provenance.
+    for invalid_arm in (None, 0, 99):
+        tax_units = result.frame.table("tax_unit").copy()
+        if invalid_arm is None:
+            tax_units.drop(
+                columns=tail_module.PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN, inplace=True
+            )
+        else:
+            clone_two = tax_units[support_clone_index_column("tax_unit")].eq(2)
+            tax_units.loc[clone_two, tail_module.PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN] = (
+                invalid_arm
+            )
+        invalid_frame = Frame(
+            {
+                **{
+                    entity: result.frame.table(entity)
+                    for entity in result.frame.entities
+                },
+                "tax_unit": tax_units,
+            },
+            result.frame.schema,
+            {
+                entity: result.frame.weights_for(entity)
+                for entity in result.frame.weighted_entities
+            },
+            result.frame.strata,
+            mass_log=result.frame.mass_log,
+            metadata=result.frame.metadata,
+        )
+        with pytest.raises(ValueError, match="arm"):
+            stacked_spine_module.assert_stacked_tail_cells_preserved(
+                invalid_frame, tail
+            )
     assert (
         preservation["overlap_ownership_sha256"]
         == tail["late_overlap_ownership"]["sha256"]
@@ -11225,3 +11258,290 @@ def test_end_to_end_stack_gap_fill_puf_pass_gates_and_battery(tmp_path) -> None:
         ]
         assert origin_detail.notna().all()
         assert (origin_detail > 0.0).any()
+
+
+def _agi_tail_owned_cell_fixture() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """Typed donor persons retain distinct head/spouse amounts and flags."""
+
+    owned = tail_module.puf_tail_owned_columns(2)
+    person = pd.DataFrame(
+        {
+            "person_id": [201, 202, 203],
+            "person_tax_unit_id": [20, 20, 20],
+            "is_tax_unit_head": [True, False, False],
+            "is_tax_unit_spouse": [False, True, False],
+            "is_tax_unit_dependent": [False, False, True],
+        }
+    )
+    vectors = {"head": {}, "spouse": {}}
+    for index, column in enumerate(owned["person"], start=1):
+        if column in US_QBI_BOOLEAN_OUTPUT_COLUMNS:
+            values = [True, bool(index % 2), False]
+        else:
+            values = [float(index * 100), float(index * 10), 0.0]
+        person[column] = values
+        vectors["head"][column] = values[0]
+        vectors["spouse"][column] = values[1]
+    tax_unit = pd.DataFrame({"tax_unit_id": [20]})
+    tax_vector = {}
+    for index, column in enumerate(owned["tax_unit"], start=1):
+        tax_unit[column] = [float(index * 1000)]
+        tax_vector[column] = float(index * 1000)
+    record = {
+        "arm": 2,
+        "tail_tax_unit_id": 20,
+        "tail_person_id": 201,
+        "tail_spouse_person_id": 202,
+        "person_vectors": vectors,
+        "person_dtypes": {
+            column: str(person[column].dtype) for column in owned["person"]
+        },
+        "tax_unit_vector": tax_vector,
+        "tax_unit_dtypes": {
+            column: str(tax_unit[column].dtype) for column in owned["tax_unit"]
+        },
+        "joint_vector": {},
+    }
+    return person, tax_unit, record
+
+
+@pytest.mark.parametrize("arm", [2, 3])
+def test_stacked_agi_tail_preserves_typed_head_spouse_and_zero_members(
+    arm: int,
+) -> None:
+    person, tax_unit, record = _agi_tail_owned_cell_fixture()
+    record["arm"] = arm
+    cells = stacked_spine_module._stacked_tail_owned_cells(person, tax_unit, record)
+    owned = tail_module.puf_tail_owned_columns(arm)
+    assert len(cells) == 3 * len(owned["person"]) + len(owned["tax_unit"])
+    boolean_cells = [
+        cell for cell in cells if cell["column"] in US_QBI_BOOLEAN_OUTPUT_COLUMNS
+    ]
+    assert boolean_cells
+    assert all(isinstance(cell["value"], bool) for cell in boolean_cells)
+    assert all(
+        cell["value"] in (0.0, False)
+        for cell in cells
+        if cell["entity"] == "person" and cell["id"] == 203
+    )
+
+
+@pytest.mark.parametrize("position", [0, 1, 2])
+def test_stacked_agi_tail_rejects_changed_person_owned_cells(position: int) -> None:
+    person, tax_unit, record = _agi_tail_owned_cell_fixture()
+    person.loc[position, "employment_income_before_lsr"] += 1.0
+    with pytest.raises(ValueError, match="person.employment_income_before_lsr"):
+        stacked_spine_module._stacked_tail_owned_cells(person, tax_unit, record)
+
+
+def test_stacked_agi_tail_rejects_boolean_count_and_tax_unit_drift() -> None:
+    person, tax_unit, record = _agi_tail_owned_cell_fixture()
+    person["business_is_sstb"] = person["business_is_sstb"].astype("int64")
+    with pytest.raises(ValueError, match="dtype.*business_is_sstb"):
+        stacked_spine_module._stacked_tail_owned_cells(person, tax_unit, record)
+    person, tax_unit, record = _agi_tail_owned_cell_fixture()
+    column = next(iter(record["tax_unit_vector"]))
+    tax_unit.loc[0, column] += 1.0
+    with pytest.raises(ValueError, match=f"tax_unit.{column}"):
+        stacked_spine_module._stacked_tail_owned_cells(person, tax_unit, record)
+
+
+@pytest.mark.parametrize("arm", [None, 0, 4, True, 2.0, "2"])
+def test_stacked_tail_owned_cells_fail_closed_on_missing_unknown_arm(
+    arm: object,
+) -> None:
+    person, tax_unit, record = _agi_tail_owned_cell_fixture()
+    if arm is None:
+        record.pop("arm")
+    else:
+        record["arm"] = arm
+    with pytest.raises(ValueError, match="arm"):
+        stacked_spine_module._stacked_tail_owned_cells(person, tax_unit, record)
+
+
+def test_tail_operator_surface_uses_canonical_full_vector_ownership() -> None:
+    family = multispine_pool_module.PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES[
+        "capital_gains_tail"
+    ]
+    owned = tail_module.puf_tail_owned_columns(3)
+    assert family["person"] == frozenset(owned["person"])
+    assert set(owned["tax_unit"]) <= family["tax_unit"]
+    assert tail_module.PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN in family["tax_unit"]
+    for target in us_late_overlap_ownership_receipt()["targets"]:
+        assert target["target"] not in owned[target["entity"]]
+
+
+@pytest.mark.usefixtures("live_worker_identity")
+def test_late_primary_resources_bind_person_projection_beyond_donor_totals() -> None:
+    donor = pd.DataFrame({"tax_unit_id": [20], "income": [100.0]})
+    persons = pd.DataFrame(
+        {
+            "person_id": [1, 2],
+            "tax_unit_id": [20, 20],
+            "role": ["head", "spouse"],
+            "income": [60.0, 40.0],
+        }
+    )
+    puf_support_module.attach_puf_tail_person_projection(donor, persons)
+    common = {
+        "primary_qrf_checkpoint_identity_sha256": "a" * 64,
+        "clone_attachment_fraction": 1.0,
+        "clone_attachment_seed": 578,
+        "seed": 0,
+        "n_estimators": 100,
+        "fit_records_enabled": True,
+        "tail_bound_diagnostics_enabled": True,
+    }
+    first = stacked_spine_module.stacked_late_primary_resource_receipts(
+        donor, **common
+    )["tax_unit.@puf_donor_tax_units"]
+    persons["income"] = [61.0, 39.0]
+    puf_support_module.attach_puf_tail_person_projection(donor, persons)
+    second = stacked_spine_module.stacked_late_primary_resource_receipts(
+        donor, **common
+    )["tax_unit.@puf_donor_tax_units"]
+    assert (
+        first["binding"]["table_content_sha256"]
+        == second["binding"]["table_content_sha256"]
+    )
+    assert first["binding_sha256"] != second["binding_sha256"]
+    assert first["binding"]["schema_version"] == 2
+    assert (
+        first["binding"]["person_projection"]["sha256"]
+        != second["binding"]["person_projection"]["sha256"]
+    )
+
+
+def test_stacked_agi_tail_nullable_boolean_storage_preserves_boolean_values() -> None:
+    person, tax_unit, record = _agi_tail_owned_cell_fixture()
+    person["business_is_sstb"] = person["business_is_sstb"].astype("boolean")
+    cells = stacked_spine_module._stacked_tail_owned_cells(person, tax_unit, record)
+    flags = [cell for cell in cells if cell["column"] == "business_is_sstb"]
+    assert [cell["value"] for cell in flags] == person["business_is_sstb"].tolist()
+    assert all(cell["dtype"] == "boolean" for cell in flags)
+
+
+def test_stacked_agi_tail_rejects_role_and_missing_owned_column() -> None:
+    person, tax_unit, record = _agi_tail_owned_cell_fixture()
+    record["tail_person_id"], record["tail_spouse_person_id"] = 202, 201
+    with pytest.raises(ValueError, match="head role"):
+        stacked_spine_module._stacked_tail_owned_cells(person, tax_unit, record)
+    person, tax_unit, record = _agi_tail_owned_cell_fixture()
+    person.drop(columns="employment_income_before_lsr", inplace=True)
+    with pytest.raises(
+        ValueError, match="column person.employment_income_before_lsr is absent"
+    ):
+        stacked_spine_module._stacked_tail_owned_cells(person, tax_unit, record)
+
+
+def test_stacked_tail_arm_ownership_keeps_late_owner_and_gains_parent_cells() -> None:
+    """One live mixed-arm frame obeys both donor and unchanged late-owner rules."""
+
+    def source(first: int, stratum: str) -> Frame:
+        ids = list(range(first, first + 4))
+        frame = _source_frame(
+            household_ids=ids,
+            persons_per_household=dict.fromkeys(ids, 3),
+            weights=[100.0] * 4,
+            extra_household_columns={"TYPEHUGQ": 1, "tenure_type": "RENTED"},
+            stratum=stratum,
+        )
+        person = frame.table("person")
+        person["tax_unit_role_input"] = ["HEAD", "SPOUSE", "DEPENDENT"] * 4
+        for column in puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS:
+            person[column] = False if column in US_QBI_BOOLEAN_OUTPUT_COLUMNS else 0.0
+        for column in puf_support_module.PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS:
+            frame.table("tax_unit")[column] = 0.0
+        frame.table("tax_unit")["filing_status_input"] = "JOINT"
+        return frame
+
+    stacked = assemble_stacked_spine(
+        source(11, "asec_2024"),
+        source(101, "acs_2024_1yr"),
+        sample_fraction=1.0,
+        sample_seed=578,
+    ).frame
+    cloned = clone_us_frame_for_puf_support(
+        stacked, clone_attachment_fraction=1.0, clone_attachment_seed=578
+    )
+    attachment = validate_puf_clone_attachment(
+        cloned, boundary="mixed arm fixture", expected_fraction=1.0, expected_seed=578
+    )
+    donor = pd.DataFrame(
+        {
+            "tax_unit_id": [10, 20, 30],
+            "weight": [996.0, 3.0, 1.0],
+            "filing_status_code": [2.0, 2.0, 2.0],
+            PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN: [
+                100_000.0,
+                2_100_000.0,
+                7_000_000.0,
+            ],
+        }
+    )
+    persons = pd.DataFrame(
+        {
+            "person_id": list(range(1, 10)),
+            "tax_unit_id": np.repeat([10, 20, 30], 3),
+            "role": ["head", "spouse", "dependent"] * 3,
+        }
+    )
+    for column in puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS:
+        persons[column] = False if column in US_QBI_BOOLEAN_OUTPUT_COLUMNS else 0.0
+    persons.loc[[0, 3], "long_term_capital_gains_before_response"] = [
+        100_000.0,
+        2_100_000.0,
+    ]
+    persons.loc[[6, 7], "employment_income_before_lsr"] = [6_000_000.0, 1_000_000.0]
+    for column in puf_support_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS:
+        donor[column] = (
+            persons.groupby("tax_unit_id", sort=False)[column].sum().to_numpy()
+        )
+    for column in puf_support_module.PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS:
+        donor[column] = 0.0
+    puf_support_module.attach_puf_tail_person_projection(donor, persons)
+    transferred, tail = tail_module.transfer_puf_capital_gains_tail(
+        cloned, donor, seed=578
+    )
+    provisional = puf_support_module.bind_puf_clone_attachment_tail_descendant(
+        transferred,
+        attachment_receipt=attachment,
+        tail_manifest=tail,
+    )
+    tail = stacked_spine_module._bind_stacked_tail_origin_receipt(provisional, tail)
+    transferred = puf_support_module.bind_puf_clone_attachment_tail_descendant(
+        transferred,
+        attachment_receipt=attachment,
+        tail_manifest=tail,
+    )
+    assert {record["arm"] for record in tail["records"]} == {1, 2}
+    assert stacked_spine_module.assert_stacked_tail_cells_preserved(transferred, tail)[
+        "passed"
+    ]
+
+    agi = next(record for record in tail["records"] if record["arm"] == 2)
+    gains = next(record for record in tail["records"] if record["arm"] == 1)
+    late_target = us_late_overlap_ownership_receipt()["targets"][0]
+    assert late_target["entity"] == "person"
+    column = late_target["target"]
+    person = transferred.table("person")
+    # The unchanged final owner may update parent and descendant together.
+    same_lineage = person["person_tax_unit_id"].isin(
+        [agi["tail_tax_unit_id"], agi["recipient_tax_unit_id"]]
+    )
+    person.loc[same_lineage, column] = 17.0
+    assert stacked_spine_module.assert_stacked_tail_cells_preserved(transferred, tail)[
+        "passed"
+    ]
+    person.loc[person["person_id"].eq(agi["tail_person_id"]), column] = 18.0
+    with pytest.raises(ValueError, match=f"recipient-owned QRF column person.{column}"):
+        stacked_spine_module.assert_stacked_tail_cells_preserved(transferred, tail)
+    person.loc[person["person_id"].eq(agi["tail_person_id"]), column] = 17.0
+    person.loc[
+        person["person_id"].eq(gains["tail_person_id"]), "employment_income_before_lsr"
+    ] = 123.0
+    with pytest.raises(
+        ValueError,
+        match="recipient-owned QRF column person.employment_income_before_lsr",
+    ):
+        stacked_spine_module.assert_stacked_tail_cells_preserved(transferred, tail)
