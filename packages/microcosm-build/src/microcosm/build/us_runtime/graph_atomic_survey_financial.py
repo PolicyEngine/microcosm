@@ -44,6 +44,7 @@ from microcosm.graph.keys import _capabilities_projection, opaque_artifact_key
 from microcosm.graph.population import Population
 from microcosm.graph.serialize import graph_to_json
 
+from . import _survey_population_witness as observation
 from . import graph_atomic_survey_population as atomic
 from . import graph_current_survey_predictors as financial
 
@@ -127,6 +128,10 @@ class _FinancialRunState:
     node_populations: tuple = ()
     node_states: object = None
     registry: tuple = ()
+    retention_profile: str = "all"
+    retained_node_ids: tuple = ()
+    node_witnesses: tuple = ()
+    node_population_inputs: tuple = ()
 
 
 def _person_status_module():
@@ -497,12 +502,62 @@ def _node_population_stamp(
     )
 
 
-def _node_population_seals(compiled, node_populations, completion_boundary=None):
+def _compact_retained_roster(
+    compiled, property_income, rebase_property_taxes, completion_boundary=None
+):
+    if completion_boundary is not None:
+        base = set(completion_boundary.base.compiled.order)
+        return tuple(node for node in compiled.order if node not in base)
+    required = {financial.ATTACH_NODE}
+    if property_income is not None:
+        required.add(_property_module().ATTACH_NODE)
+    if rebase_property_taxes:
+        required.add(_tax_module().GATE_NODE)
+    require(required <= set(compiled.order), "COMPACT_BOUNDARY_ROSTER")
+    return tuple(node for node in compiled.order if node in required)
+
+
+def _compact_capsule_seal(state):
+    require(
+        type(state.node_witnesses) is tuple
+        and type(state.node_population_inputs) is tuple
+        and tuple(n for n, _ in state.node_witnesses) == state.compiled.order
+        and tuple(n for n, _ in state.node_population_inputs) == state.compiled.order
+        and all(
+            type(payload) is bytes
+            for _, payload in (*state.node_witnesses, *state.node_population_inputs)
+        ),
+        "COMPACT_CAPSULE_ROSTER",
+    )
+    return codec.encode_json(
+        {
+            "profile": state.retention_profile,
+            "retained": state.retained_node_ids,
+            "order": state.compiled.order,
+            "versions": tuple(sorted(state.compiled.versions.items())),
+            "keys": state.keys,
+            "implementations": state.implementations,
+            "sources": state.source_keys,
+            "witnesses": [
+                (n, codec.sha(payload)) for n, payload in state.node_witnesses
+            ],
+            "population_inputs": [
+                (n, codec.sha(payload)) for n, payload in state.node_population_inputs
+            ],
+        }
+    )
+
+
+def _node_population_seals(
+    compiled, node_populations, completion_boundary=None, *, retained_node_ids=None
+):
     """Retain the existing pair format with an exact compiled-order binding."""
     if not node_populations and completion_boundary is None:
         return ()  # Preserve the existing optional path for non-completion runs.
     require(
-        node_populations is not None and tuple(node_populations) == compiled.order,
+        node_populations is not None
+        and tuple(node_populations)
+        == (compiled.order if retained_node_ids is None else retained_node_ids),
         "FINANCIAL_NODE_POPULATION_ROSTER",
     )
     return tuple(
@@ -662,6 +717,22 @@ def _pure_run(run, entry):
     require(_run_entry(run) is entry, "FINAL_FINANCIAL_RUN_ISSUANCE")
     state = entry[2]
     prefix = state.prefix
+    require(state.retention_profile in ("all", "compact"), "RETENTION_PROFILE")
+    if state.retention_profile == "compact":
+        require(
+            len(entry) == 4
+            and state.retained_node_ids
+            == _compact_retained_roster(
+                state.compiled,
+                state.property_income,
+                state.rebase_property_taxes,
+                state.completion_boundary,
+            )
+            and _compact_capsule_seal(state) == entry[3],
+            "COMPACT_CAPSULE_CHANGED",
+        )
+    else:
+        require(len(entry) == 3, "COMPACT_CAPSULE_CHANGED")
     if state.completion_boundary is not None:
         require(
             state.completion_boundary.attestation() == state.completion_stamp,
@@ -673,12 +744,27 @@ def _pure_run(run, entry):
         "FINANCIAL_KERNEL_REGISTRY_CHANGED",
     )
     require(
-        (not state.node_populations and state.completion_boundary is None)
-        or len(state.node_populations) == len(state.compiled.order),
+        (
+            state.retention_profile == "all"
+            and not state.node_populations
+            and state.completion_boundary is None
+        )
+        or len(state.node_populations)
+        == len(
+            state.compiled.order
+            if state.retention_profile == "all"
+            else state.retained_node_ids
+        ),
         "FINANCIAL_NODE_POPULATION_ROSTER",
     )
     for node_id, (population, stamp) in zip(
-        state.compiled.order if state.node_populations else (),
+        (
+            state.compiled.order
+            if state.retention_profile == "all"
+            else state.retained_node_ids
+        )
+        if state.node_populations
+        else (),
         state.node_populations,
         strict=True,
     ):
@@ -929,6 +1015,9 @@ def _issue_run(
     completion_boundary=None,
     node_populations=None,
     node_states=None,
+    retention_profile="all",
+    node_witnesses=None,
+    node_population_inputs=None,
 ):
     """Called only after this runner's complete materialization/replay checks."""
     prefix = result.prefix
@@ -946,6 +1035,16 @@ def _issue_run(
                 )
             ),
             ("financial", result.financial_population),
+        )
+    )
+    retained_node_ids = (
+        None
+        if retention_profile == "all"
+        else _compact_retained_roster(
+            result.compiled,
+            property_income,
+            rebase_property_taxes,
+            completion_boundary,
         )
     )
     state = _FinancialRunState(
@@ -1008,9 +1107,18 @@ def _issue_run(
         person_status_boundary,
         completion_boundary,
         None if completion_boundary is None else completion_boundary.attestation(),
-        _node_population_seals(result.compiled, node_populations, completion_boundary),
+        _node_population_seals(
+            result.compiled,
+            node_populations,
+            completion_boundary,
+            retained_node_ids=retained_node_ids,
+        ),
         node_states,
         tuple(result.kernels.as_mapping().items()),
+        retention_profile,
+        () if retained_node_ids is None else retained_node_ids,
+        () if node_witnesses is None else tuple(node_witnesses.items()),
+        () if node_population_inputs is None else tuple(node_population_inputs.items()),
     )
     identifier = id(result)
 
@@ -1021,6 +1129,8 @@ def _issue_run(
 
     reference = weakref.ref(result, forget)
     _ISSUED_RUNS[identifier] = (reference, _run_document(result, state), state)
+    if retention_profile == "compact":
+        _ISSUED_RUNS[identifier] += (_compact_capsule_seal(state),)
     _pure_run(result, _run_entry(result))
 
 
@@ -1043,6 +1153,7 @@ def _live(
         financial.model_input,
         sys.modules[LegacyQRFTrainKernel.__module__],
         sys.modules[LegacyQRFApplyMatrixKernel.__module__],
+        observation,
     )
     if completion_boundary is not None:
         result["survey_completion"] = _completion_module()._live(
@@ -1138,6 +1249,12 @@ def _live(
             values.PROTOCOL,
             values.PHASE,
             values.SEED,
+        )
+    )
+    result["compact_observation_contract"] = values.source._runtime_marker(
+        (
+            observation.PROTOCOL,
+            tuple((type(dtype), str(dtype)) for dtype in observation._MASKED),
         )
     )
     return result
@@ -1289,6 +1406,7 @@ def run_atomic_survey_financial(
     child_property=None,
     resume="auto",
     return_values=False,
+    _population_retention="all",
 ):
     """Verify the base financial graph and its explicitly selected extension."""
     # One verification epoch for the whole run; the prefix run below opens
@@ -1296,6 +1414,11 @@ def run_atomic_survey_financial(
     # own record is carried into the manifest below; the prefix's record rides
     # its own manifest the same way.
     with survey._source_owner().verification_epoch() as verification:
+        require(
+            type(_population_retention) is str
+            and _population_retention in ("all", "compact"),
+            "RETENTION_PROFILE",
+        )
         require(type(return_values) is bool, "RETURN_VALUES_FLAG")
         require(type(person_status) is bool, "PERSON_STATUS_FLAG")
         require(type(rebase_property_taxes) is bool, "PROPERTY_TAX_FLAG")
@@ -1331,6 +1454,7 @@ def run_atomic_survey_financial(
                 rebase_property_taxes=False,
                 resume=resume,
                 return_values=True,
+                _population_retention=_population_retention,
             )
             result = extension.extend(
                 base,
@@ -1638,9 +1762,24 @@ def run_atomic_survey_financial(
         receipts[financial.PROJECTION_NODE] = qualified.evidence
         receipts[columns_node.id] = qualified.evidence
         observed, observed_stamps = {}, {}
+        witnessed = {} if _population_retention == "compact" else None
+        retained_nodes = (
+            None
+            if witnessed is None
+            else _compact_retained_roster(
+                compiled,
+                property_income,
+                rebase_property_taxes,
+            )
+        )
 
         def observe(node_id, population):
             require(node_id not in observed, "ATOMIC_OBSERVER_DUPLICATE")
+            if witnessed is not None:
+                require(node_id not in witnessed, "ATOMIC_OBSERVER_DUPLICATE")
+                witnessed[node_id] = observation.population_witness(population)
+                if node_id not in retained_nodes:
+                    return
             observed[node_id] = population
             observed_stamps[node_id] = reconstruction._population_stamp(population)
 
@@ -1653,7 +1792,12 @@ def run_atomic_survey_financial(
             _population_observer=observe,
             _verification_epoch=verification,
         )
-        require(tuple(observed) == compiled.order, "ATOMIC_OBSERVER_ROSTER")
+        require(
+            tuple(observed if witnessed is None else witnessed) == compiled.order,
+            "ATOMIC_OBSERVER_ROSTER",
+        )
+        if witnessed is not None:
+            require(tuple(observed) == retained_nodes, "COMPACT_BOUNDARY_ROSTER")
         loaded = _artifacts(manifest, compiled, store, kernels, keys, implementations)
         require(
             all(loaded[k] == v for k, v in prefix_artifacts.items()),
@@ -1793,7 +1937,10 @@ def run_atomic_survey_financial(
             else:
                 population = current[version]
             expected[node_id] = current[version] = population
-            atomic.same_replayed_population(population, observed[node_id])
+            if witnessed is not None and node_id not in observed:
+                observation.same_population_witness(population, witnessed[node_id])
+            else:
+                atomic.same_replayed_population(population, observed[node_id])
         if property_graph is not None:
             from .graph_property_income_receipts import verify_property_model_receipts
 
@@ -1809,6 +1956,14 @@ def run_atomic_survey_financial(
             n: reconstruction._population_stamp(p) for n, p in expected.items()
         }
         states = atomic._states(compiled, kernels, source_keys, expected, receipts)
+        population_inputs = (
+            None
+            if witnessed is None
+            else {
+                n: atomic._state_population_inputs(compiled, n, expected[n])
+                for n in compiled.order
+            }
+        )
         survey._check_node_states(manifest, states)
         final_node = (
             financial.ATTACH_NODE
@@ -1941,11 +2096,17 @@ def run_atomic_survey_financial(
         for node_id, population in expected.items():
             require(
                 reconstruction._population_stamp(population) == expected_stamps[node_id]
-                and reconstruction._population_stamp(observed[node_id])
-                == observed_stamps[node_id],
+                and (
+                    node_id not in observed
+                    or reconstruction._population_stamp(observed[node_id])
+                    == observed_stamps[node_id]
+                ),
                 "ATOMIC_FINAL_POPULATION_MUTATION",
             )
-            atomic.same_replayed_population(population, observed[node_id])
+            if witnessed is not None and node_id not in observed:
+                observation.same_population_witness(population, witnessed[node_id])
+            else:
+                atomic.same_replayed_population(population, observed[node_id])
         for version, population in current.items():
             survey._same_frame(population.frame, manifest.population(version))
             require(
@@ -1972,6 +2133,9 @@ def run_atomic_survey_financial(
             property_population=property_population,
             person_status_boundary=status_boundary,
             node_populations=observed,
+            retention_profile=_population_retention,
+            node_witnesses=witnessed,
+            node_population_inputs=population_inputs,
             node_states=states,
         )
         return result if return_values else manifest

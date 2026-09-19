@@ -1,0 +1,28 @@
+{
+  "scope": "Invented51 integration trial only; original default matrix remains pending. No actual data admission.",
+  "base_commit": "7b80eff5b2e4670d69a9818f85785266b22b175a",
+  "retention_source_origin": "native-completion-retention-20260919 exact V3 frozen bytes over ed123424c75adaea4554f088abe27770a5fe02a6",
+  "retention_copied_files": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/_survey_population_witness.py": "8c3253b206d6eb77518f510eaf5b0b991a3b14167012a63d18cf6b0412031786",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_atomic_survey_financial.py": "54153f1693504257f5822f74cb30af5af2d17b8c7465eb7ce0c08804d90c92f0",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_atomic_survey_population.py": "460590664f5f15f8e4f6cebdcf11c636fa7f212617499ecab9fd9cfbfdffc8fd",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/graph_survey_completion_host.py": "a71b0fb2a3e2b0d2264708bcaeb9c02356ae3fef0504d554c1f8e8bd706c334a",
+    "packages/microcosm-build/tests/test_us_graph_compact_retention.py": "2e0cc11682f765d7791eef55cefc9711c365eec79ceda8a7724f0790f902780f",
+    "packages/microcosm-build/tests/test_us_survey_population_witness.py": "f473b6b604a172328b2a7a8f900a421c79744ab0853279ab623f48fca2488a02"
+  },
+  "retention_complete_four_way_cases": {
+    "45": 3419.842,
+    "49": 4068.796,
+    "51": 4190.03
+  },
+  "unchanged_oracle_executor_store": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/survey_population_replay.py": "dd68c53071ab85104f028939f8ad7773c9a6bbb19677decb9d78c3cc35e6bf38",
+    "packages/microcosm-graph/src/microcosm/graph/executor.py": "c03b9e34c333c4622318a3907c2ec75fe64255784566f648df82accd9b7e51b1",
+    "packages/microcosm-graph/src/microcosm/graph/store.py": "75bd859f64e14ebc62c476b1eb567102523cf4e1b6ec594cbbfe5cf267118f9e"
+  },
+  "pending": [
+    "Default-path regression matrix on original retention source",
+    "Combined source full51 four-way case",
+    "Later source pin/resource admission before any actual population run"
+  ]
+}
