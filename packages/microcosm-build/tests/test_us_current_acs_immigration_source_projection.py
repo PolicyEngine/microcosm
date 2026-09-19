@@ -59,6 +59,14 @@ def test_only_cit_one_allows_entry_niu(cit):
         )
 
 
+@pytest.mark.parametrize("year", ["1938", "1939", "2024"])
+def test_cit_one_refuses_entry_observation_outside_question_universe(year):
+    with pytest.raises(ValueError, match="YOEP_OUTSIDE_UNIVERSE"):
+        owner._numeric_literals(
+            raw_rows([dict(CIT="1", POBP="001", YOEP=year, AGEP="45")])
+        )
+
+
 @pytest.mark.parametrize(
     "field,token",
     [
@@ -90,7 +98,7 @@ def test_literal_domains_refuse_unresolved_codes(field, token):
         owner._numeric_literals(raw_rows([values]))
 
 
-def source_arguments(path, patch, *, missing_entry=False):
+def source_arguments(path, patch, *, missing_entry=False, outside_universe=False):
     import test_us_current_survey_immigration_source as fixture
     import test_us_survey_population_preparation as preparation_fixture
 
@@ -115,6 +123,8 @@ def source_arguments(path, patch, *, missing_entry=False):
                 row.update(
                     CIT=cit, POBP=birthplace, YOEP="" if missing_entry else entry
                 )
+                if outside_universe and cit == "1":
+                    row["YOEP"] = "2020"
         return csv(rows)
 
     patch.setattr(preparation_fixture, "_person", person)
@@ -280,10 +290,16 @@ def test_literal_closure_and_value_mutation_cannot_move_retained_seal(actual):
     actual.view.validate()
 
 
-def test_genuine_source_missing_entry_refuses_before_projection(tmp_path, monkeypatch):
-    full, _, _ = source_arguments(tmp_path, monkeypatch, missing_entry=True)
+@pytest.mark.parametrize(
+    "defect,reason",
+    [("missing_entry", "YOEP_REQUIRED"), ("outside_universe", "YOEP_OUTSIDE_UNIVERSE")],
+)
+def test_genuine_source_entry_universe_refuses_before_projection(
+    tmp_path, monkeypatch, defect, reason
+):
+    full, _, _ = source_arguments(tmp_path, monkeypatch, **{defect: True})
     preparation = owner.source.prepare_authenticated_survey_population(**full)
-    with pytest.raises(ValueError, match="YOEP_REQUIRED"):
+    with pytest.raises(ValueError, match=reason):
         owner.borrow_current_acs_immigration_projection(preparation)
 
 

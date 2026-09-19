@@ -321,6 +321,7 @@ def _numeric_literals(raw):
         _require(type(row.YOEP) is str, "TOKEN_TYPE_YOEP")
         niu = row.YOEP.strip() == ""
         _require(not niu or cit == 1, "YOEP_REQUIRED")
+        _require(cit != 1 or niu, "YOEP_OUTSIDE_UNIVERSE")
         year, lower, upper, precision = None, None, None, "not_in_universe"
         if not niu:
             year = _token(row.YOEP, (1938, 1939, *range(1945, 2025)), "YOEP")

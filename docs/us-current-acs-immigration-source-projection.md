@@ -37,7 +37,7 @@ ASEC PENATVTY.
 |---|---|
 | CIT | Codes 1–5: US-born, specified US territories, US parents abroad, naturalized, noncitizen. No unknown code is filled. |
 | POBP | Published 2024 public categories, including state births and grouped residuals. 451 means Sudan only. 464 groups Tunisia, Western Sahara and South Sudan; exact South Sudan origin is unavailable. |
-| YOEP | Blank is NIU only for CIT 1. CIT 2–5 require a published code. 1938 means 1938 or earlier; 1939 means 1939–1944; 1945–2024 are individual calendar years. |
+| YOEP | CIT 1 requires blank NIU; a nonblank value contradicts the questionnaire universe and is refused. CIT 2–5 require a published code. 1938 means 1938 or earlier; 1939 means 1939–1944; 1945–2024 are individual calendar years. |
 | AGEP | Published 0–99 code, directly equal to the native observed age. Source top-coding is retained, without an exact-age claim. |
 | SEX | Native source code 1 or 2 and exact agreement with the native boolean. No unallocated-response claim. |
 | State | Original household ST through exact original membership; 50 states and DC. This view does not admit Puerto Rico Community Survey semantics. |
