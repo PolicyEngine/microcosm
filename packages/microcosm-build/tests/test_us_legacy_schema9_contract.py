@@ -90,12 +90,12 @@ def test_tampered_frozen_schedule_is_refused(monkeypatch: pytest.MonkeyPatch) ->
         "LEGACY_SCHEMA16_LATE_PRODUCER_SCHEDULE_PAYLOAD_SHA256",
         "0" * 64,
     )
-    registry.legacy_us_late_producer_schedule_receipt.cache_clear()
+    registry._verified_legacy_schedule_json.cache_clear()
     try:
         with pytest.raises(ValueError, match="sealed content hash"):
             registry.legacy_us_late_producer_schedule_receipt()
     finally:
-        registry.legacy_us_late_producer_schedule_receipt.cache_clear()
+        registry._verified_legacy_schedule_json.cache_clear()
 
 
 def test_schema9_operator_order_is_the_literal_historical_order() -> None:
@@ -115,3 +115,11 @@ def test_schema9_operator_order_is_the_literal_historical_order() -> None:
     )
     assert "us_immigration_composition_gate" not in historical
     assert h5_io.US_STACKED_POOL_OPERATOR_ORDER[-1] == "us_immigration_composition_gate"
+
+
+def test_each_caller_gets_its_own_frozen_schedule() -> None:
+    first = registry.legacy_us_late_producer_schedule_receipt()
+    first["execution_receipt_contract"]["version"] = 99
+
+    second = registry.legacy_us_late_producer_schedule_receipt()
+    assert second["execution_receipt_contract"]["version"] == 3

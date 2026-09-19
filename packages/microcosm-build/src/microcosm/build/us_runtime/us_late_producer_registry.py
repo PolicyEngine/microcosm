@@ -2238,13 +2238,14 @@ _LEGACY_SCHEDULE_DERIVED_KEYS = frozenset(
 
 
 @cache
-def legacy_us_late_producer_schedule_receipt() -> Mapping[str, object]:
-    """Load the frozen schema-16 schedule for attested legacy scoring."""
+def _verified_legacy_schedule_json() -> str:
+    """Return the frozen schema-16 schedule text once its hash is verified."""
 
     resource = files("microcosm.build.us").joinpath(
         "legacy_schema16_late_producer_schedule.json"
     )
-    receipt = json.loads(resource.read_text(encoding="utf-8"))
+    text = resource.read_text(encoding="utf-8")
+    receipt = json.loads(text)
     payload = {
         key: value
         for key, value in receipt.items()
@@ -2265,4 +2266,14 @@ def legacy_us_late_producer_schedule_receipt() -> Mapping[str, object]:
             "frozen schema-16 late-producer schedule does not match its "
             "sealed content hash."
         )
-    return MappingProxyType(receipt)
+    return text
+
+
+def legacy_us_late_producer_schedule_receipt() -> Mapping[str, object]:
+    """Load the frozen schema-16 schedule for attested legacy scoring.
+
+    Only the verified text is cached; every caller gets its own parse, so no
+    caller can alter the nested content another one validates against.
+    """
+
+    return MappingProxyType(json.loads(_verified_legacy_schedule_json()))
