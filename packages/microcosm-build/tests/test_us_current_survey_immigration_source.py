@@ -288,6 +288,58 @@ def test_final_io_cannot_mutate_a_projection(actual, monkeypatch):
     value.validate()
 
 
+@pytest.mark.parametrize("helper", ["_series_digest", "_index_identity"])
+@pytest.mark.parametrize("warm_epoch", [False, True])
+def test_preparation_rejects_replaced_physical_helpers_even_when_digest_is_masked(
+    actual, monkeypatch, helper, warm_epoch
+):
+    from contextlib import nullcontext
+
+    value = actual.values
+    table = value.asec_full_raw
+    expected = owner._table_seal(table)
+    original_index = table.index.copy()
+    original_series = table.A_LFSR.copy(deep=True)
+    series_digest = owner.physical._series_digest
+    index_identity = owner.physical._index_identity
+    # The authority is transitive: preparation -> ASEC native -> parent_owner.
+    assert owner.physical in owner.source._modules()
+    assert (owner.physical.__name__, helper) in owner.source._LIVE
+
+    def hide_series(digest, series):
+        if series.name == "A_LFSR" and series.index.equals(original_index):
+            series = original_series
+        return series_digest(digest, series)
+
+    def hide_index(index):
+        if index.name == "source_person_id":
+            return index_identity(original_index)
+        return index_identity(index)
+
+    epoch = owner.source.verification_epoch() if warm_epoch else nullcontext()
+    with epoch:
+        if warm_epoch:
+            actual.full._checked()
+        try:
+            with monkeypatch.context() as patch:
+                if helper == "_series_digest":
+                    table.loc[table.index[0], "A_LFSR"] = "changed"
+                    patch.setattr(owner.physical, helper, hide_series)
+                else:
+                    table.index = table.index + 100000
+                    patch.setattr(owner.physical, helper, hide_index)
+                # The attack actually hides the projection change from this
+                # table digest. The retained owner's live-function seal must
+                # still reject it, including when a borrow was already warm.
+                assert owner._table_seal(table) == expected
+                with pytest.raises(ValueError, match="FINAL_AUTHORITY_CHANGED"):
+                    value.validate()
+        finally:
+            table.index = original_index
+            table["A_LFSR"] = original_series
+    value.validate()
+
+
 @pytest.mark.parametrize("bad", ["missing_header", "duplicate_key", "short_row"])
 def test_literal_scanner_refuses_incomplete_or_duplicate_source(bad):
     row = dict.fromkeys(owner.ASEC_COLUMNS, "0")
