@@ -1702,6 +1702,10 @@ def _rewrite_as_legacy_relocated_worker_pool(
     dag["producer_schedule"] = schedule
     dag["post_puf_transfer"]["producer_schedule"] = json.loads(json.dumps(schedule))
     _strip_immigration_transfer_evidence(dag["post_puf_transfer"])
+    for row in dag["execution"]:
+        group_receipt = dag["post_puf_transfer"]["groups"].get(row["producer"])
+        if group_receipt is not None:
+            row["producer_receipt"] = json.loads(json.dumps(group_receipt))
     manifest["operator_order"] = list(h5_io._SCHEMA9_STACKED_POOL_OPERATOR_ORDER)
     dag["post_puf_transfer"]["authority"] = (
         stacked_spine_module._legacy_stacked_authority_receipt()
