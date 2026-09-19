@@ -21,6 +21,7 @@ import pandas as pd
 
 from . import asec_current_money_source as physical
 from . import current_asec_usual_hours as asec_hours
+from . import current_survey_health_coverage as attachment
 from . import current_survey_health_source as original
 from . import current_survey_hours as hours
 from . import source_csv_builtin
@@ -34,7 +35,7 @@ STRING = pd.StringDtype(storage="python", na_value=pd.NA)
 
 def _live():
     functions = {}
-    for module in (sys.modules[__name__], hours, asec_hours, original):
+    for module in (sys.modules[__name__], hours, asec_hours, attachment, original):
         for name, value in vars(module).items():
             if isinstance(value, FunctionType):
                 functions[module.__name__, name] = source._function_seal(value)
@@ -70,7 +71,14 @@ def _live():
 def _implementation():
     return {
         module.__name__: hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest()
-        for module in (sys.modules[__name__], hours, asec_hours, original, physical)
+        for module in (
+            sys.modules[__name__],
+            hours,
+            asec_hours,
+            attachment,
+            original,
+            physical,
+        )
     }
 
 
@@ -521,6 +529,38 @@ def qualify_current_survey_hours(preparation, *, age15_policy, under15_policy):
     object.__setattr__(result, "_revalidate", revalidate)
     result.validate()
     return result
+
+
+def borrow_cloned_hours_columns(qualified, receiving_people):
+    """Transport original proposals through exact two-clone ancestry, without draws.
+
+    This borrows columns, not receiving-population authority. The graph host must
+    retain and authenticate its receiving owner. Existing columns cannot be
+    overwritten; neither the source Frame nor the receiving table is mutated.
+    """
+    from types import SimpleNamespace
+
+    require(type(qualified) is QualifiedSurveyHoursProposals, "RETAINED_OWNER_REQUIRED")
+    qualified.validate()
+    require(type(receiving_people) is pd.DataFrame, "RECEIVING_TABLE")
+    before = _table_seal(receiving_people)
+    columns = attachment.attach_columns(
+        qualified.origins,
+        SimpleNamespace(person=receiving_people),
+        qualified.person_hours,
+    )
+    borrowed = pd.concat([s.rename(name) for (_, name), s in columns.items()], axis=1)
+    output_seal = _table_seal(borrowed)
+    qualified.validate()
+    require(_table_seal(receiving_people) == before, "RECEIVING_CHANGED")
+    require(
+        _table_seal(
+            pd.concat([s.rename(name) for (_, name), s in columns.items()], axis=1)
+        )
+        == output_seal,
+        "BORROWED_COLUMNS_CHANGED",
+    )
+    return columns
 
 
 _REVALIDATE_CODE = next(

@@ -1,0 +1,28 @@
+{
+  "base_commit": "0398d1d00b631046d8b01de2d3362b37795ac710",
+  "date": "2026-09-19",
+  "remaining": [
+    "Native source-owner execution",
+    "Retained receiving-owner graph integration and cold/replay parity",
+    "Engine input and national/CD release checks"
+  ],
+  "review": "Root review; new independent review unavailable after quota exhaustion",
+  "scope": "Checked original-person proposal transport to exact two-clone ancestry; no graph-host, engine or release qualification",
+  "source_and_test_files": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/current_asec_usual_hours.py": "77878c90f89384077dd5d3f3397144b4fdcaaf2a6117d899295dc959fb151d55",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/current_survey_hours_source.py": "cca4417116e23393bf7fff3731452b584eb84ccae2d48d9929ad5565af2eb576",
+    "packages/microcosm-build/tests/test_us_current_asec_usual_hours.py": "875a51b4afe5226d2a271f2b5d81da9c34b6f7808a8872edec3c90088432ca18",
+    "packages/microcosm-build/tests/test_us_current_survey_hours_source.py": "1bf3d44646c4811b171b2b1b6aa52f42f52b5a049207d7e768d7629788e990c5"
+  },
+  "tests": {
+    "cpu_seconds": 168.278523,
+    "failed": 0,
+    "passed": 151,
+    "peak_rss_bytes": 493371392,
+    "result_sha256": "e21627152abc5bb98fca2e72541b6af8a74ed0ea89ef832ab5a3b9014165d513",
+    "skipped": 0,
+    "source_unchanged": true,
+    "wall_seconds": 189.05626633297652,
+    "xml_sha256": "63680be96de12f04adf92a38ce8744977683c483146b3749120d2ec37df51edd"
+  }
+}

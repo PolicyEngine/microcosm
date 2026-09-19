@@ -206,6 +206,95 @@ def test_numeric_person_hours_mutation_refuses(actual):
     actual.values.validate()
 
 
+def receiving_people(qualified):
+    import numpy as np
+
+    provenance = owner.attachment.provenance
+    origins = qualified.origins
+    original = np.tile(origins.index.to_numpy(), 2)
+    selected = origins.reindex(original)
+    return (
+        pd.DataFrame(
+            {
+                "person_id": np.arange(len(original), dtype="int64") + 100000,
+                provenance.support_source_id_column("person"): original,
+                provenance.support_clone_index_column("person"): np.repeat(
+                    [0, 1], len(origins)
+                ).astype("int64"),
+                provenance.spine_source_id_column(
+                    "person"
+                ): selected.native_person_id.to_numpy(),
+                provenance.support_channel_column("person"): pd.array(
+                    selected.source.to_numpy(), dtype=owner.STRING
+                ),
+            }
+        )
+        .iloc[::-1]
+        .reset_index(drop=True)
+    )
+
+
+def test_clone_transport_preserves_original_draw_and_provenance_under_reordering(
+    actual,
+):
+    value = actual.values
+    people = receiving_people(value)
+    before = people.copy(deep=True)
+    result = owner.borrow_cloned_hours_columns(value, people)
+    source_id = owner.attachment.provenance.support_source_id_column("person")
+    for column in value.person_hours:
+        expected = value.person_hours[column].reindex(people[source_id])
+        expected.index = pd.Index(people.person_id.to_numpy(), name="person_id")
+        pd.testing.assert_series_equal(result["person", column], expected)
+    pd.testing.assert_frame_equal(people, before)
+    result["person", owner.hours.TARGET].iloc[0] = 97.0
+    value.validate()
+
+
+@pytest.mark.parametrize(
+    "change", ["source", "native", "channel", "clone", "collision"]
+)
+def test_clone_transport_refuses_wrong_identity_or_owned_output(actual, change):
+    people = receiving_people(actual.values)
+    p = owner.attachment.provenance
+    if change == "collision":
+        people[owner.hours.TARGET] = 40.0
+    elif change == "channel":
+        people.loc[0, p.support_channel_column("person")] = "foreign"
+    else:
+        column = {
+            "source": p.support_source_id_column("person"),
+            "native": p.spine_source_id_column("person"),
+            "clone": p.support_clone_index_column("person"),
+        }[change]
+        people.loc[0, column] = 99999
+    with pytest.raises(ValueError):
+        owner.borrow_cloned_hours_columns(actual.values, people)
+
+
+def test_clone_transport_checks_receiving_mutation_after_final_source_io(
+    actual, monkeypatch
+):
+    people = receiving_people(actual.values)
+    original = owner.QualifiedSurveyHoursProposals.validate
+    calls = SimpleNamespace(count=0)
+
+    def validation(value):
+        original(value)
+        calls.count += 1
+        if calls.count == 2:
+            people.loc[0, "person_id"] += 1
+
+    # Change the method only before this test's accepted implementation profile;
+    # the resulting callback simulates mutation during final foreign-owner I/O.
+    with monkeypatch.context() as patch:
+        patch.setattr(owner.QualifiedSurveyHoursProposals, "validate", validation)
+        patch.setattr(owner, "_LIVE", owner._live())
+        with pytest.raises(ValueError, match="RECEIVING_CHANGED"):
+            owner.borrow_cloned_hours_columns(actual.values, people)
+    actual.values.validate()
+
+
 @pytest.mark.parametrize("which", ["owner", "callback", "preparation", "receipt"])
 def test_copies_callbacks_and_receipts_cannot_replace_the_live_owner(actual, which):
     value = actual.values
