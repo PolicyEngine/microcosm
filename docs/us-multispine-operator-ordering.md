@@ -594,6 +594,19 @@ authorization tuple (`gate`, `plan_sha256`, `prompt_sha256`,
 `checklist_sha256`, and `evidence_sha256`) checked as data; this boundary does
 not claim public-key or cryptographic signature verification.
 
+An attested schema-9 pool is validated against the contract it sealed, not a
+reconstruction from today's registry. The late-producer schedule it must carry
+is the frozen resource `us/legacy_schema16_late_producer_schedule.json`, loaded
+only if its recomputed payload SHA-256 equals
+`02e618cc656eb39990ed99dca2b30a52794e01e2b06a3c2df87ca4a7d85ab086`; its operator
+order is the literal eleven-step order ending at `by_origin_battery`, before
+`us_immigration_composition_gate` existed; and its immigration transfer targets
+are replayed as ordinary transfer receipts, without the paired reconciliation
+and QRF pattern evidence current pools must carry. None of these relaxations
+applies without `legacy_worker_authentication`, and a current-contract artifact
+whose version numbers were merely lowered is refused (at the operator order,
+and at the sealed schedule if the historical order is borrowed).
+
 Current manifests, diagnostics, `release_manifest.json`, and scoring receipts
 surface `worker_execution_authentication`: manifest, execution-config, and
 worker schema versions, `semantic_identity_sha256`, and audit aliases.
