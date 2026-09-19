@@ -45,6 +45,7 @@ from .support_provenance import spine_source_id_column, support_channel_column
 
 PROTOCOL = "microcosm.us.survey-population-preparation.v2"
 REQUEST_PROTOCOL = "microcosm.us.survey-population-request.v1"
+SPM_REQUEST_PROTOCOL = "microcosm.us.survey-population-request.v2"
 SOURCE_CODEC = "us-survey-population-source-v1"
 MAX_REQUEST_BYTES = 4096
 MAX_PAYLOAD_BYTES = 64 * 1024**2
@@ -460,13 +461,13 @@ def _request(source_dir):
         payload = stream.read(MAX_REQUEST_BYTES + 1)
     _require(len(payload) <= MAX_REQUEST_BYTES, "REQUEST_LIMIT")
     document = json.loads(payload)
+    _require(type(document) is dict, "REQUEST_FIELDS")
+    fields = {"protocol", "declaration", "fraction", "seed"}
+    if document.get("protocol") == SPM_REQUEST_PROTOCOL:
+        fields.add("acs_spm_construction")
+    _require(set(document) == fields, "REQUEST_FIELDS")
     _require(
-        type(document) is dict
-        and set(document) == {"protocol", "declaration", "fraction", "seed"},
-        "REQUEST_FIELDS",
-    )
-    _require(
-        document["protocol"] == REQUEST_PROTOCOL
+        document["protocol"] in (REQUEST_PROTOCOL, SPM_REQUEST_PROTOCOL)
         and document["declaration"] == domains.DECLARATION,
         "REQUEST_DECLARATION",
     )
@@ -486,7 +487,22 @@ def _request(source_dir):
     seed = document["seed"]
     _require(type(seed) is int and 0 <= seed < 2**64, "REQUEST_SEED")
     _require(_encode(document, MAX_REQUEST_BYTES) == payload, "REQUEST_CANONICAL")
+    _request_construction(document)
     return root, document, payload, fraction, seed
+
+
+def _request_construction(document):
+    """Decode only explicit v2 options; v1 never imports an SPM helper."""
+    if document["protocol"] == REQUEST_PROTOCOL:
+        return None
+    options = document["acs_spm_construction"]
+    _require(
+        type(options) is dict and set(options) == {"policy", "minor_partner_role"},
+        "REQUEST_SPM_OPTIONS",
+    )
+    from microcosm.build.acs_spm_source_assembly import AcsSpmSourceAssemblyOptions
+
+    return AcsSpmSourceAssemblyOptions(**options)
 
 
 def read_survey_population_request(source_dir):
@@ -682,6 +698,9 @@ def _live():
     result["contract"] = (
         PROTOCOL,
         REQUEST_PROTOCOL,
+        SPM_REQUEST_PROTOCOL,
+        acs_native.housing._SPM_ASSEMBLER_SHA256,
+        acs_native.housing._SPM_EVIDENCE_MAX_BYTES,
         SOURCE_CODEC,
         MAX_REQUEST_BYTES,
         MAX_PAYLOAD_BYTES,
@@ -1723,6 +1742,7 @@ def _nested_seals(
             catalogue_memo,
             expected_digest=expected_catalogue_digest,
         ),
+        acs.prepared.construction_evidence_json,
     ]
     for module, value in ((asec_catalogue, catalogues[1]), (asec_native, native[1])):
         entry = module._ISSUED.get(id(value))
@@ -1855,6 +1875,17 @@ class AuthenticatedSurveyPopulationPreparation:
     def receipt(self):
         return json.loads(self._checked()[1])
 
+    @property
+    def acs_spm_construction_evidence(self):
+        """Defensive native evidence; use receipt origins for assembled IDs.
+
+        These records keep the selected native registry's IDs. The existing
+        per-entity origin map explicitly relates them to stacked Frame IDs.
+        A decoded copy is never a new source-authority capsule.
+        """
+        state = self._checked()[2]
+        return state.native[0].construction_evidence
+
     def to_bytes(self):
         return self._checked()[1]
 
@@ -1902,6 +1933,8 @@ def prepare_authenticated_survey_population(
         root, request, request_bytes, requested_fraction, requested_seed = _request(
             source_dir
         )
+        spm_construction = _request_construction(request)
+        acs_native.housing._spm_implementation(spm_construction)
         _require(
             type(fraction) is Fraction
             and fraction == requested_fraction
@@ -1961,7 +1994,10 @@ def prepare_authenticated_survey_population(
             "SELECTED_SOURCE_SUPPORT",
         )
         actual_acs = acs_native.issue_acs_native_coverage(
-            root / "acs", snapshot_root=snapshots, serialnos=acs_keys
+            root / "acs",
+            snapshot_root=snapshots,
+            serialnos=acs_keys,
+            spm_construction=spm_construction,
         )
         actual_asec = asec_native.load_authenticated_asec_2024_native_population(
             **kwargs, selected_households=asec_keys

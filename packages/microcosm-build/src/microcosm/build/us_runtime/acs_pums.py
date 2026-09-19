@@ -338,7 +338,25 @@ def build_acs_pums_unit_frame(
     native amounts are mapped. It never supplies engine roles or annual scope.
     ``None`` retains the existing source partition and import path.
     """
+    frame, metadata, _construction = _build_acs_pums_unit_frame_with_evidence(
+        source,
+        chunksize=chunksize,
+        serialnos=serialnos,
+        spm_construction=spm_construction,
+    )
+    return frame, metadata
 
+
+def _build_acs_pums_unit_frame_with_evidence(
+    source: AcsPumsSource,
+    *,
+    chunksize: int = DEFAULT_CHUNKSIZE,
+    serialnos: tuple[str, ...] | None = None,
+    spm_construction: AcsSpmSourceAssemblyOptions | None = None,
+):
+    """Retain the actual optional construction for the captured source owner."""
+
+    constructed = None
     if spm_construction is not None:
         from microcosm.build.acs_spm_source_assembly import (
             require_acs_spm_source_capability,
@@ -429,7 +447,7 @@ def build_acs_pums_unit_frame(
         boundary="ACS PUMS source parse",
         in_place=True,
     )
-    return frame, metadata
+    return frame, metadata, constructed
 
 
 def _serial_lookup(serials: frozenset[str] | None) -> pd.Index | None:
