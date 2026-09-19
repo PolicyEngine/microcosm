@@ -151,6 +151,15 @@ null, non-Boolean or disagreeing observations are refused, and equal roles
 are preserved with renewed derivation provenance. Merely carrying a
 nonconstant column never bypasses the source checks.
 
+The metadata describes the stage input/output population at derivation time.
+Cloning copies that historical metadata; its counts and binding do not attest
+the expanded population until the wrapper runs again. The release path does
+that before applying the role gate. The binding includes row order and pandas
+value representation, so dtype conversions also require renewed derivation.
+It is not a storage-independent semantic hash or a certificate for arbitrary
+selected frames. The derivation's metadata contract contains JSON values;
+set-valued provenance is outside that contract.
+
 **ACS-origin rows.** These exist only in the production stacked pool
 (`tools/build_us_multispine_pool.py`, `docs/us-multispine-operator-ordering.md`):
 `acs_inputs.py` derives `is_household_head` for them from `RELSHIPP == 20`, and
@@ -267,13 +276,15 @@ lane's pin records as resolved.
 
 `experiments/spm_role_stage_wrapper_proof.py` independently runs
 `with_us_spm_independence_role()` and its signal gate on both pinned local
-populations. Receipts preserve the tested HEAD and dirty-source digest;
-the original derivation receipts above remain unchanged.
+populations. The final v2 receipts test committed source
+`6a6d53b2fb2cad7ac7b84634decc2a41125efa92` with an empty source diff, including
+the complete gate-details JSON serialization and ordered role binding.
+The original derivation and first wrapper receipts remain unchanged.
 
 | Population | Persons compared | Unresolved SPM units before → after | Wrapper seconds | Peak process RSS |
 |---|---:|---:|---:|---:|
-| Build P | 166,321 | 28 → 0 | 5.51 | 10.93 GiB |
-| Phase-2 base-q3 | 907,382 | 222 → 0 | 7.36 | 14.56 GiB |
+| Build P | 166,321 | 28 → 0 | 8.04 | 8.42 GiB |
+| Phase-2 base-q3 | 907,382 | 222 → 0 | 9.07 | 13.28 GiB |
 
 Both signal gates pass, with zero unmatched persons or Census count
 disagreements. Every role agrees with the original derivation; Build P's
@@ -283,14 +294,12 @@ frames and pinned source files remain unchanged. The checks write aggregate
 receipts only; they do not run calibration, reform validation or publication.
 
 Receipts:
-`experiments/893-spm-role-stage-wrapper-buildp-receipt.json` and
-`experiments/893-spm-role-stage-wrapper-base-q3-receipt.json`.
+`experiments/893-spm-role-stage-wrapper-buildp-v2-receipt.json` and
+`experiments/893-spm-role-stage-wrapper-base-q3-v2-receipt.json`.
 
-These receipts precede the final JSON-serialization and provenance-binding
-hardening. They establish the observed source-role equality and preservation
-for that recorded revision; final acceptance must also exercise the complete
-gate details as JSON. The projection uses a task-owned temporary H5 in a
-0700 directory, deleted on exit; the receipts contain aggregate evidence.
+Earlier wrapper receipts without `v2` predate the final JSON-serialization and
+provenance-binding hardening. The projection uses a task-owned temporary H5
+in a 0700 directory, deleted on exit; the receipts contain aggregate evidence.
 
 The first review iteration passed 936 relevant tests on the pinned
 PolicyEngine-US 2.2.1 / spm-calculator 1.0.0 environment. Subsequent review
@@ -298,6 +307,12 @@ found nested frozen provenance could not be written as JSON. Recursive
 conversion now fixes that failure, with a real gate-to-builder checkpoint
 regression. The 75 stage tests and 10 focused builder tests pass after this
 fix. Newer country-model versions require separate qualification.
+
+A second independent Fable source review closed its eight initial findings
+and found no new high- or medium-severity defect. Its remaining limits were
+dtype-sensitive bindings, historical pre-clone metadata and unsupported
+set-valued metadata, scoped above. It did not run tests or inspect microdata;
+the actual-wrapper receipts provide separate execution evidence.
 
 ## 7. Unresolved stacked-pool qualification
 

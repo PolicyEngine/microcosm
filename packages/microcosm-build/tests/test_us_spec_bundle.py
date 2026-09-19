@@ -293,7 +293,7 @@ def test_us_package_has_twelve_typed_domains_and_loads_through_one_seam(
         resolved_us_spec.spec_sha256
     )
     assert resolved_country_spec.sources is not None
-    assert len(resolved_country_spec.sources.stages) == 37
+    assert len(resolved_country_spec.sources.stages) == 38
     assert resolved_country_spec.support_spine is not None
     assert len(resolved_country_spec.support_spine.support_spine.sources) == 2
 
@@ -312,7 +312,7 @@ def test_constant_derived_domain_counts_are_complete(
     catalogs = _domain(resolved_us_spec, ResourceKind.CATALOGS)
 
     assert len(sources["sources"]) == 8
-    assert len(sources["stages"]) == 37
+    assert len(sources["stages"]) == 38
 
     families = imputation["families"]
     family_counts = Counter(family["stage"] for family in families)

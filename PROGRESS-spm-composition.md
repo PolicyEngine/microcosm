@@ -153,3 +153,26 @@ Remaining: complete generated-artifact checks and review; push a stacked draft
 PR; integrate after acceptance. ACS-origin source roles, full-base calibration,
 incumbent comparisons and release certification remain open. These proofs do
 not establish a new released file.
+
+## Final wrapper verification and second review
+
+Fable reproduced a builder JSON failure caused by nested frozen provenance.
+The first failing serialization regression is preserved outside the repository;
+recursive conversion fixes it. The signal gate now checks provenance counts
+and an ordered person/age/unit/role binding; it rejects integer roles and
+returns a failed result for missing age. Both builder modes explicitly test
+source-path forwarding, and the prepared-pool path tests its real refusal.
+75 stage tests and 10 focused builder tests pass after these changes.
+
+The second Fable source review closed all eight original findings and reported
+no new high or medium defect. Remaining scope notes about dtype-sensitive
+bindings, historical pre-clone provenance and JSON-only metadata are in the
+design note. Review did not substitute for execution.
+
+Final v2 wrapper proofs ran at clean committed source `6a6d53b2f`: all 166,321
+Build P and 907,382 base-q3 roles match, both gates pass and serialize their
+complete details, all existing data are preserved. Peak RSS was 8.42 and
+13.28 GiB respectively. Earlier receipts remain unchanged. Generated tests
+found two stale golden counts: 38 source stages and 1,059 remaining input
+rows (992 simulation rows); the generated lock was already correct. These
+test expectations now follow the reviewed source addition.
