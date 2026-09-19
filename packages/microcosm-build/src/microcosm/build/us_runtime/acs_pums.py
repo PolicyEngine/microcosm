@@ -26,7 +26,7 @@ import hashlib
 import heapq
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from zipfile import ZipFile
 
 import numpy as np
@@ -35,6 +35,9 @@ import pandas as pd
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.frame.units import assign_us_unit_structure
+
+if TYPE_CHECKING:
+    from microcosm.build.acs_spm_source_assembly import AcsSpmSourceAssemblyOptions
 
 __all__ = [
     "ACS_2024_1YR_SPINE",
@@ -327,8 +330,21 @@ def build_acs_pums_unit_frame(
     *,
     chunksize: int = DEFAULT_CHUNKSIZE,
     serialnos: tuple[str, ...] | None = None,
+    spm_construction: AcsSpmSourceAssemblyOptions | None = None,
 ) -> tuple[Frame, dict[str, Any]]:
-    """Construct the ACS 2024 1-year US entity frame."""
+    """Construct the ACS 2024 1-year US entity frame.
+
+    ``spm_construction`` explicitly selects development SPM structure before
+    native amounts are mapped. It never supplies engine roles or annual scope.
+    ``None`` retains the existing source partition and import path.
+    """
+
+    if spm_construction is not None:
+        from microcosm.build.acs_spm_source_assembly import (
+            require_acs_spm_source_capability,
+        )
+
+        require_acs_spm_source_capability(spm_construction)
 
     tables, metadata = load_acs_pums_tables(
         source, chunksize=chunksize, serialnos=serialnos
@@ -371,6 +387,21 @@ def build_acs_pums_unit_frame(
         strata=strata,
     )
     frame = _attach_household_source_columns(frame, household)
+    if spm_construction is not None:
+        from microcosm.build.acs_spm_source_assembly import (
+            RECEIPT_KEY,
+            assemble_acs_spm_source,
+        )
+
+        from .operator_column_contracts import PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID
+
+        constructed = assemble_acs_spm_source(
+            frame,
+            options=spm_construction,
+            id_ceiling=PUF_SUPPORT_MAX_CLONE_SAFE_SOURCE_ID,
+        )
+        frame = constructed.frame
+        metadata[RECEIPT_KEY] = dict(constructed.receipt)
     metadata.update(
         {
             "weighted_household_population": frame.weights_for("household").total,
