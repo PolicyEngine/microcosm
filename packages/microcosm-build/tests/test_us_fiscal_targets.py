@@ -4009,6 +4009,45 @@ def test_soi_agi_size_rescue_stays_narrow(
     assert name not in {spec.name for spec in registry.specs}, reason
 
 
+def test_soi_agi_size_rescue_starts_exactly_at_the_declared_lower_edge() -> None:
+    from microcosm.build.us_runtime.fiscal_targets import (
+        US_SOI_AGI_SIZE_DISTRIBUTION_MINIMUM_LOWER_BOUND,
+    )
+
+    floor = US_SOI_AGI_SIZE_DISTRIBUTION_MINIMUM_LOWER_BOUND
+    at_edge = _soi_table_1_1_fact(
+        2023,
+        income_range="100k_to_200k",
+        lower=floor,
+        upper=2 * floor,
+        measure_id="return_count",
+        value=27_000_000,
+    )
+    below_edge = _soi_table_1_1_fact(
+        2023,
+        income_range="75k_to_100k",
+        lower=0.75 * floor,
+        upper=floor,
+        measure_id="return_count",
+        value=15_000_000,
+    )
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            *_soi_table_1_1_totals(2023, returns=160_000_000, agi=16_000_000_000_000),
+            at_edge,
+            below_edge,
+        ],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    names = {spec.name for spec in registry.specs}
+
+    assert floor == 100_000.0
+    assert at_edge["lineage"]["source_record_id"] in names
+    assert below_edge["lineage"]["source_record_id"] not in names
+
+
 def test_soi_table_1_1_agi_size_class_without_a_national_total_is_dropped() -> None:
     # An unanchored class is unverifiable: dropped, never shipped stale.
     fact = _soi_table_1_1_fact(
