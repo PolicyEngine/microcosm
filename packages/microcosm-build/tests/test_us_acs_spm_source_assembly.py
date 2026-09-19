@@ -1,6 +1,8 @@
 """Invented source rosters only; no population files or country calculation."""
 
+import hashlib
 from dataclasses import replace
+from pathlib import Path
 from zipfile import ZipFile
 
 import numpy as np
@@ -130,6 +132,10 @@ def test_split_preserves_all_tax_inputs_and_returns_separate_development_evidenc
     assert result.unit_evidence.household_source_uncertain.all()
     assert "modeled_assumption" in set(result.partition.membership.role_source)
     assert result.receipt["assembler"]["supported"] is True
+    assert (
+        result.receipt["implementation_file_sha256"]["partition_helper"]
+        == hashlib.sha256(Path(partition.__file__).read_bytes()).hexdigest()
+    )
     assert result.registry.id_ceiling == CEILING
     assert (
         result.frame.metadata[RECEIPT_KEY]["registry_sha256"] == result.registry.sha256
