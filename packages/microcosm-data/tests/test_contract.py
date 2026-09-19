@@ -138,13 +138,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "4456fa0956cde418ae23a60fe72a414428eefab446fd044aa14adf1b6e084fcd"
+    "211abff22b4eedf9cf69f4b43a6f77ca8966d61a386c1804c3fdb093b0e27aa0"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "ff27efe67f3cdb8292dfe8da20a6a98cc20f4e1f77ba61eff2ba206b8eb2fc19"
+    "462271cdc72631e4b6780be52b53d7ea7572ad97e9b91a00a1f3da199f56858c"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "61758f1d9700dd94564d592fafe36b4fc4881b8b77c785349d1756da0df2b0d4"
+    "8baa7f5c0db3f64c5e00859ff7fd2bd4cf2daf611367ec36f519d1e428af1ebd"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -220,6 +220,11 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_hmrc_cgt_asset_type_spine_summary": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
     "uk_stage_age_tail_targets": ("stage_health", "assembled", None),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled", None),
     "uk_ledger_compile_parity_local_incumbent_2025": (
@@ -262,6 +267,11 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled", "enum_domain"),
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled", "enum_domain"),
+    "uk_capital_gains_asset_type_enum_domain": (
+        "enum_domain",
+        "transferred",
+        "enum_domain",
+    ),
     "uk_uc_deduction_combination_enum_domain": (
         "enum_domain",
         "terminal",
@@ -1192,6 +1202,7 @@ def _gate_battery_payload(
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
         "uk_stage_cgt_band_donors_support": "cgt_band_donors",
         "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",
+        "uk_stage_hmrc_cgt_asset_type_spine_summary": "hmrc_cgt_asset_type_spine",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
         "uk_stage_age_tail_targets": "age_tail",

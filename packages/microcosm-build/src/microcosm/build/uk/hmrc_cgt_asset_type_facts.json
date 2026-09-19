@@ -1,0 +1,2800 @@
+{
+  "schema_version": 1,
+  "country": "uk",
+  "kind": "uk_vendored_ledger_facts",
+  "resource": "hmrc_cgt_asset_type_facts.json",
+  "purpose": "HMRC Capital Gains Tax statistics 2026 release rows the CGT asset-type stage assigns from and reports against: Table 8a tax year 2024-25 UK residents reporting residential property disposals (taxpayers, disposals, gains and tax by reporting channel: the CGT on UK Property service, the Self Assessment component and their total), Table 8b tax year 2024-25 UK Property service returns by taxpayer type (individuals, trusts and all; the individuals/all shares that restate Table 8a on the individuals basis of the national targets) and Table 7 tax year 2023-24 disposals, disposal proceeds and gains by asset category and asset type (sample-based; the composition prior for the non-residential asset-type draw, fenced from calibration). No value is derived here.",
+  "consumers": [
+    "uk_runtime.cgt_asset_type"
+  ],
+  "planned_consumers": [],
+  "policy": "Rows are copied verbatim from the pinned Chronicle consumer feed named in source_fact_feed; every value is a publisher-stated fact. Consumers declare their own arithmetic on these rows and never edit this file by hand: regenerate it with tools/vendor_uk_ledger_facts.py.",
+  "generator": {
+    "tool": "tools/vendor_uk_ledger_facts.py",
+    "version": 1
+  },
+  "source_fact_feed": {
+    "source_repo": "PolicyEngine/chronicle",
+    "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
+    "build": "build-bundle --suite uk -> build-consumer-artifact",
+    "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
+    "fact_row_count": 276205,
+    "facts_sha256": "6d039dd869dc1704b0c98fd1d2db72965b1c38de92c165fe4e12c3f530951e2d",
+    "manifest_sha256": "20ac5d22e7d8f3cdb83dbd7fd617e37e290f5c4c480097057f959aa14033391d"
+  },
+  "selections": [
+    {
+      "label": "table8a_ty2024_residential_property_by_channel",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024"
+      },
+      "row_count": 12
+    },
+    {
+      "label": "table8b_ty2024_uk_property_service_by_taxpayer_type",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024"
+      },
+      "row_count": 15
+    },
+    {
+      "label": "table7_ty2023_by_asset_category",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.cgt_table7_2026.asset_category.ty2023"
+      },
+      "row_count": 6
+    },
+    {
+      "label": "table7_ty2023_asset_category_total",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.cgt_table7_2026.asset_category_total.ty2023"
+      },
+      "row_count": 3
+    },
+    {
+      "label": "table7_ty2023_by_financial_asset_type",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023"
+      },
+      "row_count": 12
+    },
+    {
+      "label": "table7_ty2023_by_non_financial_asset_type",
+      "selector": {
+        "source_name": "hmrc",
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023"
+      },
+      "row_count": 12
+    }
+  ],
+  "row_count": 60,
+  "rows": [
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5f7c45cfe5adcdc68ec6921b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2bccef0b574e44308098b4be",
+      "source_record_id": "hmrc.cgt_table7_2026.asset_category.ty2023.financial.disposal_proceeds",
+      "concept": "hmrc.cgt_table7_1.disposal_proceeds",
+      "measure_id": "disposal_proceeds",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.asset_category.ty2023",
+        "groupby_dimension": "cgt_asset_category",
+        "groupby_value_id": "financial",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 151170000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_050f22b23e20f728b7c16afd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cbe5c72029aedc4d4dbe5129",
+      "source_record_id": "hmrc.cgt_table7_2026.asset_category.ty2023.non_financial.disposal_proceeds",
+      "concept": "hmrc.cgt_table7_1.disposal_proceeds",
+      "measure_id": "disposal_proceeds",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.asset_category.ty2023",
+        "groupby_dimension": "cgt_asset_category",
+        "groupby_value_id": "non_financial",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 43251000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8d5a0a253b39b43f3ceee2bc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_89a349e1d266c0d5643d5a1f",
+      "source_record_id": "hmrc.cgt_table7_2026.asset_category.ty2023.total.disposal_proceeds",
+      "concept": "hmrc.cgt_table7_1.disposal_proceeds",
+      "measure_id": "disposal_proceeds",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.asset_category_total.ty2023",
+        "groupby_dimension": "cgt_asset_category",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 194420000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_797d1b2cb036b23adaa4c26e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e61ceba8a3c833dcfd577002",
+      "source_record_id": "hmrc.cgt_table7_2026.asset_category.ty2023.financial.disposals",
+      "concept": "hmrc.cgt_table7_1.disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.asset_category.ty2023",
+        "groupby_dimension": "cgt_asset_category",
+        "groupby_value_id": "financial",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 2465000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7ee3cf12d5f1a48f0888b5e2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a1b05dcd34f5e12d074380d3",
+      "source_record_id": "hmrc.cgt_table7_2026.asset_category.ty2023.non_financial.disposals",
+      "concept": "hmrc.cgt_table7_1.disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.asset_category.ty2023",
+        "groupby_dimension": "cgt_asset_category",
+        "groupby_value_id": "non_financial",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 201000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3b0fe20e57f9982ed3becbef",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8845ef55c8b58d34dca83a0e",
+      "source_record_id": "hmrc.cgt_table7_2026.asset_category.ty2023.total.disposals",
+      "concept": "hmrc.cgt_table7_1.disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.asset_category_total.ty2023",
+        "groupby_dimension": "cgt_asset_category",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 2665000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_74b78854d1764fc48e1bad6d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5166659f25b2384c052214ad",
+      "source_record_id": "hmrc.cgt_table7_2026.asset_category.ty2023.financial.gains",
+      "concept": "hmrc.cgt_table7_1.gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.asset_category.ty2023",
+        "groupby_dimension": "cgt_asset_category",
+        "groupby_value_id": "financial",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 55327000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dc8445bc642a73b4f027e440",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ed2fec1737dcdfdda1692164",
+      "source_record_id": "hmrc.cgt_table7_2026.asset_category.ty2023.non_financial.gains",
+      "concept": "hmrc.cgt_table7_1.gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.asset_category.ty2023",
+        "groupby_dimension": "cgt_asset_category",
+        "groupby_value_id": "non_financial",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 14535000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b536b89ec2d75fe674bff7ac",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6ad7e1343da03e00fadd6fcd",
+      "source_record_id": "hmrc.cgt_table7_2026.asset_category.ty2023.total.gains",
+      "concept": "hmrc.cgt_table7_1.gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.asset_category_total.ty2023",
+        "groupby_dimension": "cgt_asset_category",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 69861000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_95d10014144d6074bb8915d8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d926797683d4230e36ae9f02",
+      "source_record_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023.listed_shares.disposal_proceeds",
+      "concept": "hmrc.cgt_table7_2.disposal_proceeds",
+      "measure_id": "disposal_proceeds",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "listed_shares",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial",
+        "cgt_asset_type": "listed_shares"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 31959000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cdadcf7febd3e0e5393383b4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9cca5694ee98ca1b83923f9f",
+      "source_record_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023.other_financial_assets.disposal_proceeds",
+      "concept": "hmrc.cgt_table7_2.disposal_proceeds",
+      "measure_id": "disposal_proceeds",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "other_financial_assets",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial",
+        "cgt_asset_type": "other_financial_assets"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 70100000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_125dc1a53bd62d88a39f7174",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2bccef0b574e44308098b4be",
+      "source_record_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023.total.disposal_proceeds",
+      "concept": "hmrc.cgt_table7_2.disposal_proceeds",
+      "measure_id": "disposal_proceeds",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 151170000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b95a74dbb1956345fab862df",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dddbe773c55cff27a3db9092",
+      "source_record_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023.unlisted_shares.disposal_proceeds",
+      "concept": "hmrc.cgt_table7_2.disposal_proceeds",
+      "measure_id": "disposal_proceeds",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "unlisted_shares",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial",
+        "cgt_asset_type": "unlisted_shares"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 49111000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d2e6998ffd556e2631d77cfe",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e5f0505f98b0d5e112186626",
+      "source_record_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023.listed_shares.disposals",
+      "concept": "hmrc.cgt_table7_2.disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "listed_shares",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial",
+        "cgt_asset_type": "listed_shares"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 1077000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8e232f6b3d32cfe1ade5daef",
+      "semantic_fact_key": "ledger_semantic_fact_v2_47cbfb9cb97cf7003fad28d9",
+      "source_record_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023.other_financial_assets.disposals",
+      "concept": "hmrc.cgt_table7_2.disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "other_financial_assets",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial",
+        "cgt_asset_type": "other_financial_assets"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 1097000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_eef1455d9fdb035bed509120",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e61ceba8a3c833dcfd577002",
+      "source_record_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023.total.disposals",
+      "concept": "hmrc.cgt_table7_2.disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 2465000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6e7e399854897bb9f825eb71",
+      "semantic_fact_key": "ledger_semantic_fact_v2_27b885627fda4030b175f789",
+      "source_record_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023.unlisted_shares.disposals",
+      "concept": "hmrc.cgt_table7_2.disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "unlisted_shares",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial",
+        "cgt_asset_type": "unlisted_shares"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 290000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fde10012157f3cf569bfcc1e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5d9676dd11662e5127e93e00",
+      "source_record_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023.listed_shares.gains",
+      "concept": "hmrc.cgt_table7_2.gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "listed_shares",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial",
+        "cgt_asset_type": "listed_shares"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 5925000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b43a1243f3f8c97f22a0bb4a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a59ac8701f854d627b8635fd",
+      "source_record_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023.other_financial_assets.gains",
+      "concept": "hmrc.cgt_table7_2.gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "other_financial_assets",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial",
+        "cgt_asset_type": "other_financial_assets"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 16086000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_345f360270efeb550b1560ea",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5166659f25b2384c052214ad",
+      "source_record_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023.total.gains",
+      "concept": "hmrc.cgt_table7_2.gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 55327000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0cd1566de4c7393a453789b8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e25bacebe13603d43fa11c12",
+      "source_record_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023.unlisted_shares.gains",
+      "concept": "hmrc.cgt_table7_2.gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "unlisted_shares",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "financial",
+        "cgt_asset_type": "unlisted_shares"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 33315000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_793792e4ef24dd61fe96a6f4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1c18a6f4be76528498f276f3",
+      "source_record_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023.agricultural_commercial_industrial_land_buildings.disposal_proceeds",
+      "concept": "hmrc.cgt_table7_5.disposal_proceeds",
+      "measure_id": "disposal_proceeds",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "agricultural_commercial_industrial_land_buildings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial",
+        "cgt_asset_type": "agricultural_commercial_industrial_land_buildings"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 3883000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_970b28746fe6f81768da384b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_88012b2c542fe33feab43bbd",
+      "source_record_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023.other_non_financial_assets.disposal_proceeds",
+      "concept": "hmrc.cgt_table7_5.disposal_proceeds",
+      "measure_id": "disposal_proceeds",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "other_non_financial_assets",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial",
+        "cgt_asset_type": "other_non_financial_assets"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 4068000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d091f950ab6dea951e57840b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d32335f528d24cf38503ac8f",
+      "source_record_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023.residential_land_buildings.disposal_proceeds",
+      "concept": "hmrc.cgt_table7_5.disposal_proceeds",
+      "measure_id": "disposal_proceeds",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "residential_land_buildings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial",
+        "cgt_asset_type": "residential_land_buildings"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 35300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4a20e41f1885d230499dbf76",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cbe5c72029aedc4d4dbe5129",
+      "source_record_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023.total.disposal_proceeds",
+      "concept": "hmrc.cgt_table7_5.disposal_proceeds",
+      "measure_id": "disposal_proceeds",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 43251000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1b25affd396df77f63718bf0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_520bfcf8190ac3ccb35929ef",
+      "source_record_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023.agricultural_commercial_industrial_land_buildings.disposals",
+      "concept": "hmrc.cgt_table7_5.disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "agricultural_commercial_industrial_land_buildings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial",
+        "cgt_asset_type": "agricultural_commercial_industrial_land_buildings"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 13000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f09a98ccb2e285a87c04b668",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b5936ad48f9a0916eba4ad17",
+      "source_record_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023.other_non_financial_assets.disposals",
+      "concept": "hmrc.cgt_table7_5.disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "other_non_financial_assets",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial",
+        "cgt_asset_type": "other_non_financial_assets"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 20000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_468ba88a239294f5dd475368",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f34991c0c30f730c0e555ef6",
+      "source_record_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023.residential_land_buildings.disposals",
+      "concept": "hmrc.cgt_table7_5.disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "residential_land_buildings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial",
+        "cgt_asset_type": "residential_land_buildings"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 167000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b5fcd239ad8d46c6bdbdb5ca",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a1b05dcd34f5e12d074380d3",
+      "source_record_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023.total.disposals",
+      "concept": "hmrc.cgt_table7_5.disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 201000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3a00ac9714521b09ae90e1d2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6dbace2ac2d91b3717314ce8",
+      "source_record_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023.agricultural_commercial_industrial_land_buildings.gains",
+      "concept": "hmrc.cgt_table7_5.gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "agricultural_commercial_industrial_land_buildings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial",
+        "cgt_asset_type": "agricultural_commercial_industrial_land_buildings"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 2037000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_53d0a1ba7246cb3ad96f088e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f3c6dba9ddfa1a844d3e48c1",
+      "source_record_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023.other_non_financial_assets.gains",
+      "concept": "hmrc.cgt_table7_5.gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "other_non_financial_assets",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial",
+        "cgt_asset_type": "other_non_financial_assets"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 2872000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dbc37a56035b1c01c9e1a885",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d596ef5501ee2f72dd86765a",
+      "source_record_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023.residential_land_buildings.gains",
+      "concept": "hmrc.cgt_table7_5.gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "residential_land_buildings",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial",
+        "cgt_asset_type": "residential_land_buildings"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 9626000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1e823f6f8bef7bb6f5d9597b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ed2fec1737dcdfdda1692164",
+      "source_record_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023.total.gains",
+      "concept": "hmrc.cgt_table7_5.gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": "2023-04-06",
+        "end_date": "2024-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023",
+        "groupby_dimension": "cgt_asset_type",
+        "groupby_value_id": "total",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "cgt_asset_category": "non_financial"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 7: taxpayer disposals, disposal proceeds and gains by asset type and period of ownership",
+        "source_file": "Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods",
+        "source_sha256": "a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-asset-type-2026/2026/a27ad79c3c67178e8b808c0561201dd6585b472d7919c0043fdc44142460b2bd/Table_7_2026_Statistics_by_asset_type_in_the_2023_to_2024_tax_year.ods"
+      },
+      "value": 14535000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0eeb70d01235e3bd5c499f8e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_559005ca16cdc1a85a366cbf",
+      "source_record_id": "hmrc.cgt_table8_2026.table8a.ty2024.ty2024.disposals_self_assessment_component",
+      "concept": "hmrc.cgt_table8a.residential_property_disposals",
+      "measure_id": "disposals_self_assessment_component",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "self_assessment_component"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 35000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6e8dd1052d0346daf105ef1b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_59f4351de6c44853ec2fe80b",
+      "source_record_id": "hmrc.cgt_table8_2026.table8a.ty2024.ty2024.disposals_total",
+      "concept": "hmrc.cgt_table8a.residential_property_disposals",
+      "measure_id": "disposals_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "total"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 230000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_38c80053a410e0e939cf2cfa",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dc5cf28d52e302086ee779dc",
+      "source_record_id": "hmrc.cgt_table8_2026.table8a.ty2024.ty2024.disposals_uk_property_service",
+      "concept": "hmrc.cgt_table8a.residential_property_disposals",
+      "measure_id": "disposals_uk_property_service",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "uk_property_service"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 195000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d3db04a621eb17c9ea54bdca",
+      "semantic_fact_key": "ledger_semantic_fact_v2_259fd9c98b796c6f878c7c8d",
+      "source_record_id": "hmrc.cgt_table8_2026.table8a.ty2024.ty2024.gains_self_assessment_component",
+      "concept": "hmrc.cgt_table8a.residential_property_gains",
+      "measure_id": "gains_self_assessment_component",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "self_assessment_component"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 2009000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1f8003c937764e4184da3f24",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4b0efb3b37b1c24a86d22c02",
+      "source_record_id": "hmrc.cgt_table8_2026.table8a.ty2024.ty2024.gains_total",
+      "concept": "hmrc.cgt_table8a.residential_property_gains",
+      "measure_id": "gains_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "total"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 12914000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d6894d416d485d2f88cc262a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3452c1aaf696cb83ccab3483",
+      "source_record_id": "hmrc.cgt_table8_2026.table8a.ty2024.ty2024.gains_uk_property_service",
+      "concept": "hmrc.cgt_table8a.residential_property_gains",
+      "measure_id": "gains_uk_property_service",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "uk_property_service"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 10904000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f30c0649e8ea02628ff31835",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9ff499390c745bb1730781b2",
+      "source_record_id": "hmrc.cgt_table8_2026.table8a.ty2024.ty2024.tax_self_assessment_component",
+      "concept": "hmrc.cgt_table8a.residential_property_tax",
+      "measure_id": "tax_self_assessment_component",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "self_assessment_component"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 456000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fe50788c9e95f3fea9c5643f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2343dfdd6323627c2c6e6b9a",
+      "source_record_id": "hmrc.cgt_table8_2026.table8a.ty2024.ty2024.tax_total",
+      "concept": "hmrc.cgt_table8a.residential_property_tax",
+      "measure_id": "tax_total",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "total"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 2809000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3aa3d4cf7d9fa5edd6a45987",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b2ac8fa010d9593b42c8c604",
+      "source_record_id": "hmrc.cgt_table8_2026.table8a.ty2024.ty2024.tax_uk_property_service",
+      "concept": "hmrc.cgt_table8a.residential_property_tax",
+      "measure_id": "tax_uk_property_service",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "uk_property_service"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 2353000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_62b888c7680528330b30ff60",
+      "semantic_fact_key": "ledger_semantic_fact_v2_89feca81e5eec664917475b6",
+      "source_record_id": "hmrc.cgt_table8_2026.table8a.ty2024.ty2024.taxpayers_self_assessment_only",
+      "concept": "hmrc.cgt_table8a.residential_property_taxpayers",
+      "measure_id": "taxpayers_self_assessment_only",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "self_assessment_only"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 32000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a26f1261bd153727b83045de",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2741e3bd65b00256a83800a7",
+      "source_record_id": "hmrc.cgt_table8_2026.table8a.ty2024.ty2024.taxpayers_total",
+      "concept": "hmrc.cgt_table8a.residential_property_taxpayers",
+      "measure_id": "taxpayers_total",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "total"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 205000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d6475894d328290678ed8bda",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4a5fe72a200421858f896cca",
+      "source_record_id": "hmrc.cgt_table8_2026.table8a.ty2024.ty2024.taxpayers_uk_property_service",
+      "concept": "hmrc.cgt_table8a.residential_property_taxpayers",
+      "measure_id": "taxpayers_uk_property_service",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024",
+        "groupby_dimension": "hmrc.cgt_residential_property_year",
+        "groupby_value_id": "ty2024",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "uk_property_service"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 173000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_49e342a62d689694c21fe33d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_dc5cf28d52e302086ee779dc",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.all.disposals",
+      "concept": "hmrc.cgt_table8b.residential_property_disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "uk_property_service"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 195000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ca19b6f2801007bf718db7a6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_96dfc79de8a0233da54e20d5",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.individuals.disposals",
+      "concept": "hmrc.cgt_table8b.residential_property_disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "individuals",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "channel": "uk_property_service",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 192000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c9ee3d9ddfeb36f9a2be7829",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1874bb37a96a81c0c677ce49",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.trusts.disposals",
+      "concept": "hmrc.cgt_table8b.residential_property_disposals",
+      "measure_id": "disposals",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "trusts",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "channel": "uk_property_service",
+        "taxpayer_type": "trusts"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 3000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0be097fa0d180fb2c5c66661",
+      "semantic_fact_key": "ledger_semantic_fact_v2_3452c1aaf696cb83ccab3483",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.all.gains",
+      "concept": "hmrc.cgt_table8b.residential_property_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "uk_property_service"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 10904000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a0b79c3ba46671e0dfd8f878",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cdf5fd8d429bf61271d52e43",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.individuals.gains",
+      "concept": "hmrc.cgt_table8b.residential_property_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "individuals",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "channel": "uk_property_service",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 10337000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ca24903c8aa77cc8a075059a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_178af53b891202a49d9a925b",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.trusts.gains",
+      "concept": "hmrc.cgt_table8b.residential_property_gains",
+      "measure_id": "gains",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "trusts",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "channel": "uk_property_service",
+        "taxpayer_type": "trusts"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 567000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3d13c67355d8eed45b0edfe5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ec0e0da4746133c522e6ab69",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.all.returns",
+      "concept": "hmrc.cgt_table8b.residential_property_returns",
+      "measure_id": "returns",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "uk_property_service"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 187000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f1c6e5522b6acd315fe54a74",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b266a103ef87c24c808ceff8",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.individuals.returns",
+      "concept": "hmrc.cgt_table8b.residential_property_returns",
+      "measure_id": "returns",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "individuals",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "channel": "uk_property_service",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 184000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8e0ddfae08e8c20ab1b9e5c8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_91a4065849698a18da039842",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.trusts.returns",
+      "concept": "hmrc.cgt_table8b.residential_property_returns",
+      "measure_id": "returns",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "trusts",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "channel": "uk_property_service",
+        "taxpayer_type": "trusts"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 3000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dccafc283059b6ede776f234",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b2ac8fa010d9593b42c8c604",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.all.tax",
+      "concept": "hmrc.cgt_table8b.residential_property_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "uk_property_service"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 2353000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d8e8a12c386b72540a98f433",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6c92174ae1c3da8fd46b51c3",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.individuals.tax",
+      "concept": "hmrc.cgt_table8b.residential_property_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "individuals",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "channel": "uk_property_service",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 2213000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3615def485bf22f7fbfd3fba",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5c8e9b9155df6033b784d031",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.trusts.tax",
+      "concept": "hmrc.cgt_table8b.residential_property_tax",
+      "measure_id": "tax",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "trusts",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "channel": "uk_property_service",
+        "taxpayer_type": "trusts"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 140000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7a9a96e371320c0f4e21261f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4a5fe72a200421858f896cca",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.all.taxpayers",
+      "concept": "hmrc.cgt_table8b.residential_property_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "all",
+        "table_record_kind": "total"
+      },
+      "dimensions": {
+        "channel": "uk_property_service"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 173000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7ea881ca1e22de079bf8d892",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ff132d5e2ac1dce0f521b7bb",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.individuals.taxpayers",
+      "concept": "hmrc.cgt_table8b.residential_property_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "individuals",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "channel": "uk_property_service",
+        "taxpayer_type": "individuals"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 171000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d26496af5dcb4319201be187",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a0ab6baa3a3b92d7fea7e227",
+      "source_record_id": "hmrc.cgt_table8_2026.table8b.ty2024.trusts.taxpayers",
+      "concept": "hmrc.cgt_table8b.residential_property_taxpayers",
+      "measure_id": "taxpayers",
+      "unit": "count",
+      "aggregation": "sum",
+      "entity": {
+        "name": "tax_unit",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": "2024-04-06",
+        "end_date": "2025-04-05",
+        "basis": "tax"
+      },
+      "layout": {
+        "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024",
+        "groupby_dimension": "taxpayer_type",
+        "groupby_value_id": "trusts",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "channel": "uk_property_service",
+        "taxpayer_type": "trusts"
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "Capital Gains Tax statistics Table 8: residential property disposals",
+        "source_file": "Table_8_2026_Statistics_on_UK_residential_property.ods",
+        "source_sha256": "fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952",
+        "vintage": "cgt_statistics_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-cgt-residential-property-2026/2026/fefe621cab478ca14b06aaeabe0ac2db95a4912b1b40ac029fbbd5ea3fa34952/Table_8_2026_Statistics_on_UK_residential_property.ods"
+      },
+      "value": 3000
+    }
+  ]
+}

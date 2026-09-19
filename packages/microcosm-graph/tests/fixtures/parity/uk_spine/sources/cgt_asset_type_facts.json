@@ -1,0 +1,59 @@
+{
+  "resource": "synthetic-cgt-asset-type.json",
+  "resource_sha256": "synthetic",
+  "source_commit": "synthetic",
+  "table7_total_disposals": 2743095.2380952383,
+  "table7_total_gains": 70000000000.0,
+  "table7_types": [
+    {
+      "asset_type": "listed_shares",
+      "category": "financial",
+      "disposals": 1200000.0,
+      "gains": 6000000000.0,
+      "proceeds": 18000000000.0
+    },
+    {
+      "asset_type": "unlisted_shares",
+      "category": "financial",
+      "disposals": 275000.0,
+      "gains": 33000000000.0,
+      "proceeds": 99000000000.0
+    },
+    {
+      "asset_type": "other_financial_assets",
+      "category": "financial",
+      "disposals": 1066666.6666666667,
+      "gains": 16000000000.0,
+      "proceeds": 48000000000.0
+    },
+    {
+      "asset_type": "agricultural_commercial_industrial_land_buildings",
+      "category": "non_financial",
+      "disposals": 13333.333333333334,
+      "gains": 2000000000.0,
+      "proceeds": 6000000000.0
+    },
+    {
+      "asset_type": "residential_land_buildings",
+      "category": "non_financial",
+      "disposals": 166666.66666666666,
+      "gains": 10000000000.0,
+      "proceeds": 30000000000.0
+    },
+    {
+      "asset_type": "other_non_financial_assets",
+      "category": "non_financial",
+      "disposals": 21428.571428571428,
+      "gains": 3000000000.0,
+      "proceeds": 9000000000.0
+    }
+  ],
+  "table8a_disposals_total": 1166.139425,
+  "table8a_gains_total": 1645659036.1744778,
+  "table8a_tax_total": 329131807.2348956,
+  "table8a_taxpayers_total": 1060.12675,
+  "table8b_all_gains": 1645659036.1744778,
+  "table8b_all_taxpayers": 1060.12675,
+  "table8b_individuals_gains": 1645659036.1744778,
+  "table8b_individuals_taxpayers": 1060.12675
+}

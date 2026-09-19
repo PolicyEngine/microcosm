@@ -801,6 +801,10 @@ def build_manifest(
             "hmrc_cgt_gains_spine": _cgt_spine_family_coverage_contract(
                 candidate_source=candidate_source,
             ),
+            "hmrc_cgt_asset_type_spine": _source_stage_family_coverage_contract(
+                stage_name="hmrc_cgt_asset_type_spine",
+                candidate_source=candidate_source,
+            ),
             "salary_sacrifice": _source_stage_family_coverage_contract(
                 stage_name="salary_sacrifice",
                 candidate_source=candidate_source,
@@ -898,12 +902,16 @@ def _cgt_family_coverage_contract(
         for operation in stage.get("operations", [])
         if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
     }
-    required_artifacts = {"published_fact_surface", "policy_parameters"}
+    required_artifacts = {
+        "policy_parameters",
+        "cgt_conditioning_facts",
+    }
     missing_artifacts = sorted(required_artifacts - set(artifacts))
     required_operations = {
         "verify_certified_candidate",
-        "verify_pinned_cgt_ods",
+        "verify_vendored_fact_resource",
         "taxable_income_proxy",
+        "rake_allocation_targets",
         "rank_preserving_allocation",
         "within_band_draws",
         "sub_aea_remainder",
@@ -917,13 +925,18 @@ def _cgt_family_coverage_contract(
             f"missing_artifacts={missing_artifacts}, "
             f"missing_operations={missing_operations}."
         )
-    surface = artifacts["published_fact_surface"]
-    verify = operations["verify_pinned_cgt_ods"]
+    surface = artifacts["cgt_conditioning_facts"]
+    verify = operations["verify_vendored_fact_resource"]
     fence = operations["classify_cgt_band_facts_with_reviewed_fence"]
     if not bool(verify.get("require_before_source_read")):
         raise ValueError(
-            f"{CGT_SOURCE_STAGES_PATH}: the pinned ODS must be verified before "
-            "it is read."
+            f"{CGT_SOURCE_STAGES_PATH}: the vendored resource must be checked "
+            "against the feed pin before it is read."
+        )
+    if verify.get("resource") != surface.get("resource"):
+        raise ValueError(
+            f"{CGT_SOURCE_STAGES_PATH}: the verification must name the "
+            "cgt_conditioning_facts resource."
         )
     if bool(fence.get("calibration_permitted", True)):
         raise ValueError(
@@ -931,10 +944,10 @@ def _cgt_family_coverage_contract(
             "calibration_permitted false; promotion goes through a separately "
             "reviewed target profile."
         )
-    if str(surface.get("sha256", "")) == "" or int(surface.get("size_bytes", 0)) <= 0:
+    if not bool(surface.get("runtime_sha256_required")):
         raise ValueError(
-            f"{CGT_SOURCE_STAGES_PATH}: published_fact_surface must pin sha256 "
-            "and size_bytes."
+            f"{CGT_SOURCE_STAGES_PATH}: cgt_conditioning_facts must require its "
+            "runtime sha256."
         )
     return {
         "status": "required_at_build",
@@ -954,8 +967,13 @@ def _cgt_family_coverage_contract(
         "base_candidate_sha256": str(base_candidate["sha256"]),
         "base_candidate_tier": base_candidate_tier,
         "source_vintages": {
-            "hmrc_surface": str(surface["vintage"]),
-            "mapped_build_period": str(surface["mapped_build_period"]),
+            "hmrc_surface": str(verify["source_vintage"]),
+            "mapped_build_period": str(verify["mapped_build_period"]),
+            "conditioning_surface": str(verify["source_vintage"]),
+            "conditioning_resource": str(surface["resource"]),
+            "conditioning_resource_sha256": _sha256(
+                UK_PACKAGE_DIR / str(surface["resource"])
+            ),
         },
         "output_weight_kind": str(stage["output_weight_kind"]),
         "required_mass_change_reason": str(
@@ -1064,10 +1082,14 @@ def _cgt_spine_family_coverage_contract(
         for operation in stage.get("operations", [])
         if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
     }
-    required_artifacts = {"cgt_published_fact_surface", "policy_parameters"}
+    required_artifacts = {
+        "policy_parameters",
+        "cgt_conditioning_facts",
+    }
     required_operations = {
-        "verify_pinned_cgt_ods",
+        "verify_vendored_fact_resource",
         "taxable_income_proxy",
+        "rake_allocation_targets",
         "rank_preserving_allocation",
         "within_band_draws",
         "sub_aea_remainder",
@@ -1082,17 +1104,19 @@ def _cgt_spine_family_coverage_contract(
             f"missing_artifacts={missing_artifacts}, "
             f"missing_operations={missing_operations}."
         )
-    surface = artifacts["cgt_published_fact_surface"]
-    verify = operations["verify_pinned_cgt_ods"]
+    surface = artifacts["cgt_conditioning_facts"]
+    verify = operations["verify_vendored_fact_resource"]
     fence = operations["classify_cgt_band_facts_with_reviewed_fence"]
-    if verify.get("artifact_role") != "cgt_published_fact_surface":
-        raise ValueError("Spine CGT verification must bind its distinct ODS role.")
+    if verify.get("artifact_role") != "cgt_conditioning_facts":
+        raise ValueError("Spine CGT verification must bind the vendored resource role.")
+    if verify.get("resource") != surface.get("resource"):
+        raise ValueError("Spine CGT verification must name the vendored resource.")
     if not bool(verify.get("require_before_source_read")):
-        raise ValueError("Spine CGT ODS must be verified before source read.")
+        raise ValueError("Spine CGT resource must be checked before source read.")
     if bool(fence.get("calibration_permitted", True)):
         raise ValueError("Spine CGT band facts must remain fenced from calibration.")
-    if str(surface.get("sha256", "")) == "" or int(surface.get("size_bytes", 0)) <= 0:
-        raise ValueError("Spine CGT surface must pin sha256 and size_bytes.")
+    if not bool(surface.get("runtime_sha256_required")):
+        raise ValueError("Spine CGT resource must require its runtime sha256.")
     return {
         "status": "required_at_build",
         "stage": "hmrc_cgt_gains_spine",
@@ -1101,8 +1125,13 @@ def _cgt_spine_family_coverage_contract(
         "base_candidate_sha256": str(candidate_source["sha256"]),
         "base_candidate_tier": validate_uk_release_tier(candidate_source["tier"]),
         "source_vintages": {
-            "hmrc_surface": str(surface["vintage"]),
-            "mapped_build_period": str(surface["mapped_build_period"]),
+            "hmrc_surface": str(verify["source_vintage"]),
+            "mapped_build_period": str(verify["mapped_build_period"]),
+            "conditioning_surface": str(verify["source_vintage"]),
+            "conditioning_resource": str(surface["resource"]),
+            "conditioning_resource_sha256": _sha256(
+                UK_PACKAGE_DIR / str(surface["resource"])
+            ),
         },
         "output_weight_kind": "importance",
         "required_mass_change_reason": str(

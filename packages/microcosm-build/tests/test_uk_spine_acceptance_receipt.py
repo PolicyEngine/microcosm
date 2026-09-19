@@ -69,6 +69,11 @@ def _apply_pending_roster_transformations(
     # final age is fixed.
     assert "frs_relationships" not in roster
     roster.insert(roster.index("age_tail") + 1, "frs_relationships")
+
+    # #725 re-mint pending: the asset-type stage classifies the redrawn
+    # gains right after the amounts stage.
+    assert "hmrc_cgt_asset_type_spine" not in roster
+    roster.insert(roster.index("hmrc_cgt_gains_spine") + 1, "hmrc_cgt_asset_type_spine")
     return tuple(roster)
 
 
