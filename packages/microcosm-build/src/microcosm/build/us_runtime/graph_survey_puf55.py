@@ -242,17 +242,17 @@ def _construct(
 ):
     """Construct actual declarations and bind actual source keys without running."""
     financial.check_atomic_survey_financial_run(financial_run)
+    require(type(seed) is int and 0 <= seed < 2**64, "SEED")
+    require(type(n_estimators) is int and n_estimators > 0, "TREE_COUNT")
     # The authenticated prefix may include household-only child-property
     # support versions. Check its exact roster and replay representation before
-    # any PUF fitting, then recheck the retained owner after manifest reads.
+    # any PUF fitting. Qualification starts with the retained-owner check that
+    # closes this bracket after manifest reads, before accessing source state.
     _check_replayed_survey_manifest(
         financial_run.manifest, financial_run.manifest, financial_run.compiled
     )
-    financial.check_atomic_survey_financial_run(financial_run)
-    upstream_count = len(financial_run.compiled.order)
-    require(type(seed) is int and 0 <= seed < 2**64, "SEED")
-    require(type(n_estimators) is int and n_estimators > 0, "TREE_COUNT")
     qualified = recipient.values.qualify_puf55_survey_recipients(financial_run)
+    upstream_count = len(financial_run.compiled.order)
     donor = canonical.CanonicalPuf55DonorKernel(
         seed=seed, fixture_definition=fixture_definition
     )
