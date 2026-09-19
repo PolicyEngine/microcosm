@@ -526,6 +526,7 @@ def _project_native_survey_frame(frame, spec):
         typed_weight_names = {entity + "_weight" for entity in frame.weighted_entities}
         _projection_require(not (typed_weight_names & excluded), "EXCLUDED_INPUT")
         _projection_require(typed_weight_names <= allowed, "UNDECLARED_TYPED_WEIGHT")
+        reserved_weight_names = {entity + "_weight" for entity in frame.entities}
         tables, report_columns, excluded_columns = {}, [], []
         projected_names = set()
         for entity, declarations in spec.columns:
@@ -548,6 +549,9 @@ def _project_native_survey_frame(frame, spec):
             _projection_require(structural <= set(names), "STRUCTURAL_COLUMNS")
             original = frame.table(entity)
             for name, dtype in declarations:
+                _projection_require(
+                    name not in reserved_weight_names, "RESERVED_WEIGHT_SOURCE_COLUMN"
+                )
                 owners = [e for e in frame.entities if name in frame.table(e)]
                 _projection_require(bool(owners), "MISSING_COLUMN")
                 _projection_require(owners == [entity], "COLUMN_ENTITY")

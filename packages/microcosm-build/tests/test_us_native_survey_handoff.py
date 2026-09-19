@@ -627,3 +627,63 @@ def test_projection_contract_cannot_hide_retained_typed_weight(excluded_as):
     )
     with pytest.raises(ValueError, match="^NATIVE_ENGINE_PROJECTION_" + code + "$"):
         handoff._project_native_survey_frame(source, spec)
+
+
+@pytest.mark.parametrize("values", ([1.0, 2.0, 3.0], [9.0, 9.0, 9.0]))
+def test_projection_refuses_selected_reserved_source_weight_column(values):
+    from dataclasses import replace
+
+    from microcosm.frame import Frame
+
+    source = _projection_parent()
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    tables["household"]["household_weight"] = values
+    # Frame deliberately accepts this round-trip convenience. Projection must
+    # still consume typed weights alone, even when the source column agrees.
+    source = Frame(
+        tables,
+        source.schema,
+        {"household": source.weights_for("household")},
+        source.strata,
+        metadata=source.metadata,
+        mass_log=source.mass_log,
+    )
+    spec = _projection_declaration(source)
+    columns = list(spec.columns)
+    columns[1] = ("household", (*columns[1][1], ("household_weight", "float64")))
+    spec = replace(spec, columns=tuple(columns))
+    with pytest.raises(
+        ValueError, match="^NATIVE_ENGINE_PROJECTION_RESERVED_WEIGHT_SOURCE_COLUMN$"
+    ):
+        handoff._project_native_survey_frame(source, spec)
+
+
+def test_projection_can_omit_reserved_source_weight_column_and_keep_typed_weights():
+    from microcosm.frame import Frame
+
+    source = _projection_parent()
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    tables["household"]["household_weight"] = [9.0, 9.0, 9.0]
+    source = Frame(
+        tables,
+        source.schema,
+        {"household": source.weights_for("household")},
+        source.strata,
+        metadata=source.metadata,
+        mass_log=source.mass_log,
+    )
+    result = handoff._project_native_survey_frame(
+        source, _projection_declaration(source)
+    )
+    assert "household_weight" not in result.frame.table("household")
+    assert source.table("household").household_weight.tolist() == [9.0, 9.0, 9.0]
+    assert result.frame.weights_for("household").values.tolist() == [1.0, 2.0, 3.0]
+    assert {
+        "entity": "household",
+        "column": "household_weight",
+        "rows": 3,
+    } in result.report["excluded_columns"]
+    assert (
+        result.report["typed_weight_inputs"][0]["materialized_as_source_column"]
+        is False
+    )
