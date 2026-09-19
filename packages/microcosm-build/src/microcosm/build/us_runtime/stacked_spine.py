@@ -12425,6 +12425,13 @@ def _stacked_tail_owned_cells(
     head_id = int(record["tail_person_id"])
     people = person.loc[person["person_tax_unit_id"].eq(tail_tax_unit_id)]
     units = tax_unit.loc[tax_unit["tax_unit_id"].eq(tail_tax_unit_id)]
+    expected_person_count = record.get("tail_person_count")
+    if (
+        isinstance(expected_person_count, bool)
+        or not isinstance(expected_person_count, int)
+        or len(people) != expected_person_count
+    ):
+        raise ValueError("Stacked tail-owned person count differs from the manifest.")
     if len(units) != 1 or int(people["person_id"].eq(head_id).sum()) != 1:
         raise ValueError("Stacked tail-owned vector has no unique unit/head carrier.")
     agi_arm = arm in (2, 3)
@@ -12442,11 +12449,12 @@ def _stacked_tail_owned_cells(
         unit_dtypes = record.get("tax_unit_dtypes")
         if (
             not isinstance(person_vectors, Mapping)
-            or set(person_vectors) != {"head", "spouse"}
+            or "head" not in person_vectors
+            or set(person_vectors) - {"head", "spouse"}
             or any(
                 not isinstance(person_vectors[role], Mapping)
                 or set(person_vectors[role]) != set(owned["person"])
-                for role in ("head", "spouse")
+                for role in person_vectors
             )
             or not isinstance(person_dtypes, Mapping)
             or set(person_dtypes) != set(owned["person"])
@@ -12478,7 +12486,7 @@ def _stacked_tail_owned_cells(
             people["person_id"].eq(spouse_id)
         ].tolist() != ["spouse"]:
             raise ValueError("Stacked AGI tail spouse role changed.")
-        if spouse_id == -1 and any(person_vectors["spouse"].values()):
+        if spouse_id == -1 and any(person_vectors.get("spouse", {}).values()):
             raise ValueError("Stacked AGI tail omitted a nonzero donor spouse vector.")
     else:
         person_vectors = {"head": record["joint_vector"]}
@@ -12574,7 +12582,7 @@ def _stacked_tail_owned_cells(
                 and pd.api.types.is_bool_dtype(pd.api.types.pandas_dtype(dtype))
                 else 0.0
             )
-            expected = person_vectors[role][column] if role else zero
+            expected = person_vectors[role][column] if role in person_vectors else zero
             cells.append(
                 exact_cell(
                     person,

@@ -11292,6 +11292,7 @@ def _agi_tail_owned_cell_fixture() -> tuple[pd.DataFrame, pd.DataFrame, dict]:
         "tail_tax_unit_id": 20,
         "tail_person_id": 201,
         "tail_spouse_person_id": 202,
+        "tail_person_count": 3,
         "person_vectors": vectors,
         "person_dtypes": {
             column: str(person[column].dtype) for column in owned["person"]
@@ -11545,3 +11546,23 @@ def test_stacked_tail_arm_ownership_keeps_late_owner_and_gains_parent_cells() ->
         match="recipient-owned QRF column person.employment_income_before_lsr",
     ):
         stacked_spine_module.assert_stacked_tail_cells_preserved(transferred, tail)
+
+
+def test_stacked_agi_tail_head_only_donor_zeros_recipient_spouse() -> None:
+    person, tax_unit, record = _agi_tail_owned_cell_fixture()
+    record["person_vectors"].pop("spouse")
+    for column in tail_module.puf_tail_owned_columns(2)["person"]:
+        person.loc[person["person_id"].eq(202), column] = (
+            False if column in US_QBI_BOOLEAN_OUTPUT_COLUMNS else 0.0
+        )
+    assert stacked_spine_module._stacked_tail_owned_cells(person, tax_unit, record)
+    person.loc[person["person_id"].eq(202), "employment_income_before_lsr"] = 1.0
+    with pytest.raises(ValueError, match="person.employment_income_before_lsr"):
+        stacked_spine_module._stacked_tail_owned_cells(person, tax_unit, record)
+
+
+def test_stacked_tail_owned_cells_reject_changed_person_count() -> None:
+    person, tax_unit, record = _agi_tail_owned_cell_fixture()
+    record["tail_person_count"] = len(person) + 1
+    with pytest.raises(ValueError, match="person count"):
+        stacked_spine_module._stacked_tail_owned_cells(person, tax_unit, record)
