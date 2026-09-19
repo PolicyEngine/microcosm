@@ -19,6 +19,10 @@ from test_us_current_survey_health_coverage import (
     _health_acs_person,
     _health_asec_table,
 )
+from test_us_current_survey_hours_source import (
+    add_hours_source_fields,
+    hours_acs_person,
+)
 from test_us_current_survey_housing import add_housing_source_fields
 from test_us_graph_atomic_survey_population import _support_payload
 from test_us_graph_puf55_canonical_donor import _original_sources
@@ -53,15 +57,19 @@ def enrichment_source_arguments(root, patch):
     # known ASEC receipt/nonreceipt supply its independent donor labels.
     for fixture in (source_fixture, recipient_fixture):
         patch.setattr(fixture, "_household", household_with_housing_recipient)
-    patch.setattr(source_fixture, "_person", _health_acs_person(source_fixture._person))
-    patch.setattr(
-        recipient_fixture, "_person", _health_acs_person(recipient_fixture._person)
-    )
+    for fixture in (source_fixture, recipient_fixture):
+        patch.setattr(
+            fixture, "_person", hours_acs_person(_health_acs_person(fixture._person))
+        )
     arguments = _recipient_source_arguments(root, patch)
     source = arguments["source_dir"] / "asec"
     parent_path, attachment = source / "parent.h5", source / "household-attachment.h5"
     person = load_frame_checkpoint(parent_path).frame.person
     changes = {}
+    # One invented current-year ASEC teenager supplies the complete donor cohort.
+    ages = person.A_AGE.to_numpy(copy=True)
+    ages[person.person_id.to_numpy() == 106] = 15
+    changes["A_AGE"] = ages
     for field, amounts in (
         ("UC_VAL", [120.0, 0.0, 0.0, 500.0]),
         ("PHIP_VAL", [0.0, 100.0, 200.0, 400.0]),
@@ -112,6 +120,7 @@ def enrichment_source_arguments(root, patch):
     shutil.copyfile(
         output / restoration.CHECKPOINT_FILENAME, source / "person-income-attachment.h5"
     )
+    add_hours_source_fields(arguments, patch)
     return add_housing_source_fields(arguments, patch)
 
 
@@ -123,8 +132,8 @@ def test_actual_current_uc_projection_preserves_ambiguous_and_contradictory_sour
     qualified = uc.qualify_current_asec_unemployment(prepared)
     person = qualified.person.set_index("native_person_id")
     assert person.loc[105, "canonical_amount"] == 120.0
-    assert np.isnan(person.loc[106, "canonical_amount"])
-    assert person.loc[106, "reporting_status"] == "outside_reporting_universe"
+    assert person.loc[106, "canonical_amount"] == 0.0
+    assert person.loc[106, "reporting_status"] == "known_nonreceipt"
     assert person.loc[107, "reporting_status"] == "ambiguous_recipient_zero"
     assert (
         person.loc[108, "reporting_status"]
@@ -140,6 +149,14 @@ def test_actual_current_uc_projection_preserves_ambiguous_and_contradictory_sour
     health = graph.health_graph.qualify_health_coverage(prepared)
     assert set(health.raw.source) == {"asec", "acs"}
     graph.health_graph.health_coverage_seal(health)
+    hours = graph.hours_graph.source.qualify_current_survey_hours(
+        prepared,
+        age15_policy=graph.hours_graph.hours.AGE15_POLICY,
+        under15_policy=graph.hours_graph.hours.UNDER15_POLICY,
+    )
+    hours.validate()
+    assert hours.proposals.supplied_donors == 1
+    assert hours.person_hours[graph.hours_graph.hours.TARGET].notna().all()
     housing = graph.housing_graph.housing
     frame, origins, porigins, keys, selected, _ = housing._original_columns(prepared)
     receipt = housing._source_values(frame, origins, porigins, keys, selected)
@@ -237,7 +254,7 @@ def test_actual_enrichment_cold_required_and_complete_parent_preservation(enrich
     cold, warm = enriched.cold, enriched.warm
     assert cold.manifest.key == warm.manifest.key
     assert all(r.hit for r in warm.manifest.nodes.values())
-    assert len(cold.compiled.order) == 277
+    assert len(cold.compiled.order) == 281
     graph.physical.replay.same_replayed_population(cold.population, warm.population)
     parent = enriched.parent.population
     for entity in parent.frame.entities:
@@ -268,6 +285,16 @@ def test_actual_enrichment_cold_required_and_complete_parent_preservation(enrich
     assert set(f.output for f in graph.health_graph.health.FIELDS) <= set(people)
     assert people.has_medicaid_health_coverage_at_interview.isna().any()
     assert people.has_esi.notna().all()
+    assert people[graph.hours_graph.hours.TARGET].notna().all()
+    for _, rows in people.groupby(
+        graph.values.provenance.support_source_id_column("person")
+    ):
+        for name in (
+            graph.hours_graph.hours.TARGET,
+            "hours_provenance",
+            "hours_policy",
+        ):
+            assert rows[name].nunique(dropna=False) == 1
     for run in (cold, warm):
         assert run.checked_view().population is run.population
     table = warm.population.frame.person
