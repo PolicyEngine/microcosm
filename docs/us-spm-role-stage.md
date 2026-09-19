@@ -314,6 +314,12 @@ dtype-sensitive bindings, historical pre-clone metadata and unsupported
 set-valued metadata, scoped above. It did not run tests or inspect microdata;
 the actual-wrapper receipts provide separate execution evidence.
 
+All nine selected spec-engine, ABI, bundle, release-input and pool-tool test
+files pass across focused reruns after correcting stale stage/input counts.
+The final three-file run passes 300 tests. Bundle generation `--check` passes;
+the generated coverage accounts for all 42,174 fields and 41 inventory checks.
+This remains local source qualification on the pinned dependency set.
+
 ## 7. Unresolved stacked-pool qualification
 
 **Q1 — ACS-origin rows in the production stacked pool.** The stage refuses a

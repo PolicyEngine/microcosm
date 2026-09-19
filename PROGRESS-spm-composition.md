@@ -176,3 +176,11 @@ complete details, all existing data are preserved. Peak RSS was 8.42 and
 found two stale golden counts: 38 source stages and 1,059 remaining input
 rows (992 simulation rows); the generated lock was already correct. These
 test expectations now follow the reviewed source addition.
+
+All nine selected generated-contract test files now pass across the focused
+reruns. The final three-file run passed **300 tests in 556.47 seconds**;
+earlier failure logs remain preserved and are not relabeled as green runs.
+The bundle generator's `--check` passes at spec SHA `c1893460afccc6c1c4291efe2fc4d6091f60a15079043882dfbfd2bbc09e7e00`;
+coverage is 42,174/42,174 fields and 41/41 inventory checks. Ruff and test-group
+verification pass. Draft #959 is stacked on #948; the main-only CI workflow
+does not run on that stacked base, so local checks are not a PR CI claim.
