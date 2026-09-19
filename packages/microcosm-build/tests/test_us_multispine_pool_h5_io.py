@@ -1605,8 +1605,15 @@ def _strip_immigration_transfer_evidence(transfer: dict[str, object]) -> None:
 
 def _rewrite_as_legacy_relocated_worker_pool(
     manifest_path: Path,
+    *,
+    historical_contract: bool = True,
 ) -> tuple[dict[str, object], dict[str, object]]:
-    """Re-sign the tiny fixture with the frozen schema-9 worker binding."""
+    """Re-sign the tiny fixture with the frozen schema-9 worker binding.
+
+    ``historical_contract=False`` keeps today's schedule, operator order, and
+    immigration evidence and only lowers the version numbers: the forgery a
+    real schema-9 pool can never be, which the loader must refuse.
+    """
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     dag = manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"]
@@ -1692,21 +1699,42 @@ def _rewrite_as_legacy_relocated_worker_pool(
     # copy of today's: install the frozen content real pools carry, and give
     # the immigration targets the ordinary transfer receipts they had before
     # the paired reconciliation and QRF evidence existed.
-    schedule = json.loads(
-        json.dumps(
-            dict(
-                late_producer_registry_module.legacy_us_late_producer_schedule_receipt()
+    if historical_contract:
+        schedule = json.loads(
+            json.dumps(
+                dict(
+                    late_producer_registry_module.legacy_us_late_producer_schedule_receipt()
+                )
             )
         )
-    )
-    dag["producer_schedule"] = schedule
+        dag["producer_schedule"] = schedule
+        _strip_immigration_transfer_evidence(dag["post_puf_transfer"])
+        for row in dag["execution"]:
+            group_receipt = dag["post_puf_transfer"]["groups"].get(row["producer"])
+            if group_receipt is not None:
+                row["producer_receipt"] = json.loads(json.dumps(group_receipt))
+        manifest["operator_order"] = list(h5_io._SCHEMA9_STACKED_POOL_OPERATOR_ORDER)
+    else:
+        schedule = dag["producer_schedule"]
+        schedule["schema_version"] = 16
+        schedule["execution_receipt_contract"]["version"] = 3
+        schedule["execution_receipt_contract"]["transition_authority"]["version"] = 1
+        schedule["payload_sha256"] = _json_sha256(
+            {
+                key: value
+                for key, value in schedule.items()
+                if key
+                not in {
+                    "payload_sha256",
+                    "producer_count",
+                    "source_producer_count",
+                    "transfer_group_count",
+                    "transfer_target_count",
+                    "status",
+                }
+            }
+        )
     dag["post_puf_transfer"]["producer_schedule"] = json.loads(json.dumps(schedule))
-    _strip_immigration_transfer_evidence(dag["post_puf_transfer"])
-    for row in dag["execution"]:
-        group_receipt = dag["post_puf_transfer"]["groups"].get(row["producer"])
-        if group_receipt is not None:
-            row["producer_receipt"] = json.loads(json.dumps(group_receipt))
-    manifest["operator_order"] = list(h5_io._SCHEMA9_STACKED_POOL_OPERATOR_ORDER)
     dag["post_puf_transfer"]["authority"] = (
         stacked_spine_module._legacy_stacked_authority_receipt()
     )
@@ -2618,6 +2646,52 @@ def test_scoring_loader_accepts_legacy_worker_alias_relocation_only(
             manifest,
             authenticated,
             allow_gate_failed_base_pool=True,
+        )
+
+
+def test_scoring_loader_refuses_version_downgraded_current_contract(
+    tmp_path: Path,
+) -> None:
+    """Lowered version numbers do not make today's contract a schema-9 pool."""
+
+    pytest.importorskip("tables")
+    manifest_path = _write_gate_failed_pool(tmp_path)
+    recorded_worker, semantic_identity = _rewrite_as_legacy_relocated_worker_pool(
+        manifest_path,
+        historical_contract=False,
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    dag = manifest["stage_receipts"]["impute"]["stacked_late_producer_dag"]
+    assert dag["producer_schedule"]["payload_sha256"] != (
+        late_producer_registry_module.LEGACY_SCHEMA16_LATE_PRODUCER_SCHEDULE_PAYLOAD_SHA256
+    )
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+
+    with pytest.raises(ValueError, match="canonical late-DAG operator order"):
+        load_authenticated_us_multispine_pool_for_scoring(
+            manifest_path,
+            expected_manifest_sha256=_sha256(manifest_path),
+            worker_identity_attestation=attestation_path,
+        )
+
+    # Borrowing the historical operator order does not rescue it: the sealed
+    # schedule is still today's content under yesterday's version numbers.
+    manifest["operator_order"] = list(h5_io._SCHEMA9_STACKED_POOL_OPERATOR_ORDER)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    attestation_path = _write_legacy_worker_attestation(
+        manifest_path,
+        recorded_worker=recorded_worker,
+        semantic_identity=semantic_identity,
+    )
+    with pytest.raises(ValueError, match="DAG schedule is not canonical"):
+        load_authenticated_us_multispine_pool_for_scoring(
+            manifest_path,
+            expected_manifest_sha256=_sha256(manifest_path),
+            worker_identity_attestation=attestation_path,
         )
 
 
