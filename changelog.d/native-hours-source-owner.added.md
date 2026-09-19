@@ -1,0 +1,1 @@
+Add a retained source owner for ACS usual-hours proposals, binding original survey records and the complete current ASEC age-15 donor cohort independently of selected household support. ASEC all-age hours and release qualification remain separate.
