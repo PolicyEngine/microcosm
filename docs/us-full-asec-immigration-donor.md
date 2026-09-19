@@ -76,10 +76,16 @@ status assignment and national stock alignment false.
 The tests use tiny invented files through the genuine source issuers: a selected
 preparation omits a household/person retained by the full donor, original row
 orders differ, and exact HSUP_WGT fractions survive. Pure token controls cover
-all 23 fields. Source omissions/duplicates, unresolved weights, malformed owning
-evidence, original-anchor changes, detached copies, output mutation, and late
-I/O mutation are negative controls. No actual population, country model, fit,
-calibration, full-51 proof or legal-status distribution was run.
+all 23 fields. Malformed owning evidence reaches the donor after genuine source
+preparation and refuses with a field-specific code. Independent demographic
+coordinates and ordered household/state alignment have pure mismatch controls.
+Genuine preparations also reach donor refusal for unresolved sex and blank,
+unnamed or out-of-area state codes on a donor omitted by support selection.
+The positive source case asserts the complete ordered person-column surface.
+Original-anchor changes, detached copies, output mutation and late I/O mutation
+are also tested. Omission/duplicate/weight validation belongs to the retained
+preparation, rather than a donor-level refusal claim. No actual population,
+country model, fit, calibration, full-51 proof or legal-status distribution was run.
 
 Later work still requires reviewed #779 rule adoption with per-row observation
 years, explicit admission of its mixed-date stock proxies, source-stable draws,
