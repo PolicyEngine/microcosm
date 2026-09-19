@@ -7,9 +7,10 @@ adds declared amounts, coverage and participation to the existing receiving fram
 
 from __future__ import annotations
 
+import json
 import sys
 import weakref
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 from types import FunctionType, SimpleNamespace
 
 import pandas as pd
@@ -52,6 +53,7 @@ from . import graph_current_survey_health as health_graph
 from . import graph_current_survey_hours as hours_graph
 from . import graph_current_survey_housing as housing_graph
 from . import graph_current_survey_predictors as predictor_graph
+from . import graph_current_survey_spm as spm_graph
 
 parent = values.parent_host
 physical = values.physical
@@ -79,6 +81,7 @@ def _live():
         housing_graph,
         housing_graph.housing,
         housing_graph.participation,
+        spm_graph,
     ):
         for name, item in vars(module).items():
             if type(item) is FunctionType:
@@ -136,6 +139,7 @@ def _live():
             hours_graph.source._live(),
         )
     )
+    result.append(("spm_configuration", spm_graph.PROTOCOL, spm_graph.source._live()))
     result.append(
         (
             "housing_configuration",
@@ -171,6 +175,39 @@ def _hours_after_edge():
         housing_graph.ATTACH_NODE,
         "attachment",
         housing_graph.ATTACHMENT_TYPE,
+    )
+
+
+def _spm_after_edge():
+    return ArtifactInput(
+        "hours_attachment",
+        hours_graph.ATTACH_NODE,
+        "attachment",
+        hours_graph.ATTACHMENT_TYPE,
+    )
+
+
+def _spm_configuration(acs_profile, asec_scope_policy, outside_role_placeholder):
+    """An explicit opt-in; absent ASEC policy retains UNRESOLVED source scope."""
+    if all(
+        x is None for x in (acs_profile, asec_scope_policy, outside_role_placeholder)
+    ):
+        return None
+    require(
+        type(acs_profile) is spm_graph.source.acs.ACSAnalysisProfile
+        and type(outside_role_placeholder) is bool,
+        "SPM_CONFIGURATION",
+    )
+    acs_profile.__post_init__()
+    spm_graph.source._policy(asec_scope_policy)
+    return codec.encode_json(
+        {
+            "acs_profile": asdict(acs_profile),
+            "asec_scope_policy": None
+            if asec_scope_policy is None
+            else asdict(asec_scope_policy),
+            "outside_role_placeholder": outside_role_placeholder,
+        }
     )
 
 
@@ -321,8 +358,23 @@ def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
 class Boundary:
     """Internal retained-value seam; a detached projection cannot construct it."""
 
-    def __init__(self, run, *, groups, n_estimators):
+    def __init__(
+        self,
+        run,
+        *,
+        groups,
+        n_estimators,
+        spm_acs_profile=None,
+        spm_asec_scope_policy=None,
+        spm_outside_role_placeholder=None,
+    ):
         live = _live()
+        self.spm_options = (
+            spm_acs_profile,
+            spm_asec_scope_policy,
+            spm_outside_role_placeholder,
+        )
+        self.spm_configuration = _spm_configuration(*self.spm_options)
         self.run = run
         self.parent_view = parent.check_survey_puf55_run(run)
         self.parent_entry = parent._run_entry(run)
@@ -340,6 +392,38 @@ class Boundary:
             under15_policy=hours_graph.hours.UNDER15_POLICY,
         )
         self.hours_stamp = hours_graph.hours_seal(self.hours)
+        self.spm = None
+        self.spm_entry = self.spm_objects = self.spm_stamp = None
+        self.spm_nodes = ()
+        if self.spm_configuration is not None:
+            self.spm = spm_graph.source.qualify_current_survey_spm(
+                self.preparation,
+                acs_profile=spm_acs_profile,
+                asec_scope_policy=spm_asec_scope_policy,
+            )
+            self.spm_entry = spm_graph.source._ISSUED.get(self.spm)
+            self.spm_objects = self._spm_objects()
+            self.spm_stamp = spm_graph.spm_seal(self.spm)
+            # Refuse incompatible receiving membership or missing roles before
+            # compiling or running any new enrichment fits.
+            preflight = spm_graph.projection.project_spm_inputs(
+                self.spm.source_frame,
+                self.spm.origins,
+                self.spm.roles,
+                self.spm.unit_status,
+                run.population.frame,
+                source_year=2024,
+                year=2024,
+                outside_role_placeholder=spm_outside_role_placeholder,
+            )
+            spm_graph.projection.validate_spm_projection(preflight, self.spm.validate)
+            self.spm_nodes = spm_graph.spm_nodes(
+                self.spm,
+                run.population.frame,
+                receiving_version=parent.attach.FILTER_NODE,
+                after=_spm_after_edge(),
+                outside_role_placeholder=spm_outside_role_placeholder,
+            )
         self.n_estimators = n_estimators
         self.amount_nodes = amount_nodes(
             self.qualified,
@@ -369,6 +453,7 @@ class Boundary:
             *self.health_nodes,
             *self.housing_nodes,
             *self.hours_nodes,
+            *self.spm_nodes,
         )
         self.declaration = tuple(self.nodes)
         self.live = _live()
@@ -382,6 +467,43 @@ class Boundary:
             run.store,
             run.kernels,
             run.sources,
+        )
+        self._spm_pure()
+
+    def _spm_objects(self):
+        return (
+            self.spm.source_frame,
+            self.spm.origins,
+            self.spm.roles,
+            self.spm.unit_status,
+            self.spm.unit_evidence,
+            self.spm.asec_raw,
+        )
+
+    def _spm_pure(self):
+        require(
+            _spm_configuration(*self.spm_options) == self.spm_configuration,
+            "SPM_CONFIGURATION_CHANGED",
+        )
+        if self.spm_configuration is None:
+            require(
+                self.spm is None
+                and self.spm_entry is None
+                and self.spm_objects is None
+                and self.spm_stamp is None
+                and self.spm_nodes == (),
+                "SPM_DISABLED_STATE",
+            )
+            return
+        spm_graph.source._check_retained_output(self.spm, self.spm_entry)
+        require(
+            self.spm._receiving_run is None
+            and all(
+                a is b
+                for a, b in zip(self.spm_objects, self._spm_objects(), strict=True)
+            )
+            and spm_graph.spm_seal(self.spm) == self.spm_stamp,
+            "SPM_BOUNDARY_CHANGED",
         )
 
     def pure(self):
@@ -441,12 +563,25 @@ class Boundary:
                 receiving_version=parent.attach.FILTER_NODE,
                 after=_hours_after_edge(),
             )
+            and self.spm_nodes
+            == (
+                ()
+                if self.spm_configuration is None
+                else spm_graph.spm_nodes(
+                    self.spm,
+                    self.run.population.frame,
+                    receiving_version=parent.attach.FILTER_NODE,
+                    after=_spm_after_edge(),
+                    outside_role_placeholder=self.spm_options[2],
+                )
+            )
             and self.nodes
             == (
                 *self.amount_nodes,
                 *self.health_nodes,
                 *self.housing_nodes,
                 *self.hours_nodes,
+                *self.spm_nodes,
             ),
             "BOUNDARY_DECLARATIONS",
         )
@@ -471,6 +606,7 @@ class Boundary:
                 and graph_to_json(self.compiled.graph) == self.graph_json,
                 "COMPILED_CHANGED",
             )
+        self._spm_pure()
 
     def borrow(self):
         require(
@@ -492,6 +628,8 @@ class Boundary:
                 "SOURCE_OR_IMPLEMENTATION_CHANGED",
             )
         self.hours.validate()
+        if self.spm is not None:
+            self.spm.validate()
         self.pure()
 
     def context(self, context):
@@ -500,7 +638,11 @@ class Boundary:
         # their pure seals; they do not repeatedly reread the full PUF pipeline.
         self.pure()
         require(
-            not context.sources
+            set(context.sources) == set(context.node.sources)
+            and all(
+                context.sources[name] == dict(self.paths)[name]
+                for name in context.sources
+            )
             and context.node in self.nodes
             and set(context.artifacts)
             == {e.name for e in context.node.artifact_inputs},
@@ -553,6 +695,8 @@ class Boundary:
             "HOUSING_SOURCE_REQUALIFICATION_CHANGED",
         )
         self.hours.validate()
+        if self.spm is not None:
+            self.spm.validate()
         self.pure()
 
 
@@ -576,6 +720,8 @@ class _Kernel(KernelBase):
             hours_graph.source,
             hours_graph.hours,
             hours_graph.asec_hours,
+            spm_graph,
+            *spm_graph.source._modules(),
             parent,
             physical,
             predictor_graph,
@@ -737,8 +883,23 @@ class CurrentSurveyAmountAttachKernel(_Kernel):
         return result
 
 
-def _construct(run, *, groups, n_estimators):
-    boundary = Boundary(run, groups=groups, n_estimators=n_estimators)
+def _construct(
+    run,
+    *,
+    groups,
+    n_estimators,
+    spm_acs_profile=None,
+    spm_asec_scope_policy=None,
+    spm_outside_role_placeholder=None,
+):
+    boundary = Boundary(
+        run,
+        groups=groups,
+        n_estimators=n_estimators,
+        spm_acs_profile=spm_acs_profile,
+        spm_asec_scope_policy=spm_asec_scope_policy,
+        spm_outside_role_placeholder=spm_outside_role_placeholder,
+    )
     compiled = compile_graph(
         replace(run.compiled.graph, nodes=(*run.compiled.graph.nodes, *boundary.nodes))
     )
@@ -773,6 +934,18 @@ def _construct(run, *, groups, n_estimators):
     ):
         require(kernel.ref not in kernels.refs(), "HOURS_KERNEL_COLLISION")
         kernels.register(kernel)
+    if boundary.spm is not None:
+        for kernel in spm_graph.spm_kernels(
+            boundary.spm,
+            run.population.frame,
+            receiving_version=parent.attach.FILTER_NODE,
+            after=_spm_after_edge(),
+            outside_role_placeholder=boundary.spm_options[2],
+            require_current=boundary.pure,
+            require_context=boundary.context,
+        ):
+            require(kernel.ref not in kernels.refs(), "SPM_KERNEL_COLLISION")
+            kernels.register(kernel)
     registry = parent._registry(run.store.codecs, codecs.SourceCodecRegistry())
     store = ContentStore(run.store.root, codecs=registry)
     paths, source_keys = _source_paths_and_keys(compiled, dict(run.sources), store)
@@ -939,8 +1112,8 @@ def check_survey_enrichment_run(run):
             "RUN_ARTIFACTS",
         )
         boundary.borrow()
-        require(_run_seal(run) == stamp, "RUN_CHANGED")
         boundary.pure()
+        require(_run_seal(run) == stamp, "RUN_CHANGED")
     except BaseException:
         if _ISSUED.get(id(run)) is entry:
             del _ISSUED[id(run)]
@@ -951,11 +1124,29 @@ def check_survey_enrichment_run(run):
 
 
 def run_us_survey_enrichment(
-    run, *, groups=("unemployment", "health_costs"), n_estimators=100, resume="auto"
+    run,
+    *,
+    groups=("unemployment", "health_costs"),
+    n_estimators=100,
+    resume="auto",
+    spm_acs_profile=None,
+    spm_asec_scope_policy=None,
+    spm_outside_role_placeholder=None,
 ):
-    """Execute one extension and verify its complete observed parent and output."""
+    """Execute and verify enrichment, optionally adding annual source SPM inputs.
+
+    SPM requires an explicit ACS profile and OUTSIDE role representation. An
+    absent ASEC scope policy preserves UNRESOLVED for the country refusal gate.
+    """
     require(resume in ("auto", "require"), "RESUME")
-    boundary = _construct(run, groups=groups, n_estimators=n_estimators)
+    boundary = _construct(
+        run,
+        groups=groups,
+        n_estimators=n_estimators,
+        spm_acs_profile=spm_acs_profile,
+        spm_asec_scope_policy=spm_asec_scope_policy,
+        spm_outside_role_placeholder=spm_outside_role_placeholder,
+    )
     observed, stamps = {}, {}
 
     def observe(node_id, population):
@@ -1036,6 +1227,7 @@ def run_us_survey_enrichment(
     housing_donor = None
     health_ids = {n.id for n in boundary.health_nodes}
     hours_ids = {n.id for n in boundary.hours_nodes}
+    spm_ids = {n.id for n in boundary.spm_nodes}
     group_nodes = {_ids(g)[0]: g for g in boundary.qualified.groups}
     column_nodes = {_ids(g)[1]: g for g in boundary.qualified.groups}
     original = population_ops.Population.from_frame(
@@ -1047,7 +1239,20 @@ def run_us_survey_enrichment(
         if node_id in run.compiled.order:
             current[version] = observed[node_id]
             continue
-        if node_id in hours_ids:
+        if node_id in spm_ids:
+            spm_artifacts = parent._loaded_values(boundary, manifest, loaded, node)
+            spm_result = spm_graph.spm_result(
+                boundary.spm, node, spm_artifacts, current[version].frame
+            )
+            require(
+                all(
+                    loaded[node_id, name] == payload
+                    for name, payload in spm_result.artifacts.items()
+                ),
+                "SPM_RESULT_ARTIFACT",
+            )
+            expected = population_ops.patch(current[version], node, spm_result)
+        elif node_id in hours_ids:
             hours_artifacts = parent._loaded_values(boundary, manifest, loaded, node)
             hours_result = hours_graph.hours_result(
                 boundary.hours, node, hours_artifacts, current[version].frame.person
@@ -1143,6 +1348,18 @@ def run_us_survey_enrichment(
                 mass_ledger=manifest.mass_ledger(version),
             ),
         )
+    spm_receipt = {"enabled": False}
+    if boundary.spm is not None:
+        spm_receipt = {
+            "enabled": True,
+            **json.loads(boundary.spm_configuration),
+            "source_receipt_sha256": codec.sha(boundary.spm.receipt),
+            "source_sha256": codec.sha(loaded[spm_graph.SOURCE_NODE, "source"]),
+            "projection_sha256": codec.sha(
+                loaded[spm_graph.PROJECT_NODE, "projection"]
+            ),
+            "attachment_sha256": codec.sha(loaded[spm_graph.ATTACH_NODE, "attachment"]),
+        }
     receipt = codec.encode_json(
         {
             "protocol": values.PROTOCOL,
@@ -1171,12 +1388,17 @@ def run_us_survey_enrichment(
             ),
             "hours_age15_policy": boundary.hours.proposals.age15_policy,
             "hours_under15_policy": boundary.hours.proposals.under15_policy,
+            "spm": spm_receipt,
             "release_eligible": False,
         }
     )
     output = SurveyEnrichmentRun(
         run,
-        observed[hours_graph.ATTACH_NODE],
+        observed[
+            spm_graph.ATTACH_NODE
+            if boundary.spm is not None
+            else hours_graph.ATTACH_NODE
+        ],
         manifest,
         boundary.compiled,
         boundary.store,
@@ -1208,6 +1430,9 @@ def run_us_survey_enrichment(
         dict(boundary.implementations),
     )
     boundary.borrow()
+    boundary.pure()
+    # All source/artifact I/O and host callbacks precede these detached output
+    # comparisons. Do not add revalidation callbacks after this fence.
     require(
         tuple(sorted((n, a, codec.sha(p)) for (n, a), p in fresh.items()))
         == artifact_hashes
@@ -1215,7 +1440,6 @@ def run_us_survey_enrichment(
         and all(physical._population_stamp(observed[n]) == stamps[n] for n in observed),
         "FINAL_OUTPUT",
     )
-    boundary.pure()
     require(id(output) not in _ISSUED, "RUN_ALREADY_ISSUED")
     ident = id(output)
 

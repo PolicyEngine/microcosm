@@ -203,8 +203,11 @@ def test_generated_snapshot_covers_the_pinned_default_system() -> None:
 
     index = module.PolicyEngineUSVariableMetadataIndex()
     assert len(index._definitions) == 6_167
-    assert len(index.variables()) == 925
-    assert len(index.formula_owned_outputs(index._definitions)) == 5_242
+    # The generated snapshot still records the role's fallback formula. The
+    # country declaration makes it source-owned in the merged dataset index.
+    assert len(index.variables()) == 926
+    assert len(index.formula_owned_outputs(index._definitions)) == 5_241
+    assert "is_spm_independent_minor_role" in index.variables()
     assert index.formula_owned_outputs(["AK", "e00700", "ar_agi", "mi_surtax"]) == {
         "AK",
         "ar_agi",

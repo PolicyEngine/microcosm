@@ -17,9 +17,11 @@ already guarantees them. The one thing it adds is the ``household_weight``
 column, materialized from the frame's typed household weights.
 """
 
+import ast
+import importlib
 import json
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, distribution
@@ -375,10 +377,13 @@ def _installed_policyengine_us_source_parts():
         spm_package_root=Path(spm_package.locate_file("spm_calculator")),
         spm_version=spm_package.version,
     )
-    return package_root, variables_root, generated
+    source_inputs = _source_dataset_source_inputs(
+        package_root, Path(spm_package.locate_file("spm_calculator"))
+    )
+    return package_root, variables_root, generated, source_inputs
 
 
-def _merge_installed_variable_definitions(ordinary, generated):
+def _merge_installed_variable_definitions(ordinary, generated, source_inputs):
     definitions = dict(ordinary)
     duplicates = sorted(set(definitions) & set(generated))
     if duplicates:
@@ -387,28 +392,41 @@ def _merge_installed_variable_definitions(ordinary, generated):
             f"classes: {duplicates}."
         )
     definitions.update(generated)
+    _validate_source_input_names(source_inputs, definitions)
+    # Preserve the audited formula snapshot. Dataset ownership is a separate
+    # country declaration; both ordinary and generated fallbacks obey it.
+    for name in source_inputs:
+        definitions[name] = replace(
+            definitions[name], always_computed=False, formula_starts=()
+        )
     return MappingProxyType(definitions)
 
 
 @lru_cache(maxsize=1)
 def _installed_policyengine_us_variable_definitions():
     """Installed ordinary/generated ownership metadata, with the same audits."""
-    _, variables_root, generated = _installed_policyengine_us_source_parts()
+    _, variables_root, generated, source_inputs = (
+        _installed_policyengine_us_source_parts()
+    )
     return _merge_installed_variable_definitions(
-        _index_policyengine_us_variable_sources(variables_root), generated
+        _index_policyengine_us_variable_sources(variables_root),
+        generated,
+        source_inputs,
     )
 
 
 @lru_cache(maxsize=1)
 def _installed_policyengine_us_variable_sources() -> _PolicyEngineUSSourceIndex:
-    package_root, variables_root, generated = _installed_policyengine_us_source_parts()
+    package_root, variables_root, generated, source_inputs = (
+        _installed_policyengine_us_source_parts()
+    )
     source_index = _index_policyengine_us_sources(
         variables_root,
         parameters_root=package_root / "parameters",
     )
     return _PolicyEngineUSSourceIndex(
         definitions=_merge_installed_variable_definitions(
-            source_index.definitions, generated
+            source_index.definitions, generated, source_inputs
         ),
         consumers=source_index.consumers,
     )
@@ -490,18 +508,22 @@ class PolicyEngineUSVariableMetadataIndex:
 
         reachable: set[str] = set()
         edges: set[tuple[str, str]] = set()
+        inputs = set(self.variables())
         pending = [name]
         while pending:
             consumer = pending.pop()
             if consumer in reachable:
                 continue
             reachable.add(consumer)
+            if consumer in inputs:
+                # A declared source observation replaces its household fallback;
+                # the fallback's own dependencies are not dataset requirements.
+                continue
             for target in dependencies.get(consumer, ()):
                 edges.add((consumer, target))
                 if target not in reachable:
                     pending.append(target)
 
-        inputs = set(self.variables())
         input_leaves = tuple(sorted(reachable & inputs))
         formula_nodes = tuple(sorted(reachable - inputs))
         ordered_edges = tuple(sorted(edges))
@@ -560,6 +582,229 @@ class PolicyEngineUSVariableMetadataIndex:
             and (definition := self._definitions.get(name)) is not None
             and definition.computed_at(period)
         }
+
+
+def _validate_dataset_source_inputs(
+    declared: object, rejected: object
+) -> frozenset[str]:
+    """Validate the consuming country's explicit source/derived boundary."""
+    for name, value in (
+        ("DATASET_SOURCE_INPUTS", declared),
+        ("REJECTED_DATASET_INPUTS", rejected),
+    ):
+        if type(value) is not frozenset or not all(
+            type(item) is str and item.isidentifier() for item in value
+        ):
+            raise RuntimeError(f"{name} must be a frozenset of variable names.")
+    if not declared:
+        raise RuntimeError("DATASET_SOURCE_INPUTS must not be empty.")
+    overlap = declared & (rejected | _FORMULA_OWNED_COMPAT_COLUMNS)
+    if overlap:
+        raise RuntimeError(
+            "Country dataset source inputs overlap rejected/formula-owned "
+            f"inputs: {sorted(overlap)}."
+        )
+    return declared
+
+
+def _validate_source_input_names(source_inputs, variables):
+    unknown = source_inputs - variables.keys()
+    if unknown:
+        raise RuntimeError(f"Unknown country dataset source inputs: {sorted(unknown)}.")
+
+
+def _engine_dataset_source_inputs(policyengine_us: Any) -> frozenset[str]:
+    """Read source ownership from the consuming engine, never a local name list."""
+    spm = importlib.import_module(f"{policyengine_us.__name__}.spm")
+    return _validate_dataset_source_inputs(
+        getattr(spm, "DATASET_SOURCE_INPUTS", None),
+        getattr(spm, "REJECTED_DATASET_INPUTS", None),
+    )
+
+
+def _source_dataset_source_inputs(
+    package_root: Path, spm_package_root: Path
+) -> frozenset[str]:
+    """Read the same declarations statically, without importing either model.
+
+    Only literal containers inside frozenset, immutable constant references/unions and
+    the calculator's FORMULA_OWNED_INPUTS import are supported. Unknown or
+    rebound expressions refuse instead of executing country initialization.
+    Generated-variable version/source audits remain independent and unchanged.
+    """
+    country_path = package_root / "spm.py"
+    calculator_path = spm_package_root / "policyengine_adapter.py"
+    trees = {}
+    visiting = set()
+
+    def binds_name(statement, name):
+        """Inspect explicit import-time bindings, excluding function bodies."""
+        pending = [statement]
+        while pending:
+            node = pending.pop()
+            if (
+                isinstance(node, ast.Name)
+                and isinstance(node.ctx, (ast.Store, ast.Del))
+                and node.id == name
+            ):
+                return True
+            if isinstance(node, (ast.Import, ast.ImportFrom)) and any(
+                (alias.asname or alias.name.split(".")[0]) == name
+                for alias in node.names
+            ):
+                return True
+            if (
+                isinstance(
+                    node,
+                    (
+                        ast.FunctionDef,
+                        ast.AsyncFunctionDef,
+                        ast.ClassDef,
+                        ast.ExceptHandler,
+                        ast.MatchAs,
+                        ast.MatchStar,
+                    ),
+                )
+                and node.name == name
+            ):
+                return True
+            if isinstance(node, ast.MatchMapping) and node.rest == name:
+                return True
+            for field, child in ast.iter_fields(node):
+                if field == "body" and isinstance(
+                    node, (ast.FunctionDef, ast.AsyncFunctionDef)
+                ):
+                    continue
+                if isinstance(child, ast.AST):
+                    pending.append(child)
+                elif isinstance(child, list):
+                    pending.extend(item for item in child if isinstance(item, ast.AST))
+        return False
+
+    def declaration(path, name):
+        key = (path, name)
+        if key in visiting:
+            raise RuntimeError(f"Cyclic dataset ownership declaration: {name}.")
+        if path not in trees:
+            try:
+                trees[path] = ast.parse(path.read_text(), filename=str(path))
+            except (OSError, SyntaxError) as exc:
+                raise RuntimeError(
+                    f"Dataset ownership source unavailable: {path}."
+                ) from exc
+            if any(
+                isinstance(node, ast.ImportFrom)
+                and any(alias.name == "*" for alias in node.names)
+                for node in ast.walk(trees[path])
+            ):
+                raise RuntimeError(
+                    "Wildcard imports cannot establish static dataset ownership."
+                )
+        bindings = []
+        for statement in trees[path].body:
+            if isinstance(
+                statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+            ):
+                if statement.name == name:
+                    raise RuntimeError(
+                        f"Nonconstant dataset ownership declaration: {name}."
+                    )
+                if binds_name(statement, name):
+                    # Defaults/decorators/bases and class bodies execute while
+                    # importing; only function bodies are deferred.
+                    raise RuntimeError(
+                        f"Dynamic dataset ownership declaration: {name}."
+                    )
+                continue
+            if isinstance(statement, ast.ImportFrom):
+                for alias in statement.names:
+                    if (alias.asname or alias.name) == name:
+                        bindings.append((statement, alias))
+            elif isinstance(statement, ast.Import):
+                if any(
+                    (a.asname or a.name.split(".")[0]) == name for a in statement.names
+                ):
+                    raise RuntimeError(f"Unsupported dataset ownership import: {name}.")
+            elif binds_name(statement, name):
+                if (
+                    isinstance(statement, ast.Assign)
+                    and len(statement.targets) == 1
+                    and isinstance(statement.targets[0], ast.Name)
+                    and statement.targets[0].id == name
+                ):
+                    bindings.append((statement.value, None))
+                elif (
+                    isinstance(statement, ast.AnnAssign)
+                    and isinstance(statement.target, ast.Name)
+                    and statement.target.id == name
+                    and statement.value is not None
+                ):
+                    bindings.append((statement.value, None))
+                else:
+                    raise RuntimeError(
+                        f"Dynamic dataset ownership declaration: {name}."
+                    )
+        if len(bindings) != 1:
+            raise RuntimeError(
+                f"Missing or rebound dataset ownership declaration: {name}."
+            )
+        node, alias = bindings[0]
+        visiting.add(key)
+        try:
+            if alias is not None:
+                if (
+                    path != country_path
+                    or node.level
+                    or node.module != "spm_calculator.policyengine_adapter"
+                    or alias.name != "FORMULA_OWNED_INPUTS"
+                ):
+                    raise RuntimeError(f"Unsupported dataset ownership import: {name}.")
+                return declaration(calculator_path, alias.name)
+            resolved = value(path, node)
+            if type(resolved) is not frozenset:
+                # A list/set alias may be mutated by a later call without any
+                # assignment node. Never infer its final runtime contents.
+                raise RuntimeError(
+                    f"Dataset ownership constant {name} must be an immutable frozenset."
+                )
+            return resolved
+        finally:
+            visiting.remove(key)
+
+    def value(path, node):
+        if isinstance(node, ast.Name):
+            return declaration(path, node.id)
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "frozenset"
+            and len(node.args) <= 1
+            and not node.keywords
+        ):
+            # A rebound constructor cannot be interpreted as the builtin.
+            shadowed = any(
+                binds_name(statement, "frozenset") for statement in trees[path].body
+            )
+            if shadowed:
+                raise RuntimeError(
+                    "Rebound frozenset in dataset ownership declaration."
+                )
+            return frozenset(value(path, node.args[0])) if node.args else frozenset()
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.BitOr):
+            left, right = value(path, node.left), value(path, node.right)
+            if type(left) in (set, frozenset) and type(right) in (set, frozenset):
+                return left | right
+        if isinstance(node, (ast.Set, ast.List, ast.Tuple, ast.Constant)):
+            return ast.literal_eval(node)
+        raise RuntimeError("Unsupported dataset ownership expression.")
+
+    try:
+        return _validate_dataset_source_inputs(
+            declaration(country_path, "DATASET_SOURCE_INPUTS"),
+            declaration(country_path, "REJECTED_DATASET_INPUTS"),
+        )
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("Malformed dataset ownership declaration.") from exc
 
 
 def _is_engine_computed(variable: Any, period: int | str | None = None) -> bool:
@@ -701,7 +946,7 @@ class PolicyEngineUSEngine:
         )
 
     def variables(self) -> list[str]:
-        """Return the engine's input variable names (those without a formula).
+        """Return input leaves, including the country's declared source inputs.
 
         Computed/formula-owned variables are excluded — a pool produces inputs,
         not outputs.
@@ -710,11 +955,12 @@ class PolicyEngineUSEngine:
             ImportError: If ``policyengine_us`` is not installed.
         """
         system_variables = self._tax_benefit_system().variables
+        source_inputs = self._dataset_source_inputs()
         return sorted(
             name
             for name, variable in system_variables.items()
             if name not in _FORMULA_OWNED_COMPAT_COLUMNS
-            and not _is_engine_computed(variable)
+            and (name in source_inputs or not _is_engine_computed(variable))
         )
 
     def formula_owned_outputs(self, names: Iterable[str]) -> set[str]:
@@ -740,10 +986,13 @@ class PolicyEngineUSEngine:
             ImportError: If ``policyengine_us`` is not installed.
         """
         variables = self._tax_benefit_system().variables
+        source_inputs = self._dataset_source_inputs()
         flagged: set[str] = set()
         for name in names:
             if name in _FORMULA_OWNED_COMPAT_COLUMNS:
                 flagged.add(name)
+                continue
+            if name in source_inputs:
                 continue
             variable = variables.get(name)
             if variable is not None and _is_engine_computed(variable):
@@ -847,17 +1096,24 @@ class PolicyEngineUSEngine:
         Only names the tax-benefit system knows as non-formula input
         variables with a declared default are returned; unknown names and
         formula-owned variables are silently omitted, so callers can pass a
-        whole export surface. Enum defaults are normalized to their stored
+        whole export surface. Declared source inputs are also omitted: accepting
+        an observation does not authorize inventing a missing one.
+        Enum defaults are normalized to their stored
         member name (the representation datasets persist).
 
         Raises:
             ImportError: If ``policyengine_us`` is not installed.
         """
         variables = self._tax_benefit_system().variables
+        source_inputs = self._dataset_source_inputs()
         defaults: dict[str, object] = {}
         for name in names:
             variable = variables.get(name)
-            if variable is None or _is_engine_computed(variable):
+            if (
+                variable is None
+                or name in source_inputs
+                or _is_engine_computed(variable)
+            ):
                 continue
             default = getattr(variable, "default_value", None)
             if default is None:
@@ -1026,6 +1282,12 @@ class PolicyEngineUSEngine:
     # Lazy engine plumbing
     # ------------------------------------------------------------------
 
+    def _dataset_source_inputs(self) -> frozenset[str]:
+        """Source ownership is independent of a household fallback formula."""
+        declared = _engine_dataset_source_inputs(self._import_policyengine_us())
+        _validate_source_input_names(declared, self._tax_benefit_system().variables)
+        return declared
+
     def _import_policyengine_us(self) -> Any:
         try:
             import policyengine_us
@@ -1109,12 +1371,14 @@ class PolicyEngineUSEngine:
         writer is called, after checking aggregate deltas.
         """
         variables = self._tax_benefit_system().variables
+        source_inputs = self._dataset_source_inputs()
         present = {column for frame in tables.values() for column in frame.columns}
         structural = self._structural_columns()
         return set(present & _FORMULA_OWNED_COMPAT_COLUMNS) | {
             column
             for column in present
             if column not in structural
+            and column not in source_inputs
             and column in variables
             and _is_engine_computed(variables[column], period=period)
         }

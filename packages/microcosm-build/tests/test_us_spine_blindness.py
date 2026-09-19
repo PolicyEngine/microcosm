@@ -148,6 +148,9 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # clone/original identity diagnostics. Fits nothing, assigns no amounts,
         # and grants no source or complete-parent authority.
         "current_property_completion_routing.py",
+        # Exact original/clone person, household and SPM-unit membership only;
+        # source qualification stays with the retained owner, with no model routing.
+        "current_survey_spm_projection.py",
         # Original ASEC pension/disability/survivor details; no population model.
         "current_asec_retirement_detail_source.py",
         "current_asec_unemployment_source.py",  # UC literal -> original ASEC ids.
@@ -443,6 +446,11 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         # Borrowed full/current ASEC and selected ACS immigration literals;
         # status assignment and source-weight/stock alignment remain separate.
         "current_survey_immigration_source.py",
+        # Retained original SPM literals, complete clone projection and graph
+        # attachment; no country model or source-routed population treatment.
+        "current_survey_spm_source.py",
+        "current_survey_spm_projection.py",
+        "graph_current_survey_spm.py",
         # Retained housing observations, original-design donors and exact clone joins
         "current_survey_housing.py",
         # Qualified original reference-person observations and exact clone bind.
@@ -3567,6 +3575,11 @@ _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
         # Source joins are delegated to reviewed owners; direct provenance
         # reads remain guarded rather than exempting this whole module.
         "current_survey_immigration_source.py",
+        # Retained issuance tuples, original-source keys and complete-unit maps.
+        # Direct provenance access remains guarded rather than exempted.
+        "current_survey_spm_source.py",
+        # Fixed qualification fields and declared typed artifact names only.
+        "graph_current_survey_spm.py",
         # Schema-declared entities/columns and typed node/artifact/state maps;
         # source-specific joins remain in the separately reviewed owners.
         "graph_survey_completion.py",
@@ -3649,6 +3662,8 @@ def _non_owner_source_spine_accesses(
         "current_child_property_income_source.py",
         "current_survey_hours.py",
         "current_survey_immigration_source.py",
+        "current_survey_spm_source.py",
+        "graph_current_survey_spm.py",
         "graph_survey_completion.py",
         "current_survey_primary_family.py",
         "graph_survey_completion_host.py",
@@ -3696,6 +3711,17 @@ def pick(table):
 
 def test_native_immigration_projection_keeps_the_scoped_provenance_guard():
     module = "current_survey_immigration_source.py"
+    source = (_US_RUNTIME / module).read_text()
+    assert module in _US_LAUNCH_GRAPH_RUNTIME_MODULES
+    assert module not in _SOURCE_SPINE_PROVENANCE_OWNERS
+    assert _source_spine_accesses(source)  # The dynamic selectors are scanned.
+    assert _non_owner_source_spine_accesses(module, source) == ()
+
+
+@pytest.mark.parametrize(
+    "module", ["current_survey_spm_source.py", "graph_current_survey_spm.py"]
+)
+def test_native_spm_source_and_graph_keep_the_scoped_provenance_guard(module):
     source = (_US_RUNTIME / module).read_text()
     assert module in _US_LAUNCH_GRAPH_RUNTIME_MODULES
     assert module not in _SOURCE_SPINE_PROVENANCE_OWNERS

@@ -1,0 +1,1 @@
+Add an explicitly configured three-node survey enrichment fragment for retained SPM roles and annual universe scope, with complete-unit transport, replay verification and final source/output validation.

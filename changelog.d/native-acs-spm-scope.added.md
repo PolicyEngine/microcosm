@@ -1,0 +1,1 @@
+Add a pure ACS 2024 household-only SPM scope classifier that preserves nullable roles, source-evidence labels and household-wide uncertainty, and validates native membership mappings without issuing source authority or running a country model.
