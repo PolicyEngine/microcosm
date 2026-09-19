@@ -1,7 +1,7 @@
 """Development handoff from an issued native owner to maintained Frame consumers.
 
-No assembly, cloning, fitting, default filling, engine projection or calibration
-occurs here. A checkpoint is descriptive storage, never a replacement issuer.
+No assembly, cloning, fitting, default filling or calibration occurs here.
+The explicit engine projection only selects cells and stays unqualified. A checkpoint is descriptive storage, never a replacement issuer.
 Release admission still belongs to the maintained builder's scientific gates.
 """
 
@@ -324,3 +324,426 @@ def write_native_survey_development_checkpoint(
         # must not leave a completed-looking handoff document.
         (Path(directory) / "handoff.json").unlink(missing_ok=True)
         raise
+
+
+@dataclass(frozen=True)
+class NativeSurveyEngineProjectionSpec:
+    """Small caller declaration, not a qualified consumer or input contract.
+
+    ``columns`` lists all six entities, each with ordered (name, exact dtype
+    string) pairs, including structural columns. Optional enum domains contain
+    strings only and apply to known cells; nulls are preserved. An optional
+    integer consumer ID dtype requests a losslessness check, never a cast.
+    Required/optional names must also permit the Frame's typed weight inputs;
+    those weights are preserved separately, never added as source columns.
+    Consumer identity and SPM settings are descriptive and remain unqualified.
+    """
+
+    period: int | str
+    consumer_identity: str
+    columns: tuple[tuple[str, tuple[tuple[str, str], ...]], ...]
+    export_contract: ExportContract
+    enum_domains: tuple[tuple[str, str, tuple[str, ...]], ...] = ()
+    consumer_id_dtype: str | None = None
+    spm_settings: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class NativeSurveyEngineProjection:
+    """Borrowed source view and detached selection; neither issues authority."""
+
+    source_frame: Frame
+    frame: Frame
+    report: dict
+
+
+def _projection_require(condition, code):
+    if not condition:
+        raise ValueError("NATIVE_ENGINE_PROJECTION_" + code)
+
+
+def _projection_spec_bytes(spec):
+    _projection_require(type(spec) is NativeSurveyEngineProjectionSpec, "DECLARATION")
+    _projection_require(type(spec.export_contract) is ExportContract, "CONTRACT_TYPE")
+    return _json(asdict(spec))
+
+
+def _projection_context(frame):
+    from microcosm.frame import MassChangeRecord, Weights
+
+    _projection_require(
+        all(type(row) is MassChangeRecord for row in frame.mass_log)
+        and all(
+            type(frame.weights_for(entity)) is Weights
+            for entity in frame.weighted_entities
+        ),
+        "CONTEXT_TYPES",
+    )
+    return _json(
+        {
+            "schema": asdict(frame.schema),
+            "entities": frame.entities,
+            "links": frame.links,
+            "metadata": _encode_frame_metadata(frame.metadata),
+            "mass_log": [asdict(row) for row in frame.mass_log],
+            "weights": [
+                {
+                    "entity": entity,
+                    "kind": frame.weights_for(entity).kind.value,
+                    "dtype": frame.weights_for(entity).values.dtype.str,
+                    "shape": frame.weights_for(entity).values.shape,
+                    "sha256": hashlib.sha256(
+                        frame.weights_for(entity).values.tobytes()
+                    ).hexdigest(),
+                }
+                for entity in frame.weighted_entities
+            ],
+            "strata": native.physical._table_stamp(frame.strata.to_frame()),
+        }
+    )
+
+
+def _projection_stamp(frame):
+    """Small in-process comparison digest; never an owner/source credential."""
+    return hashlib.sha256(
+        _json(
+            {
+                "context": hashlib.sha256(_projection_context(frame)).hexdigest(),
+                "tables": [
+                    (entity, native.physical._table_stamp(frame.table(entity)))
+                    for entity in frame.entities
+                ],
+            }
+        )
+    ).hexdigest()
+
+
+def _compare_engine_projection(source, projected, spec):
+    """Pure exact selection comparison, including storage under null masks."""
+    import pandas as pd
+
+    from microcosm.graph.population import storage_equal
+
+    _projection_require(
+        _projection_context(source) == _projection_context(projected), "FRAME_CONTEXT"
+    )
+    for entity, declarations in spec.columns:
+        original = source.table(entity)
+        actual = projected.table(entity)
+        selected = original.loc[:, [name for name, _ in declarations]]
+        _projection_require(
+            selected.index.identical(actual.index)
+            and selected.columns.identical(actual.columns)
+            and selected.flags == actual.flags
+            and storage_equal(
+                pd.Series(selected.index.array), pd.Series(actual.index.array)
+            ),
+            "AXES",
+        )
+        _projection_require(
+            all(storage_equal(selected[name], actual[name]) for name in selected),
+            "SELECTED_STORAGE",
+        )
+
+
+def _project_native_survey_frame(frame, spec):
+    """Pure mechanical projection for small invented tests; grants no authority.
+
+    This does not establish consumer, source signal, applicability or scientific
+    domain validity, even when every caller-declared dtype/enum check matches.
+    """
+    import numpy as np
+
+    from microcosm.build.spm_input_contract import UNIVERSE_INPUT, UNIVERSE_STATUSES
+    from microcosm.frame import MassChangeRecord, WeightKind, Weights
+    from microcosm.frame.units import US_SCHEMA
+
+    try:
+        declaration = _projection_spec_bytes(spec)
+        _projection_require(
+            isinstance(frame, Frame) and frame.schema == US_SCHEMA and not frame.links,
+            "SCHEMA",
+        )
+        _projection_require(
+            type(spec.columns) is tuple
+            and tuple(e for e, _ in spec.columns) == US_SCHEMA.entities,
+            "ENTITY_ROSTER",
+        )
+        _projection_require(
+            type(spec.period) in (int, str) and bool(str(spec.period)), "PERIOD"
+        )
+        _projection_require(
+            type(spec.consumer_identity) is str and bool(spec.consumer_identity),
+            "CONSUMER_DESCRIPTION",
+        )
+        _projection_require(
+            type(spec.spm_settings) is tuple
+            and all(
+                type(k) is str and type(v) is str and k and v
+                for k, v in spec.spm_settings
+            )
+            and len(dict(spec.spm_settings)) == len(spec.spm_settings),
+            "SPM_DESCRIPTION",
+        )
+        contract = spec.export_contract
+        _projection_require(contract.closed is True, "CLOSED_CONTRACT")
+        rosters = (
+            contract.required,
+            contract.optional,
+            contract.forbidden,
+            contract.formula_owned_excluded,
+        )
+        _projection_require(
+            all(
+                type(row) is tuple
+                and all(type(v) is str and v for v in row)
+                and len(set(row)) == len(row)
+                for row in rosters
+            ),
+            "CONTRACT_ROSTER",
+        )
+        _projection_require(
+            not (set(contract.required) & set(contract.optional)), "CONTRACT_ROSTER"
+        )
+        excluded = (
+            set(contract.forbidden)
+            | set(contract.formula_owned_excluded)
+            | set(US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS)
+        )
+        allowed = set(contract.required) | set(contract.optional)
+        _projection_require(not (allowed & excluded), "EXCLUDED_INPUT")
+        _projection_require(
+            frame.weighted_entities == ("household",)
+            and frame.weights_for("household").kind is WeightKind.IMPORTANCE,
+            "WEIGHT_TOPOLOGY",
+        )
+        consumer_dtype = (
+            None if spec.consumer_id_dtype is None else np.dtype(spec.consumer_id_dtype)
+        )
+        _projection_require(
+            consumer_dtype is None or consumer_dtype.kind in ("i", "u"), "ID_CAST_DTYPE"
+        )
+        typed_weight_names = {entity + "_weight" for entity in frame.weighted_entities}
+        _projection_require(not (typed_weight_names & excluded), "EXCLUDED_INPUT")
+        _projection_require(typed_weight_names <= allowed, "UNDECLARED_TYPED_WEIGHT")
+        tables, report_columns, excluded_columns = {}, [], []
+        projected_names = set()
+        for entity, declarations in spec.columns:
+            _projection_require(
+                type(declarations) is tuple
+                and all(
+                    type(name) is str and type(dtype) is str and name and dtype
+                    for name, dtype in declarations
+                ),
+                "COLUMN_DECLARATION",
+            )
+            names = tuple(name for name, _ in declarations)
+            _projection_require(len(set(names)) == len(names), "COLUMN_ROSTER")
+            structural = {frame.schema.entity_id_column(entity)}
+            if entity == frame.schema.person_entity:
+                structural |= {
+                    frame.schema.membership_column(group)
+                    for group in frame.schema.group_entities
+                }
+            _projection_require(structural <= set(names), "STRUCTURAL_COLUMNS")
+            original = frame.table(entity)
+            for name, dtype in declarations:
+                owners = [e for e in frame.entities if name in frame.table(e)]
+                _projection_require(bool(owners), "MISSING_COLUMN")
+                _projection_require(owners == [entity], "COLUMN_ENTITY")
+                _projection_require(name not in excluded, "EXCLUDED_INPUT")
+                _projection_require(
+                    name in allowed or name in structural, "UNDECLARED_INPUT"
+                )
+                series = original[name]
+                _projection_require(str(series.dtype) == dtype, "COLUMN_DTYPE")
+                if name in structural:
+                    values = series.to_numpy(copy=False)
+                    _projection_require(
+                        values.dtype.kind in ("i", "u") and not series.isna().any(),
+                        "ID_DTYPE",
+                    )
+                    if consumer_dtype is not None and len(values):
+                        bounds = np.iinfo(consumer_dtype)
+                        _projection_require(
+                            int(values.min()) >= bounds.min
+                            and int(values.max()) <= bounds.max,
+                            "ID_CAST_RANGE",
+                        )
+                        _projection_require(
+                            np.array_equal(
+                                values,
+                                values.astype(consumer_dtype).astype(values.dtype),
+                            ),
+                            "ID_CAST_ROUNDTRIP",
+                        )
+                report_columns.append(
+                    {
+                        "entity": entity,
+                        "column": name,
+                        "dtype": dtype,
+                        "rows": len(series),
+                        "null_count": int(series.isna().sum()),
+                    }
+                )
+            # Frame construction below owns the detached copies.
+            tables[entity] = original.loc[:, list(names)]
+            projected_names.update(names)
+            excluded_columns.extend(
+                {"entity": entity, "column": name, "rows": len(original)}
+                for name in original
+                if name not in names
+            )
+        _projection_require(
+            set(contract.required) <= projected_names | typed_weight_names,
+            "MISSING_REQUIRED",
+        )
+        _projection_require(type(spec.enum_domains) is tuple, "ENUM_DECLARATION")
+        seen_domains = set()
+        for entity, column, values in spec.enum_domains:
+            _projection_require(
+                (entity, column) not in seen_domains
+                and entity in tables
+                and column in tables[entity]
+                and type(values) is tuple
+                and values
+                and all(type(v) is str for v in values)
+                and len(set(values)) == len(values),
+                "ENUM_DECLARATION",
+            )
+            seen_domains.add((entity, column))
+            known = tables[entity][column].dropna()
+            _projection_require(bool(known.isin(values).all()), "DECLARED_DOMAIN")
+        projected = Frame(
+            tables,
+            frame.schema,
+            {
+                entity: Weights(
+                    frame.weights_for(entity).values, frame.weights_for(entity).kind
+                )
+                for entity in frame.weighted_entities
+            },
+            frame.strata.copy(deep=True),
+            metadata=frame.metadata,
+            mass_log=tuple(MassChangeRecord(**asdict(row)) for row in frame.mass_log),
+        )
+        _compare_engine_projection(frame, projected, spec)
+        status = projected.table("spm_unit").get(UNIVERSE_INPUT)
+        report = {
+            "protocol": "microcosm.us.native-survey-engine-projection.v1",
+            "declaration_kind": "caller_supplied_unqualified",
+            "declaration_sha256": hashlib.sha256(declaration).hexdigest(),
+            "declared_consumer_identity": spec.consumer_identity,
+            "declared_period": spec.period,
+            "declared_spm_settings": dict(spec.spm_settings),
+            "consumer_id_dtype": spec.consumer_id_dtype,
+            "id_cast_performed": False,
+            "typed_weight_inputs": [
+                {
+                    "entity": entity,
+                    "name": entity + "_weight",
+                    "kind": frame.weights_for(entity).kind.value,
+                    "rows": frame.n(entity),
+                    "materialized_as_source_column": False,
+                }
+                for entity in frame.weighted_entities
+            ],
+            "columns": report_columns,
+            "excluded_columns": excluded_columns,
+            "projected_frame_sha256": _projection_stamp(projected),
+            "source_context_sha256": hashlib.sha256(
+                _projection_context(frame)
+            ).hexdigest(),
+            "headship_unknown_count": None
+            if "is_household_head" not in projected.person
+            else int(projected.person.is_household_head.isna().sum()),
+            "spm_status_counts": None
+            if status is None
+            else {
+                name: int(status.eq(name).sum()) for name in sorted(UNIVERSE_STATUSES)
+            },
+            "spm_status_null_count": None
+            if status is None
+            else int(status.isna().sum()),
+            "spm_status_other_count": None
+            if status is None
+            else int((status.notna() & ~status.isin(UNIVERSE_STATUSES)).sum()),
+            "consumer_qualified": False,
+            "period_qualified": False,
+            "formula_ownership_qualified": False,
+            "source_signal_qualified": False,
+            "domain_qualified": False,
+            "source_applicability_qualified": False,
+            "simulation_ready": False,
+            "release_eligible": False,
+            "source_owner_required": True,
+            "source_defaults_filled": False,
+            "enrichment_repeated": False,
+        }
+        _json(report)
+        return NativeSurveyEngineProjection(frame, projected, report)
+    except (KeyError, TypeError, ValueError, OverflowError) as error:
+        if type(error) is ValueError and str(error).startswith(
+            "NATIVE_ENGINE_PROJECTION_"
+        ):
+            raise
+        # Frame/schema codecs may include row examples in their errors. Never
+        # expose those through this descriptive native-reporting entry point.
+        raise ValueError("NATIVE_ENGINE_PROJECTION_STRUCTURE") from None
+
+
+def _validate_engine_projection_after_owner_io(result, spec, final, *, expected):
+    """Pure last-fence comparisons; supplied descriptive values issue nothing."""
+    try:
+        owner_digest, population, frame_stamp, report_bytes, declaration_bytes = (
+            expected
+        )
+        _projection_require(
+            final.digest == owner_digest
+            and final.population is population
+            and final.population.frame is result.source_frame,
+            "OWNER_CHANGED",
+        )
+        _projection_require(
+            _projection_spec_bytes(spec) == declaration_bytes, "DECLARATION_CHANGED"
+        )
+        _projection_require(
+            _projection_stamp(result.frame) == frame_stamp
+            and _json(result.report) == report_bytes,
+            "RESULT_CHANGED",
+        )
+        _compare_engine_projection(result.source_frame, result.frame, spec)
+    except (KeyError, TypeError, ValueError, OverflowError) as error:
+        if type(error) is ValueError and str(error).startswith(
+            "NATIVE_ENGINE_PROJECTION_"
+        ):
+            raise
+        raise ValueError("NATIVE_ENGINE_PROJECTION_FINAL_STRUCTURE") from None
+
+
+def prepare_native_survey_engine_input(
+    run: native.SurveyEnrichmentRun, *, declaration: NativeSurveyEngineProjectionSpec
+) -> NativeSurveyEngineProjection:
+    """Select cells from a live issued owner without admitting an engine consumer.
+
+    Source and projected views remain separate. Checkpoints, receipts, Frames,
+    and forged run dataclasses cannot pass the existing owner's public check.
+    No engine is imported and no source variable is cast, filled, or recomputed.
+    """
+    # Authenticate before even examining the caller's descriptive declaration.
+    borrowed = inspect_native_survey_release_input(run)
+    population = run.population
+    result = _project_native_survey_frame(borrowed.frame, declaration)
+    result.report["owner_receipt_sha256"] = borrowed.report["owner_receipt_sha256"]
+    expected = (
+        borrowed.report["owner_receipt_sha256"],
+        population,
+        _projection_stamp(result.frame),
+        _json(result.report),
+        _projection_spec_bytes(declaration),
+    )
+    final = native.check_survey_enrichment_run(run)
+    _validate_engine_projection_after_owner_io(
+        result, declaration, final, expected=expected
+    )
+    return result
