@@ -191,6 +191,28 @@ def recode_acs_usual_hours(row: Mapping[str, str]) -> HoursProposal:
     )
 
 
+def _asec_allocation_flags(row):
+    flags = []
+    for name in ALLOCATION_FLAGS:
+        value = _integer(row[name], low=0, high=9)
+        _require(
+            value in ((0, 1, 2, 3) if name == "FL_665" else (0, 1, 9)),
+            "ASEC_ALLOCATION",
+        )
+        flags.append((name, value))
+    return tuple(flags)
+
+
+def _asec_work_consistency(hours, weeks, initial, temporary, final):
+    positive = hours > 0
+    _require(positive == (weeks > 0) == (final == 1), "ASEC_WORK_CONTRADICTION")
+    _require(initial != 1 or positive, "ASEC_WORK_CONTRADICTION")
+    _require(temporary != 1 or positive, "ASEC_WORK_CONTRADICTION")
+    _require(
+        not (initial == 2 and temporary == 2 and positive), "ASEC_WORK_CONTRADICTION"
+    )
+
+
 def recode_asec_age15_hours(row: Mapping[str, str]) -> HoursProposal:
     """Recode a supplied March2025 age15 donor, without qualifying its source.
 
@@ -207,27 +229,15 @@ def recode_asec_age15_hours(row: Mapping[str, str]) -> HoursProposal:
     temporary = _integer(row["WTEMP"], low=0, high=2)
     final = _integer(row["WRK_CK"], low=1, high=2)
     _integer(row["MARSUPWT"], low=1, high=2**63 - 1)
-    flags = []
-    for name in ALLOCATION_FLAGS:
-        value = _integer(row[name], low=0, high=9)
-        _require(
-            value in ((0, 1, 2, 3) if name == "FL_665" else (0, 1, 9)),
-            "ASEC_ALLOCATION",
-        )
-        flags.append((name, value))
+    flags = _asec_allocation_flags(row)
+    _asec_work_consistency(hours, weeks, initial, temporary, final)
     positive = hours > 0
-    _require(positive == (weeks > 0) == (final == 1), "ASEC_WORK_CONTRADICTION")
-    _require(initial != 1 or positive, "ASEC_WORK_CONTRADICTION")
-    _require(temporary != 1 or positive, "ASEC_WORK_CONTRADICTION")
-    _require(
-        not (initial == 2 and temporary == 2 and positive), "ASEC_WORK_CONTRADICTION"
-    )
     return HoursProposal(
         key,
         float(hours),
         "asec_positive_source_hours" if positive else "asec_source_nonwork_completion",
         raw,
-        tuple(flags),
+        flags,
     )
 
 
