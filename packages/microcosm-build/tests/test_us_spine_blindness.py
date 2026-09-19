@@ -362,6 +362,7 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "sipp_tips.py",
         "sipp_vehicles.py",
         "snap_discretionary_exemption.py",
+        "snap_release_acceptance.py",  # Final artifact readback; no source treatment.
         "snap_state_take_up.py",
         "snap_take_up.py",
         "source_coverage.py",
