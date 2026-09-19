@@ -49,6 +49,7 @@ from microcosm.graph.serialize import graph_to_json
 
 from . import current_survey_amounts as values
 from . import graph_current_survey_health as health_graph
+from . import graph_current_survey_hours as hours_graph
 from . import graph_current_survey_housing as housing_graph
 from . import graph_current_survey_predictors as predictor_graph
 
@@ -71,6 +72,10 @@ def _live():
         health_graph,
         health_graph.health,
         health_graph.source,
+        hours_graph,
+        hours_graph.source,
+        hours_graph.hours,
+        hours_graph.asec_hours,
         housing_graph,
         housing_graph.housing,
         housing_graph.participation,
@@ -126,6 +131,13 @@ def _live():
     )
     result.append(
         (
+            "hours_configuration",
+            hours_graph.PROTOCOL,
+            hours_graph.source._live(),
+        )
+    )
+    result.append(
+        (
             "housing_configuration",
             housing_graph.housing.PROTOCOL,
             housing_graph.housing.TARGET,
@@ -150,6 +162,15 @@ def _housing_after_edge():
         health_graph.ATTACH_NODE,
         "attachment",
         health_graph.ATTACHMENT_TYPE,
+    )
+
+
+def _hours_after_edge():
+    return ArtifactInput(
+        "housing_attachment",
+        housing_graph.ATTACH_NODE,
+        "attachment",
+        housing_graph.ATTACHMENT_TYPE,
     )
 
 
@@ -313,6 +334,12 @@ class Boundary:
         self.health_stamp = health_graph.health_coverage_seal(self.health)
         self.housing = housing_graph.housing.qualify_current_survey_housing(run)
         self.housing_stamp = housing_graph.housing.seal(self.housing)
+        self.hours = hours_graph.source.qualify_current_survey_hours(
+            self.preparation,
+            age15_policy=hours_graph.hours.AGE15_POLICY,
+            under15_policy=hours_graph.hours.UNDER15_POLICY,
+        )
+        self.hours_stamp = hours_graph.hours_seal(self.hours)
         self.n_estimators = n_estimators
         self.amount_nodes = amount_nodes(
             self.qualified,
@@ -331,7 +358,18 @@ class Boundary:
             after=_housing_after_edge(),
             n_estimators=n_estimators,
         )
-        self.nodes = (*self.amount_nodes, *self.health_nodes, *self.housing_nodes)
+        self.hours_nodes = hours_graph.hours_nodes(
+            self.hours,
+            run.population.frame,
+            receiving_version=parent.attach.FILTER_NODE,
+            after=_hours_after_edge(),
+        )
+        self.nodes = (
+            *self.amount_nodes,
+            *self.health_nodes,
+            *self.housing_nodes,
+            *self.hours_nodes,
+        )
         self.declaration = tuple(self.nodes)
         self.live = _live()
         require(self.live == live, "QUALIFIER_CALLBACK_CHANGED_IMPLEMENTATION")
@@ -370,6 +408,7 @@ class Boundary:
             and self.run.financial_run.prefix.preparation is self.preparation
             and health_graph.health_coverage_seal(self.health) == self.health_stamp
             and housing_graph.housing.seal(self.housing) == self.housing_stamp
+            and hours_graph.hours_seal(self.hours) == self.hours_stamp
             and self.nodes == self.declaration
             and _live() == self.live,
             "BOUNDARY_CHANGED",
@@ -395,8 +434,20 @@ class Boundary:
                 after=_housing_after_edge(),
                 n_estimators=self.n_estimators,
             )
+            and self.hours_nodes
+            == hours_graph.hours_nodes(
+                self.hours,
+                self.run.population.frame,
+                receiving_version=parent.attach.FILTER_NODE,
+                after=_hours_after_edge(),
+            )
             and self.nodes
-            == (*self.amount_nodes, *self.health_nodes, *self.housing_nodes),
+            == (
+                *self.amount_nodes,
+                *self.health_nodes,
+                *self.housing_nodes,
+                *self.hours_nodes,
+            ),
             "BOUNDARY_DECLARATIONS",
         )
         if self.compiled is not None:
@@ -440,6 +491,7 @@ class Boundary:
                 and tuple(sorted(implementations.items())) == self.implementations,
                 "SOURCE_OR_IMPLEMENTATION_CHANGED",
             )
+        self.hours.validate()
         self.pure()
 
     def context(self, context):
@@ -500,6 +552,7 @@ class Boundary:
             housing_graph.housing.seal(fresh_housing) == self.housing_stamp,
             "HOUSING_SOURCE_REQUALIFICATION_CHANGED",
         )
+        self.hours.validate()
         self.pure()
 
 
@@ -519,6 +572,10 @@ class _Kernel(KernelBase):
             values,
             values.unemployment,
             health_graph,
+            hours_graph,
+            hours_graph.source,
+            hours_graph.hours,
+            hours_graph.asec_hours,
             parent,
             physical,
             predictor_graph,
@@ -706,6 +763,15 @@ def _construct(run, *, groups, n_estimators):
         kernels.register(kernel)
     for kernel in housing_graph.kernels(boundary):
         require(kernel.ref not in kernels.refs(), "HOUSING_KERNEL_COLLISION")
+        kernels.register(kernel)
+    for kernel in hours_graph.hours_kernels(
+        boundary.hours,
+        run.population.frame,
+        receiving_version=parent.attach.FILTER_NODE,
+        after=_hours_after_edge(),
+        require_current=boundary.pure,
+    ):
+        require(kernel.ref not in kernels.refs(), "HOURS_KERNEL_COLLISION")
         kernels.register(kernel)
     registry = parent._registry(run.store.codecs, codecs.SourceCodecRegistry())
     store = ContentStore(run.store.root, codecs=registry)
@@ -969,6 +1035,7 @@ def run_us_survey_enrichment(
     current, donors = {}, {}
     housing_donor = None
     health_ids = {n.id for n in boundary.health_nodes}
+    hours_ids = {n.id for n in boundary.hours_nodes}
     group_nodes = {_ids(g)[0]: g for g in boundary.qualified.groups}
     column_nodes = {_ids(g)[1]: g for g in boundary.qualified.groups}
     original = population_ops.Population.from_frame(
@@ -980,7 +1047,20 @@ def run_us_survey_enrichment(
         if node_id in run.compiled.order:
             current[version] = observed[node_id]
             continue
-        if node_id in health_ids:
+        if node_id in hours_ids:
+            hours_artifacts = parent._loaded_values(boundary, manifest, loaded, node)
+            hours_result = hours_graph.hours_result(
+                boundary.hours, node, hours_artifacts, current[version].frame.person
+            )
+            require(
+                all(
+                    loaded[node_id, name] == payload
+                    for name, payload in hours_result.artifacts.items()
+                ),
+                "HOURS_RESULT_ARTIFACT",
+            )
+            expected = population_ops.patch(current[version], node, hours_result)
+        elif node_id in health_ids:
             health_artifacts = parent._loaded_values(boundary, manifest, loaded, node)
             expected = health_graph.expected_health_population(
                 node_id,
@@ -1085,12 +1165,18 @@ def run_us_survey_enrichment(
             "housing_participation_assumptions": boundary.housing.evidence[
                 "assumptions"
             ],
+            "hours_source_receipt_sha256": codec.sha(boundary.hours.receipt),
+            "hours_attachment_sha256": codec.sha(
+                loaded[hours_graph.ATTACH_NODE, "attachment"]
+            ),
+            "hours_age15_policy": boundary.hours.proposals.age15_policy,
+            "hours_under15_policy": boundary.hours.proposals.under15_policy,
             "release_eligible": False,
         }
     )
     output = SurveyEnrichmentRun(
         run,
-        observed[housing_graph.ATTACH_NODE],
+        observed[hours_graph.ATTACH_NODE],
         manifest,
         boundary.compiled,
         boundary.store,

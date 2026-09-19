@@ -14,23 +14,23 @@ import pytest
 from microcosm.build.us_runtime import current_survey_hours_source as owner
 
 
-def source_arguments(tmp_path, monkeypatch):
-    import test_us_child_property_income_source_owner as fixture
-    import test_us_survey_population_preparation as preparation_fixture
-
-    from microcosm.build.us_runtime import asec_person_income_source as restoration
-
-    original_person = preparation_fixture._person
-
+def hours_acs_person(original_person, *, gq_age_changes_afterward=False):
     def person(*args, **kwargs):
         row = original_person(*args, **kwargs)
-        under16 = int(row["AGEP"]) < 16 or row["SERIALNO"] == "2024GQ0000001"
+        under16 = int(row["AGEP"]) < 16 or (
+            gq_age_changes_afterward and row["SERIALNO"] == "2024GQ0000001"
+        )
         row.update(WKHP="" if under16 else "40", WKL="" if under16 else "1", FWKHP="0")
         return row
 
-    monkeypatch.setattr(preparation_fixture, "_person", person)
-    full, partial, donor = fixture.source_arguments(tmp_path, monkeypatch)
-    folder = full["source_dir"] / "asec"
+    return person
+
+
+def add_hours_source_fields(arguments, monkeypatch):
+    """Set wholly invented hours literals before any source owner is issued."""
+    from microcosm.build.us_runtime import asec_person_income_source as restoration
+
+    folder = arguments["source_dir"] / "asec"
     pins, paths = [], {}
     for year, member, archive, *_ in owner.original.asec._MEMBER_PINS:
         path = folder / member
@@ -72,25 +72,45 @@ def source_arguments(tmp_path, monkeypatch):
             )
         )
         paths[year] = path
-        shutil.copyfile(path, partial["source_dir"] / "asec" / member)
     for module in (owner.original.asec, restoration):
         monkeypatch.setattr(module, "_MEMBER_PINS", tuple(pins))
-    restored = tmp_path / "hours-restored-money"
+    restored = folder.parent.parent / "hours-restored-money"
     restoration.restore_asec_person_income_source(
         folder / "parent.h5",
         folder / "household-attachment.h5",
         member_paths=paths,
         output_dir=restored,
     )
-    for arguments in (full, partial):
-        shutil.copyfile(
-            restored / restoration.CHECKPOINT_FILENAME,
-            arguments["source_dir"] / "asec" / "person-income-attachment.h5",
-        )
+    shutil.copyfile(
+        restored / restoration.CHECKPOINT_FILENAME,
+        folder / "person-income-attachment.h5",
+    )
     # A private fixture cardinality seam, before any owner is issued. Production
     # remains bound to 2174 keys from the complete income-2024 ASEC coverage.
     monkeypatch.setattr(owner, "_EXPECTED_DONORS", 1)
     monkeypatch.setattr(owner, "_LIVE", owner._live())
+    return arguments
+
+
+def source_arguments(tmp_path, monkeypatch):
+    import test_us_child_property_income_source_owner as fixture
+    import test_us_survey_population_preparation as preparation_fixture
+
+    monkeypatch.setattr(
+        preparation_fixture,
+        "_person",
+        hours_acs_person(preparation_fixture._person, gq_age_changes_afterward=True),
+    )
+    full, partial, donor = fixture.source_arguments(tmp_path, monkeypatch)
+    add_hours_source_fields(full, monkeypatch)
+    for member in (
+        *(pin[1] for pin in owner.original.asec._MEMBER_PINS),
+        "person-income-attachment.h5",
+    ):
+        shutil.copyfile(
+            full["source_dir"] / "asec" / member,
+            partial["source_dir"] / "asec" / member,
+        )
     return full, partial, donor
 
 

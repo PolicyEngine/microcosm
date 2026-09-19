@@ -155,6 +155,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "current_survey_health_source.py",  # Qualify exact ACS/ASEC source rosters.
         "current_survey_health_coverage.py",  # Validate the same two-clone join.
         "graph_current_survey_health.py",  # Declare the attachment's identity inputs.
+        # Original hours literals and complete native-keyed donor qualification;
+        # graph attachment declares ancestry and transports exact clones.
+        "current_survey_hours_source.py",
+        "graph_current_survey_hours.py",
         "current_survey_housing.py",  # Qualify survey observations and validate both clone identity joins.
         "graph_current_survey_housing.py",  # Declare housing source/donor and paired attachment identity inputs.
         # Reviewed 2026-09-13: original survey reference-person observations
@@ -424,6 +428,10 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_survey_health_coverage.py",
         # Authenticated original ACS/ASEC health-coverage observations
         "current_survey_health_source.py",
+        # Pure hours observations/completion and retained original-source owner.
+        "current_asec_usual_hours.py",
+        "current_survey_hours.py",
+        "current_survey_hours_source.py",
         # Retained housing observations, original-design donors and exact clone joins
         "current_survey_housing.py",
         # Qualified original reference-person observations and exact clone bind.
@@ -438,6 +446,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "fiscal_leaf_policy.py",
         # Typed source, recode and attachment health graph fragment
         "graph_current_survey_health.py",
+        # Actual source hours recoding and exact two-clone graph attachment.
+        "graph_current_survey_hours.py",
         # Typed housing observation, household fit/draw and SPM-unit attachment
         "graph_current_survey_housing.py",
         # Source-supported reference-person declaration and canonical attachment.
@@ -3525,6 +3535,9 @@ def _source_spine_accesses(source: str) -> tuple[str, ...]:
 # accepted, and only for the listed modules.
 _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
     {
+        # Supplied literal-source dictionaries selected by fixed ACS/ASEC field
+        # families in _literals; no Frame or source-provenance access allowance.
+        "current_survey_hours.py",
         # Reviewed 2026-09-13: exact published fields, original catalogue keys,
         # masks and retained-owner/receipt maps. No direct provenance access;
         # accessor and literal protected-column tripwires continue to apply.
@@ -3611,6 +3624,7 @@ def _non_owner_source_spine_accesses(
         "current_survey_person_status.py",
         "current_survey_person_status_source.py",
         "current_child_property_income_source.py",
+        "current_survey_hours.py",
         "graph_survey_completion.py",
         "graph_survey_completion_host.py",
     ],
