@@ -3774,6 +3774,340 @@ def test_stale_soi_capital_gains_without_source_total_is_dropped() -> None:
     assert state_record_id not in source_record_ids
 
 
+def _soi_table_1_1_fact(
+    source_period: int,
+    *,
+    income_range: str = "all",
+    lower: float | None = None,
+    upper: float | None = None,
+    measure_id: str = "adjusted_gross_income",
+    value: float,
+    table: str = "table_1_1",
+    geography_level: str = "country",
+    geography_id: str = "0100000US",
+    filing_status: str = "all",
+) -> dict[str, object]:
+    """A Publication 1304 size-of-AGI fact shaped like the Chronicle export."""
+    constraints: list[dict[str, object]] = []
+    if lower is not None:
+        constraints.append(
+            {
+                "variable": "us:statutes/26/62#adjusted_gross_income",
+                "operator": ">=",
+                "value": lower,
+            }
+        )
+    if upper is not None:
+        constraints.append(
+            {
+                "variable": "us:statutes/26/62#adjusted_gross_income",
+                "operator": "<",
+                "value": upper,
+            }
+        )
+    return _dynamic_ledger_fact(
+        source_record_id=(
+            f"irs_soi.ty{source_period}.{table}.{income_range}.{measure_id}"
+        ),
+        source_name="irs_soi",
+        measure_id=measure_id,
+        value=value,
+        period_value=source_period,
+        geography_level=geography_level,
+        geography_id=geography_id,
+        dimensions={"income_range": income_range, "filing_status": filing_status},
+        universe_constraints=constraints,
+        layout_record_set_id=f"irs_soi.ty{source_period}.{table}",
+        groupby_dimension="us:statutes/26/62#adjusted_gross_income",
+        groupby_value_id=income_range,
+    )
+
+
+def _soi_table_1_1_totals(source_period: int, *, returns: float, agi: float):
+    return (
+        _soi_table_1_1_fact(source_period, measure_id="return_count", value=returns),
+        _soi_table_1_1_fact(source_period, value=agi),
+    )
+
+
+def test_cross_period_soi_table_1_1_agi_size_classes_bind_as_shares() -> None:
+    # microcosm#958: with only the all-returns totals bound, certified
+    # populace-us-2024-spm-20260915 met national AGI at +0.3% while holding
+    # 3.4x SOI's returns from $1M to $2M and none above $10M. The size
+    # classes publish one tax year behind the build, so without the rescue
+    # every one of them is refused as a stale nominal bin.
+    facts = [
+        *packaged_reference_facts(),
+        *_soi_table_1_1_totals(2023, returns=160_000_000, agi=16_000_000_000_000),
+        _soi_table_1_1_fact(
+            2023,
+            income_range="10m_plus",
+            lower=10_000_000,
+            value=900_000_000_000,
+        ),
+        _soi_table_1_1_fact(
+            2023,
+            income_range="10m_plus",
+            lower=10_000_000,
+            measure_id="return_count",
+            value=30_000,
+        ),
+        _soi_table_1_1_fact(
+            2023,
+            income_range="5m_to_10m",
+            lower=5_000_000,
+            upper=10_000_000,
+            value=330_000_000_000,
+        ),
+    ]
+    registry = compile_us_fiscal_target_registry(
+        facts,
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    by_name = {spec.name: spec for spec in registry.specs}
+
+    amount = by_name["irs_soi.ty2023.table_1_1.10m_plus.adjusted_gross_income"]
+    assert amount.value == 900_000_000_000
+    assert amount.metadata["variable"] == "adjusted_gross_income"
+    assert amount.metadata["measure_mode"] == "sum"
+    assert amount.metadata["agi_lower_bound"] == "10000000.0"
+    assert amount.metadata["agi_upper_bound"] == "inf"
+    assert amount.metadata["requires_agi_size_distribution_rebase"] == "true"
+    assert amount.metadata["stale_distribution_rebased_to_active_total"] == "true"
+    assert amount.metadata["uprating_index"] == "total_adjusted_gross_income"
+    assert amount.metadata["uprating_from_period"] == "2023"
+    assert amount.metadata["uprating_to_period"] == "2023"
+    assert amount.metadata["uprating_index_source_record_id"] == (
+        "irs_soi.ty2023.table_1_1.all.adjusted_gross_income"
+    )
+    assert float(amount.metadata["uprating_factor"]) == 1.0
+
+    count = by_name["irs_soi.ty2023.table_1_1.10m_plus.return_count"]
+    assert count.value == 30_000
+    assert count.metadata["measure_mode"] == "indicator_sum"
+    assert count.metadata["uprating_index"] == "total_return_count"
+
+    closed = by_name["irs_soi.ty2023.table_1_1.5m_to_10m.adjusted_gross_income"]
+    assert closed.metadata["agi_lower_bound"] == "5000000.0"
+    assert closed.metadata["agi_upper_bound"] == "10000000.0"
+    # The national all-returns rows still own the national concept.
+    assert by_name["irs_soi.ty2023.table_1_1.all.adjusted_gross_income"].value == (
+        16_000_000_000_000
+    )
+    assert "uprating_factor" not in (
+        by_name["irs_soi.ty2023.table_1_1.all.return_count"].metadata
+    )
+
+
+def test_soi_table_1_1_agi_size_classes_bind_only_the_latest_vintage() -> None:
+    # Chronicle keeps old tax years. One class shape activates one fact, the
+    # latest not after the build period, and it rebases on its OWN vintage.
+    facts = [
+        *packaged_reference_facts(),
+        *_soi_table_1_1_totals(2022, returns=150_000_000, agi=15_000_000_000_000),
+        *_soi_table_1_1_totals(2023, returns=160_000_000, agi=16_000_000_000_000),
+        _soi_table_1_1_fact(
+            2022, income_range="10m_plus", lower=10_000_000, value=1_050_000_000_000
+        ),
+        _soi_table_1_1_fact(
+            2023, income_range="10m_plus", lower=10_000_000, value=900_000_000_000
+        ),
+    ]
+    registry = compile_us_fiscal_target_registry(
+        facts,
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    names = {spec.name for spec in registry.specs}
+
+    assert "irs_soi.ty2023.table_1_1.10m_plus.adjusted_gross_income" in names
+    assert "irs_soi.ty2022.table_1_1.10m_plus.adjusted_gross_income" not in names
+
+
+def test_soi_table_1_1_agi_size_class_rebases_onto_a_newer_national_control() -> None:
+    # When the classes lag the national total by a vintage, the class is a
+    # SHARE of its own year scaled to the newer control, landed at the
+    # control's period so target aging completes only the remaining links.
+    facts = [
+        *packaged_reference_facts(),
+        *_soi_table_1_1_totals(2022, returns=150_000_000, agi=15_000_000_000_000),
+        *_soi_table_1_1_totals(2023, returns=160_000_000, agi=16_500_000_000_000),
+        _soi_table_1_1_fact(
+            2022, income_range="10m_plus", lower=10_000_000, value=1_000_000_000_000
+        ),
+        _soi_table_1_1_fact(
+            2022,
+            income_range="10m_plus",
+            lower=10_000_000,
+            measure_id="return_count",
+            value=30_000,
+        ),
+    ]
+    registry = compile_us_fiscal_target_registry(
+        facts,
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    by_name = {spec.name: spec for spec in registry.specs}
+
+    amount = by_name["irs_soi.ty2022.table_1_1.10m_plus.adjusted_gross_income"]
+    assert amount.value == pytest.approx(1_000_000_000_000 * 16.5 / 15.0)
+    assert amount.metadata["uprating_from_period"] == "2022"
+    assert amount.metadata["uprating_to_period"] == "2023"
+    count = by_name["irs_soi.ty2022.table_1_1.10m_plus.return_count"]
+    assert count.value == pytest.approx(30_000 * 160 / 150)
+
+
+@pytest.mark.parametrize(
+    ("fact_kwargs", "reason"),
+    [
+        (
+            {"income_range": "50k_to_75k", "lower": 50_000, "upper": 75_000},
+            "below the declared lower edge, where a tax-unit count is not a "
+            "return count",
+        ),
+        (
+            {"income_range": "10m_plus", "lower": 10_000_000, "table": "table_1_2"},
+            "another Publication 1304 table carrying the same measure id",
+        ),
+        (
+            {
+                "income_range": "10m_plus",
+                "lower": 10_000_000,
+                "filing_status": "single",
+            },
+            "a filing-status slice, which has no same-status national control",
+        ),
+        (
+            {
+                "income_range": "10m_plus",
+                "lower": 10_000_000,
+                "geography_level": "state",
+                "geography_id": "0400000US06",
+            },
+            "a state slice, which the national control cannot anchor",
+        ),
+    ],
+)
+def test_soi_agi_size_rescue_stays_narrow(
+    fact_kwargs: dict[str, object],
+    reason: str,
+) -> None:
+    fact = _soi_table_1_1_fact(2023, value=900_000_000_000, **fact_kwargs)
+    registry = compile_us_fiscal_target_registry(
+        [
+            *packaged_reference_facts(),
+            *_soi_table_1_1_totals(2023, returns=160_000_000, agi=16_000_000_000_000),
+            fact,
+        ],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+
+    name = fact["lineage"]["source_record_id"]
+    assert name not in {spec.name for spec in registry.specs}, reason
+
+
+def test_soi_table_1_1_agi_size_class_without_a_national_total_is_dropped() -> None:
+    # An unanchored class is unverifiable: dropped, never shipped stale.
+    fact = _soi_table_1_1_fact(
+        2023, income_range="10m_plus", lower=10_000_000, value=900_000_000_000
+    )
+    registry = compile_us_fiscal_target_registry(
+        [*packaged_reference_facts(), fact],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+
+    assert fact["lineage"]["source_record_id"] not in {
+        spec.name for spec in registry.specs
+    }
+
+
+def test_same_period_soi_table_1_1_agi_size_class_needs_no_rescue() -> None:
+    # A class published AT the build period is an ordinary level, not a share.
+    fact = _soi_table_1_1_fact(
+        2024, income_range="10m_plus", lower=10_000_000, value=950_000_000_000
+    )
+    registry = compile_us_fiscal_target_registry(
+        [*packaged_reference_facts(), fact],
+        target_period=2024,
+        allow_unaged_dollar_targets=True,
+    )
+    spec = next(
+        spec
+        for spec in registry.specs
+        if spec.name == fact["lineage"]["source_record_id"]
+    )
+
+    assert spec.value == 950_000_000_000
+    assert "requires_agi_size_distribution_rebase" not in spec.metadata
+    assert "uprating_factor" not in spec.metadata
+
+
+def test_soi_table_1_1_agi_size_classes_age_with_the_national_rows() -> None:
+    # The classes must keep summing to the national rows they decompose:
+    # class AGI ages on the CBO AGI series from the control's period, exactly
+    # like the all-returns AGI row, and class counts stay raw like the
+    # all-returns count.
+    facts = [
+        *packaged_reference_facts(),
+        *_soi_table_1_1_totals(2023, returns=160_000_000, agi=16_000_000_000_000),
+        _soi_table_1_1_fact(
+            2023, income_range="10m_plus", lower=10_000_000, value=900_000_000_000
+        ),
+        _soi_table_1_1_fact(
+            2023,
+            income_range="10m_plus",
+            lower=10_000_000,
+            measure_id="return_count",
+            value=30_000,
+        ),
+        _cbo_income_source_projection_fact(
+            2023, "adjusted_gross_income", value=15_000_000_000_000
+        ),
+        _cbo_income_source_projection_fact(
+            2024, "adjusted_gross_income", value=16_500_000_000_000
+        ),
+    ]
+    registry = compile_us_fiscal_target_registry(
+        facts,
+        target_period=2024,
+        age_targets=True,
+    )
+    by_name = {spec.name: spec for spec in registry.specs}
+
+    national = by_name["irs_soi.ty2023.table_1_1.all.adjusted_gross_income"]
+    amount = by_name["irs_soi.ty2023.table_1_1.10m_plus.adjusted_gross_income"]
+    assert national.value == pytest.approx(16_000_000_000_000 * 1.1)
+    assert amount.value == pytest.approx(900_000_000_000 * 1.1)
+    assert amount.value / national.value == pytest.approx(900 / 16_000)
+    count = by_name["irs_soi.ty2023.table_1_1.10m_plus.return_count"]
+    assert count.value == 30_000
+
+
+def test_published_soi_table_1_1_size_classes_stay_feasible_when_aged() -> None:
+    # Counts stay raw while class AGI ages, so the implied mean AGI of a
+    # closed class rises by the aging factor. If it left the class's own
+    # edges the count and amount rows could not both bind. Values are IRS
+    # SOI Publication 1304 Table 1.1, tax year 2023 (23in11si.xls); the
+    # factor is the CBO AGI TY2023->TY2024 ratio the 2026-09-18 feed yields.
+    cbo_agi_growth_2023_to_2024 = 1.08721346938244
+    published = {
+        (100_000, 200_000): (27_602_755, 3_818_295_141_000),
+        (200_000, 500_000): (10_955_818, 3_153_877_437_000),
+        (500_000, 1_000_000): (1_779_720, 1_194_934_962_000),
+        (1_000_000, 1_500_000): (368_931, 443_658_405_000),
+        (1_500_000, 2_000_000): (147_290, 252_903_399_000),
+        (2_000_000, 5_000_000): (203_229, 602_653_109_000),
+        (5_000_000, 10_000_000): (49_262, 336_334_760_000),
+    }
+    for (lower, upper), (returns, agi) in published.items():
+        aged_mean = agi * cbo_agi_growth_2023_to_2024 / returns
+        assert lower <= aged_mean < upper, (lower, upper, aged_mean)
+
+
 def test_cross_period_soi_taxable_interest_agi_slice_without_total_is_dropped() -> None:
     source_record_id = (
         "irs_soi.ty2022.historic_table_2.us.200k_to_500k.taxable_interest_amount"
