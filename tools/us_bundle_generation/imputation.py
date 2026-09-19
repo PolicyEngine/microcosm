@@ -831,7 +831,7 @@ def _normalise_transfer_execution(
     """Factor shared ACS-transfer ABI fields into one typed declaration.
 
     Predictor arrays are already declared by the named predictor blocks, and
-    the two post-transfer structures differ only by target-triggered feature
+    the post-transfer structures differ only by target-triggered feature
     activation.  Keeping those facts once avoids embedding the same full
     runtime identity in every late family and virtual resource.
     """
@@ -885,6 +885,15 @@ def _normalise_transfer_execution(
         )
     )
     adult_care.pop("enabled")
+    humanitarian = deepcopy(
+        dict(
+            _mapping_like(
+                post_transfer["humanitarian_immigration"],
+                "humanitarian post-transfer contract",
+            )
+        )
+    )
+    humanitarian.pop("enabled")
     result["predictor_bindings"] = {
         "person_required": "acs_person_required",
         "person_optional": [
@@ -898,8 +907,7 @@ def _normalise_transfer_execution(
         "adult_care": {
             "activation": {
                 "all_targets": [
-                    "is_incapable_of_self_care",
-                    "pre_subsidy_care_expenses",
+                    adult_care["expense"],
                 ]
             },
             "contract": adult_care,
@@ -907,10 +915,17 @@ def _normalise_transfer_execution(
         "schedule_d_capital_gain_distributions": {
             "activation": {
                 "derive_schedule_d": True,
-                "all_targets": ["long_term_capital_gains_before_response"],
+                "any_targets": [
+                    schedule_base["source"],
+                    schedule_base["exclusive_with"],
+                ],
             },
             "contract": schedule_base,
             "enabled_overrides": schedule_override,
+        },
+        "humanitarian_immigration": {
+            "activation": {"all_targets": deepcopy(humanitarian["targets"])},
+            "contract": humanitarian,
         },
     }
     result["profiles"] = {
@@ -918,6 +933,12 @@ def _normalise_transfer_execution(
         "acs_transfer_early": {"derive_schedule_d": True},
     }
     return result
+
+
+def build_transfer_execution() -> dict[str, object]:
+    """Build only the transfer declaration, without engine metadata or workers."""
+
+    return _normalise_transfer_execution(acs_transfer_execution_contract_identity())
 
 
 def _worker_execution_template() -> dict[str, object]:
@@ -2343,7 +2364,7 @@ def build_imputation() -> dict[str, object]:
                 "missing_concepts_by_target": missing_concepts_by_target,
             }
         ],
-        "transfer_execution": _normalise_transfer_execution(base_transfer_contract),
+        "transfer_execution": build_transfer_execution(),
         "gap_fill_schedule": _normalise_gap_fill_schedule(gap_fill_schedule),
         "primary_checkpoint": {
             "schema_version": PRIMARY_QRF_CHECKPOINT_SCHEMA_VERSION,
@@ -2424,6 +2445,7 @@ def build_imputation() -> dict[str, object]:
 
 __all__ = [
     "build_imputation",
+    "build_transfer_execution",
     "derive_primary_effective_predictor_tuples",
     "project_imputation_legacy_payloads",
 ]
