@@ -19,6 +19,7 @@ import pytest
 from microcosm.build.acs_spm_partition import (
     ACS_SPM_DEVELOPMENT_POLICY,
     AcsSpmAssemblerProbe,
+    AcsSpmRoleDecision,
     UnsupportedAssembler,
     probe_acs_spm_assembler,
     reconstruct_acs_spm_partition,
@@ -295,6 +296,46 @@ def test_source_evidence_is_validated_before_the_assembler_refusal(monkeypatch):
     # A refusable roster must still refuse the same way on every runtime.
     with pytest.raises(ValueError, match="reference person"):
         assemble(persons)
+
+
+@pytest.mark.parametrize(
+    "decisions",
+    [
+        [AcsSpmRoleDecision(101, False, "head_override")],
+        [AcsSpmRoleDecision(999, True, "absent_person")],
+        [AcsSpmRoleDecision(102, 1, "not_bool")],
+        [AcsSpmRoleDecision(102, True, "")],
+        [AcsSpmRoleDecision(102, True, "one"), AcsSpmRoleDecision(102, False, "two")],
+        [object()],
+    ],
+)
+def test_invalid_role_decisions_refuse_before_any_assembler_probe(
+    monkeypatch, decisions
+):
+    def must_not_probe():
+        pytest.fail("Invalid source decisions reached the assembler probe")
+
+    monkeypatch.setattr(
+        "microcosm.build.acs_spm_partition.probe_acs_spm_assembler", must_not_probe
+    )
+    persons = roster([20, 25], [45, 16])
+    with pytest.raises(ValueError):
+        assemble(persons, role_decisions=decisions)
+
+
+@pytest.mark.parametrize("age,gq", [(14, False), (18, False), (17, True)])
+def test_inapplicable_role_decisions_refuse_without_assembler(monkeypatch, age, gq):
+    def must_not_probe():
+        pytest.fail("Inapplicable source decision reached the assembler probe")
+
+    monkeypatch.setattr(
+        "microcosm.build.acs_spm_partition.probe_acs_spm_assembler", must_not_probe
+    )
+    persons = roster([37, 37] if gq else [20, 25], [45, age], gq=gq)
+    with pytest.raises(ValueError, match="15–17"):
+        assemble(
+            persons, role_decisions=[AcsSpmRoleDecision(102, True, "outside_scope")]
+        )
 
 
 @pytest.mark.parametrize("kind", ["group-quarters", "unresolved"])

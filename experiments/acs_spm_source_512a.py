@@ -66,9 +66,67 @@ def sha(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+class HarnessRefusalError(RuntimeError):
+    """A static harness reason safe to record without source rows or exceptions."""
+
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code = code
+
+
 def require(condition: bool, reason: str) -> None:
     if not condition:
-        raise RuntimeError(reason)
+        raise HarnessRefusalError(reason)
+
+
+def require_columns(actual, expected) -> None:
+    """Refuse dropped, extra or duplicate columns before selecting any subset."""
+    require(
+        len(expected) > 0
+        and all(isinstance(column, str) for column in expected)
+        and len(expected) == len(set(expected)),
+        "invalid_pinned_column_schema",
+    )
+    require(
+        len(actual) == len(expected) and set(actual) == set(expected),
+        "table_column_schema_mismatch",
+    )
+
+
+def require_record_schema(records, columns, *, row_count=None) -> None:
+    """Even empty historical tables need an independently pinned column list."""
+    require_columns(columns, columns)
+    require(isinstance(records, list), "golden_records_not_list")
+    if row_count is not None:
+        require(len(records) == row_count, "golden_row_count_mismatch")
+    for row in records:
+        require(isinstance(row, dict), "golden_record_not_mapping")
+        require_columns(list(row), columns)
+
+
+def require_checkout(path: Path, expected_head: str, prefix: str) -> str:
+    head = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], cwd=path, text=True
+    ).strip()
+    require(head == expected_head, f"{prefix}_head_mismatch")
+    require(
+        not subprocess.check_output(
+            ["git", "status", "--porcelain=v1"], cwd=path, text=True
+        ).strip(),
+        f"{prefix}_worktree_dirty",
+    )
+    return head
+
+
+def failure_report(error: Exception) -> dict:
+    report = {
+        "status": "fail",
+        "scope": "development_source_only",
+        "error_type": type(error).__name__,
+    }
+    if isinstance(error, HarnessRefusalError):
+        report["reason"] = error.code
+    return report
 
 
 def record_hash(records: list[dict], columns: tuple[str, ...]) -> str:
@@ -143,20 +201,13 @@ def run(args: argparse.Namespace, output: Path) -> dict:
         )
         for relative, expected in pins["source_files"].items():
             require(sha(ROOT / relative) == expected, "helper_source_mismatch")
+        source_head = require_checkout(ROOT, pins["source_head"], "source")
         require(
             sha(CANONICAL / "spm_calculator/units.py") == CANONICAL_SHA,
             "canonical_source_mismatch",
         )
-        canonical_head = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], cwd=CANONICAL, text=True
-        ).strip()
-        require(canonical_head == CANONICAL_HEAD, "canonical_head_mismatch")
-        require(
-            not subprocess.check_output(
-                ["git", "status", "--porcelain=v1"], cwd=CANONICAL, text=True
-            ).strip(),
-            "canonical_worktree_dirty",
-        )
+        canonical_head = require_checkout(CANONICAL, CANONICAL_HEAD, "canonical")
+        schemas = pins["historical_column_schemas"]
         manifest = json.loads(input_paths["primitive_manifest"].read_text())
         require(
             sha(input_paths["primitive_manifest"]) == MANIFEST_SHA,
@@ -214,6 +265,11 @@ def run(args: argparse.Namespace, output: Path) -> dict:
                 "partition_golden_mismatch",
             )
             original = json.loads(path.read_text())
+            require_record_schema(
+                original,
+                schemas["golden_membership"],
+                row_count=partition_report["policies"][name]["person_count"],
+            )
             migrated = [
                 {
                     **row,
@@ -377,8 +433,15 @@ def run(args: argparse.Namespace, output: Path) -> dict:
                 minor_partner_role=sensitivity,
             )
             result.require_resolved()
-            golden = pd.DataFrame(goldens[sensitivity])
-            selected = result.membership.loc[:, golden.columns].reset_index(drop=True)
+            require_columns(
+                result.membership.columns, schemas["complete_membership_output"]
+            )
+            golden = pd.DataFrame(
+                goldens[sensitivity], columns=schemas["golden_membership"]
+            )
+            selected = result.membership.loc[
+                :, schemas["golden_membership"]
+            ].reset_index(drop=True)
             pd.testing.assert_frame_equal(
                 selected, golden, check_dtype=False, check_exact=True
             )
@@ -426,6 +489,8 @@ def run(args: argparse.Namespace, output: Path) -> dict:
             )
             for table_name in REGROUP_TABLES:
                 actual = getattr(regroup, table_name).reset_index(drop=True)
+                columns = schemas["regroup"][table_name]
+                require_columns(actual.columns, columns)
                 golden_path = input_paths[f"{policy}/{table_name}"]
                 require(
                     sha(golden_path)
@@ -434,11 +499,17 @@ def run(args: argparse.Namespace, output: Path) -> dict:
                     ]["sha256"],
                     "regroup_golden_pin_mismatch",
                 )
-                golden = pd.DataFrame(
-                    json.loads(golden_path.read_text()), columns=actual.columns
+                records = json.loads(golden_path.read_text())
+                require_record_schema(
+                    records,
+                    columns,
+                    row_count=golden_regroup_report["policies"][policy]["artifacts"][
+                        table_name
+                    ]["rows"],
                 )
+                golden = pd.DataFrame(records, columns=columns)
                 pd.testing.assert_frame_equal(
-                    actual, golden, check_dtype=False, check_exact=True
+                    actual.loc[:, columns], golden, check_dtype=False, check_exact=True
                 )
             require(
                 len(regroup.spm_units) == 542
@@ -473,6 +544,8 @@ def run(args: argparse.Namespace, output: Path) -> dict:
             require(sha(path) == pins["inputs"][name]["sha256"], "input_bytes_changed")
         for relative, expected in pins["source_files"].items():
             require(sha(ROOT / relative) == expected, "source_bytes_changed")
+        require_checkout(ROOT, source_head, "source")
+        require_checkout(CANONICAL, canonical_head, "canonical")
         require(not any(attempts.values()), "forbidden_operation_attempted")
         require(
             not any(
@@ -487,9 +560,8 @@ def run(args: argparse.Namespace, output: Path) -> dict:
             "scope": "development_source_only",
             "pins_sha256": args.expect_pins_sha256,
             "source_files": pins["source_files"],
-            "source_head": subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
-            ).strip(),
+            "source_head": source_head,
+            "source_worktree_clean": True,
             "canonical_head": canonical_head,
             "canonical_file_sha256": CANONICAL_SHA,
             "authenticated_input_sha256": {
@@ -540,11 +612,7 @@ def main() -> int:
     try:
         report = run(args, output)
     except Exception as error:
-        report = {
-            "status": "fail",
-            "scope": "development_source_only",
-            "error_type": type(error).__name__,
-        }
+        report = failure_report(error)
     try:
         write_json(output / "REPORT.json", report)
     except OSError as error:

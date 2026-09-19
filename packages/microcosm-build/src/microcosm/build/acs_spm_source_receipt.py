@@ -173,6 +173,18 @@ def build_acs_spm_source_receipt(
     Unresolved care and relationship evidence remains visible in the receipt.
     """
     legacy_defaults.validate()
+    if not {"household_id", "TYPEHUGQ"}.issubset(households) or not {
+        "person_household_id",
+        "TYPEHUGQ",
+    }.issubset(persons):
+        raise ValueError("Receipt requires person and household universe evidence.")
+    if not households.household_id.is_unique:
+        raise ValueError("Receipt household universe identities must be unique.")
+    household_kind = persons.person_household_id.map(
+        households.set_index("household_id").TYPEHUGQ
+    )
+    if not persons.TYPEHUGQ.eq(household_kind).fillna(False).all():
+        raise ValueError("Person and household TYPEHUGQ universe evidence disagrees.")
     if (
         "PERIDNUM" in persons
         and persons.PERIDNUM.dropna().astype(str).str.strip().ne("").any()

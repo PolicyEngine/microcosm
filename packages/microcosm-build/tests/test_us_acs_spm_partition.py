@@ -276,7 +276,6 @@ def test_cross_household_link_refused():
         assemble(persons, links=[AcsSpmLink(101, 102, "parent", "bad")])
 
 
-@requires_assembler
 def test_direct_role_contradiction_refused():
     with pytest.raises(ValueError, match="observed"):
         assemble(

@@ -122,6 +122,23 @@ def case(*, uncertain=False, uncertain_age=8, gq=False, amount=1200.0):
     return (persons, units, households), kwargs
 
 
+@pytest.mark.parametrize("household_kind", [1, 3])
+def test_conflicting_person_and_household_universes_refused(household_kind):
+    # GQ partitioning needs no assembler, so this refusal must pass on all runtimes.
+    inputs, kwargs = case(gq=True)
+    inputs[2]["TYPEHUGQ"] = household_kind
+    inputs[2]["TEN"] = 3 if household_kind == 1 else np.nan
+    # Both proposals are individually valid for their own contradictory tables.
+    kwargs["regroup"] = regroup_acs_spm_units(
+        *inputs,
+        kwargs["membership"],
+        legacy_defaults=kwargs["legacy_defaults"],
+        tenure_policy=kwargs["tenure_policy"],
+    )
+    with pytest.raises(ValueError, match="TYPEHUGQ universe evidence disagrees"):
+        build_acs_spm_source_receipt(*inputs, **kwargs)
+
+
 @requires_assembler
 def test_json_receipt_binds_frozen_metadata_and_once_only_amounts():
     inputs, kwargs = case()

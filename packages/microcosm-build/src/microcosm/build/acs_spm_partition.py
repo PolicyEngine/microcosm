@@ -134,11 +134,11 @@ def probe_acs_spm_assembler() -> AcsSpmAssemblerProbe:
     provenance records: a ``(ids, diagnostics)`` pair, complete IDs aligned to
     the input, and a string-keyed mapping carrying a non-native ``method`` and a
     ``fallback_rules_used`` sequence of strings. It does not check rule names,
-    any other roster, or anything outside those checks. Any failure to import
-    the assembler — ``ImportError`` included — reports it unavailable; every
-    other ordinary failure is reported as an unsupported reason rather than
-    raised. See ``AcsSpmAssemblerProbe`` for what a supported verdict does and
-    does not establish.
+    any other roster, or anything outside those checks. ``ImportError`` reports
+    the assembler unavailable; other ordinary import failures report an
+    incompatible call contract. Every other ordinary failure is reported as an
+    unsupported reason rather than raised. See ``AcsSpmAssemblerProbe`` for what
+    a supported verdict does and does not establish.
     """
     try:
         from spm_calculator import spm_unit_id
@@ -607,6 +607,38 @@ def _assembly_view(
     )
 
 
+def _validate_role_decisions(
+    work: pd.DataFrame, decisions: Sequence[AcsSpmRoleDecision]
+) -> None:
+    """Refuse malformed source decisions before consulting runtime capability."""
+    positions = dict(zip(work.person_id, work.index, strict=True))
+    seen = set()
+    for decision in decisions:
+        _require(
+            isinstance(decision, AcsSpmRoleDecision),
+            "Role decisions must use AcsSpmRoleDecision records.",
+        )
+        _rule(decision.rule_id)
+        _person_id(decision.person_id)
+        _require(
+            decision.person_id in positions and decision.person_id not in seen,
+            "Role person IDs must be present and unique.",
+        )
+        _require(
+            type(decision.value) is bool, "Role decision must be an explicit bool."
+        )
+        row = work.loc[positions[decision.person_id]]
+        _require(
+            row.RELSHIPP not in {20, *_SPOUSES},
+            "Role decision cannot replace an observed head/spouse role.",
+        )
+        _require(
+            15 <= row.AGEP <= 17 and row.TYPEHUGQ == 1,
+            "Role decision applies only to included non-head/spouse ages 15–17.",
+        )
+        seen.add(decision.person_id)
+
+
 def _roles(
     work: pd.DataFrame,
     decisions: Sequence[AcsSpmRoleDecision],
@@ -673,30 +705,11 @@ def _roles(
             values.loc[eligible] = pd.NA
             source.loc[eligible] = "unresolved"
             rules.loc[eligible] = "ambiguous_secondary_minor_reference"
-    seen = set()
     for decision in decisions:
-        _rule(decision.rule_id)
-        _person_id(decision.person_id)
-        _require(
-            decision.person_id in positions and decision.person_id not in seen,
-            "Role person IDs must be present and unique.",
-        )
-        _require(
-            type(decision.value) is bool, "Role decision must be an explicit bool."
-        )
         pos = positions[decision.person_id]
-        _require(
-            not observed.loc[pos],
-            "Role decision cannot replace an observed head/spouse role.",
-        )
-        _require(
-            sensitive.loc[pos] and not outside.loc[pos],
-            "Role decision applies only to included non-head/spouse ages 15–17.",
-        )
         values.loc[pos] = decision.value
         source.loc[pos] = "approved_inference"
         rules.loc[pos] = decision.rule_id
-        seen.add(decision.person_id)
     return values, source, rules
 
 
@@ -732,6 +745,7 @@ def reconstruct_acs_spm_partition(
         type(minor_partner_role) is bool, "minor_partner_role must be an explicit bool."
     )
     work = _validate_inputs(persons, spm_units, household_person_counts)
+    _validate_role_decisions(work, role_decisions)
     status, status_rule = _secondary_status(work, assessments)
     view, link_evidence = _assembly_view(work, links)
     source_unresolved_households = set(
