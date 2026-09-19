@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from copy import copy
 from dataclasses import asdict, dataclass
 from numbers import Integral
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -474,6 +475,12 @@ def assemble_acs_spm_source(
         "scope": "development_source_structure_only",
         "options": asdict(options),
         "assembler": probe.as_provenance(),
+        "implementation_file_sha256": {
+            "adapter": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "partition_helper": hashlib.sha256(
+                Path(partition.__file__).read_bytes()
+            ).hexdigest(),
+        },
         "registry_sha256": registry.sha256,
         "registry_id_ceiling": ceiling,
         "registry_selected_roster_sha256": registry.selected_roster_sha256,
