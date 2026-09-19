@@ -140,6 +140,7 @@ LEGACY_RESOURCE_PATHS = (
     "ecps_parity_reference.json",
     "federal_eitc_by_state.json",
     "fiscal_target_references.json",
+    "legacy_schema16_late_producer_schedule.json",
     "obbba_reforms.json",
     "puf_aggregate_record_disaggregation.json",
     "release_input_coverage_manifest.json",

@@ -17,6 +17,7 @@ import microcosm.build.us_runtime.h5_io as h5_io
 import microcosm.build.us_runtime.immigration as immigration_runtime
 import microcosm.build.us_runtime.post_transfer_calibration as post_transfer_calibration_runtime
 import microcosm.build.us_runtime.stacked_spine as stacked_spine_module
+import microcosm.build.us_runtime.us_late_producer_registry as late_producer_registry_module
 import microcosm.build.us_runtime.worker_identity as worker_identity_module
 from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
@@ -1574,6 +1575,34 @@ def _canonical_stacked_late_dag_receipt(
     return receipt
 
 
+def _strip_immigration_transfer_evidence(transfer: dict[str, object]) -> None:
+    """Restore the pre-schema-10 shape of the immigration transfer targets."""
+
+    branch_only = (
+        "qrf_pattern_evidence",
+        "post_transfer_reconciliation",
+        "producer_roles",
+        "producer_rows",
+    )
+
+    def historical(target_key: str, receipt: dict[str, object]) -> None:
+        entity, family, target = target_key.split("/", 2)
+        if not stacked_spine_module._is_immigration_transfer_target(
+            entity=entity, family=family, target=target
+        ):
+            return
+        for key in branch_only:
+            receipt.pop(key, None)
+        receipt["authorized_null_rows"] = 0
+        receipt["imputed_rows"] = 0
+
+    for group in transfer["groups"].values():
+        for target_key, receipt in group["targets"].items():
+            historical(target_key, receipt)
+    for target_key, receipt in transfer["targets"].items():
+        historical(target_key, receipt)
+
+
 def _rewrite_as_legacy_relocated_worker_pool(
     manifest_path: Path,
 ) -> tuple[dict[str, object], dict[str, object]]:
@@ -1659,25 +1688,21 @@ def _rewrite_as_legacy_relocated_worker_pool(
         available
     )
 
-    schedule = dag["producer_schedule"]
-    schedule["schema_version"] = 16
-    schedule["execution_receipt_contract"]["version"] = 3
-    schedule["execution_receipt_contract"]["transition_authority"]["version"] = 1
-    schedule_payload = {
-        key: value
-        for key, value in schedule.items()
-        if key
-        not in {
-            "payload_sha256",
-            "producer_count",
-            "source_producer_count",
-            "transfer_group_count",
-            "transfer_target_count",
-            "status",
-        }
-    }
-    schedule["payload_sha256"] = _json_sha256(schedule_payload)
+    # A schema-9 pool sealed the historical schedule, not a version-downgraded
+    # copy of today's: install the frozen content real pools carry, and give
+    # the immigration targets the ordinary transfer receipts they had before
+    # the paired reconciliation and QRF evidence existed.
+    schedule = json.loads(
+        json.dumps(
+            dict(
+                late_producer_registry_module.legacy_us_late_producer_schedule_receipt()
+            )
+        )
+    )
+    dag["producer_schedule"] = schedule
     dag["post_puf_transfer"]["producer_schedule"] = json.loads(json.dumps(schedule))
+    _strip_immigration_transfer_evidence(dag["post_puf_transfer"])
+    manifest["operator_order"] = list(h5_io._SCHEMA9_STACKED_POOL_OPERATOR_ORDER)
     dag["post_puf_transfer"]["authority"] = (
         stacked_spine_module._legacy_stacked_authority_receipt()
     )
