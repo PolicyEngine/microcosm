@@ -1,0 +1,84 @@
+{
+  "scope": "Pure ASEC all-age observations and invented source-owner regressions; no actual data or all-person output",
+  "base": "41fe226d82a2b41fe911f8e04b4dc1d503d14af3",
+  "source": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/current_asec_usual_hours.py": "9660045cd2df2d9a69157e47f626eb77e6ebcfa98a8bb12e66e320307e1476cd",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/current_survey_hours.py": "bfc79e2c580fa24c0e8afac6f5cfacd643d2cdf7fcbf1d2ffb960eaa5e26ca89",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/current_survey_hours_source.py": "953c61db93d1c5b85755dc84287a8d5535571ac265f968a1d5c451592eb06b74",
+    "packages/microcosm-build/tests/test_us_current_asec_usual_hours.py": "4c33fff8f50177a5f5e8755a8a6f60c4c1c793f1de00c34d6d356f7bf725f050"
+  },
+  "tests": {
+    "all_age_observations": 37,
+    "source_owner": 24,
+    "existing_pure_recoder": 54,
+    "failed": 0,
+    "skipped": 0
+  },
+  "result_sha256": "f1e9ac23f774c56d958c3f23bd83b3680d46b6152a21567dad4e20fb4479f4a8",
+  "xml_sha256": "0de4b0f841c4a18cce845044f64cf51b6ac61208345f6b174c9bd711371202f1",
+  "wall_seconds": 149.05698354099877,
+  "cpu_seconds": 115.30500799999999,
+  "peak_rss_bytes": 494436352,
+  "primary_dictionary": {
+    "url": "https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf",
+    "sha256": "5cb80973326ef8b625fbaae70d80b0c641ce5d2b3911abd2fb4427abd5908a6f",
+    "visually_checked_pdf_pages": [
+      38,
+      41
+    ]
+  },
+  "primary_api_metadata": [
+    {
+      "name": "HRSWK",
+      "url": "https://api.census.gov/data/2025/cps/asec/mar/variables/HRSWK.json",
+      "sha256": "adf6a9e2034b18d7216eff32bfbf0df6938e76b2032fb3d3d3adb2e27af4d56f"
+    },
+    {
+      "name": "WKSWORK",
+      "url": "https://api.census.gov/data/2025/cps/asec/mar/variables/WKSWORK.json",
+      "sha256": "4bcff6dbc5569c1341857cebae96cd8acd5bc3ae6fd875448a99b510eb06802a"
+    },
+    {
+      "name": "WORKYN",
+      "url": "https://api.census.gov/data/2025/cps/asec/mar/variables/WORKYN.json",
+      "sha256": "eba9950f0b21c96ffa4cf1526e5429e5daecbd91000c10f1751b3f9ca7949fb5"
+    },
+    {
+      "name": "WTEMP",
+      "url": "https://api.census.gov/data/2025/cps/asec/mar/variables/WTEMP.json",
+      "sha256": "48451e221582750fa8b4031d5d8a653ccfeaaccba82345ffdeb55054de3cae18"
+    },
+    {
+      "name": "WRK_CK",
+      "url": "https://api.census.gov/data/2025/cps/asec/mar/variables/WRK_CK.json",
+      "sha256": "09c41254643089d6bbb776d4332574e709c4215f9a76c6af353d1890de2f0dc5"
+    },
+    {
+      "name": "A_AGE",
+      "url": "https://api.census.gov/data/2025/cps/asec/mar/variables/A_AGE.json",
+      "sha256": "4b2222c321d110f6b4e7536046ec02bc5727772cb84034af654ee9f14e87a98a"
+    },
+    {
+      "name": "WSAL_VAL",
+      "url": "https://api.census.gov/data/2025/cps/asec/mar/variables/WSAL_VAL.json",
+      "sha256": "d4cd19311d821b481da5707ea93d9ed03df409e3f2d6288438b509109d9428a7"
+    },
+    {
+      "name": "SEMP_VAL",
+      "url": "https://api.census.gov/data/2025/cps/asec/mar/variables/SEMP_VAL.json",
+      "sha256": "2f2c969321d776622d807a52550cfe929f33b2dd86392ee4464459efea1861cd"
+    },
+    {
+      "name": "FRSE_VAL",
+      "url": "https://api.census.gov/data/2025/cps/asec/mar/variables/FRSE_VAL.json",
+      "sha256": "f8d8b57de8e4b55eb2997153622977f5ec6416d716b520a704ff9f5616e97451"
+    }
+  ],
+  "review": "Root source review; no independent peer after quota limitation",
+  "remaining": [
+    "Actual all-age source audit",
+    "Explicit under15 modeled completion with earnings conflict checks",
+    "Source owner/graph/clone integration",
+    "Release no-worse comparison"
+  ]
+}
