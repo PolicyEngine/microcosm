@@ -51,9 +51,11 @@ narrowly-scoped control where the survey carries no signal at all:
    2025-07-01, ACA §71301/§71302 effective 2026/2027 — all keyed to these
    enum values in policyengine-us parameters), so an LPR-only file silently
    zeroes every one of those channels. Instead of blankets, the stage now
-   draws ``REFUGEE`` / ``ASYLEE`` / ``DEPORTATION_WITHHELD`` /
-   ``PAROLED_ONE_YEAR`` / ``TPS`` — in that order, mutually exclusive —
-   from candidates whose survey signature supports the status (origin
+   draws ``PAROLED_ONE_YEAR`` / ``REFUGEE`` / ``ASYLEE`` /
+   ``DEPORTATION_WITHHELD`` / ``TPS`` — in that order (decreasing target
+   precision: exact per-origin program admissions first), mutually
+   exclusive, so a person two cohorts could claim takes the earlier
+   status — from candidates whose survey signature supports it (origin
    country x arrival window x legal-status indicators), each to a
    manifest-cited weighted stock target. Cuba/Haiti-born persons are
    excluded from every humanitarian draw (the ``CUBAN_HAITIAN_ENTRANT``
@@ -1175,13 +1177,14 @@ def _spill_pew_unauthorized_excess(
 ) -> None:
     """Spill a broad Pew-universe margin to EAD in deterministic order.
 
-    The first draw preserves the prior EAD/DACA allocation behavior by
-    selecting from the whole residual scope. A selected DACA or residual
-    Cuban/Haitian cohort row still belongs to Pew's universe, so a second pass
-    spills additional rows outside those retained cohorts when needed. Within
-    each pass, rows outside the other controlled margin are selected first;
-    this keeps the student and worker controls from disturbing one another
-    unless their overlap makes that unavoidable.
+    Rows outside the other controlled margin are exhausted before any
+    overlapping row is touched, so the student and worker controls disturb
+    one another only when their overlap makes that unavoidable. Within each
+    of those two tiers the first draw preserves the prior EAD/DACA allocation
+    behavior by selecting from the whole residual scope; a selected DACA or
+    residual Cuban/Haitian cohort row still belongs to Pew's universe, so a
+    corrective draw then spills rows outside those retained cohorts before
+    the next tier is considered.
     """
 
     draws = _stable_person_draws(person, seed=seed, salt=salt)
@@ -1194,38 +1197,27 @@ def _spill_pew_unauthorized_excess(
         )
         return float(weights[scope & included].sum()) - target
 
-    # Preserve the existing seeded EAD allocation surface. DACA selections
-    # do not reduce the Pew count and are compensated by the corrective pass.
-    initial_candidates = (ssn_codes == 0) & noncitizens & scope
-    initial_excess = current_excess()
-    if initial_excess > 0:
-        for priority in (~preserve_scope, preserve_scope):
+    # Exhaust each tier before the next: a row inside the other margin is
+    # spilled only once no row outside it can close the gap, because that
+    # margin's own pass cannot restore a row this one removed.
+    for priority in (~preserve_scope, preserve_scope):
+        # Preserve the seeded EAD allocation surface. DACA and residual
+        # Cuban/Haitian cohort members keep protected engine labels after an
+        # EAD and so remain inside Pew's estimate; only rows outside those
+        # cohorts reduce the count, which the corrective draw supplies.
+        for retained_allowed in (True, False):
+            if current_excess() <= 0:
+                return
+            candidates = (ssn_codes == 0) & noncitizens & scope & priority
+            if not retained_allowed:
+                candidates &= ~retained_ead_cohort
             selected = _select_weight_to_target(
-                initial_candidates & priority,
+                candidates,
                 weights,
                 draws,
                 current_excess(),
             )
             ssn_codes[selected] = 2
-            if current_excess() <= 0:
-                return
-
-    # DACA and residual Cuban/Haitian cohort members retain protected engine
-    # labels after EAD assignment and therefore remain inside Pew's estimate.
-    # Only rows outside those cohorts can close any remaining gap.
-    for priority in (~preserve_scope, preserve_scope):
-        corrective_candidates = (
-            (ssn_codes == 0) & noncitizens & scope & ~retained_ead_cohort & priority
-        )
-        selected = _select_weight_to_target(
-            corrective_candidates,
-            weights,
-            draws,
-            current_excess(),
-        )
-        ssn_codes[selected] = 2
-        if current_excess() <= 0:
-            return
 
 
 def _humanitarian_draw_candidates(

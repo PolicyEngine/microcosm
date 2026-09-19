@@ -341,6 +341,30 @@ class TestSSNCardAssignment:
         assert output.loc[1, "ssn_card_type"] == "NON_CITIZEN_VALID_EAD"
         assert output.loc[1, "immigration_status_str"] == ("LEGAL_PERMANENT_RESIDENT")
 
+    @pytest.mark.parametrize("seed", range(6))
+    def test_student_spill_exhausts_nonworkers_before_touching_a_worker(
+        self, seed: int
+    ) -> None:
+        # Three residual students, control 2: a nonworking DACA-cohort row
+        # (an EAD leaves it inside Pew's universe, so spilling it closes
+        # nothing), a nonworking non-cohort row, and the only worker. The
+        # corrective draw must take the nonworker: the worker pass cannot
+        # restore a worker the student pass removed.
+        person = _person_table(
+            [
+                _noncitizen(A_HSCOL=2, PEINUSYR=17, A_AGE=30),
+                _noncitizen(A_HSCOL=2),
+                _noncitizen(A_HSCOL=2, A_LFSR=1),
+            ]
+        )
+        output = _run(person, students=2.0, workers=1.0, seed=seed)
+        status = output["immigration_status_str"]
+        in_pew_universe = status.isin(["UNDOCUMENTED", "DACA"])
+        in_labor_force = output["A_LFSR"].isin([1, 2, 3, 4])
+        assert int(in_pew_universe.sum()) == 2
+        assert int((in_pew_universe & in_labor_force).sum()) == 1
+        assert status.iloc[2] == "UNDOCUMENTED"
+
     def test_below_control_counts_spill_nothing(self) -> None:
         person = _person_table(
             [_noncitizen(A_LFSR=1, WSAL_VAL=10_000.0), _noncitizen(A_HSCOL=2)]
