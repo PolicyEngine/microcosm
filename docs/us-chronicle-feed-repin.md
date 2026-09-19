@@ -24,8 +24,10 @@ The artifact stays outside Git at
 `~/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/`.
 It contains `consumer_facts.jsonl` and `manifest.json`. The previous bare feed
 `consumer_facts_us_c5e5bf8.jsonl` remains beside it, unchanged. The manifest
-binds the fact and row-schema hashes, not the output path or the scope file;
-Microcosm separately pins the scope's exact bytes.
+binds the fact and row-schema hashes, not the output path, scope file or source
+commit. Microcosm separately pins the scope's exact bytes and source commit;
+the builder's clean-checkout check and build receipt establish which Chronicle
+source produced the artifact.
 
 ## Rebuild and verify
 
@@ -114,7 +116,9 @@ outside the four source-provenance paths and two target-metadata paths above,
 or any deviation from their documented counts. It pins both facts hashes and
 the new manifest hash before comparing rows, refusing different inputs. It also
 checks the added publisher authorities, source-cell identity, scope, target
-identity and values.
+identity and values. It requires the changed targets to be exactly 155 in
+`cms_medicaid.state_enrollment` and 11 in `jct.tax_expenditures`, and enforces
+the previously qualified registry versions and full canonical TargetSpec hashes.
 Its report includes full target equality separately; adding
 `--require-identical-targets` exits 1 for this repair even when the narrower
 qualification passes. It loads public Chronicle facts, never population data.

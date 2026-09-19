@@ -16,6 +16,7 @@ import json
 import subprocess
 import sys
 import textwrap
+from dataclasses import asdict, replace
 from importlib.resources import files
 from pathlib import Path
 
@@ -45,6 +46,79 @@ def _load_tool(name: str):
 
 def _us_resource(name: str) -> dict:
     return json.loads(files("microcosm.build.us").joinpath(name).read_text())
+
+
+def _load_qualification():
+    path = _ROOT / "experiments/us-chronicle-feed-repin/qualify_artifact.py"
+    spec = importlib.util.spec_from_file_location("qualify_artifact", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_qualification_compiles_canonical_family_ids(monkeypatch) -> None:
+    from microcosm.calibrate.registry import TargetRegistry, TargetSpec
+
+    qualifier = _load_qualification()
+    registry = TargetRegistry(
+        [
+            TargetSpec(name=name, entity="person", value=1, measure="count", source="x")
+            for name in (
+                "cms_medicaid.month2024_01.state_enrollment.aa",
+                "cms_medicaid.month2024_02.state_enrollment.aa",
+                "jct.fy2024.tax_expenditures.example",
+            )
+        ],
+        country="us",
+    )
+    monkeypatch.setattr(
+        qualifier, "load_congressional_district_vintage_crosswalk", lambda path: None
+    )
+    monkeypatch.setattr(
+        qualifier, "compile_us_fiscal_target_registry", lambda *a, **kw: registry
+    )
+    monkeypatch.setattr(
+        qualifier, "apply_us_medicaid_enrollment_substitutions", lambda r: (r, ())
+    )
+    specs, summary = qualifier._compile(())
+    assert set(specs) == {spec.key for spec in registry}
+    assert summary["families"] == {
+        "cms_medicaid.state_enrollment": 2,
+        "jct.tax_expenditures": 1,
+    }
+
+
+def test_qualification_changed_family_inventory_excludes_unchanged_targets() -> None:
+    from microcosm.calibrate.registry import TargetSpec
+
+    qualifier = _load_qualification()
+    specs = [
+        TargetSpec(name=name, entity="person", value=1, measure="count", source="x")
+        for name in (
+            "cms_medicaid.month2024_01.state_enrollment.aa",
+            "cms_medicaid.month2024_02.state_enrollment.aa",
+            "jct.fy2024.tax_expenditures.example",
+        )
+    ]
+    before = {spec.key: asdict(spec) for spec in specs}
+    after = {
+        spec.key: asdict(
+            replace(spec, metadata={"ledger_concept_authority": authority})
+        )
+        for spec, authority in ((specs[0], "cms"), (specs[2], "jct"))
+    }
+    after[specs[1].key] = asdict(specs[1])
+    report = qualifier._target_comparison(before, after, {}, {})
+    assert report["same_keys"]
+    assert report["changed_values"] == 0
+    assert report["changed_specs"] == 2
+    assert report["changed_specs_by_family"] == {
+        "cms_medicaid.state_enrollment": 1,
+        "jct.tax_expenditures": 1,
+    }
+    assert report["changed_field_paths"] == {"metadata.ledger_concept_authority": 2}
+    assert not report["full_structure_equal"]
 
 
 def test_pin_records_the_rebuilt_consumer_artifact() -> None:

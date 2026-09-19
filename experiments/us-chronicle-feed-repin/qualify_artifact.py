@@ -58,6 +58,24 @@ _TARGET_DIFFS = {
     "metadata.ledger_concept_authority": 166,
     "metadata.ledger_legacy_fact_key": 165,
 }
+_TARGET_FAMILY_CHANGES = {
+    "cms_medicaid.state_enrollment": 155,
+    "jct.tax_expenditures": 11,
+}
+_TARGET_IDENTITIES = {
+    "old": {
+        "registry_version": "b74d86d94a76",
+        "canonical_specs_sha256": (
+            "bb72cf6028ffb9943dab25a0751477f703620d6dd694c76174c355a67fccd151"
+        ),
+    },
+    "new": {
+        "registry_version": "749a7b0627ce",
+        "canonical_specs_sha256": (
+            "f57fa5a526d2afdcf1daa5d7a0649b15c68b0b26761e8e2102d110b8bfa8b189"
+        ),
+    },
+}
 
 
 def _diff_paths(before: Any, after: Any, path: str = "") -> list[str]:
@@ -156,7 +174,7 @@ def _compile(facts: tuple[dict, ...]) -> tuple[dict, dict]:
     summary = {
         "count": len(registry),
         "families": dict(
-            sorted(Counter(us_target_family_id(s) for s in registry).items())
+            sorted(Counter(us_target_family_id(s.name) for s in registry).items())
         ),
         "all_have_hierarchy": all(spec.hierarchy is not None for spec in registry),
         "registry_version": registry.version,
@@ -164,6 +182,31 @@ def _compile(facts: tuple[dict, ...]) -> tuple[dict, dict]:
         "compile_seconds": time.monotonic() - started,
     }
     return specs, summary
+
+
+def _target_comparison(before: dict, after: dict, old_summary: dict, new_summary: dict):
+    changed_specs = changed_values = 0
+    changes: Counter[str] = Counter()
+    families: Counter[str] = Counter()
+    for key in before.keys() & after.keys():
+        paths = _diff_paths(before[key], after[key])
+        changes.update(set(paths))
+        changed_specs += bool(paths)
+        if paths:
+            families[us_target_family_id(before[key]["name"])] += 1
+        changed_values += before[key]["value"] != after[key]["value"]
+    return {
+        "old": old_summary,
+        "new": new_summary,
+        "same_keys": before.keys() == after.keys(),
+        "only_old": len(before.keys() - after.keys()),
+        "only_new": len(after.keys() - before.keys()),
+        "changed_specs": changed_specs,
+        "changed_values": changed_values,
+        "changed_field_paths": dict(sorted(changes.items())),
+        "changed_specs_by_family": dict(sorted(families.items())),
+        "full_structure_equal": before == after,
+    }
 
 
 def qualify(old_path: Path, new_path: Path) -> dict:
@@ -186,24 +229,7 @@ def qualify(old_path: Path, new_path: Path) -> dict:
     after, new_summary = _compile(new.facts)
     del new
     gc.collect()
-    changed_specs = changed_values = 0
-    changes: Counter[str] = Counter()
-    for key in before.keys() & after.keys():
-        paths = _diff_paths(before[key], after[key])
-        changes.update(set(paths))
-        changed_specs += bool(paths)
-        changed_values += before[key]["value"] != after[key]["value"]
-    targets = {
-        "old": old_summary,
-        "new": new_summary,
-        "same_keys": before.keys() == after.keys(),
-        "only_old": len(before.keys() - after.keys()),
-        "only_new": len(after.keys() - before.keys()),
-        "changed_specs": changed_specs,
-        "changed_values": changed_values,
-        "changed_field_paths": dict(sorted(changes.items())),
-        "full_structure_equal": before == after,
-    }
+    targets = _target_comparison(before, after, old_summary, new_summary)
     checks = {
         "same_39158_source_cells": source["shared_cells"] == 39158
         and source["cells_only_old"] == source["cells_only_new"] == 0,
@@ -220,9 +246,21 @@ def qualify(old_path: Path, new_path: Path) -> dict:
         and old_summary["count"] == new_summary["count"] == 32867,
         "same_32_target_families": old_summary["families"] == new_summary["families"]
         and len(new_summary["families"]) == 32,
-        "all_target_values_equal": changed_values == 0,
-        "only_expected_target_provenance_changes": dict(changes) == _TARGET_DIFFS
-        and changed_specs == 166,
+        "all_target_values_equal": targets["changed_values"] == 0,
+        "only_expected_target_provenance_changes": targets["changed_field_paths"]
+        == _TARGET_DIFFS
+        and targets["changed_specs"] == 166,
+        "expected_changed_target_families": targets["changed_specs_by_family"]
+        == _TARGET_FAMILY_CHANGES,
+        "expected_registry_versions": all(
+            targets[side]["registry_version"] == identity["registry_version"]
+            for side, identity in _TARGET_IDENTITIES.items()
+        ),
+        "expected_canonical_spec_hashes": all(
+            targets[side]["canonical_specs_sha256"]
+            == identity["canonical_specs_sha256"]
+            for side, identity in _TARGET_IDENTITIES.items()
+        ),
         "all_targets_have_hierarchy": old_summary["all_have_hierarchy"]
         and new_summary["all_have_hierarchy"],
     }

@@ -1414,3 +1414,27 @@ and `--check` passed 42,162/42,162 fields and 41/41 inventory checks without new
 coverage digest changes. Ruff and test-inventory checks passed. At this journal
 entry, this continuation was local, pending root review; it did not merge #278,
 publish the feed, run a population/calibration, or certify a release.
+
+### Qualification helper correction after independent review
+
+Review of local commit `125f710` found that the portable helper passed entire
+TargetSpecs to the family-name parser. The family count remained 32, but the
+reported names were dataclass representations. The corrected helper passes
+`spec.name`, and two focused regression tests cover the compiled family inventory
+and counting only changed targets. It now enforces the exact changed families
+(155 `cms_medicaid.state_enrollment`, 11 `jct.tax_expenditures`), both previously
+qualified registry versions, and both full canonical TargetSpec hashes.
+
+One bounded repeat against the same three frozen input hashes passed all 13
+provenance checks in 81.89 seconds, peaking at 3,816,718,336 RSS bytes. Strict
+full-target equality remained false and `--require-identical-targets` exited 1
+as intended. The original evidence remains unchanged; the corrected report is
+`portable-comparison-family-corrected-strict.json` in the evidence directory.
+The feed, manifest, scope and generated parity pins did not change. The prior
+195-test production-pin result remains its original evidence; only the two
+focused helper regressions were run for this correction.
+
+Documentation now explicitly distinguishes artifact content validation from
+source provenance: the manifest binds neither scope/path nor source commit;
+the builder's clean-checkout check and build receipt establish the latter.
+This correction is local pending root review and makes no release claim.
