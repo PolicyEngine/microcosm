@@ -1,3 +1,37 @@
+# Graph parallel executor lane — 2026-09-19
+
+## State
+
+Active on `graph-parallel-executor`, based on main `16c8e78d2`.
+Runtime code is unchanged. Attribution precedes design and implementation.
+Final report: `experiments/graph-parallel-executor/out.md` (unless redirected).
+
+## Done
+
+- Verified branch, clean checkout, and requested base with `git log -1`.
+- Read `CLAUDE.md` and reference transport report / retention launcher.
+- Confirmed local `.venv` is absent; setup is next.
+
+## Next
+
+1. Install locked US environment; copy/adapt the measurement harness locally.
+2. Gate on >45 GB available memory; record PID; cold + required replay on
+   unchanged main with 0.25 s statistical attribution and 21,600 CPU-s ceiling.
+3. Commit design with source references, memoization classifications, worker
+   boundary, memory budget, failure/observer semantics, and identity invariant.
+4. Implement measured memoization and bounded concurrency without changing
+   `decl.py`, `kernel.py`, or producer-pinned US modules; commit coherent steps.
+5. Run identity/failure/scheduling tests, CI checks, gated measurements, and
+   create a draft PR against main. Write the full evidence report.
+
+Every lane commit includes `Co-Authored-By: GPT-6 <noreply@openai.com>`.
+No publication, calibration, or dataset build is authorized by this lane.
+
+---
+
+Historical journal below: as of 2026-09-19 its state/next/current-status claims
+belong to earlier sessions, not this branch's current work.
+
 # US engine lock → policyengine-us 2.2.1
 
 Lane: `engine-lock-pe-us-2.2.1`, off `origin/main` at `51c3143829b88382270f5af0714ae28fba14f803`,
