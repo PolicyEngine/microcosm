@@ -95,3 +95,66 @@ def test_unanswered_child_work_history_cannot_be_completed_from_an_earnings_valu
     result = asec.recode_asec_usual_hours(row)
     assert result.hours is None
     assert result.policy is None
+
+
+def completion_row(**changes):
+    return donor(WSAL_VAL="0", SEMP_VAL="0", FRSE_VAL="0", **changes)
+
+
+def child(**changes):
+    row = completion_row(
+        A_AGE="14", HRSWK="0", WKSWORK="0", WORKYN="0", WTEMP="0", WRK_CK="0"
+    )
+    row.update(changes)
+    return row
+
+
+def test_child_completion_is_explicit_and_preserves_niu_and_earnings_evidence():
+    row = child()
+    with pytest.raises(ValueError, match="UNDER15_POLICY_REQUIRED"):
+        asec.propose_asec_usual_hours(row)
+    result = asec.propose_asec_usual_hours(row, under15_policy=common.UNDER15_POLICY)
+    assert result.hours == 0.0
+    assert result.provenance == "under15_explicit_modeled_zero"
+    assert result.policy == common.UNDER15_POLICY
+    assert dict(result.raw) == row
+    assert asec.recode_asec_usual_hours(row).hours is None
+
+
+@pytest.mark.parametrize("field", asec.EARNINGS_FIELDS)
+@pytest.mark.parametrize("value", ["1", "-1", "", "unknown"])
+def test_child_earnings_conflicts_or_unknowns_refuse(field, value):
+    with pytest.raises(ValueError, match="NATIVE_HOURS_"):
+        asec.propose_asec_usual_hours(
+            child(**{field: value}), under15_policy=common.UNDER15_POLICY
+        )
+
+
+@pytest.mark.parametrize("field", asec.EARNINGS_FIELDS)
+def test_absent_earnings_column_cannot_support_child_zero(field):
+    row = child()
+    del row[field]
+    with pytest.raises(ValueError, match="SOURCE_FIELDS"):
+        asec.propose_asec_usual_hours(row, under15_policy=common.UNDER15_POLICY)
+
+
+def test_complete_proposal_refuses_unresolved_adult_even_with_zero_earnings():
+    with pytest.raises(ValueError, match="UNRESOLVED_ADULT"):
+        asec.propose_asec_usual_hours(
+            child(A_AGE="30"), under15_policy=common.UNDER15_POLICY
+        )
+
+
+@pytest.mark.parametrize("age", [15, 35, 85])
+def test_observed_adult_hours_do_not_depend_on_earnings_or_child_policy(age):
+    row = completion_row(A_AGE=str(age), HRSWK="99")
+    row.update(WSAL_VAL="100000", SEMP_VAL="-1000", FRSE_VAL="0")
+    result = asec.propose_asec_usual_hours(row)
+    assert result.hours == 99.0
+    assert result.policy is None
+    assert dict(result.raw) == row
+
+
+def test_unknown_completion_policy_refuses():
+    with pytest.raises(ValueError, match="UNDER15_POLICY"):
+        asec.propose_asec_usual_hours(child(), under15_policy="automatic")

@@ -1,0 +1,53 @@
+{
+  "actual_asec_observation_audit": {
+    "counts": {
+      "age/age15": 2174,
+      "age/age16plus": 112272,
+      "age/under15": 27679,
+      "result/age15/asec_positive_source_hours": 243,
+      "result/age15/asec_source_nonwork_completion": 1931,
+      "result/age16plus/asec_positive_source_hours": 72217,
+      "result/age16plus/asec_source_nonwork_completion": 40055,
+      "result/under15/asec_source_universe_unavailable": 27679,
+      "rows": 142125,
+      "topcoded_hours/age16plus": 77,
+      "unresolved/under15": 27679
+    },
+    "member": "pppub25.csv",
+    "member_sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+    "receipt_sha256": "03b924aadbf49d5b66dd55fbdd9ffb8ae7a2ee449ce4531a1210f4ff4edb3fbc",
+    "refusals": 0,
+    "rows": 142125,
+    "scope": "Unweighted full-member observation diagnostic; original9bcd recoder, not source-owner authority or new child-completion execution"
+  },
+  "base_commit": "9bcd039631ae9865f8caeaa8fe87b9b528265106",
+  "date": "2026-09-19",
+  "earlier_failed_attempt": "Attempt1 refused incomplete invented earnings columns; fixture repaired before fresh attempt2. Production field checks unchanged.",
+  "invented_tests": {
+    "cpu_seconds": 158.045512,
+    "failed": 0,
+    "passed": 144,
+    "peak_rss_bytes": 447184896,
+    "result_sha256": "7e62b4b78a0f1bb55aa6cc3820d9689ac029f78aeca67764a8f1b62f309ada24",
+    "skipped": 0,
+    "source_unchanged": true,
+    "wall_seconds": 226.9725150829181,
+    "xml_sha256": "1ba5fe413bd251639ea169175ba6b90f3436d2e2a734b57d310db20a572652bf"
+  },
+  "remaining": [
+    "Actual complete source-owner execution",
+    "Graph leaf and exact clone attachment",
+    "Engine input and release no-worse checks"
+  ],
+  "review": {
+    "independent_new_peer": "Unavailable after quota exhaustion; not claimed",
+    "root": "Complete source diff, source diagnostic, XML and current exact-byte checks reviewed"
+  },
+  "scope": "Original survey person hours proposals; no clone/graph/engine/release qualification",
+  "source_and_test_files": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/current_asec_usual_hours.py": "77878c90f89384077dd5d3f3397144b4fdcaaf2a6117d899295dc959fb151d55",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/current_survey_hours_source.py": "86ab8112c7a34c4c3059352480949ec22e037698ba46bd98aa7a6d0b4c2c3b5c",
+    "packages/microcosm-build/tests/test_us_current_asec_usual_hours.py": "875a51b4afe5226d2a271f2b5d81da9c34b6f7808a8872edec3c90088432ca18",
+    "packages/microcosm-build/tests/test_us_current_survey_hours_source.py": "8e3d7383863c457bc7d3643fc9f05253cbd093f4014c3107aa64579e411f1d3f"
+  }
+}

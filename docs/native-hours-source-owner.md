@@ -2,9 +2,11 @@
 
 `qualify_current_survey_hours(preparation, age15_policy=..., under15_policy=...)`
 connects the pure usual-hours proposals to the original ACS and ASEC source
-records held by an authenticated survey preparation. It returns selected
-original ACS proposals and retains selected ASEC literals for a later ASEC
-producer. It does not yet produce an all-person engine input or modify a Frame.
+records held by an authenticated survey preparation. Version 2 returns complete
+selected-original-person hours for both arms. It preserves source observations
+and labels explicit completion and empirical imputation separately. It does not
+yet transport those values to clones, produce an all-person engine input or
+modify a Frame.
 
 The function captures the preparation's pinned ACS person archive and current
 ASEC person member, checks their sizes and hashes, exhausts every CSV record
@@ -21,23 +23,29 @@ distinct from modeled provenance, including valid `FL_665=0` supplement
 nonresponse. Both future clones should receive the same original-person draw.
 This source owner neither creates clones nor assigns hours to them.
 
-The returned `QualifiedAcsHoursProposals` holds private raw tables, proposals,
+The returned `QualifiedSurveyHoursProposals` holds private raw tables, proposals,
 original source owners and an immutable receipt. Call `validate()` before
 borrowing the result and after final relevant I/O. It checks implementation,
 retained source identities, exact projection objects, table storage and nested
-proposal contents. A copied object, arbitrary callback, matching detached table
+proposal contents, including ASEC earnings and the combined person projection.
+A copied object, arbitrary callback, matching detached table
 or receipt alone does not replace the retained object. Raw records and donor
 assignments are private evidence; public diagnostics should use aggregate counts
 and provenance summaries.
 
-The receipt deliberately leaves `all_person_engine_input_qualified`,
-`asec_own_arm_hours_qualified`, `source_admission_issued` and `release_eligible`
-false. The pure batch's scope flags remain false as well; the enclosing live
-source owner supplies the checked relationship rather than changing those flags.
-Adult ACS source gaps may still produce unresolved proposals. An all-person
-consumer must explicitly handle them and qualify the ASEC own-arm semantics
-before constructing a complete output. Historical engine defaults, last-week
-hours and prior wages are not substitutes for current source evidence.
+The receipt qualifies selected original-person hours and the ASEC own arm. It
+deliberately leaves `all_person_engine_input_qualified`, `source_admission_issued`
+and `release_eligible` false. The pure batches' scope flags remain false as well;
+the enclosing live source owner supplies the checked relationship rather than
+changing those flags. `person_hours` preserves the original-person index order
+and includes the target, provenance and policy columns. The ACS `proposals`
+and separate `asec_proposals` retain native keys and literals for inspection.
+
+ASEC hours use the [separate observation and completion rules](asec-usual-hours-observations.md).
+The under-15 zero assumption requires explicit policy and known-zero source
+earnings; it is never relabeled observed zero. Missing adult hours refuse complete
+projection construction. Historical engine defaults, last-week hours and prior
+wages are not substitutes for current source evidence.
 
 ## Verification boundary
 
@@ -53,5 +61,7 @@ is a private pre-issuance test seam; production retains the 2,174-key requiremen
 This change continues the native branch based on `fee4aac9d`, including pure
 hours and response-status correction `4f34495e5`. Fresh main was inspected and
 lacks these native APIs, so it is not an independent main-branch replacement.
-Actual full-cohort execution, all-age ASEC interpretation, graph integration,
-clone transport, calibrated release comparisons and publication remain separate.
+Actual full-source owner execution, graph integration, clone transport,
+calibrated release comparisons and publication remain separate. A complete
+all-age ASEC source diagnostic supports the recoder but does not replace the
+retained source owner or qualify its production execution.
