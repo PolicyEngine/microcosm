@@ -154,6 +154,18 @@ else. Its rules:
   no solve can make under `max_weight_ratio = 5`. Measured on main's base
   pool, the capital-gains tail stratum holds about 12k and 9k units at base
   weights, a 3x to 4x stretch.
+- **Launch pairing.** Do not launch a release on this surface with a tail
+  stratum that carries capital gains only. The family fixes the shape of AGI,
+  and a capital-gains-only tail then fills the top classes with preferential
+  income while the classes below lose the excess returns that had been
+  carrying ordinary income. A prototype on the certified file
+  (`experiments/958-us-top-income-tail-receipts.md`; a graft and an entropy
+  reweighting, not a Microcosm build) scores a 37% to 39.6% top-rate reform
+  at +$23.5B as certified, +$20.8B with no tail and this family, **+$18.8B**
+  with a capital-gains-only tail and this family, +$28.4B with a full-vector tail and this family, and +$30.7B
+  when SOI Table 1.4 wages and net capital gains by size of AGI bind as
+  well. Pair the launch with the full-vector own-tail stratum (microcosm#958
+  increment 2).
 
 ## 4. Keep the exclusion register honest
 

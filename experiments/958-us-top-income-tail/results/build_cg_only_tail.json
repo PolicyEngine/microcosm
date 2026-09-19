@@ -1,0 +1,15 @@
+{
+ "variant": "cg_only",
+ "rule": "st_plus_lt_gains_above_weighted_q99.5",
+ "boundary": 1685506.6553593322,
+ "tail_donors": 15228,
+ "tail_weighted_returns": 71234.35070214933,
+ "tail_weighted_proxy_agi_bn": 805.7073465957421,
+ "tail_joint_share": 0.7876280535855004,
+ "recipient_pool_sizes": {
+  "True": 600,
+  "False": 250
+ },
+ "households_out": 72468,
+ "persons_out": 209087
+}

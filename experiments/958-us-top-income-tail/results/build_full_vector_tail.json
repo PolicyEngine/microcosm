@@ -1,0 +1,15 @@
+{
+ "variant": "full_vector",
+ "rule": "proxy_agi_at_or_above_floor",
+ "floor": 5000000.0,
+ "tail_donors": 19034,
+ "tail_weighted_returns": 65418.248621656254,
+ "tail_weighted_proxy_agi_bn": 1072.545422787541,
+ "tail_joint_share": 0.7943154355364085,
+ "recipient_pool_sizes": {
+  "True": 600,
+  "False": 250
+ },
+ "households_out": 76274,
+ "persons_out": 220019
+}
