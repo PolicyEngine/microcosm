@@ -185,11 +185,27 @@ patch. No full engine CI-group run is claimed.
 
 ## PR and committed state
 
-PR URL: not created. The required implementation is pending the measurement
-base decision; these source-audit results are committed as work in progress,
-not presented as a completed executor change. Initial journal commit:
-`f00743c9a`; source audit and baseline evidence: `9cc1850fb`. The final WIP
-commit records this report and all remaining completed-check outputs.
+PR URL: unavailable. A draft WIP PR body is prepared in
+[pr-body.md](pr-body.md), ending with the requested attribution footer. The
+branch push failed before a PR could be created:
+
+```text
+$ git push -u origin graph-parallel-executor
+fatal: unable to access 'https://github.com/PolicyEngine/microcosm.git/': Could not resolve host: github.com
+```
+
+After network access returns, the prepared command is:
+
+```sh
+gh pr create --draft --base main --head graph-parallel-executor --title "WIP: audit parallel executor prerequisites on main" --body-file experiments/graph-parallel-executor/pr-body.md
+```
+
+That dependent PR command was not run after the push failed. No PR was marked
+ready or merged. The implementation is pending the measurement-base decision;
+these source-audit results are committed as work in progress, not presented
+as a completed executor change. Initial journal: `f00743c9a`; source audit and
+baseline evidence: `9cc1850fb`; report and completed-check outputs: `96d61789d`.
+A subsequent WIP commit records this publication failure and clean handoff.
 
 ## Questions for Max
 

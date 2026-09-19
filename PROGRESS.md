@@ -29,12 +29,16 @@ Final report: `experiments/graph-parallel-executor/out.md`.
 - `tools/ci_test_groups.py --verify`: `verification=ok`.
 - Spec coverage: `42156/42156 configuration fields; 41/41 inventory checks`.
 - Graph acceptance burndown: `verification=ok`; all foreground checks finished.
-- Wrote final WIP report and documentation changelog fragment. No touched
-  Python files exist for ruff; no package formatting was attempted.
+- Wrote final WIP report and documentation changelog fragment (`96d61789d`).
+  No touched Python files exist for ruff; no package formatting was attempted.
+- Prepared draft PR body with the requested footer. `git push -u origin
+  graph-parallel-executor` failed: `Could not resolve host: github.com`.
+  No PR created; nothing marked ready or merged.
 
 ## Next
 
-1. Attempt draft PR publication for the committed WIP evidence.
+1. Resolve GitHub DNS access, push committed branch, create draft via prepared
+   `--body-file`; do not mark ready or merge.
 2. Resolve measurement base, then cold + required replay with phase-separated
    0.25 s sampling, >45 GB memory gate, exact PID and 21,600 CPU-s limit.
 3. Decide measured worker transport/memory reservations; implement supported
