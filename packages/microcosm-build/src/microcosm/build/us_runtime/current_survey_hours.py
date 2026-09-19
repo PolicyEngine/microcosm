@@ -211,7 +211,8 @@ def recode_asec_age15_hours(row: Mapping[str, str]) -> HoursProposal:
     for name in ALLOCATION_FLAGS:
         value = _integer(row[name], low=0, high=9)
         _require(
-            value in ((1, 2, 3) if name == "FL_665" else (0, 1, 9)), "ASEC_ALLOCATION"
+            value in ((0, 1, 2, 3) if name == "FL_665" else (0, 1, 9)),
+            "ASEC_ALLOCATION",
         )
         flags.append((name, value))
     positive = hours > 0

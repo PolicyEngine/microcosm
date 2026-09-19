@@ -158,7 +158,7 @@ def test_asec_temporary_followup_is_work_and_flags_remain_separate():
         {"WRK_CK": "2"},
         {"WORKYN": "2", "WTEMP": "2"},
         {"I_HRSWK": "2"},
-        {"FL_665": "0"},
+        {"FL_665": "4"},
         {"PERIDNUM": "123"},
     ],
 )
@@ -172,6 +172,24 @@ def test_asec_zero_is_nonwork_completion_and_initial_no_is_not_sufficient():
     assert p.hours == 0 and p.provenance == "asec_source_nonwork_completion"
     with pytest.raises(ValueError, match="ASEC_WORK_CONTRADICTION"):
         hours.recode_asec_age15_hours(donor(positive=False, WTEMP="1"))
+
+
+@pytest.mark.parametrize("positive", [False, True])
+def test_complete_supplement_nonresponse_is_preserved_not_rejected(positive):
+    # Census2025 FL_665: 0=complete supplement nonresponse; valid source status,
+    # not proof of observed hours or independently qualified donor eligibility.
+    # https://api.census.gov/data/2025/cps/asec/mar/variables/FL_665.json
+    row = donor(positive=positive, FL_665="0", I_HRSWK="1")
+    recoded = hours.recode_asec_age15_hours(row)
+    assert dict(recoded.raw)["FL_665"] == "0"
+    assert dict(recoded.allocation_flags)["FL_665"] == 0
+    batch = propose([acs(15)], [row], age15_policy=hours.AGE15_POLICY)
+    draw = batch.proposals[0]
+    assert draw.hours == (20 if positive else 0)
+    assert dict(draw.donor_allocation_flags)["FL_665"] == 0
+    assert draw.provenance == "age15_weighted_empirical_draw"
+    assert not batch.complete_donor_cohort_authenticated
+    assert not batch.release_qualified
 
 
 def test_temporary_niu_is_not_an_explicit_no_against_final_work():
