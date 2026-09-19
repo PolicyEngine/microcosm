@@ -50,7 +50,7 @@ def puf_agi_tail_selection_identity() -> dict[str, object]:
         "selection": "systematic_midpoints_in_source_id_order_no_rng",
         "weights": "proportional_rescale_per_cell_with_exact_float_sum_residual",
         "capital_gains_donors": "never_thinned",
-        "legacy_input": "incomplete_default_surface_without_projection_is_cg_only",
+        "legacy_input": "incomplete_proxy_surface_without_projection_is_cg_only",
     }
 
 
@@ -250,13 +250,14 @@ def select_puf_agi_tail_donors(
         *PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
     }
     complete = full_surface <= set(donor)
+    proxy_complete = set(PUF_TAX_DETAIL_PROXY_AGI_COMPONENTS) <= set(donor)
     has_projection = PUF_TAIL_PERSON_PROJECTION_ATTR in donor.attrs
     if not complete and has_projection:
         raise ValueError(
             "AGI tail person projection requires the complete donor output vector."
         )
     proxy = np.zeros(len(donor), dtype=np.float64)
-    if complete:
+    if proxy_complete:
         for column in PUF_TAX_DETAIL_PROXY_AGI_COMPONENTS:
             values = pd.to_numeric(donor[column], errors="raise").to_numpy(
                 dtype=np.float64
@@ -267,6 +268,11 @@ def select_puf_agi_tail_donors(
     agi = (
         source_eligible & (proxy >= PUF_AGI_TAIL_FLOOR) & donor.weight.gt(0).to_numpy()
     )
+    if agi.any() and not complete:
+        raise ValueError(
+            "AGI tail donors require the complete donor output vector; "
+            f"missing columns: {sorted(full_surface - set(donor))}."
+        )
     if agi.any() and not has_projection:
         raise ValueError("AGI tail donors require a bound person projection.")
     result["_puf_tail_proxy_agi"] = proxy
@@ -344,7 +350,7 @@ def select_puf_agi_tail_donors(
         "projection_status": "available"
         if has_projection
         else "not_required_no_agi_candidates"
-        if complete
+        if proxy_complete
         else "unavailable_legacy_capital_gains_only",
         "agi_candidate_count": int(agi.sum()),
         "agi_selected_count": int(selected._puf_tail_arm.isin((2, 3)).sum()),
