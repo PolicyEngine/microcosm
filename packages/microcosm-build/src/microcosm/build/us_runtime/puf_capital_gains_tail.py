@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult, tail_concentration_gate
+from microcosm.build.us_runtime.acs_income_universe import ACS_PUMS_EARNINGS_MINIMUM_AGE
 from microcosm.build.us_runtime.puf_aggregate_records import (
     PufAggregateDisaggregationSpec,
     load_default_puf_aggregate_disaggregation_spec,
@@ -26,6 +27,7 @@ from microcosm.build.us_runtime.puf_interest_components import (
 )
 from microcosm.build.us_runtime.puf_support import (
     PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN,
+    PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
     PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
 )
 from microcosm.build.us_runtime.support_provenance import (
@@ -35,9 +37,13 @@ from microcosm.build.us_runtime.support_provenance import (
     support_clone_index_column,
     support_source_id_column,
 )
+from microcosm.build.us_runtime.us_late_overlap_ownership import (
+    us_late_overlap_ownership_receipt,
+)
 from microcosm.frame import US_SCHEMA, Frame, Weights
 
 __all__ = [
+    "PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN",
@@ -59,6 +65,8 @@ __all__ = [
     "PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN",
     "PUF_CAPITAL_GAINS_TAIL_WORSENING_SHARE_TOLERANCE",
     "assert_puf_capital_gains_tail_survives_selection",
+    "puf_tail_owned_columns",
+    "puf_tail_recipient_roles",
     "puf_capital_gains_tail_concentration_gate",
     "puf_capital_gains_tail_concentration_controls_identity",
     "puf_capital_gains_tail_execution_inputs_identity",
@@ -75,8 +83,8 @@ __all__ = [
 
 PUF_CAPITAL_GAINS_TAIL_STAGE_NAME = "capital_gains_tail_transfer"
 PUF_CAPITAL_GAINS_TAIL_SUPPORT_CHANNEL = PUF_TAX_DETAIL_SUPPORT_CHANNEL
-PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION = 2
-PUF_CAPITAL_GAINS_TAIL_SUPPORT_CONTRACT_VERSION = 1
+PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION = 3
+PUF_CAPITAL_GAINS_TAIL_SUPPORT_CONTRACT_VERSION = 2
 PUF_CAPITAL_GAINS_TAIL_POSITIVE_MASS_FIVE_X_TARGET = 1_270_900_000_000.0
 PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_TOP_K = 100
 PUF_CAPITAL_GAINS_TAIL_CONCENTRATION_MAX_TOP_SHARE = 0.75
@@ -120,6 +128,8 @@ _TAIL_AGI_BAND_INDEX_COLUMN = "_puf_capital_gains_tail_agi_band_index"
 _TAIL_AGI_BAND_LABEL_COLUMN = "_puf_capital_gains_tail_agi_band_label"
 _TAIL_SYNTHETIC_COLUMN = "_puf_capital_gains_tail_is_synthetic"
 
+PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN = "puf_capital_gains_tail_arm"
+
 PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN = "puf_capital_gains_tail_transfer_applied"
 PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN = "puf_capital_gains_tail_donor_source_id"
 PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN = (
@@ -152,6 +162,42 @@ _RECIPIENT_AGI_PROXY_COLUMNS = (
 )
 
 
+def puf_tail_owned_columns(arm: int) -> dict[str, tuple[str, ...]]:
+    """One ownership authority for CG (1), AGI (2), and both-arm (3) rows."""
+
+    if (
+        isinstance(arm, (bool, np.bool_))
+        or not isinstance(arm, (int, np.integer))
+        or arm not in (1, 2, 3)
+    ):
+        raise ValueError(f"Missing or unknown PUF own-tail arm: {arm!r}.")
+    if arm == 1:
+        return {
+            "person": PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
+            "tax_unit": PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
+        }
+    late_owned = {
+        (spec["entity"], spec["target"])
+        for spec in us_late_overlap_ownership_receipt()["targets"]
+    }
+    return {
+        entity: tuple(
+            column for column in columns if (entity, column) not in late_owned
+        )
+        for entity, columns in (
+            ("person", PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS),
+            ("tax_unit", PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS),
+        )
+    }
+
+
+def _active_owned_columns(tail: pd.DataFrame) -> dict[str, tuple[str, ...]]:
+    arms = set(tail["_puf_tail_arm"].astype(int)) if "_puf_tail_arm" in tail else {1}
+    for arm in arms:
+        puf_tail_owned_columns(arm)
+    return puf_tail_owned_columns(3 if arms & {2, 3} else 1)
+
+
 def puf_capital_gains_tail_support_contract_identity(
     agi_bands: Sequence[PufE19200AgiBand] | None = None,
 ) -> dict[str, object]:
@@ -172,7 +218,16 @@ def puf_capital_gains_tail_support_contract_identity(
             "unique single-tax-unit PUF-detail recipient households with "
             "weight capacity for the global maximum assigned tail-donor weight"
         ),
-        "required_minimum": "selected_q99_5_tail_donor_count_in_filing_status",
+        "required_minimum": "selected_union_tail_donor_count_in_filing_status",
+        "recipient_role_minimum_age": ACS_PUMS_EARNINGS_MINIMUM_AGE,
+        "role_compatibility": "AGI_head_and_present_spouse_at_least_minimum_age_explicit_roles; nonzero_donor_spouse_requires_recipient_spouse",
+        "arm_owned_columns": {
+            str(arm): {
+                entity: list(columns)
+                for entity, columns in puf_tail_owned_columns(arm).items()
+            }
+            for arm in (1, 2, 3)
+        },
         "insufficient_support_action": (
             "skip_entire_filing_status_attachment_without_widening"
         ),
@@ -216,8 +271,11 @@ def puf_capital_gains_tail_spec_identity(
 def puf_capital_gains_tail_concentration_controls_identity() -> dict[str, object]:
     """Return the explicit selected-tail and produced-frame gate controls."""
 
+    from microcosm.build.us_runtime.puf_agi_tail import puf_agi_tail_selection_identity
+
     return {
-        "schema_version": 2,
+        "schema_version": 3,
+        "agi_arm": puf_agi_tail_selection_identity(),
         "selection_quantile": PUF_CAPITAL_GAINS_TAIL_QUANTILE,
         "selection_comparison": "strictly_greater_than",
         "reference_quantile": PUF_CAPITAL_GAINS_TAIL_REFERENCE_QUANTILE,
@@ -378,9 +436,12 @@ def select_puf_capital_gains_tail_donors(
         raise ValueError(
             "PUF capital-gains donor has no records strictly above its q99.5 boundary."
         )
-    tail = numeric.loc[tail_mask].copy()
-    tail[_TAIL_COMBINED_COLUMN] = combined[tail_mask]
-    tail[_TAIL_SYNTHETIC_COLUMN] = synthetic[tail_mask]
+    from microcosm.build.us_runtime.puf_agi_tail import select_puf_agi_tail_donors
+
+    numeric[_TAIL_COMBINED_COLUMN] = combined
+    numeric[_TAIL_SYNTHETIC_COLUMN] = synthetic
+    tail, agi_selection = select_puf_agi_tail_donors(numeric, tail_mask, eligible)
+
     band_index = _agi_band_indices(
         tail[PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN].to_numpy(
             dtype=np.float64,
@@ -400,11 +461,12 @@ def select_puf_capital_gains_tail_donors(
     )
     tail_positive_mass = float(
         np.dot(
-            tail[_TAIL_COMBINED_COLUMN].to_numpy(dtype=np.float64),
+            np.maximum(tail[_TAIL_COMBINED_COLUMN].to_numpy(dtype=np.float64), 0.0),
             tail["weight"].to_numpy(dtype=np.float64),
         )
     )
     receipt: dict[str, object] = {
+        "agi_arm": agi_selection,
         "quantile": PUF_CAPITAL_GAINS_TAIL_QUANTILE,
         "comparison": "strictly_greater_than",
         "realized_boundary": float(boundary),
@@ -436,7 +498,9 @@ def puf_capital_gains_tail_concentration_gate(
 ) -> GateResult:
     """Run the existing #462 weighted top-100 diagnostic on a tail stratum."""
 
-    missing = sorted(set(_JOINT_VECTOR_COLUMNS) - set(tail.columns))
+    owned = _active_owned_columns(tail)
+    columns = (*owned["person"], *owned["tax_unit"])
+    missing = sorted(set(columns) - set(tail.columns))
     if missing:
         raise ValueError(f"PUF capital-gains tail missing vector columns: {missing}.")
     resolved_weights = (
@@ -445,9 +509,20 @@ def puf_capital_gains_tail_concentration_gate(
         else np.asarray(weights, dtype=np.float64)
     )
     values = {
-        column: tail[column].to_numpy(dtype=np.float64)
-        for column in _JOINT_VECTOR_COLUMNS
+        column: tail[column].to_numpy(dtype=np.float64, copy=True) for column in columns
     }
+    if "_puf_tail_arm" in tail:
+        for position, (_, row) in enumerate(tail.iterrows()):
+            if int(row["_puf_tail_arm"]) in (2, 3):
+                for column in owned["person"]:
+                    values[column][position] = sum(
+                        vector[column]
+                        for vector in row["_puf_tail_person_vectors"].values()
+                    )
+        for column in set(columns) - set(_JOINT_VECTOR_COLUMNS):
+            values[column] = np.where(
+                tail["_puf_tail_arm"].isin([2, 3]), values[column], 0.0
+            )
     values[_COMBINED_COLUMN] = (
         values["short_term_capital_gains"]
         + values["long_term_capital_gains_before_response"]
@@ -721,6 +796,7 @@ def transfer_puf_capital_gains_tail(
         seed=int(seed),
         agi_bands=resolved_agi_bands,
     )
+    candidates = _with_agi_role_compatibility(frame, candidates, selected_tail)
     recipient_support = _recipient_support_receipt(
         selected_tail,
         candidates,
@@ -765,11 +841,17 @@ def transfer_puf_capital_gains_tail(
             "once (donor-key bijection violated)."
         )
     donor_by_id = tail.set_index("tax_unit_id")
-    for column in _JOINT_VECTOR_COLUMNS:
+    owned = _active_owned_columns(tail)
+    for column in (*owned["person"], *owned["tax_unit"]):
+        mask = (
+            np.ones(len(assignments), dtype=bool)
+            if column in _JOINT_VECTOR_COLUMNS
+            else assignments["_puf_tail_arm"].isin([2, 3]).to_numpy()
+        )
         expected_vector = donor_by_id.loc[
-            assignments["donor_source_id"], column
+            assignments.loc[mask, "donor_source_id"], column
         ].to_numpy(dtype=np.float64)
-        assigned_vector = assignments[column].to_numpy(dtype=np.float64)
+        assigned_vector = assignments.loc[mask, column].to_numpy(dtype=np.float64)
         if not np.array_equal(expected_vector, assigned_vector):
             raise ValueError(
                 "PUF tail assignments leaked recipient values into "
@@ -777,7 +859,7 @@ def transfer_puf_capital_gains_tail(
                 "verbatim."
             )
     before_distribution = _frame_combined_distribution(frame)
-    pre_values, pre_weights = _frame_capital_gains_vectors(frame)
+    pre_values, pre_weights = _frame_capital_gains_vectors(frame, owned=owned)
     pre_values[_COMBINED_COLUMN] = (
         pre_values["short_term_capital_gains"]
         + pre_values["long_term_capital_gains_before_response"]
@@ -788,13 +870,15 @@ def transfer_puf_capital_gains_tail(
         assignments,
     )
     after_distribution = _frame_combined_distribution(transferred)
-    post_values, post_weights = _frame_capital_gains_vectors(transferred)
+    post_values, post_weights = _frame_capital_gains_vectors(transferred, owned=owned)
     post_values[_COMBINED_COLUMN] = (
         post_values["short_term_capital_gains"]
         + post_values["long_term_capital_gains_before_response"]
     )
     post_receipts = _raw_top_share_receipts(post_values, post_weights)
-    frame_concentration = _frame_capital_gains_concentration_gate(transferred)
+    frame_concentration = _frame_capital_gains_concentration_gate(
+        transferred, owned=owned
+    )
     (
         stage_attributable_failures,
         frame_concentration_receipts,
@@ -808,6 +892,9 @@ def transfer_puf_capital_gains_tail(
             "PUF capital-gains tail transfer worsened weighted concentration "
             "above the threshold:\n  " + "\n  ".join(stage_attributable_failures)
         )
+    full_vector_reconciliation = _reconcile_full_vector_transfer(
+        transferred, assignments
+    )
     observed_tail = _observed_tail_transfer(transferred)
     carrier_reconciliation = _reconcile_observed_tail_transfer(
         observed_tail,
@@ -832,10 +919,7 @@ def transfer_puf_capital_gains_tail(
         selected_tail["weight"].to_numpy(dtype=np.float64),
     )
     signed_reconciliation: dict[str, dict[str, float]] = {}
-    for column in (
-        "short_term_capital_gains",
-        "long_term_capital_gains_before_response",
-    ):
+    for column in _JOINT_VECTOR_COLUMNS:
         donor_mass = float(
             np.dot(
                 tail[column].to_numpy(dtype=np.float64),
@@ -862,6 +946,7 @@ def transfer_puf_capital_gains_tail(
             "difference": float(transferred_mass - expected),
         }
 
+    signed_reconciliation.update(full_vector_reconciliation["signed_mass"])
     records = _manifest_records(assignments)
     donor_records = _donor_record_projection(records)
     assignment_records = _assignment_record_projection(records)
@@ -894,6 +979,10 @@ def transfer_puf_capital_gains_tail(
             ),
         },
         "recipient_support": recipient_support,
+        "arm_owned_columns": puf_capital_gains_tail_support_contract_identity()[
+            "arm_owned_columns"
+        ],
+        "full_vector_reconciliation": full_vector_reconciliation,
         "joint_vector_columns": list(_JOINT_VECTOR_COLUMNS),
         "joint_vector_policy": {
             "amount_scale": 1.0,
@@ -1012,6 +1101,11 @@ def _validate_recipient_support_receipt(
         "filing_status",
         "status",
         "observed_count",
+        "agi_compatible_count",
+        "agi_required_count",
+        "spouse_compatible_count",
+        "spouse_required_count",
+        "donor_mass",
         "required_minimum",
         "attached_donor_count",
         "skipped_donor_count",
@@ -1047,6 +1141,10 @@ def _validate_recipient_support_receipt(
         counts: dict[str, int] = {}
         for field in (
             "observed_count",
+            "agi_compatible_count",
+            "agi_required_count",
+            "spouse_compatible_count",
+            "spouse_required_count",
             "required_minimum",
             "attached_donor_count",
             "skipped_donor_count",
@@ -1062,11 +1160,54 @@ def _validate_recipient_support_receipt(
         required = counts["required_minimum"]
         attached = counts["attached_donor_count"]
         skipped = counts["skipped_donor_count"]
+        mass = stratum["donor_mass"]
+        mass_fields = {
+            "selected_source_weight",
+            "skipped_source_weight",
+            "selected_proxy_agi_sum",
+            "skipped_proxy_agi_sum",
+            "selected_weighted_proxy_agi",
+            "skipped_weighted_proxy_agi",
+        }
+        if not isinstance(mass, Mapping) or set(mass) != mass_fields:
+            raise ValueError("PUF tail recipient-support donor mass schema mismatch.")
+        for field, value in mass.items():
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not np.isfinite(value)
+            ):
+                raise ValueError(
+                    "PUF tail recipient-support donor mass must be finite."
+                )
+            if "weight" in field and "proxy" not in field and value < 0:
+                raise ValueError(
+                    "PUF tail recipient-support donor weights must be nonnegative."
+                )
         status = stratum["status"]
+        for suffix in ("source_weight", "proxy_agi_sum", "weighted_proxy_agi"):
+            expected_skip = (
+                mass[f"selected_{suffix}"] if status == "insufficient_support" else 0.0
+            )
+            if mass[f"skipped_{suffix}"] != expected_skip:
+                raise ValueError(
+                    "PUF tail recipient-support skipped donor mass changed."
+                )
+        if not (
+            counts["spouse_required_count"] <= counts["agi_required_count"] <= required
+            and counts["spouse_compatible_count"]
+            <= counts["agi_compatible_count"]
+            <= observed
+        ):
+            raise ValueError("PUF tail recipient-support role counts are inconsistent.")
         if required == 0:
             valid = status == "not_applicable" and attached == skipped == 0
             not_applicable += 1
-        elif observed < required:
+        elif (
+            observed < required
+            or counts["agi_compatible_count"] < counts["agi_required_count"]
+            or counts["spouse_compatible_count"] < counts["spouse_required_count"]
+        ):
             valid = (
                 status == "insufficient_support"
                 and attached == 0
@@ -1155,6 +1296,10 @@ def puf_capital_gains_tail_terminal_support_receipt(
         "artifact_kind": "populace_puf_capital_gains_tail_terminal_support",
         "tail_manifest_schema_version": PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION,
         "tail_manifest_sha256": manifest["manifest_sha256"],
+        "agi_selection": json.loads(
+            json.dumps(manifest["boundary"]["agi_arm"], allow_nan=False)
+        ),
+        "arm_owned_columns": manifest["arm_owned_columns"],
         "recipient_support": json.loads(
             json.dumps(manifest["recipient_support"], allow_nan=False)
         ),
@@ -1176,6 +1321,8 @@ def validate_puf_capital_gains_tail_terminal_support_receipt(
         "artifact_kind",
         "tail_manifest_schema_version",
         "tail_manifest_sha256",
+        "agi_selection",
+        "arm_owned_columns",
         "recipient_support",
     }:
         raise ValueError("PUF capital-gains tail terminal support schema mismatch.")
@@ -1185,6 +1332,16 @@ def validate_puf_capital_gains_tail_terminal_support_receipt(
         != PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION
     ):
         raise ValueError("PUF capital-gains tail terminal support identity changed.")
+    if (
+        payload["arm_owned_columns"]
+        != puf_capital_gains_tail_support_contract_identity()["arm_owned_columns"]
+    ):
+        raise ValueError("PUF terminal tail arm-owned column contract changed.")
+    from microcosm.build.us_runtime.puf_agi_tail import (
+        validate_puf_agi_tail_selection_receipt,
+    )
+
+    validate_puf_agi_tail_selection_receipt(payload["agi_selection"])
     tail_sha = payload["tail_manifest_sha256"]
     if (
         not isinstance(tail_sha, str)
@@ -1236,6 +1393,13 @@ def validate_puf_capital_gains_tail_manifest(
         or record_count != len(records)
     ):
         raise ValueError("PUF capital-gains tail manifest record count changed.")
+    for record in records:
+        _validate_arm_record(record)
+    if (
+        payload.get("arm_owned_columns")
+        != puf_capital_gains_tail_support_contract_identity()["arm_owned_columns"]
+    ):
+        raise ValueError("PUF tail arm-owned column contract changed.")
     donor_records_sha256 = _canonical_sha256(_donor_record_projection(records))
     if payload.get("donor_records_sha256") != donor_records_sha256:
         raise ValueError(
@@ -1253,6 +1417,11 @@ def validate_puf_capital_gains_tail_manifest(
     boundary = payload.get("boundary")
     if not isinstance(boundary, Mapping):
         raise ValueError("PUF capital-gains tail manifest boundary is malformed.")
+    from microcosm.build.us_runtime.puf_agi_tail import (
+        validate_puf_agi_tail_selection_receipt,
+    )
+
+    validate_puf_agi_tail_selection_receipt(boundary.get("agi_arm"))
     selected_donor_count = boundary.get("tail_record_count")
     if (
         isinstance(selected_donor_count, bool)
@@ -1274,6 +1443,101 @@ def validate_puf_capital_gains_tail_manifest(
             f"claimed {claimed!r}, computed {actual!r}."
         )
     return actual
+
+
+def _validate_arm_record(record: Mapping[str, object]) -> None:
+    if not isinstance(record, Mapping):
+        raise ValueError("PUF tail arm record must be an object.")
+    arm = record.get("arm")
+    owned = puf_tail_owned_columns(arm)
+    for field in (
+        "person_vectors",
+        "person_dtypes",
+        "tax_unit_vector",
+        "tax_unit_dtypes",
+        "donor_person_source_ids",
+    ):
+        if not isinstance(record.get(field), Mapping):
+            raise ValueError(f"PUF tail arm record {field} must be an object.")
+    if arm == 1:
+        if any(
+            record[field]
+            for field in (
+                "person_vectors",
+                "person_dtypes",
+                "tax_unit_vector",
+                "tax_unit_dtypes",
+                "donor_person_source_ids",
+            )
+        ):
+            raise ValueError("Capital-gains arm unexpectedly declares an AGI vector.")
+        return
+    vectors = record["person_vectors"]
+    if "head" not in vectors or set(vectors) - {"head", "spouse"}:
+        raise ValueError("AGI arm must declare head and optional spouse vectors.")
+    if set(record["donor_person_source_ids"]) != set(vectors):
+        raise ValueError(
+            "AGI arm donor person identities differ from its role vectors."
+        )
+    from microcosm.build.us_runtime.puf_agi_tail import PUF_AGI_TAIL_FLOOR
+    from microcosm.build.us_runtime.puf_support import (
+        PUF_TAX_DETAIL_PROXY_AGI_COMPONENTS,
+    )
+    from microcosm.build.us_runtime.qbi_inputs import US_QBI_BOOLEAN_OUTPUT_COLUMNS
+
+    source_ids = list(record["donor_person_source_ids"].values())
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) for value in source_ids
+    ) or len(set(source_ids)) != len(source_ids):
+        raise ValueError("AGI arm donor person IDs must be unique integers.")
+    proxy = record.get("proxy_agi")
+    if (
+        isinstance(proxy, bool)
+        or not isinstance(proxy, (int, float))
+        or not np.isfinite(proxy)
+        or proxy < PUF_AGI_TAIL_FLOOR
+    ):
+        raise ValueError("AGI arm proxy AGI is below its declared floor or malformed.")
+    for entity in ("person", "tax_unit"):
+        dtypes = record[f"{entity}_dtypes"]
+        if set(dtypes) != set(owned[entity]):
+            raise ValueError(f"AGI arm {entity} physical dtype surface changed.")
+        parts = vectors.values() if entity == "person" else [record["tax_unit_vector"]]
+        for part in parts:
+            if not isinstance(part, Mapping) or set(part) != set(owned[entity]):
+                raise ValueError(f"AGI arm {entity} owned vector surface changed.")
+            for column, value in part.items():
+                dtype = pd.api.types.pandas_dtype(dtypes[column])
+                if column in US_QBI_BOOLEAN_OUTPUT_COLUMNS:
+                    valid = pd.api.types.is_bool_dtype(dtype) and isinstance(
+                        value, bool
+                    )
+                else:
+                    valid = (
+                        dtype.kind in "iuf"
+                        and isinstance(value, (int, float))
+                        and not isinstance(value, bool)
+                        and np.isfinite(value)
+                    )
+                if not valid:
+                    raise ValueError(
+                        f"AGI arm typed value is malformed: {entity}.{column}."
+                    )
+                if valid and column not in US_QBI_BOOLEAN_OUTPUT_COLUMNS:
+                    with np.errstate(over="ignore", invalid="ignore"):
+                        represented = np.asarray(value, dtype=dtype).item()
+                    if represented != value:
+                        raise ValueError(
+                            f"AGI arm value is not exactly representable as {dtype}: {column}."
+                        )
+    projected_proxy = sum(
+        sum(vector[column] for vector in vectors.values())
+        for column in PUF_TAX_DETAIL_PROXY_AGI_COMPONENTS
+    )
+    if not np.isclose(proxy, projected_proxy, rtol=1e-12, atol=1e-6):
+        raise ValueError(
+            "AGI arm proxy AGI differs from its transferred person vectors."
+        )
 
 
 def _recipient_candidates(
@@ -1418,6 +1682,73 @@ def _recipient_candidates(
     return puf_tax_units.reset_index(drop=True)
 
 
+def puf_tail_recipient_roles(person: pd.DataFrame) -> pd.Series:
+    """Resolve explicit person roles, never infer a head from row order."""
+    flags = [f"is_tax_unit_{role}" for role in ("head", "spouse", "dependent")]
+    if set(flags).issubset(person):
+        values = person[flags]
+        valid = values.notna().all(axis=1) & values.isin([True, False]).all(axis=1)
+        numeric = values.fillna(False).astype(bool)
+        valid &= numeric.sum(axis=1).eq(1)
+        result = pd.Series("unknown", index=person.index)
+        for role, column in zip(("head", "spouse", "dependent"), flags, strict=True):
+            result.loc[valid & numeric[column]] = role
+        return result
+    if "tax_unit_role_input" in person:
+        return person["tax_unit_role_input"].map(
+            lambda value: _normalized_filing_status(value).lower()
+        )
+    return pd.Series("unknown", index=person.index)
+
+
+def _with_agi_role_compatibility(
+    frame: Frame, candidates: pd.DataFrame, tail: pd.DataFrame
+) -> pd.DataFrame:
+    result = candidates.copy()
+    result["agi_compatible"] = False
+    result["agi_has_spouse"] = False
+    result["recipient_head_person_id"] = -1
+    result["recipient_spouse_person_id"] = -1
+    if not tail["_puf_tail_arm"].isin([2, 3]).any():
+        return result
+    people = frame.table("person")
+    roles = puf_tail_recipient_roles(people)
+    age = (
+        pd.to_numeric(people["age"], errors="coerce")
+        if "age" in people
+        else pd.Series(np.nan, index=people.index)
+    )
+    # Uniform across origins: explicit adult roles are the compatibility
+    # boundary. This protects the reviewed under-15 source-universe zero rule.
+    groups = people.groupby("person_tax_unit_id", sort=False).groups
+    for index, candidate in result.iterrows():
+        positions = groups.get(candidate["recipient_tax_unit_id"])
+        if positions is None:
+            continue
+        role = roles.loc[positions]
+        heads = role.index[role.eq("head")]
+        spouses = role.index[role.eq("spouse")]
+        if (
+            len(heads) != 1
+            or len(spouses) > 1
+            or not role.isin(["head", "spouse", "dependent"]).all()
+        ):
+            continue
+        adults = heads.append(spouses)
+        if not age.loc[adults].ge(ACS_PUMS_EARNINGS_MINIMUM_AGE).all():
+            continue
+        result.at[index, "agi_compatible"] = True
+        result.at[index, "agi_has_spouse"] = bool(len(spouses))
+        result.at[index, "recipient_head_person_id"] = int(
+            people.at[heads[0], "person_id"]
+        )
+        if len(spouses):
+            result.at[index, "recipient_spouse_person_id"] = int(
+                people.at[spouses[0], "person_id"]
+            )
+    return result
+
+
 def _recipient_support_receipt(
     tail: pd.DataFrame,
     candidates: pd.DataFrame,
@@ -1452,11 +1783,23 @@ def _recipient_support_receipt(
     for code, name in _FILING_STATUS_BY_CODE.items():
         required = int(required_counts.get(code, 0))
         observed = int(observed_counts.get(code, 0))
+        donors = tail.loc[donor_codes.eq(code)]
+        recipients = candidates.loc[candidate_codes.eq(code)]
+        agi_required = int(donors["_puf_tail_arm"].isin([2, 3]).sum())
+        spouse_required = int(donors["_puf_tail_needs_spouse"].sum())
+        agi_compatible = int(recipients["agi_compatible"].sum())
+        spouse_compatible = int(
+            (recipients["agi_compatible"] & recipients["agi_has_spouse"]).sum()
+        )
         if required == 0:
             status = "not_applicable"
             attached = 0
             skipped = 0
-        elif observed < required:
+        elif (
+            observed < required
+            or agi_compatible < agi_required
+            or spouse_compatible < spouse_required
+        ):
             status = "insufficient_support"
             attached = 0
             skipped = required
@@ -1464,12 +1807,29 @@ def _recipient_support_receipt(
             status = "attached"
             attached = required
             skipped = 0
+        donor_weights = donors["weight"].to_numpy(dtype=np.float64)
+        donor_proxy = donors["_puf_tail_proxy_agi"].to_numpy(dtype=np.float64)
+        selected_mass = {
+            "source_weight": float(donor_weights.sum()),
+            "proxy_agi_sum": float(donor_proxy.sum()),
+            "weighted_proxy_agi": float(np.dot(donor_weights, donor_proxy)),
+        }
+        donor_mass = {
+            f"{kind}_{field}": value if kind == "selected" or skipped else 0.0
+            for kind in ("selected", "skipped")
+            for field, value in selected_mass.items()
+        }
         strata.append(
             {
+                "donor_mass": donor_mass,
                 "filing_status_code": code,
                 "filing_status": name,
                 "status": status,
                 "observed_count": observed,
+                "agi_compatible_count": agi_compatible,
+                "agi_required_count": agi_required,
+                "spouse_compatible_count": spouse_compatible,
+                "spouse_required_count": spouse_required,
                 "required_minimum": required,
                 "attached_donor_count": attached,
                 "skipped_donor_count": skipped,
@@ -1538,7 +1898,16 @@ def _assign_tail_donors(
         queue.reverse()
 
     rows: list[dict[str, object]] = []
-    for donor_position, donor_row in tail.iterrows():
+    donor_order = sorted(
+        tail.index,
+        key=lambda index: (
+            not bool(tail.at[index, "_puf_tail_needs_spouse"]),
+            int(tail.at[index, "_puf_tail_arm"]) == 1,
+            int(tail.at[index, "tax_unit_id"]),
+        ),
+    )
+    for donor_position in donor_order:
+        donor_row = tail.loc[donor_position]
         filing_status_code = int(donor_row["filing_status_code"])
         if filing_status_code not in _FILING_STATUS_BY_CODE:
             raise ValueError(
@@ -1552,8 +1921,20 @@ def _assign_tail_donors(
         ):
             queue = queues.get((filing_status_code, band))
             if queue:
-                candidate_index = queue.pop()
-                break
+                for queue_position in range(len(queue) - 1, -1, -1):
+                    candidate = candidates.loc[queue[queue_position]]
+                    if int(donor_row["_puf_tail_arm"]) in (2, 3) and (
+                        not bool(candidate["agi_compatible"])
+                        or (
+                            bool(donor_row["_puf_tail_needs_spouse"])
+                            and not bool(candidate["agi_has_spouse"])
+                        )
+                    ):
+                        continue
+                    candidate_index = queue.pop(queue_position)
+                    break
+                if candidate_index is not None:
+                    break
         if candidate_index is None:
             raise ValueError(
                 "Insufficient unique, single-tax-unit PUF recipient households "
@@ -1582,8 +1963,9 @@ def _assign_tail_donors(
         # recipient's old value (microcosm#570 review, Critical: 99.7% of
         # donor unrecaptured-1250 mass was lost this way). The selected
         # donor's joint vector always wins.
-        for column in _JOINT_VECTOR_COLUMNS:
-            row[column] = donor_row[column]
+        for columns in puf_tail_owned_columns(int(donor_row["_puf_tail_arm"])).values():
+            for column in columns:
+                row[column] = donor_row[column]
         row["assigned_weight"] = float(assigned_weights[donor_position])
         rows.append(row)
     result = pd.DataFrame(rows)
@@ -1677,6 +2059,7 @@ def _clone_and_transfer(
 
     tax_unit = tables["tax_unit"]
     provenance_defaults: Mapping[str, Any] = {
+        PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN: 0,
         PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN: False,
         PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN: -1,
         PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN: False,
@@ -1722,6 +2105,12 @@ def _clone_and_transfer(
         index=tax_unit["tax_unit_id"].to_numpy(dtype=np.int64),
     ).to_dict()
 
+    person_position_by_id = pd.Series(
+        tables["person"].index, index=tables["person"]["person_id"]
+    ).to_dict()
+    tail_positions_by_unit = (
+        tables["person"].groupby("person_tax_unit_id", sort=False).groups
+    )
     clone_details: dict[int, dict[str, object]] = {}
     for assignment_index, assignment in assignments.iterrows():
         recipient_tax_unit_id = int(assignment["recipient_tax_unit_id"])
@@ -1732,7 +2121,37 @@ def _clone_and_transfer(
         if first_person_position is None:
             raise AssertionError("PUF tail clone has no target-tax-unit person.")
         first_person_position = int(first_person_position)
-        for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS:
+        arm = int(assignment["_puf_tail_arm"])
+        spouse_person_id = -1
+        if arm in (2, 3):
+            target_people = tables["person"]
+            target_positions = tail_positions_by_unit[tail_tax_unit_id]
+            head_person_id = int(assignment["recipient_head_person_id"]) + id_multiplier
+            spouse_source_id = int(assignment["recipient_spouse_person_id"])
+            spouse_person_id = (
+                spouse_source_id + id_multiplier if spouse_source_id >= 0 else -1
+            )
+            positions_by_role = {"head": [person_position_by_id[head_person_id]]}
+            if spouse_person_id >= 0:
+                positions_by_role["spouse"] = [person_position_by_id[spouse_person_id]]
+            first_person_position = int(positions_by_role["head"][0])
+            for column in puf_tail_owned_columns(arm)["person"]:
+                if column not in target_people:
+                    raise ValueError(
+                        f"AGI tail recipient missing owned person column {column!r}."
+                    )
+                dtype = assignment["_puf_tail_person_dtypes"][column]
+                _assert_transfer_dtype(target_people[column], dtype, column)
+                zero = False if pd.api.types.is_bool_dtype(dtype) else 0
+                target_people.loc[target_positions, column] = zero
+                for role, positions in positions_by_role.items():
+                    value = (
+                        assignment["_puf_tail_person_vectors"]
+                        .get(role, {})
+                        .get(column, zero)
+                    )
+                    target_people.loc[positions, column] = value
+        for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS if arm == 1 else ():
             tables["person"].at[first_person_position, column] = float(
                 assignment[column]
             )
@@ -1740,8 +2159,19 @@ def _clone_and_transfer(
         if target_tax_unit_position is None:
             raise AssertionError("PUF tail clone target tax unit is not present.")
         target_tax_unit_position = int(target_tax_unit_position)
-        for column in PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS:
-            tax_unit.at[target_tax_unit_position, column] = float(assignment[column])
+        for column in puf_tail_owned_columns(arm)["tax_unit"]:
+            if column not in tax_unit:
+                raise ValueError(
+                    f"AGI tail recipient missing owned tax-unit column {column!r}."
+                )
+            if arm in (2, 3):
+                _assert_transfer_dtype(
+                    tax_unit[column],
+                    assignment["_puf_tail_tax_unit_dtypes"][column],
+                    column,
+                )
+            tax_unit.at[target_tax_unit_position, column] = assignment[column]
+        tax_unit.at[target_tax_unit_position, PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN] = arm
         tax_unit.at[
             target_tax_unit_position,
             PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
@@ -1771,6 +2201,8 @@ def _clone_and_transfer(
             "recipient_tax_unit_id": recipient_tax_unit_id,
             "tail_household_id": tail_household_id,
             "tail_tax_unit_id": tail_tax_unit_id,
+            "tail_spouse_person_id": spouse_person_id,
+            "tail_person_count": len(tail_positions_by_unit[tail_tax_unit_id]),
             "tail_person_id": int(
                 tables["person"].at[first_person_position, "person_id"]
             ),
@@ -1874,6 +2306,113 @@ def _clone_and_transfer(
     return transferred, clone_receipt
 
 
+def _assert_transfer_dtype(values: pd.Series, source_dtype: str, column: str) -> None:
+    source = pd.api.types.pandas_dtype(source_dtype)
+    if pd.api.types.is_bool_dtype(source):
+        valid = pd.api.types.is_bool_dtype(values.dtype)
+    else:
+        valid = values.dtype == source
+    if not valid:
+        raise ValueError(
+            f"AGI tail physical dtype mismatch for {column}: {values.dtype} != {source_dtype}."
+        )
+
+
+def _reconcile_full_vector_transfer(
+    frame: Frame, assignments: pd.DataFrame
+) -> dict[str, object]:
+    """Read every owned role cell back; reconcile its signed weighted mass."""
+    people = frame.table("person")
+    units = frame.table("tax_unit").set_index("tax_unit_id")
+    person_positions = people.groupby("person_tax_unit_id", sort=False).indices
+    actual_mass: dict[str, float] = {}
+    expected_mass: dict[str, float] = {}
+    donor_mass: dict[str, float] = {}
+    checked_cells = 0
+    for _, assignment in assignments.sort_values(
+        "donor_source_id", kind="stable"
+    ).iterrows():
+        arm = int(assignment["_puf_tail_arm"])
+        puf_tail_owned_columns(arm)
+        unit_id = int(assignment["tail_tax_unit_id"])
+        if int(units.at[unit_id, PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN]) != arm:
+            raise AssertionError("PUF materialized carrier changed arm provenance.")
+        if arm == 1:
+            continue  # The unchanged joint-vector reconciliation covers CG-only.
+        rows = people.iloc[person_positions[unit_id]]
+        role = puf_tail_recipient_roles(rows)
+        vectors = assignment["_puf_tail_person_vectors"]
+        expected_totals: dict[str, float] = {}
+        actual_totals: dict[str, float] = {}
+        for column in puf_tail_owned_columns(arm)["person"]:
+            _assert_transfer_dtype(
+                rows[column], assignment["_puf_tail_person_dtypes"][column], column
+            )
+            zero = False if pd.api.types.is_bool_dtype(rows[column].dtype) else 0
+            expected = pd.Series(
+                [
+                    vectors.get(value, {}).get(column, zero)
+                    if value in ("head", "spouse")
+                    else zero
+                    for value in role
+                ],
+                index=rows.index,
+                dtype=rows[column].dtype,
+            )
+            if not rows[column].equals(expected.rename(column)):
+                raise AssertionError(
+                    f"PUF full-vector materialized carrier changed person.{column}."
+                )
+            checked_cells += len(rows)
+            expected_totals[column] = float(expected.sum())
+            actual_totals[column] = float(rows[column].sum())
+        for column in puf_tail_owned_columns(arm)["tax_unit"]:
+            _assert_transfer_dtype(
+                frame.table("tax_unit")[column],
+                assignment["_puf_tail_tax_unit_dtypes"][column],
+                column,
+            )
+            expected = assignment[column]
+            actual = units.at[unit_id, column]
+            if actual != expected:
+                raise AssertionError(
+                    f"PUF full-vector materialized carrier changed tax_unit.{column}."
+                )
+            expected_totals[column] = float(expected)
+            actual_totals[column] = float(actual)
+            checked_cells += 1
+        for column in expected_totals:
+            expected_mass[column] = expected_mass.get(column, 0.0) + expected_totals[
+                column
+            ] * float(assignment["assigned_weight"])
+            actual_mass[column] = actual_mass.get(column, 0.0) + actual_totals[
+                column
+            ] * float(assignment["assigned_weight"])
+            donor_mass[column] = donor_mass.get(column, 0.0) + expected_totals[
+                column
+            ] * float(assignment["weight"])
+    reconciled = {}
+    for column, expected in expected_mass.items():
+        actual = actual_mass[column]
+        if actual != expected:
+            raise AssertionError(f"PUF full-vector signed mass mismatch for {column}.")
+        # CG legs also include the CG-only arm in the old all-tail receipt.
+        if column in _JOINT_VECTOR_COLUMNS:
+            continue
+        reconciled[column] = {
+            "scope": "agi_arm",
+            "donor_weighted_signed_mass": donor_mass[column],
+            "expected_frame_weighted_signed_mass": expected,
+            "transferred_frame_weighted_signed_mass": actual,
+            "difference": actual - expected,
+        }
+    return {
+        "passed": True,
+        "owned_cell_count": checked_cells,
+        "signed_mass": reconciled,
+    }
+
+
 def _support_clone_multiplier(frame: Frame) -> int:
     """Recover one clone offset from source-matched native/detail pairs.
 
@@ -1961,8 +2500,8 @@ def _frame_combined_distribution(frame: Frame) -> dict[str, object]:
     return receipt
 
 
-def _frame_capital_gains_concentration_gate(frame: Frame) -> GateResult:
-    values, weights = _frame_capital_gains_vectors(frame)
+def _frame_capital_gains_concentration_gate(frame: Frame, *, owned=None) -> GateResult:
+    values, weights = _frame_capital_gains_vectors(frame, owned=owned)
     values[_COMBINED_COLUMN] = (
         values["short_term_capital_gains"]
         + values["long_term_capital_gains_before_response"]
@@ -1979,11 +2518,13 @@ def _frame_capital_gains_concentration_gate(frame: Frame) -> GateResult:
 
 def _frame_capital_gains_vectors(
     frame: Frame,
+    *,
+    owned: Mapping[str, tuple[str, ...]] | None = None,
 ) -> tuple[dict[str, np.ndarray], np.ndarray]:
+    owned = puf_tail_owned_columns(1) if owned is None else owned
     person = frame.table("person")
     missing_person = sorted(
-        {"person_tax_unit_id", *PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS}
-        - set(person.columns)
+        {"person_tax_unit_id", *owned["person"]} - set(person.columns)
     )
     if missing_person:
         raise ValueError(
@@ -1991,8 +2532,7 @@ def _frame_capital_gains_vectors(
         )
     tax_unit = frame.table("tax_unit")
     missing_tax_unit = sorted(
-        {"tax_unit_id", *PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS}
-        - set(tax_unit.columns)
+        {"tax_unit_id", *owned["tax_unit"]} - set(tax_unit.columns)
     )
     if missing_tax_unit:
         raise ValueError(
@@ -2000,19 +2540,19 @@ def _frame_capital_gains_vectors(
         )
     tax_unit_ids = tax_unit["tax_unit_id"].to_numpy(dtype=np.int64)
     person_vectors = person.groupby("person_tax_unit_id", sort=False)[
-        list(PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS)
+        list(owned["person"])
     ].sum()
     person_vectors = person_vectors.reindex(tax_unit_ids)
     if person_vectors.isna().any().any():
         raise ValueError("Frame capital-gains receipt found an empty tax unit.")
     values = {
         column: person_vectors[column].to_numpy(dtype=np.float64)
-        for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS
+        for column in owned["person"]
     }
     values.update(
         {
             column: tax_unit[column].to_numpy(dtype=np.float64)
-            for column in PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS
+            for column in owned["tax_unit"]
         }
     )
     return values, frame.resolve_weights("tax_unit").values
@@ -2271,6 +2811,28 @@ def _manifest_records(assignments: pd.DataFrame) -> list[dict[str, object]]:
         )
         records.append(
             {
+                "arm": int(row["_puf_tail_arm"]),
+                "proxy_agi": float(row["_puf_tail_proxy_agi"]),
+                "donor_person_source_ids": row["_puf_tail_person_source_ids"],
+                "person_vectors": row["_puf_tail_person_vectors"]
+                if int(row["_puf_tail_arm"]) in (2, 3)
+                else {},
+                "person_dtypes": row["_puf_tail_person_dtypes"]
+                if int(row["_puf_tail_arm"]) in (2, 3)
+                else {},
+                "tax_unit_vector": {
+                    column: row[column].item()
+                    if isinstance(row[column], np.generic)
+                    else row[column]
+                    for column in puf_tail_owned_columns(3)["tax_unit"]
+                }
+                if int(row["_puf_tail_arm"]) in (2, 3)
+                else {},
+                "tax_unit_dtypes": row["_puf_tail_tax_unit_dtypes"]
+                if int(row["_puf_tail_arm"]) in (2, 3)
+                else {},
+                "tail_spouse_person_id": int(row["tail_spouse_person_id"]),
+                "tail_person_count": int(row["tail_person_count"]),
                 "donor_source_id": int(row["donor_source_id"]),
                 "donor_weight": float(row["weight"]),
                 "assigned_weight": assigned_weight,
@@ -2334,6 +2896,13 @@ def _donor_record_projection(
         "donor_agi_band_index",
         "donor_agi_band",
         "donor_is_synthetic",
+        "arm",
+        "proxy_agi",
+        "person_vectors",
+        "donor_person_source_ids",
+        "person_dtypes",
+        "tax_unit_vector",
+        "tax_unit_dtypes",
         "joint_vector",
     )
     return [{key: record[key] for key in keys} for record in records]
@@ -2352,6 +2921,9 @@ def _assignment_record_projection(
         "tail_household_id",
         "tail_tax_unit_id",
         "tail_person_id",
+        "tail_spouse_person_id",
+        "tail_person_count",
+        "arm",
     )
     return [{key: record[key] for key in keys} for record in records]
 

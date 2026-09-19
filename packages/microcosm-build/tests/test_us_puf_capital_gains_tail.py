@@ -655,6 +655,18 @@ def test_thin_filing_status_is_named_counted_and_not_attached() -> None:
     assert by_status["SEPARATE"] == {
         "filing_status_code": 3,
         "filing_status": "SEPARATE",
+        "donor_mass": {
+            "selected_source_weight": 3.0,
+            "skipped_source_weight": 3.0,
+            "selected_proxy_agi_sum": 0.0,
+            "skipped_proxy_agi_sum": 0.0,
+            "selected_weighted_proxy_agi": 0.0,
+            "skipped_weighted_proxy_agi": 0.0,
+        },
+        "agi_compatible_count": 0,
+        "agi_required_count": 0,
+        "spouse_compatible_count": 0,
+        "spouse_required_count": 0,
         "status": "insufficient_support",
         "observed_count": 0,
         "required_minimum": 1,
@@ -687,8 +699,28 @@ def test_adequate_strata_match_pre_fix_frame_bytes() -> None:
     assert _frame_digest(transferred) == _frame_digest(
         _pre_652_all_adequate_reference_frame()
     )
+    legacy_assignment_keys = (
+        "donor_source_id",
+        "assigned_weight",
+        "recipient_household_source_id",
+        "recipient_tax_unit_source_id",
+        "recipient_household_id",
+        "recipient_tax_unit_id",
+        "tail_household_id",
+        "tail_tax_unit_id",
+        "tail_person_id",
+    )
+    assert (
+        tail_module._canonical_sha256(
+            [
+                {key: record[key] for key in legacy_assignment_keys}
+                for record in manifest["records"]
+            ]
+        )
+        == "1b2262da65fa851e0a990ca9f04dee661de0145724f82aef679557bc92418937"
+    )
     assert manifest["assignment_sha256"] == (
-        "1b2262da65fa851e0a990ca9f04dee661de0145724f82aef679557bc92418937"
+        "6241eb612386a36f1adec21ec9e58066b9c253eb5efe557dc959d40a6bf8238f"
     )
     assert manifest["recipient_support"]["insufficient_support_strata"] == []
 
@@ -1090,3 +1122,256 @@ def test_donor_key_bijection_is_asserted(monkeypatch) -> None:
     monkeypatch.setattr(mod, "_assign_tail_donors", dropping_assign)
     with pytest.raises(ValueError, match="bijection"):
         mod.transfer_puf_capital_gains_tail(frame, donor, seed=7)
+
+
+def _agi_donor_and_recipients(*, agi_only=False):
+    """Three roles per donor/recipient with independent, valid QBI persons."""
+    from microcosm.build.us_runtime.puf_support import (
+        PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
+        PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS,
+        puf_tax_unit_donor_from_arrays,
+    )
+    from microcosm.build.us_runtime.qbi_inputs import US_QBI_BOOLEAN_OUTPUT_COLUMNS
+
+    base = _donor()
+    arrays = {
+        column: np.zeros(
+            9, dtype=bool if column in US_QBI_BOOLEAN_OUTPUT_COLUMNS else float
+        )
+        for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS
+    }
+    arrays.update(
+        {column: np.zeros(3) for column in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS}
+    )
+    for column in (*tail_module.PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,):
+        arrays[column][::3] = base[column].to_numpy()
+    arrays["unrecaptured_section_1250_gain"] = base[
+        "unrecaptured_section_1250_gain"
+    ].to_numpy()
+    # First donor is AGI-only at the inclusive floor. Second enters both arms.
+    arrays["employment_income_before_lsr"][0] = 4_900_000.0
+    arrays["employment_income_before_lsr"][3:5] = [6_000_000.0, 123_456.0]
+    # Third has high gains but an offsetting business loss: CG-only.
+    arrays["rental_income"][6] = -90_000_000.0
+    arrays["partnership_income"][3:5] = [-1_000.0, 2_000.0]
+    arrays["qualified_reit_and_ptp_income"][4] = 2_000.0
+    arrays["partnership_s_corp_income_would_be_qualified"][3:6] = True
+    arrays["self_employment_income_before_lsr"][3] = 100_000.0
+    arrays["self_employment_income_would_be_qualified"][3] = True
+    arrays["charitable_cash_donations"][3:5] = [19_000.0, 2_000.0]
+    arrays["domestic_production_ald"][1] = 117.0
+    arrays.update(
+        tax_unit_id=base["tax_unit_id"].to_numpy(),
+        person_id=np.arange(1, 10, dtype="int64"),
+        person_tax_unit_id=np.repeat(base["tax_unit_id"].to_numpy(), 3),
+        household_weight=np.array([996.0, 3.0, 1.0]),
+        filing_status=np.array(["SINGLE", "JOINT", "SINGLE"]),
+        is_tax_unit_head=np.tile([True, False, False], 3),
+        is_tax_unit_spouse=np.tile([False, True, False], 3),
+        is_tax_unit_dependent=np.tile([False, False, True], 3),
+    )
+    # Keep body donor below the floor so its large weight does not consume the
+    # recipient capacity; a separate low-weight AGI-only donor is appended.
+    arrays["employment_income_before_lsr"][0] = 0.0
+    if agi_only:
+        arrays["household_weight"][0] = 995.0
+        for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS:
+            arrays[column][3:6] = 0.0
+        arrays["long_term_capital_gains_before_response"][3] = 100_000.0
+    donor = puf_tax_unit_donor_from_arrays(
+        arrays,
+        adjusted_gross_income=base[
+            PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN
+        ].to_numpy(),
+    )
+    frame = _expanded_recipient_frame()
+    native = frame.select(
+        frame.table("person")[support_clone_index_column("person")].eq(0).to_numpy()
+    )
+    tables = {entity: native.table(entity).copy() for entity in native.entities}
+    for entity, table in tables.items():
+        table.drop(
+            columns=[
+                support_channel_column(entity),
+                support_clone_index_column(entity),
+                support_source_id_column(entity),
+            ],
+            inplace=True,
+        )
+    person = (
+        tables["person"].loc[tables["person"].index.repeat(3)].reset_index(drop=True)
+    )
+    person["person_id"] = np.arange(1, 13, dtype="int64")
+    person["tax_unit_role_input"] = np.tile(["HEAD", "SPOUSE", "DEPENDENT"], 4)
+    person["age"] = np.tile([45, 42, 10], 4)
+    person["SEMP"] = np.nan
+    for column in PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS:
+        if column not in person:
+            person[column] = False if column in US_QBI_BOOLEAN_OUTPUT_COLUMNS else 0.0
+    for column in PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS:
+        if column not in tables["tax_unit"]:
+            tables["tax_unit"][column] = 0.0
+    tables["person"] = person
+    # These source values are deliberately different from the donor's values.
+    for column in (
+        "qualified_tuition_expenses",
+        "traditional_ira_contributions_desired",
+        "self_employed_pension_contributions_desired",
+    ):
+        person[column] = np.arange(12, dtype=float) + 31.0
+    frame = Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                native.weights_for("household").values * 2, WeightKind.DESIGN
+            )
+        },
+        pd.Series(["fixture"] * 12, name="stratum"),
+    )
+    return donor, clone_us_frame_for_puf_support(frame)
+
+
+@pytest.mark.parametrize("agi_only", [False, True])
+def test_agi_arm_transfers_typed_person_vectors_and_preserves_late_owners(
+    tmp_path, agi_only
+):
+    from microcosm.build.us_runtime.puf_support import puf_tail_person_projection
+    from microcosm.build.us_runtime.qbi_inputs import with_us_qbi_input_reconciliation
+
+    donor, frame = _agi_donor_and_recipients(agi_only=agi_only)
+    transferred, manifest = transfer_puf_capital_gains_tail(frame, donor, seed=567)
+    projection = puf_tail_person_projection(donor)
+    agi_records = [record for record in manifest["records"] if record["arm"] in (2, 3)]
+    assert len(agi_records) == 1 and agi_records[0]["arm"] == (2 if agi_only else 3)
+    assert (
+        manifest["schema_version"]
+        == tail_module.PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION
+    )
+    for record in agi_records:
+        people = transferred.table("person").loc[
+            lambda x, record=record: x.person_tax_unit_id.eq(record["tail_tax_unit_id"])
+        ]
+        source = projection.loc[
+            lambda x, record=record: x.tax_unit_id.eq(record["donor_source_id"])
+        ].set_index("role")
+        owned = tail_module.puf_tail_owned_columns(record["arm"])
+        for role in ("head", "spouse"):
+            actual = people.loc[people.tax_unit_role_input.eq(role.upper())]
+            assert len(actual) == 1
+            for column in owned["person"]:
+                assert actual[column].iloc[0] == source.loc[role, column]
+                assert pd.api.types.is_bool_dtype(
+                    actual[column]
+                ) == pd.api.types.is_bool_dtype(source[column])
+        other = people.loc[people.tax_unit_role_input.eq("DEPENDENT")]
+        assert not other[list(owned["person"])].to_numpy().any()
+        for column in owned["tax_unit"]:
+            actual = (
+                transferred.table("tax_unit")
+                .set_index("tax_unit_id")
+                .loc[record["tail_tax_unit_id"], column]
+            )
+            assert (
+                actual
+                == donor.set_index("tax_unit_id").loc[record["donor_source_id"], column]
+            )
+        for column in set(tail_module.PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS) - set(
+            owned["person"]
+        ):
+            parent = transferred.table("person").loc[
+                lambda x, record=record: x.person_tax_unit_id.eq(
+                    record["recipient_tax_unit_id"]
+                )
+            ]
+            np.testing.assert_array_equal(people[column], parent[column])
+    # Whole-pool reconciliation may change native defaults, but every AGI row
+    # must remain an exact fixed point, including physical boolean columns.
+    reconciled = with_us_qbi_input_reconciliation(transferred)
+    mask = transferred.table("person").person_tax_unit_id.isin(
+        [r["tail_tax_unit_id"] for r in agi_records]
+    )
+    pd.testing.assert_frame_equal(
+        transferred.table("person").loc[mask],
+        reconciled.table("person").loc[mask],
+        check_exact=True,
+    )
+    from microcosm.build.us_runtime.qbi_inputs import (
+        bind_us_qbi_reconciliation_transition_authority,
+        us_qbi_reconciliation_change_receipt,
+        validate_us_qbi_reconciliation_live_output,
+    )
+
+    transition = us_qbi_reconciliation_change_receipt(transferred, reconciled)
+    bound = bind_us_qbi_reconciliation_transition_authority(reconciled, transition)
+    validate_us_qbi_reconciliation_live_output(
+        bound,
+        transition,
+        boundary="AGI transfer test",
+        expected_transition_authority_sha256=transition["sha256"],
+    )
+    frame.weights_for("household").assert_mass_conserved(
+        transferred.weights_for("household")
+    )
+    assert_puf_capital_gains_tail_survives_selection(transferred, transferred)
+    path = tmp_path / "agi.manifest.json"
+    write_puf_capital_gains_tail_manifest(path, manifest)
+    tail_module.validate_puf_capital_gains_tail_manifest(json.loads(path.read_text()))
+    receipt = tail_module.puf_capital_gains_tail_terminal_support_receipt(manifest)
+    tail_module.validate_puf_capital_gains_tail_terminal_support_receipt(receipt)
+    assert set(owned["person"]).issubset(manifest["signed_leg_reconciliation"])
+    assert set(owned["person"]).issubset(manifest["frame_concentration_receipts"])
+
+
+def test_agi_arm_rejects_missing_or_unknown_record_arm():
+    donor, frame = _agi_donor_and_recipients()
+    _, manifest = transfer_puf_capital_gains_tail(frame, donor, seed=567)
+    for bad in (None, 0, 99):
+        changed = json.loads(json.dumps(manifest))
+        changed["records"][0]["arm"] = bad
+        with pytest.raises(ValueError, match="arm"):
+            tail_module.validate_puf_capital_gains_tail_manifest(changed)
+
+
+@pytest.mark.parametrize("incompatibility", ["spouse", "underage"])
+def test_agi_role_incompatible_stratum_is_skipped_and_recorded(incompatibility):
+    donor, frame = _agi_donor_and_recipients()
+    person = frame.table("person").copy()
+    if incompatibility == "spouse":
+        person.loc[person.tax_unit_role_input.eq("SPOUSE"), "tax_unit_role_input"] = (
+            "DEPENDENT"
+        )
+    else:
+        person.loc[person.tax_unit_role_input.eq("HEAD"), "age"] = 14
+    frame = _replace_entity_table(frame, "person", person)
+    _, manifest = transfer_puf_capital_gains_tail(frame, donor, seed=567)
+    assert [record["arm"] for record in manifest["records"]] == [1]
+    support = {
+        row["filing_status"]: row for row in manifest["recipient_support"]["strata"]
+    }
+    assert support["JOINT"]["status"] == "insufficient_support"
+    assert support["JOINT"]["skipped_donor_count"] == 1
+    assert support["JOINT"]["agi_required_count"] == 1
+    assert support["JOINT"]["spouse_required_count"] == 1
+    tail_module.validate_puf_capital_gains_tail_manifest(manifest)
+
+
+def test_agi_vector_readback_rejects_corrupted_non_capital_gain(monkeypatch):
+    donor, frame = _agi_donor_and_recipients()
+    real = tail_module._clone_and_transfer
+
+    def corrupt(frame, assignments):
+        result, receipt = real(frame, assignments)
+        person = result.table("person")
+        person.loc[
+            person[support_clone_index_column("person")].eq(2),
+            "employment_income_before_lsr",
+        ] += 1
+        return result, receipt
+
+    monkeypatch.setattr(tail_module, "_clone_and_transfer", corrupt)
+    with pytest.raises(
+        AssertionError,
+        match="full-vector materialized carrier changed person.employment_income",
+    ):
+        transfer_puf_capital_gains_tail(frame, donor, seed=567)
