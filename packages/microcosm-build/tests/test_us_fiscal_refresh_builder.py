@@ -22,7 +22,7 @@ from microcosm.calibrate import (
     TargetSpec,
     calibrate,
 )
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import Frame, MassChange, WeightKind, Weights
 
 
 def _load_builder_module():
@@ -7235,8 +7235,13 @@ def test_health_input_signal_gate_accepts_varied_aca_inputs() -> None:
     assert marketplace_takers["above_benchmark_count"] == 1
 
 
-def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> None:
+@pytest.mark.parametrize("context", ["empty", "metadata", "mass_log", "both"])
+def test_aca_source_runtime_refreshes_degenerate_release_inputs(
+    monkeypatch, context
+) -> None:
     builder = _load_builder_module()
+    has_metadata = context in ("metadata", "both")
+    has_mass_log = context in ("mass_log", "both")
     person = pd.DataFrame(
         {
             "person_id": np.asarray([1, 2, 3], dtype="int64"),
@@ -7272,11 +7277,20 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
         builder.US_SCHEMA,
         {
             "household": builder.Weights(
-                values=np.asarray([1.0, 1.0]),
+                values=np.asarray([0.5, 0.5] if has_mass_log else [1.0, 1.0]),
                 kind=WeightKind.DESIGN,
             )
         },
+        metadata={"invented_native_context": {"period": 2024, "flags": [False, True]}}
+        if has_metadata
+        else None,
     )
+    if has_mass_log:
+        frame = frame.with_weights(
+            "household",
+            Weights(np.asarray([1.0, 1.0]), WeightKind.DESIGN),
+            mass=MassChange(factor=2.0, reason="Invented pre-ACA support expansion"),
+        )
     specs = (
         TargetSpec(
             name="cms_aca.oep2024.state_marketplace.al.aptc_recipients",
@@ -7336,6 +7350,31 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> 
         frame.table("tax_unit")["selected_marketplace_plan_benchmark_ratio"].nunique()
         == 1
     )
+    # ACA owns only its two tax-unit outputs. Context and all other data must
+    # survive the real writeback, including a retained native handoff's history.
+    assert refreshed.metadata == frame.metadata
+    assert refreshed.mass_log == frame.mass_log
+    assert bool(refreshed.metadata) is has_metadata
+    assert bool(refreshed.mass_log) is has_mass_log
+    assert refreshed.schema == frame.schema
+    pd.testing.assert_series_equal(refreshed.strata, frame.strata)
+    assert refreshed.weighted_entities == frame.weighted_entities
+    for entity in frame.weighted_entities:
+        before, after = frame.weights_for(entity), refreshed.weights_for(entity)
+        assert after.kind is before.kind
+        assert after.values.dtype == before.values.dtype
+        assert after.values.tobytes() == before.values.tobytes()
+    for entity in frame.entities:
+        columns = [
+            name
+            for name in frame.table(entity)
+            if name not in builder.US_ACA_SOURCE_OUTPUT_COLUMNS
+        ]
+        pd.testing.assert_frame_equal(
+            refreshed.table(entity)[columns],
+            frame.table(entity)[columns],
+            check_exact=True,
+        )
 
 
 def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> None:
@@ -7525,6 +7564,8 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
         schema = object()
         weighted_entities = ()
         strata = None
+        mass_log = ()
+        metadata = {}
 
         def table(self, entity):
             assert entity == "tax_unit"
@@ -7561,7 +7602,9 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
     monkeypatch.setattr(
         builder,
         "Frame",
-        lambda tables, schema, weights, strata: SimpleNamespace(tables=tables),
+        lambda tables, schema, weights, strata, *, mass_log, metadata: SimpleNamespace(
+            tables=tables
+        ),
     )
 
     specs = (
