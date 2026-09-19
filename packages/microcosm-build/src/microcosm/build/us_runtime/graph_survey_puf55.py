@@ -14,7 +14,6 @@ from pathlib import Path
 
 from microcosm.fit.graph_legacy_apply_matrix import LegacyQRFApplyMatrixKernel
 from microcosm.fit.graph_legacy_train import LegacyQRFTrainKernel
-from microcosm.frame import US_SCHEMA
 from microcosm.graph import (
     ContentStore,
     KernelRegistry,
@@ -243,6 +242,13 @@ def _construct(
 ):
     """Construct actual declarations and bind actual source keys without running."""
     financial.check_atomic_survey_financial_run(financial_run)
+    # The authenticated prefix may include household-only child-property
+    # support versions. Check its exact roster and replay representation before
+    # any PUF fitting, then recheck the retained owner after manifest reads.
+    _check_replayed_survey_manifest(
+        financial_run.manifest, financial_run.manifest, financial_run.compiled
+    )
+    financial.check_atomic_survey_financial_run(financial_run)
     upstream_count = len(financial_run.compiled.order)
     require(type(seed) is int and 0 <= seed < 2**64, "SEED")
     require(type(n_estimators) is int and n_estimators > 0, "TREE_COUNT")
@@ -399,7 +405,9 @@ def _check_replayed_survey_manifest(expected_manifest, actual_manifest, compiled
     for version in versions:
         expected = expected_manifest.population(version)
         actual = actual_manifest.population(version)
-        require(expected.schema == actual.schema == US_SCHEMA, "UPSTREAM_SURVEY_SCHEMA")
+        # The retained, authenticated prefix determines each version's schema;
+        # private child-property support versions are not full US populations.
+        require(expected.schema == actual.schema, "UPSTREAM_SURVEY_SCHEMA")
         physical.replay.same_replayed_population(
             population_ops.Population.from_frame(
                 expected, version, mass_ledger=expected_manifest.mass_ledger(version)
