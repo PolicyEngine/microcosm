@@ -172,7 +172,7 @@ run_provenance_identity:
   spec_binding:                   # {country, schema_id, schema_version,
                                   #  canonicalizer_version, spec_sha256}
   authority_versions:             # semantic contract version per named
-                                  # authority (stacked authority v10 is
+                                  # authority (stacked authority v11 is
                                   # the live example) — field, bump
                                   # rules, and precedence below
   code_inventory_digest           # builder_code_identity + kernel set

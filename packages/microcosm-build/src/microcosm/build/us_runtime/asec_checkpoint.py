@@ -57,10 +57,10 @@ _BINDING_KEYS = frozenset(
 ASEC_RAW_STAGE_ARTIFACT_KIND = "populace_us_asec_raw_stage"
 ASEC_RAW_STAGE_CHECKPOINT_FILENAME = "asec_raw_stage.checkpoint.h5"
 ASEC_RAW_STAGE_OPERATOR_STATUS = "operator_untouched"
-# Version 3 added the PAW_TYP restoration that gates TANF enrollment; older
-# artifacts lack the gate column and must fail loudly rather than let
-# PAW_VAL-only conflation back in (microcosm#591).
-ASEC_RAW_STAGE_SCHEMA_VERSION = 3
+# Version 4 added measured A_LFSR for the Pew civilian-labor-force control;
+# older artifacts lack the current labor-force status and must fail loudly
+# rather than substitute prior-year earnings (microcosm#767).
+ASEC_RAW_STAGE_SCHEMA_VERSION = 4
 ASEC_RAW_STAGE_STAGE = "raw_source_mapping"
 _RAW_STAGE_BINDING_KEYS = frozenset(
     {
@@ -75,9 +75,9 @@ _RAW_STAGE_BINDING_KEYS = frozenset(
         "stage",
     }
 )
-_RAW_SOURCE_MAPPING_COLUMNS = frozenset({"ED_VAL", "LKWEEKS", "PAW_TYP"})
+_RAW_SOURCE_MAPPING_COLUMNS = frozenset({"A_LFSR", "ED_VAL", "LKWEEKS", "PAW_TYP"})
 _RAW_STAGE_REQUIRED_PERSON_COLUMNS = frozenset(
-    {"ED_VAL", "LKWEEKS", "PAW_TYP", "PERIDNUM", "source_year"}
+    {"A_LFSR", "ED_VAL", "LKWEEKS", "PAW_TYP", "PERIDNUM", "source_year"}
 )
 _RAW_SOURCE_MAPPING_KEYS = frozenset(
     {
@@ -456,6 +456,19 @@ def _validate_raw_stage_source_columns(frame: Frame, *, path: Path) -> None:
         raise ValueError(
             f"ASEC raw-stage checkpoint {path} PAW_TYP must be complete integers "
             "in {0, 1, 2, 3}."
+        )
+
+    labor_force_status = pd.to_numeric(person["A_LFSR"], errors="coerce").to_numpy(
+        dtype=np.float64
+    )
+    valid_labor_force_status = np.isfinite(labor_force_status) & np.isin(
+        labor_force_status,
+        (0.0, 1.0, 2.0, 3.0, 4.0, 7.0),
+    )
+    if not valid_labor_force_status.all():
+        raise ValueError(
+            f"ASEC raw-stage checkpoint {path} A_LFSR must be complete integers "
+            "in {0, 1, 2, 3, 4, 7}."
         )
 
 

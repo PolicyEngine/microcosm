@@ -93,7 +93,9 @@ US_MULTISPINE_POOL_H5_ARTIFACT_KIND = "populace_us_multispine_input_pool"
 US_MULTISPINE_AGREEMENT_DIAGNOSTICS_ARTIFACT_KIND = (
     "populace_us_multispine_agreement_diagnostics"
 )
-# 10 binds the portable authenticated primary-QRF worker identity.
+# 10 binds the humanitarian-immigration composition gate into the stacked
+# operator order and authenticated terminal-gate surface, and the portable
+# authenticated primary-QRF worker identity.
 # 9 binds the post-assembly household-geography assignment receipt and its
 # authenticated release-vintage authorities.
 # 8 binds the nullable-boolean-capable physical H5 materializer in both the
@@ -123,6 +125,30 @@ _STACKED_SAMPLE_RUNG_TOKENS: Mapping[float, str] = {
     1.00: "f100",
 }
 US_STACKED_POOL_OPERATOR_ORDER = (
+    "assemble_stacked_spine",
+    "assign_us_puma_ladder",
+    "prepare_multispine_source_inputs_for_clone",
+    "gap_fill_stacked_spine",
+    "run_stacked_late_producer_dag",
+    "prepare_stacked_tail_derivation",
+    "derive_multispine_pool_inputs",
+    "seed_multispine_pool_inputs",
+    "materialize_multispine_agreement_outputs",
+    "stacked_completeness_gate",
+    "by_origin_battery",
+    "us_immigration_composition_gate",
+)
+_STACKED_TERMINAL_GATE_NAMES = frozenset(
+    {
+        "us_stacked_completeness",
+        "us_by_origin_battery",
+        "immigration_composition",
+    }
+)
+#: The stacked operator order attested schema-9 pools sealed, before the
+#: humanitarian-immigration composition gate joined it. A literal, not a
+#: function of the current order: history must not move when the present does.
+_SCHEMA9_STACKED_POOL_OPERATOR_ORDER = (
     "assemble_stacked_spine",
     "assign_us_puma_ladder",
     "prepare_multispine_source_inputs_for_clone",
@@ -1383,6 +1409,7 @@ def _load_authenticated_us_multispine_pool_manifest(
         diagnostics_path=diagnostics_path,
         manifest_agreement_gate=manifest_agreement_gate,
         diagnostics_agreement_gate=diagnostics_agreement_gate,
+        require_canonical_gate_set=legacy_worker_authentication is None,
     )
     if diagnostics_agreement_gate != manifest_agreement_gate:
         raise ValueError(
@@ -1427,7 +1454,12 @@ def _validate_stacked_late_dag_manifest_binding(
 
     if manifest.get("pipeline") != "us-stacked-pool":
         return
-    if manifest.get("operator_order") != list(US_STACKED_POOL_OPERATOR_ORDER):
+    expected_operator_order = (
+        US_STACKED_POOL_OPERATOR_ORDER
+        if legacy_worker_authentication is None
+        else _SCHEMA9_STACKED_POOL_OPERATOR_ORDER
+    )
+    if manifest.get("operator_order") != list(expected_operator_order):
         raise ValueError(
             f"US stacked pool manifest {manifest_path} does not bind the "
             "canonical late-DAG operator order."
@@ -1850,7 +1882,7 @@ def _validate_stacked_geography_h5_binding(
     manifest_path: Path,
     pool_path: Path,
 ) -> None:
-    """Bind schema-9 manifest geography claims to the authenticated H5."""
+    """Bind current-schema manifest geography claims to the authenticated H5."""
 
     if manifest.get("pipeline") != _STACKED_PIPELINE:
         return
@@ -2669,6 +2701,7 @@ def _require_matching_terminal_gate_aliases(
     diagnostics_path: Path,
     manifest_agreement_gate: Mapping[str, object],
     diagnostics_agreement_gate: Mapping[str, object],
+    require_canonical_gate_set: bool = True,
 ) -> None:
     """Bind stacked terminal gates to the legacy compatibility aliases.
 
@@ -2711,6 +2744,29 @@ def _require_matching_terminal_gate_aliases(
             f"US stacked pool diagnostics {diagnostics_path} terminal_gates do "
             "not match agreement_gate."
         )
+    manifest_gates = _mapping(
+        manifest_terminal_gates.get("gates"),
+        label=f"US stacked pool manifest {manifest_path}.terminal_gates.gates",
+    )
+    diagnostics_gates = _mapping(
+        diagnostics_terminal_gates.get("gates"),
+        label=(f"US stacked pool diagnostics {diagnostics_path}.terminal_gates.gates"),
+    )
+    # The canonical gate set arrived with manifest schema 10. Attested
+    # schema-9 pools sealed whatever terminal gates their build ran, so only
+    # the alias equalities above apply to them.
+    if not require_canonical_gate_set:
+        return
+    for label, gates in (
+        (f"US stacked pool manifest {manifest_path}", manifest_gates),
+        (f"US stacked pool diagnostics {diagnostics_path}", diagnostics_gates),
+    ):
+        if set(gates) != _STACKED_TERMINAL_GATE_NAMES:
+            raise ValueError(
+                f"{label} does not carry the canonical terminal gate set; "
+                f"expected={sorted(_STACKED_TERMINAL_GATE_NAMES)}, "
+                f"observed={sorted(gates)}."
+            )
 
 
 def _publication_run_id(value: object, *, label: str) -> str:

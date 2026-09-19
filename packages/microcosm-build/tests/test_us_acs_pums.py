@@ -65,6 +65,9 @@ def _person(
         "SSIP": 0,
         "RETP": 0,
         "INTP": 0,
+        "CIT": 1,
+        "POBP": 6,
+        "YOEP": None,
         "PWGTP": 10,
     }
     row.update(overrides)
@@ -94,7 +97,16 @@ def _source(tmp_path: Path) -> AcsPumsSource:
         person_zip,
         {
             "psam_pusa.csv": [
-                _person("2024HU0000002", 1, 20, MAR=4, WAGP=30_000),
+                _person(
+                    "2024HU0000002",
+                    1,
+                    20,
+                    MAR=4,
+                    WAGP=30_000,
+                    CIT=5,
+                    POBP=164,
+                    YOEP=2021,
+                ),
                 _person(
                     "2024HU0000001",
                     1,
@@ -193,6 +205,14 @@ def test_load_acs_pums_tables_streams_all_csv_members_and_keeps_native_blanks(
         "2024HU0000002",
     ]
     assert pd.isna(tables["person"].loc[2, "WAGP"])
+    foreign_born = (
+        tables["person"].loc[tables["person"]["SERIALNO"].eq("2024HU0000002")].iloc[0]
+    )
+    assert (foreign_born["CIT"], foreign_born["POBP"], foreign_born["YOEP"]) == (
+        5,
+        164,
+        2021,
+    )
     assert metadata["vacant_household_rows_dropped"] == 1
     assert metadata["household_csv_members"] == ["psam_husa.csv", "psam_husb.csv"]
     assert metadata["person_csv_members"] == ["psam_pusa.csv", "psam_pusb.csv"]
@@ -226,6 +246,9 @@ def test_build_acs_pums_unit_frame_preserves_lineage_geography_and_weights(
     assert person["source_household_id"].dtype == np.dtype(np.int64)
     assert pd.api.types.is_string_dtype(person["source_person_id"].dtype)
     assert person["source_row_id"].dtype == np.dtype(np.int64)
+    assert person.loc[person["source_household_id"].eq(2), "CIT"].item() == 5
+    assert person.loc[person["source_household_id"].eq(2), "POBP"].item() == 164
+    assert person.loc[person["source_household_id"].eq(2), "YOEP"].item() == 2021
     assert metadata["weighted_household_population"] == pytest.approx(30.0)
 
 

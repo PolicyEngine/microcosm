@@ -191,7 +191,7 @@ EXPECTED_RUNGS = [
 
 LEGACY_COMPATIBILITY_SHA256 = {
     "source_stages.json": (
-        "7935d891ed16eac618f04813a7b8a3ceb9a971c8b4c4273683594ba61e7dd631"
+        "b3ad16b1adb77a2cac6deae6c4d0f1779e4cf36a3f18820d9887a5434daaff1a"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
@@ -397,11 +397,11 @@ def test_constant_derived_domain_counts_are_complete(
     assert len(compiled_schedule["waves"]) == 6
     assert (
         compiled_schedule["schedule_sha256"]
-        == "e59c019d3d454eac99ac0ac209b6c5b6faaf9bdfcaeee18c36a25be19bf7da2f"
+        == "88bc9243a3518982ae951c3de21bd55877e296ce4fcb183b9bee420d3a684b10"
     )
     assert (
         compiled_schedule["payload_sha256"]
-        == "7be038d34f228d66c12b53558fc5f30c93f1b376f1058c5e4fd7e7563a88d67f"
+        == "d35ebb433f16e976c0d6e2210c99a36ca042a52c422c0968128678932d999735"
     )
 
     assert len(take_up["programs"]) == 17
@@ -969,7 +969,7 @@ def test_legacy_seed_vintage_and_publication_grammars_are_pinned(
         "identity_generation": 1,
         "seed_protocol": LEGACY_V1_PROTOCOL.id,
     }
-    assert len(LEGACY_V1_PROTOCOL.sites) == 53
+    assert len(LEGACY_V1_PROTOCOL.sites) == 66
     assert len(LEGACY_V1_PROTOCOL.streams) == 14
     assert LEGACY_V1_PROTOCOL.site("survey_sample_asec").default == 578
     assert LEGACY_V1_PROTOCOL.site("puf_live_aggregate_disaggregation").default == 0

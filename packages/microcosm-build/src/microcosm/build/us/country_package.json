@@ -83,6 +83,11 @@
       "schema_id": "legacy_json"
     },
     {
+      "path": "legacy_schema16_late_producer_schedule.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "obbba_reforms.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

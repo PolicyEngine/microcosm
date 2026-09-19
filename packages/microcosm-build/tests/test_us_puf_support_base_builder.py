@@ -231,6 +231,7 @@ def _education_source() -> pd.DataFrame:
             "A_LINENO": [1, 2, 1],
             "PERIDNUM": [f"{value:022d}" for value in (1, 2, 3)],
             "ED_VAL": [0.0, 500.0, 1_000.0],
+            "A_LFSR": [1, 3, 7],
         }
     )
     source.attrs["source_audit"] = {2022: {"rows": 3}}
@@ -830,17 +831,62 @@ def test_raw_stage_copy_adds_only_exact_source_mappings(
     assert frame_identity(source) == before
     assert "LKWEEKS" not in source.table("person")
     assert "ED_VAL" not in source.table("person")
+    assert "A_LFSR" not in source.table("person")
     assert "PAW_TYP" not in source.table("person")
     assert raw.table("person")["LKWEEKS"].tolist() == [7.0, -1.0, 12.0]
     assert raw.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
+    assert raw.table("person")["A_LFSR"].tolist() == [1, 3, 7]
     assert raw.table("person")["PAW_TYP"].tolist() == [0, 1, 2]
-    assert set(mappings) == {"ED_VAL", "LKWEEKS", "PAW_TYP"}
+    assert set(mappings) == {"A_LFSR", "ED_VAL", "LKWEEKS", "PAW_TYP"}
     assert all(
         mapping["operation"] == "exact_source_join"
         and mapping["join_keys"] == ["source_year", "PERIDNUM"]
         for mapping in mappings.values()
     )
     builder.assert_operator_free_source_frame(raw, label="raw-stage fixture")
+
+
+def test_direct_builder_attaches_measured_labor_force_status_without_mutation() -> None:
+    builder = _load_support_builder_module()
+    source = _raw_asec_frame()
+    before = frame_identity(source)
+
+    attached = builder._with_asec_labor_force_status_source(
+        source,
+        _education_source(),
+    )
+
+    assert frame_identity(source) == before
+    assert "A_LFSR" not in source.table("person")
+    assert attached.table("person")["A_LFSR"].tolist() == [1, 3, 7]
+    assert np.array_equal(
+        attached.weights_for("household").values,
+        source.weights_for("household").values,
+    )
+
+
+def test_direct_immigration_path_uses_labor_force_status_ephemerally(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    builder = _load_support_builder_module()
+    source = _raw_asec_frame()
+    observed: list[list[int]] = []
+
+    def immigration(frame: Frame, *, seed: int, time_period: int) -> Frame:
+        observed.append(frame.table("person")["A_LFSR"].tolist())
+        return frame
+
+    monkeypatch.setattr(builder, "with_us_immigration_inputs", immigration)
+    result = builder._with_us_immigration_inputs_from_asec_source(
+        source,
+        _education_source(),
+        seed=7,
+        time_period=2024,
+    )
+
+    assert observed == [[1, 3, 7]]
+    assert "A_LFSR" not in source.table("person")
+    assert "A_LFSR" not in result.table("person")
 
 
 def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
@@ -891,10 +937,14 @@ def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
         "with_us_energy_subsidy_input",
         "with_us_retirement_contribution_inputs",
         "with_us_retirement_distribution_inputs",
-        "with_us_immigration_inputs",
     )
     for name in identity_transforms:
         monkeypatch.setattr(builder, name, lambda value, **_kwargs: value)
+    monkeypatch.setattr(
+        builder,
+        "_with_us_immigration_inputs_from_asec_source",
+        lambda value, _source, **_kwargs: value,
+    )
     passing_gate = SimpleNamespace(passed=True, failures=(), details={})
     for name in (
         "us_relationship_inputs_signal_gate",
@@ -917,6 +967,7 @@ def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
     assert source_checkpoint.path.read_bytes() == baseline_source.path.read_bytes()
     assert "ED_VAL" not in source_checkpoint.frame.table("person")
     assert "LKWEEKS" not in source_checkpoint.frame.table("person")
+    assert "A_LFSR" not in source_checkpoint.frame.table("person")
     assert "PAW_TYP" not in source_checkpoint.frame.table("person")
 
     raw_path = args.checkpoint_dir / builder.ASEC_RAW_STAGE_CHECKPOINT_FILENAME
@@ -924,6 +975,7 @@ def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
     assert raw_metadata["stage"] == "raw_source_mapping"
     assert raw.table("person")["LKWEEKS"].tolist() == [7.0, -1.0, 12.0]
     assert raw.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
+    assert raw.table("person")["A_LFSR"].tolist() == [1, 3, 7]
     assert raw.table("person")["PAW_TYP"].tolist() == [0, 1, 2]
     assert "age" not in raw.table("person")
     assert [path.name for path in args.checkpoint_dir.glob("*.frame.h5")] == [
@@ -938,6 +990,7 @@ def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
     assert enriched.table("person")["age"].tolist() == [31, 29, 50]
     assert "ED_VAL" not in enriched.table("person")
     assert "LKWEEKS" not in enriched.table("person")
+    assert "A_LFSR" not in enriched.table("person")
     assert "PAW_TYP" not in enriched.table("person")
     assert sorted(path.name for path in args.checkpoint_dir.glob("*.frame.h5")) == [
         "000_source_construction.frame.h5",
@@ -975,6 +1028,7 @@ def test_completed_source_stage_repairs_raw_auxiliary_without_rewriting_legacy(
     assert context_path.read_bytes() == expected_context
     repaired, _metadata = builder.load_asec_raw_stage_checkpoint(raw_path)
     assert repaired.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
+    assert repaired.table("person")["A_LFSR"].tolist() == [1, 3, 7]
     assert repaired.table("person")["PAW_TYP"].tolist() == [0, 1, 2]
 
 
@@ -1030,10 +1084,14 @@ def test_source_and_preclone_stages_round_trip_design_weight_kind(
         "with_us_energy_subsidy_input",
         "with_us_retirement_contribution_inputs",
         "with_us_retirement_distribution_inputs",
-        "with_us_immigration_inputs",
     )
     for name in identity_transforms:
         monkeypatch.setattr(builder, name, lambda value, **_kwargs: value)
+    monkeypatch.setattr(
+        builder,
+        "_with_us_immigration_inputs_from_asec_source",
+        lambda value, _source, **_kwargs: value,
+    )
     passing_gate = SimpleNamespace(passed=True, failures=(), details={})
     for name in (
         "us_relationship_inputs_signal_gate",
@@ -2185,8 +2243,8 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     )
     monkeypatch.setattr(
         builder,
-        "with_us_immigration_inputs",
-        lambda frame, *, seed, time_period: frame,
+        "_with_us_immigration_inputs_from_asec_source",
+        lambda frame, _source, *, seed, time_period: frame,
     )
     monkeypatch.setattr(
         builder,

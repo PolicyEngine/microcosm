@@ -122,7 +122,7 @@ LEGACY_COMPATIBILITY_PROJECTIONS = {
 # frozen files, is the forward YAML -> legacy-payload path.
 FROZEN_LEGACY_RESOURCE_SHA256 = {
     "source_stages.json": (
-        "7935d891ed16eac618f04813a7b8a3ceb9a971c8b4c4273683594ba61e7dd631"
+        "b3ad16b1adb77a2cac6deae6c4d0f1779e4cf36a3f18820d9887a5434daaff1a"
     ),
     "support_spine.json": (
         "68f37dc6ae6e0cde7ebccb53f88dd4a800e63456f838fa214ff98d1db8d815be"
@@ -140,6 +140,7 @@ LEGACY_RESOURCE_PATHS = (
     "ecps_parity_reference.json",
     "federal_eitc_by_state.json",
     "fiscal_target_references.json",
+    "legacy_schema16_late_producer_schedule.json",
     "obbba_reforms.json",
     "puf_aggregate_record_disaggregation.json",
     "release_input_coverage_manifest.json",

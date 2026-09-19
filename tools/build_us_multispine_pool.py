@@ -6,9 +6,10 @@ The default production path is the stacked pipeline:
 ``stack -> geography -> gap-fill -> PUF pass + tail -> late DAG -> derive -> seed -> simulate -> gates``.
 
 Both survey arms use one composition-preserving ``--sample-fraction``; PUF
-donors always remain full. The terminal completeness gate plus by-origin
-battery replace two-spine agreement. ``--legacy-two-spine`` retains the
-retiring pipeline byte-for-byte for reproducibility.
+donors always remain full. The terminal completeness, by-origin, and
+humanitarian-immigration gates replace two-spine agreement.
+``--legacy-two-spine`` retains the retiring pipeline byte-for-byte for
+reproducibility.
 
 Every input is local and explicitly SHA-pinned; this tool never downloads
 data. It writes a nullable input-only H5 plus a manifest and terminal gate
@@ -130,6 +131,7 @@ from microcosm.build.us_runtime.housing_inputs import (
     ACS_2022_RENT_ARTIFACT_SHA256,
     load_acs_2022_rent_donor,
 )
+from microcosm.build.us_runtime.immigration import us_immigration_composition_gate
 from microcosm.build.us_runtime.multispine_pool import (
     POOL_CHECKPOINT_STAGE_ORDER,
     POOL_DERIVE_OPERATOR_ORDER,
@@ -287,6 +289,9 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # 7: Stacked primary-PUF output universes are explicit. Earlier envelopes can
 #    contain nulls outside the PUF clone for an output declared over the whole
 #    pool and therefore cannot resume safely even when their bank is reusable.
+# 8: ACS native citizenship/origin/arrival inputs, pooled immigration control
+#    scaling, and hard post-transfer humanitarian reconciliation change the
+#    assembled and transferred outputs. Earlier checkpoints cannot resume.
 #
 # Bump this version whenever any producer above changes a stage output without
 # changing one of the explicit identity fields below. In particular, adding,
@@ -301,7 +306,7 @@ POOL_STAGE_CHECKPOINT_SCHEMA_VERSION = 1
 # normalizes that logical view in memory. Moving between those encodings does
 # not change a producer's scalar output and therefore does not advance this
 # ledger; changing string values or the canonical logical dtype policy does.
-POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 7
+POOL_STAGE_CHECKPOINT_MATERIALIZER_VERSION = 8
 
 _PRIMARY_QRF_N_ESTIMATORS = 100
 _ACS_TRANSFER_N_ESTIMATORS = 100
@@ -332,7 +337,10 @@ _STACKED_PIPELINE = "us-stacked-pool"
 _STACKED_CHECKPOINT_IDENTITY_ARTIFACT_KIND = (
     "populace_us_stacked_pool_checkpoint_identity"
 )
-# Version 13 binds the portable authenticated primary-QRF worker identity.
+# Version 13 binds native ACS humanitarian eligibility, pooled immigration
+# control scaling, reconciliation, the final composition gate, and the
+# portable authenticated primary-QRF worker identity. Earlier stacked
+# checkpoints predate the source-aware status surface.
 # Version 12 binds the post-assembly household geography assignment authority,
 # target vintage, algorithm, operator order, and seed.  Earlier checkpoints
 # predate the congressional-district support required by release preflight.
@@ -395,14 +403,14 @@ class PoolBuildOutputs:
 
 @dataclass(frozen=True)
 class StackedPoolBuildResult:
-    """Input-only stacked pool and its two fresh terminal gate verdicts."""
+    """Input-only stacked pool and its fresh terminal gate verdicts."""
 
     frame: Frame
     stack_receipt: Mapping[str, object]
     assembly_receipt: Mapping[str, object]
     provenance_counts: Mapping[str, Mapping[str, object]]
     stage_receipts: Mapping[str, Mapping[str, object]]
-    terminal_gates: tuple[GateResult, GateResult]
+    terminal_gates: tuple[GateResult, ...]
     release_id: str
     qbi_transition_authority_sha256: str | None = None
     late_producer_transition_authority_sha256: str | None = None
@@ -3995,9 +4003,10 @@ def build_stacked_pool(
         simulation_frame,
         tail_manifest=tail_manifest,
     )
+    immigration = us_immigration_composition_gate(current)
     # Manifest conversion is itself the final canonical-authority check and
     # deliberately happens before publication or readiness is asserted.
-    GateReport((completeness, battery)).to_manifest()
+    GateReport((completeness, battery, immigration)).to_manifest()
     mark_phase("terminal_gates")
     counts = spine_provenance_counts(
         current,
@@ -4019,7 +4028,7 @@ def build_stacked_pool(
         assembly_receipt=dict(assembly_receipt),
         provenance_counts=counts,
         stage_receipts=receipts,
-        terminal_gates=(completeness, battery),
+        terminal_gates=(completeness, battery, immigration),
         release_id=release_id,
         qbi_transition_authority_sha256=qbi_transition_authority_sha256,
         late_producer_transition_authority_sha256=(
