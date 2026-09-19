@@ -58,6 +58,8 @@ MAX_PAYLOAD_BYTES = 64 * 1024**2
 MAX_SEGMENT_BYTES = MAX_PAYLOAD_BYTES
 MAX_ROSTER_BYTES = 64 * MAX_SEGMENT_BYTES
 ROSTER_PROTOCOL = "microcosm.us.survey-population-roster-transport.v1"
+LEGACY_HEAD_COLUMN = "legacy_prepared_is_household_head"
+LEGACY_HEAD_RULE = "microcosm.us.legacy-headship-namespace.v1"
 _MAX_SCALAR_BYTES = 1024**2
 _FRAME_FAST_STRING_CHARS = 4096
 _SOURCE_ROSTER = (
@@ -707,6 +709,8 @@ def _live():
         MAX_SEGMENT_BYTES,
         MAX_ROSTER_BYTES,
         ROSTER_PROTOCOL,
+        LEGACY_HEAD_COLUMN,
+        LEGACY_HEAD_RULE,
         _MAX_SCALAR_BYTES,
         _FRAME_FAST_STRING_CHARS,
         _SOURCE_ROSTER,
@@ -1097,7 +1101,15 @@ def _same_values(left, right):
 
 
 def _normalized_source_copy(frame: Frame) -> Frame:
+    _require(
+        LEGACY_HEAD_COLUMN not in frame.person, "LEGACY_HEADSHIP_NAMESPACE_COLLISION"
+    )
     result = _copy_source(frame)
+    # These prepared booleans are not the raw reference-person observations.
+    # Preserve every value under a diagnostic name; the role source operator
+    # will own the nullable canonical column from A_EXPRRP / RELSHIPP.
+    if "is_household_head" in result.person:
+        result.person.columns = _headship_namespace_axis(result.person.columns)
     _require("A_AGE" in frame.person, "OBSERVED_AGE_REQUIRED")
     result.person["age"] = observed_age.normalize_observed_age(
         frame.person["A_AGE"], frame.person.get("age")
@@ -1106,8 +1118,16 @@ def _normalized_source_copy(frame: Frame) -> Frame:
     return result
 
 
+def _headship_namespace_axis(columns):
+    return pd.Index(
+        [LEGACY_HEAD_COLUMN if c == "is_household_head" else c for c in columns],
+        dtype=columns.dtype,
+        name=columns.name,
+    )
+
+
 def _verify_normalized_copy(original: Frame, normalized: Frame):
-    """Only the recorded age alias and existing string storage may differ."""
+    """Only age normalization, the lossless headship name and string storage differ."""
     _require(
         original.schema == normalized.schema
         and original.entities == normalized.entities
@@ -1119,21 +1139,32 @@ def _verify_normalized_copy(original: Frame, normalized: Frame):
     )
     for entity in original.entities:
         before, after = original.table(entity), normalized.table(entity)
-        expected_columns = list(before)
-        original_axis = after.columns
+        expected_axis = before.columns
+        if entity == "person":
+            _require(
+                LEGACY_HEAD_COLUMN not in before, "LEGACY_HEADSHIP_NAMESPACE_COLLISION"
+            )
+            expected_axis = _headship_namespace_axis(before.columns)
+        expected_columns = list(expected_axis)
+        renamed_axis = after.columns
         if entity == "person" and "age" not in before:
             expected_columns.append("age")
-            original_axis = after.columns[:-1]
+            renamed_axis = after.columns[:-1]
         _require(
             list(after) == expected_columns
-            and before.columns.identical(original_axis)
+            and expected_axis.identical(renamed_axis)
             and before.index.identical(after.index),
             "NORMALIZED_ORDERED_COLUMNS",
         )
         for column in before:
             if entity == "person" and column == "age":
                 continue  # Independently reconstructed from raw observations below.
-            left, right = before[column], after[column]
+            target = (
+                LEGACY_HEAD_COLUMN
+                if entity == "person" and column == "is_household_head"
+                else column
+            )
+            left, right = before[column], after[target]
             if isinstance(left.dtype, pd.StringDtype):
                 _require(
                     right.dtype == dtype_for_token("string"),
@@ -2022,6 +2053,17 @@ def prepare_authenticated_survey_population(
             _verify_normalized_copy(original, source_copies[channel])
         origins = _origins(frame, source_copies, plan.selected, native_receipts)
         origins["storage_transitions"] = list(transitions)
+        origins["legacy_headship_namespace"] = {
+            "rule": LEGACY_HEAD_RULE,
+            "from": "is_household_head",
+            "to": LEGACY_HEAD_COLUMN,
+            "values_changed": False,
+            "canonical_authority": False,
+            "sources_present": {
+                channel: "is_household_head" in native_frames[i].person
+                for i, channel in enumerate(("acs", "asec"))
+            },
+        }
         origins["observed_age_normalization"] = {
             "rule": observed_age.rule_document(),
             "sources": {

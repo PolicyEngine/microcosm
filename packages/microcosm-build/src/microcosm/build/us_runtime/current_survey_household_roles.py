@@ -26,7 +26,10 @@ What this module refuses to assume, stated once:
   whose dictionary entry labels no code as reference person, and the maintained
   owner already records it as ``diagnostic_crosscheck``. The incumbent ASEC
   ``is_household_head`` leaf produced by :mod:`.relationship_inputs` is that
-  signal; this module compares values with it and never adopts its rule.
+  signal. Native preparation preserves carried headship under
+  ``legacy_prepared_is_household_head``; reconciliation reports it separately
+  without granting canonical authority. Any already-owned canonical incumbent
+  is still checked strictly.
 * A prepared arm's ``A_EXPRRP`` column is **not** a source. ``asec_pool``
   derives it from ``A_LINENO == 1`` when a locked input omits it, and
   ``acs_pums`` derives it from ``RELSHIPP`` — writing ``14`` for every member of
@@ -1254,11 +1257,11 @@ def canonical_dtype_token(receiving):
     return token
 
 
-def _incumbent(people, count):
+def _incumbent(people, count, column=CANONICAL_COLUMN):
     """Normalize the incumbent leaf to an explicit known mask and bool values."""
-    if CANONICAL_COLUMN not in people:
+    if column not in people:
         return np.zeros(count, dtype=bool), np.zeros(count, dtype=bool)
-    values = pd.array(people[CANONICAL_COLUMN], dtype=dtype_for_token("boolean"))
+    values = pd.array(people[column], dtype=dtype_for_token("boolean"))
     known = ~np.asarray(pd.isna(values), dtype=bool)
     resolved = np.zeros(count, dtype=bool)
     resolved[known] = np.asarray(values[known], dtype=bool)
@@ -1450,6 +1453,9 @@ def household_role_reconciliation(value, receiving_frame):
     )
     both = incumbent_known & qualified_known
     conflict = both & (incumbent_value != qualified_value)
+    legacy_known, legacy_value = _incumbent(people, count, source.LEGACY_HEAD_COLUMN)
+    legacy_both = legacy_known & qualified_known
+    legacy_conflict = legacy_both & (legacy_value != qualified_value)
     result = {
         "protocol": PROTOCOL,
         "canonical_column": CANONICAL_COLUMN,
@@ -1471,6 +1477,27 @@ def household_role_reconciliation(value, receiving_frame):
         "binding_would_refuse": bool(
             conflict.any() or (incumbent_known & ~qualified_known).any()
         ),
+        "legacy_prepared_comparison": {
+            "column": source.LEGACY_HEAD_COLUMN,
+            "present": source.LEGACY_HEAD_COLUMN in people,
+            "canonical_authority": False,
+            "known_cells": int(legacy_known.sum()),
+            "compared_cells": int(legacy_both.sum()),
+            "agreeing_cells": int((legacy_both & ~legacy_conflict).sum()),
+            "conflicting_cells": int(legacy_conflict.sum()),
+            "known_qualified_unbound": int((legacy_known & ~qualified_known).sum()),
+            "by_survey": {
+                survey: {
+                    "conflicting_cells": int(
+                        (legacy_conflict & (channel == survey)).sum()
+                    ),
+                    "known_qualified_unbound": int(
+                        (legacy_known & ~qualified_known & (channel == survey)).sum()
+                    ),
+                }
+                for survey in SURVEYS
+            },
+        },
         "by_survey": {
             survey: {
                 "rows": int((channel == survey).sum()),
