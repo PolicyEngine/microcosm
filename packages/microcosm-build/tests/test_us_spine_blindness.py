@@ -443,6 +443,9 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         # Borrowed full/current ASEC and selected ACS immigration literals;
         # status assignment and source-weight/stock alignment remain separate.
         "current_survey_immigration_source.py",
+        # Selected original ACS literal/age/sex/state view; no assignment,
+        # stock, graph or weight authority.
+        "current_acs_immigration_source_projection.py",
         # Retained housing observations, original-design donors and exact clone joins
         "current_survey_housing.py",
         # Qualified original reference-person observations and exact clone bind.
