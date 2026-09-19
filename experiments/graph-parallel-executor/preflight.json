@@ -1,0 +1,55 @@
+{
+  "status": "BLOCKED_MISSING_NATIVE_RUNTIME",
+  "requested_base": "16c8e78d2f60d629da5d70294f643bce5c4597e2",
+  "branch": "graph-parallel-executor",
+  "modules": [
+    {
+      "module": "graph_atomic_survey_financial",
+      "exists_at_requested_base": false,
+      "exists_in_worktree": false,
+      "importable_from_lane_venv": false
+    },
+    {
+      "module": "graph_atomic_survey_population",
+      "exists_at_requested_base": false,
+      "exists_in_worktree": false,
+      "importable_from_lane_venv": false
+    },
+    {
+      "module": "survey_population_preparation",
+      "exists_at_requested_base": false,
+      "exists_in_worktree": false,
+      "importable_from_lane_venv": false
+    },
+    {
+      "module": "survey_atomic_geography",
+      "exists_at_requested_base": false,
+      "exists_in_worktree": false,
+      "importable_from_lane_venv": false
+    },
+    {
+      "module": "acs_person_coverage_authentication",
+      "exists_at_requested_base": false,
+      "exists_in_worktree": false,
+      "importable_from_lane_venv": false
+    },
+    {
+      "module": "acs_person_coverage_columns",
+      "exists_at_requested_base": false,
+      "exists_in_worktree": false,
+      "importable_from_lane_venv": false
+    }
+  ],
+  "native_measurements_started": 0,
+  "runtime_changes": [],
+  "locked_environment": {
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "policyengine-us": "2.2.1",
+    "policyengine-core": "3.32.5",
+    "spm-calculator": "1.0.0",
+    "pytest": "8.4.2",
+    "ruff": "0.15.16"
+  },
+  "release_eligible": false
+}

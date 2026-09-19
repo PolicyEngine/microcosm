@@ -2,30 +2,45 @@
 
 ## State
 
-Active on `graph-parallel-executor`, based on main `16c8e78d2`.
-Runtime code is unchanged. Attribution precedes design and implementation.
-Final report: `experiments/graph-parallel-executor/out.md` (unless redirected).
+Attribution is blocked at the requested main base `16c8e78d2`: the 19-node
+harness's native US modules are absent. Awaiting Max's measurement-base choice
+(native overlay with a main-only PR, native rebase, or strict-main synthetic
+scope). Runtime implementation must wait for the required attribution/design
+sequence; no producer or graph runtime source has been edited.
+Final report: `experiments/graph-parallel-executor/out.md`.
 
 ## Done
 
-- Verified branch, clean checkout, and requested base with `git log -1`.
-- Read `CLAUDE.md` and reference transport report / retention launcher.
-- Confirmed local `.venv` is absent; setup is next.
+- Verified `graph-parallel-executor`, clean checkout, and exact requested base.
+- Read `CLAUDE.md`, reference transport report, retention launcher/harnesses,
+  graph source, acceptance contracts, and native source owners (read only).
+- Created and committed this journal at the start (`f00743c9a`).
+- Recovered locked US installation after PyPI DNS failed by copying cached
+  wheels into this worktree and running `uv sync --offline --all-packages
+  --locked --extra us`; 102 packages installed, lockfile unchanged.
+- Confirmed missing modules in the base git tree, current files, and active
+  venv import resolution; recorded `experiments/graph-parallel-executor/preflight.json`.
+- Wrote source-cited attribution preflight and provisional design. #938 is
+  graph-only; native epoch wrappers and most outside-graph work are absent
+  from main. Historical sampling is cumulative, not phase-separated.
+- Found canonical population admission is required: sibling patch order
+  changes later structural frame column order and mass-log order.
+- Unchanged graph suite: `632 passed, 1 skipped in 72.27s (0:01:12)`.
+- `tools/ci_test_groups.py --verify`: `verification=ok`.
 
 ## Next
 
-1. Install locked US environment; copy/adapt the measurement harness locally.
-2. Gate on >45 GB available memory; record PID; cold + required replay on
-   unchanged main with 0.25 s statistical attribution and 21,600 CPU-s ceiling.
-3. Commit design with source references, memoization classifications, worker
-   boundary, memory budget, failure/observer semantics, and identity invariant.
-4. Implement measured memoization and bounded concurrency without changing
-   `decl.py`, `kernel.py`, or producer-pinned US modules; commit coherent steps.
-5. Run identity/failure/scheduling tests, CI checks, gated measurements, and
-   create a draft PR against main. Write the full evidence report.
+1. Finish foreground coverage/burndown checks and commit their exact outcomes.
+2. Resolve measurement base, then cold + required replay with phase-separated
+   0.25 s sampling, >45 GB memory gate, exact PID and 21,600 CPU-s limit.
+3. Decide measured worker transport/memory reservations; implement supported
+   memoization and concurrent computation with canonical coordinator admission.
+4. Add identity/failure/schedule sweeps, amendment 26 and changelog; run CI
+   checks and 1/1000 plus gated 1/15 measurements; create draft PR against main.
 
 Every lane commit includes `Co-Authored-By: GPT-6 <noreply@openai.com>`.
-No publication, calibration, or dataset build is authorized by this lane.
+No native measurement, dataset build, calibration, or publication has run.
+No edits were made to another worktree. Source-pin and interface-lock changes: none.
 
 ---
 
