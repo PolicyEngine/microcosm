@@ -31,8 +31,15 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
+from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_VINTAGE
 from microcosm.build.us_runtime.capital_gain_distributions import (
     capital_gain_distribution_shares_asset_identity,
+)
+from microcosm.build.us_runtime.immigration import (
+    _observation_years,
+    reconcile_us_immigration_humanitarian_transfer,
+    us_immigration_evidence_feature_contract,
+    us_immigration_evidence_features,
 )
 from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -192,6 +199,32 @@ _IMMIGRATION_STATUS_TARGETS = (
     "immigration_status_str",
 )
 _IMMIGRATION_STATUS_MODEL_TARGET = "__acs_transfer_immigration_status_pair"
+_IMMIGRATION_CITIZENSHIP_FEATURE = "__acs_transfer_is_us_citizen"
+_IMMIGRATION_ORIGIN_FEATURE = "__acs_transfer_birth_country_code"
+_IMMIGRATION_ARRIVAL_FEATURE = "__acs_transfer_arrival_year"
+_IMMIGRATION_REQUIRED_FEATURES = (
+    _IMMIGRATION_CITIZENSHIP_FEATURE,
+    _IMMIGRATION_ORIGIN_FEATURE,
+    _IMMIGRATION_ARRIVAL_FEATURE,
+)
+_HUMANITARIAN_IMMIGRATION_STATUSES = frozenset(
+    {
+        "PAROLED_ONE_YEAR",
+        "REFUGEE",
+        "ASYLEE",
+        "DEPORTATION_WITHHELD",
+        "TPS",
+    }
+)
+_EVIDENCE_DERIVED_IMMIGRATION_STATUSES = frozenset(
+    {
+        "CUBAN_HAITIAN_ENTRANT",
+        "DACA",
+    }
+)
+_CONSTRAINED_IMMIGRATION_STATUSES = (
+    _HUMANITARIAN_IMMIGRATION_STATUSES | _EVIDENCE_DERIVED_IMMIGRATION_STATUSES
+)
 
 # RNTP/GRNTP are not pre-subsidy rent, so this leaf remains donor-transferable.
 _ADDITIONAL_PERSON_TRANSFER_TARGETS = ("pre_subsidy_rent",)
@@ -282,6 +315,7 @@ def acs_transfer_execution_contract_identity(
     *,
     targets: Sequence[str] | None = None,
     derive_schedule_d: bool = True,
+    observation_year_column: str | None = None,
 ) -> dict[str, object]:
     """Bind the complete runtime predictor and target-codec contract."""
 
@@ -291,8 +325,10 @@ def acs_transfer_execution_contract_identity(
     )
     adult_care_enabled = _ADULT_CARE_EXPENSE in requested_targets
     payload: dict[str, object] = {
-        "schema_version": 2,
+        "schema_version": 4,
         "person_required_predictors": list(ACS_PERSON_TRANSFER_PREDICTORS),
+        "immigration_required_predictors": list(_IMMIGRATION_REQUIRED_FEATURES),
+        "immigration_evidence_features": us_immigration_evidence_feature_contract(),
         "person_optional_predictors": list(ACS_OPTIONAL_PERSON_TRANSFER_PREDICTORS),
         "group_required_predictors": list(ACS_GROUP_TRANSFER_PREDICTORS),
         "group_optional_names": dict(sorted(_GROUP_OPTIONAL_NAMES.items())),
@@ -317,6 +353,9 @@ def acs_transfer_execution_contract_identity(
         "tenure_codes": dict(sorted(_TENURE_CODES.items())),
         "immigration_status_targets": list(_IMMIGRATION_STATUS_TARGETS),
         "immigration_status_model_target": _IMMIGRATION_STATUS_MODEL_TARGET,
+        "immigration_baseline_excluded_statuses": sorted(
+            _CONSTRAINED_IMMIGRATION_STATUSES
+        ),
         "discrete_numeric_targets": sorted(_DISCRETE_NUMERIC_TARGETS),
         "structural_target_policies": {
             _PREGNANCY_TARGET: _pregnancy_structural_policy_identity(
@@ -344,8 +383,24 @@ def acs_transfer_execution_contract_identity(
                 "tax_unit_link": _ADULT_CARE_UNIT,
                 "mutable_rows": "newly_imputed_expense_cells_only",
             },
+            "humanitarian_immigration": {
+                "enabled": set(_IMMIGRATION_STATUS_TARGETS).issubset(requested_targets),
+                "targets": list(_IMMIGRATION_STATUS_TARGETS),
+                "mutable_rows": "newly_imputed_paired_cells_only",
+                "target_basis": "manifest_residual_after_immutable_asec_mass",
+                "selection": "stable_person_hash_in_manifest_draw_order",
+                "candidate_shortfall": "error",
+            },
         },
     }
+    if observation_year_column is not None:
+        if not isinstance(observation_year_column, str) or not observation_year_column:
+            raise ValueError("observation_year_column must be a nonempty string.")
+        payload["immigration_observation_year"] = {
+            "column": observation_year_column,
+            "mode": "explicit_per_row",
+            "checkpoint_binding": "typed_person_ids_and_years_in_pattern_identity_v1",
+        }
     payload["sha256"] = hashlib.sha256(
         json.dumps(
             payload,
@@ -498,7 +553,7 @@ class AcsImputedInput:
     derivation: str | None = None
     #: Post-fit structural reconciliation counts, when the column's surface
     #: was adjusted to a statute contract after prediction.
-    reconciliation: Mapping[str, int] | None = None
+    reconciliation: Mapping[str, object] | None = None
     #: Hard-domain and source-person fanout proof for structurally constrained
     #: transfer targets. This is receipt-only and never enters the frame.
     structural_receipt: Mapping[str, object] | None = None
@@ -841,6 +896,8 @@ def default_acs_transfer_target_families(donor: Frame) -> TargetFamilies:
 def acs_transfer_donor_requirements(
     donor: Frame,
     target_families: TargetFamilies,
+    *,
+    observation_year_column: str | None = None,
 ) -> dict[str, tuple[str, ...]]:
     """Resolve raw donor columns consumed by one exact QRF transfer plan.
 
@@ -876,6 +933,44 @@ def acs_transfer_donor_requirements(
     for components in _DONOR_COMBINED_COMPONENTS.values():
         if all(component in person.columns for component in components):
             required[donor.schema.person_entity].update(components)
+
+    person_targets = {
+        target
+        for targets in target_families.get(donor.schema.person_entity, {}).values()
+        for target in targets
+    }
+    if set(_IMMIGRATION_STATUS_TARGETS).issubset(person_targets):
+        if observation_year_column is not None:
+            _observation_years(
+                person,
+                time_period=ACS_2024_1YR_VINTAGE,
+                observation_year_column=observation_year_column,
+            )
+            required[donor.schema.person_entity].add(observation_year_column)
+        evidence_triplets = (
+            ("PRCITSHP", "PENATVTY", "PEINUSYR"),
+            ("CIT", "POBP", "YOEP"),
+        )
+        active_triplets: list[tuple[str, str, str]] = []
+        for triplet in evidence_triplets:
+            citizenship = triplet[0]
+            if citizenship not in person or not person[citizenship].notna().any():
+                continue
+            missing = sorted(set(triplet) - set(person.columns))
+            if missing:
+                raise ValueError(
+                    "paired immigration targets have an incomplete donor "
+                    f"evidence triplet {triplet!r}; missing={missing}."
+                )
+            active_triplets.append(triplet)
+        if not active_triplets:
+            raise ValueError(
+                "paired immigration targets require a live ASEC "
+                "PRCITSHP/PENATVTY/PEINUSYR or ACS CIT/POBP/YOEP donor "
+                "evidence triplet."
+            )
+        for triplet in active_triplets:
+            required[donor.schema.person_entity].update(triplet)
 
     housing = bool(_HOUSING_TRANSFER_TARGETS.intersection(target_names))
     head_source = next(
@@ -1302,6 +1397,7 @@ def transfer_acs_inputs(
     derive_schedule_d: bool = True,
     execution_contract: Mapping[str, object] | None = None,
     regime_evidence_targets: Iterable[tuple[str, str]] = (),
+    observation_year_column: str | None = None,
 ) -> AcsTransferResult:
     """Impute requested missing leaves from ``donor`` onto ``recipient``.
 
@@ -1333,6 +1429,12 @@ def transfer_acs_inputs(
     selection. Only those targets incur donor-regime detection, fitted-result
     verification, and pattern provenance. The default is empty so an owner
     cannot accidentally broaden every transfer's runtime or receipt contract.
+
+    ``observation_year_column`` explicitly selects a numeric person column on
+    both donor and recipient for immigration evidence and reconciliation.
+    Row years and typed person identities bind immigration checkpoint patterns,
+    without entering the QRF predictors or changing its seeds. The caller owns
+    source qualification; omission retains the legacy scalar-2024 convention.
     """
 
     _validate_frames(recipient, donor)
@@ -1379,6 +1481,7 @@ def transfer_acs_inputs(
     resolved_execution_contract = acs_transfer_execution_contract_identity(
         targets=all_targets,
         derive_schedule_d=derive_schedule_d,
+        observation_year_column=observation_year_column,
     )
     if execution_contract is not None and dict(execution_contract) != (
         resolved_execution_contract
@@ -1386,6 +1489,12 @@ def transfer_acs_inputs(
         raise ValueError(
             "ACS transfer runtime execution contract differs from its bound input."
         )
+    if observation_year_column is not None:
+        if not set(_IMMIGRATION_STATUS_TARGETS).issubset(all_targets):
+            raise ValueError(
+                "observation_year_column requires the paired immigration targets."
+            )
+        _immigration_year_identity(donor, recipient, observation_year_column)
     assert_acs_transfer_targets_are_input_leaves(all_targets)
 
     active = _missing_target_families(requested, recipient=recipient)
@@ -1541,6 +1650,7 @@ def transfer_acs_inputs(
                 seed=seed,
                 n_estimators=n_estimators,
                 regime_evidence_targets=family_regime_evidence_targets,
+                observation_year_column=observation_year_column,
             )
         else:
             fitted = _fit_family_patterns_banked(
@@ -1559,6 +1669,7 @@ def transfer_acs_inputs(
                 },
                 total_targets=len(ordered_bank_targets),
                 regime_evidence_targets=family_regime_evidence_targets,
+                observation_year_column=observation_year_column,
             )
         patterns_without_regimes = (
             tuple(replace(pattern, target_regimes=()) for pattern in fitted.patterns)
@@ -1640,10 +1751,13 @@ def transfer_acs_inputs(
     _apply_post_transfer_structure(
         output_tables,
         provenance,
+        recipient=recipient,
         imputed_masks=imputed_masks,
         donor_spine=donor_spine,
         resolved_channel=resolved_channel,
         execution_contract=resolved_execution_contract,
+        seed=seed,
+        observation_year_column=observation_year_column,
     )
 
     tables: dict[str, pd.DataFrame] = dict(output_tables)
@@ -1677,25 +1791,68 @@ def _apply_post_transfer_structure(
     output_tables: dict[str, pd.DataFrame],
     provenance: list[AcsImputedInput],
     *,
+    recipient: Frame,
     imputed_masks: Mapping[tuple[str, str], np.ndarray],
     donor_spine: str,
     resolved_channel: str | None,
     execution_contract: Mapping[str, object],
+    seed: int,
+    observation_year_column: str | None = None,
 ) -> None:
     """Apply the deterministic post-fit steps the base's construction implies.
 
-    Both steps key off cells THIS transfer filled, so custom test plans that
+    All steps key off cells THIS transfer filled, so custom test plans that
     never touch these families are unaffected:
 
     - The Schedule D CGD memo leg is derived from the two transferred
       capital-gain parents at the packaged share with route exclusivity.
     - The adult-care expense surface is reconciled to the statute structure
       (qualifying carriers only, at most one per tax unit).
+    - The paired immigration baseline is reconciled to manifest humanitarian
+      residual targets after the immutable ASEC contribution.
     """
 
     person = output_tables.get("person")
     if person is None:
         return
+
+    immigration_masks = [
+        imputed_masks.get(("person", target)) for target in _IMMIGRATION_STATUS_TARGETS
+    ]
+    if all(mask is not None for mask in immigration_masks):
+        assert immigration_masks[0] is not None
+        assert immigration_masks[1] is not None
+        if not np.array_equal(immigration_masks[0], immigration_masks[1]):
+            raise ValueError(
+                "ACS immigration transfer must impute its paired target cells "
+                "on exactly the same recipient rows."
+            )
+        mutable_immigration = immigration_masks[0]
+        immigration_provenance = [
+            (index, item)
+            for index, item in enumerate(provenance)
+            if item.entity == "person" and item.column in _IMMIGRATION_STATUS_TARGETS
+        ]
+        source_operator_family = any(
+            item.family.split("__batch_", 1)[0] == "source_operator_immigration"
+            for _, item in immigration_provenance
+        )
+        if mutable_immigration.any() and source_operator_family:
+            reconciled, receipt = reconcile_us_immigration_humanitarian_transfer(
+                person,
+                weights=np.asarray(
+                    recipient.resolve_weights("person").values,
+                    dtype=np.float64,
+                ),
+                mutable_rows=mutable_immigration,
+                seed=seed,
+                time_period=ACS_2024_1YR_VINTAGE,
+                observation_year_column=observation_year_column,
+            )
+            for target in _IMMIGRATION_STATUS_TARGETS:
+                person[target] = reconciled[target]
+            for index, item in immigration_provenance:
+                provenance[index] = replace(item, reconciliation=receipt)
 
     post_transfer_contract = execution_contract["post_transfer_structure"]
     assert isinstance(post_transfer_contract, Mapping)
@@ -1952,6 +2109,7 @@ def _fit_family_patterns(
     seed: int,
     n_estimators: int,
     regime_evidence_targets: tuple[str, ...],
+    observation_year_column: str | None = None,
 ) -> _FamilyFit:
     _validate_donor_targets(donor, entity=entity, targets=targets)
     donor_table = donor.table(entity)
@@ -1977,6 +2135,18 @@ def _fit_family_patterns(
         recipient,
         entity=entity,
         targets=targets,
+        observation_year_column=observation_year_column,
+    )
+    year_identity = (
+        _immigration_year_identity(donor, recipient, observation_year_column)
+        if observation_year_column is not None
+        and set(_IMMIGRATION_STATUS_TARGETS).issubset(targets)
+        else None
+    )
+    feature_identity = (
+        _immigration_feature_identity()
+        if set(_IMMIGRATION_STATUS_TARGETS).issubset(targets)
+        else None
     )
     overlap = sorted(set(surface.required).intersection(targets))
     if overlap:
@@ -2026,6 +2196,10 @@ def _fit_family_patterns(
             )
 
         pattern_name = _pattern_name(position, observed_optional)
+        if feature_identity is not None:
+            pattern_name += ":immigration_features:" + feature_identity
+        if year_identity is not None:
+            pattern_name += ":immigration_years:" + year_identity
         pattern_seed = _pattern_seed(
             seed,
             entity=entity,
@@ -2145,6 +2319,7 @@ def _fit_family_patterns_banked(
     target_indexes: Mapping[str, int],
     total_targets: int,
     regime_evidence_targets: tuple[str, ...],
+    observation_year_column: str | None = None,
 ) -> _FamilyFit:
     """Fit one family targetwise, resuming exact raw chained draws."""
 
@@ -2180,6 +2355,18 @@ def _fit_family_patterns_banked(
         recipient,
         entity=entity,
         targets=targets,
+        observation_year_column=observation_year_column,
+    )
+    year_identity = (
+        _immigration_year_identity(donor, recipient, observation_year_column)
+        if observation_year_column is not None
+        and set(_IMMIGRATION_STATUS_TARGETS).issubset(targets)
+        else None
+    )
+    feature_identity = (
+        _immigration_feature_identity()
+        if set(_IMMIGRATION_STATUS_TARGETS).issubset(targets)
+        else None
     )
     overlap = sorted(set(surface.required).intersection(targets))
     if overlap:
@@ -2224,6 +2411,10 @@ def _fit_family_patterns_banked(
                 f"{list(observed_optional)} and predictors {list(predictors)}."
             )
         pattern_name = _pattern_name(position, observed_optional)
+        if feature_identity is not None:
+            pattern_name += ":immigration_features:" + feature_identity
+        if year_identity is not None:
+            pattern_name += ":immigration_years:" + year_identity
         pattern_seed = _pattern_seed(
             seed,
             entity=entity,
@@ -2561,17 +2752,103 @@ def _availability_patterns(
     return patterns
 
 
+def _immigration_feature_identity() -> str:
+    """Invalidate paired checkpoints when derived feature semantics change."""
+    return hashlib.sha256(
+        json.dumps(
+            us_immigration_evidence_feature_contract(),
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode()
+    ).hexdigest()
+
+
+def _immigration_year_identity(
+    donor: Frame, recipient: Frame, observation_year_column: str
+) -> str:
+    """Bind row-year semantics even when the QRF predictor values are unchanged.
+
+    Stored checkpoint patterns carry this digest, so the existing strict pattern
+    and chain-state validators reject stale banks without a caller identity claim.
+    Years never become QRF predictors and do not perturb the pattern RNG seed.
+    """
+    digest = hashlib.sha256(b"microcosm/acs-immigration-observation-years/v1\0")
+    digest.update(json.dumps(observation_year_column).encode())
+    for role, frame in (("donor", donor), ("recipient", recipient)):
+        person = frame.table(frame.schema.person_entity)
+        years = _observation_years(
+            person,
+            time_period=ACS_2024_1YR_VINTAGE,
+            observation_year_column=observation_year_column,
+        )
+        digest.update(role.encode())
+        for identity, year in zip(
+            person[frame.schema.person_id_column].array,
+            years,
+            strict=True,
+        ):
+            digest.update(
+                json.dumps(
+                    [
+                        type(identity).__module__,
+                        type(identity).__qualname__,
+                        str(identity),
+                        int(year),
+                    ],
+                    separators=(",", ":"),
+                ).encode()
+            )
+            digest.update(b"\n")
+    return digest.hexdigest()
+
+
 def _transfer_feature_surface(
     donor: Frame,
     recipient: Frame,
     *,
     entity: str,
     targets: Sequence[str],
+    observation_year_column: str | None = None,
 ) -> _FeatureSurface:
     if entity == donor.schema.person_entity:
         surface = _person_feature_surface(donor, recipient)
     else:
         surface = _group_feature_surface(donor, recipient, entity=entity)
+
+    if set(_IMMIGRATION_STATUS_TARGETS).issubset(targets):
+        if entity != donor.schema.person_entity:
+            raise ValueError(
+                "The paired immigration targets must be transferred on person."
+            )
+        donor_evidence = us_immigration_evidence_features(
+            donor,
+            time_period=ACS_2024_1YR_VINTAGE,
+            observation_year_column=observation_year_column,
+        ).rename(
+            columns={
+                "is_us_citizen": _IMMIGRATION_CITIZENSHIP_FEATURE,
+                "birth_country_code": _IMMIGRATION_ORIGIN_FEATURE,
+                "arrival_year": _IMMIGRATION_ARRIVAL_FEATURE,
+            }
+        )
+        recipient_evidence = us_immigration_evidence_features(
+            recipient,
+            time_period=ACS_2024_1YR_VINTAGE,
+            observation_year_column=observation_year_column,
+        ).rename(
+            columns={
+                "is_us_citizen": _IMMIGRATION_CITIZENSHIP_FEATURE,
+                "birth_country_code": _IMMIGRATION_ORIGIN_FEATURE,
+                "arrival_year": _IMMIGRATION_ARRIVAL_FEATURE,
+            }
+        )
+        surface = _FeatureSurface(
+            donor=pd.concat([surface.donor, donor_evidence], axis=1),
+            recipient=pd.concat([surface.recipient, recipient_evidence], axis=1),
+            required=(*surface.required, *_IMMIGRATION_REQUIRED_FEATURES),
+            optional=surface.optional,
+        )
 
     housing = bool(_HOUSING_TRANSFER_TARGETS.intersection(targets))
     if not housing:
@@ -3472,7 +3749,8 @@ def _target_encodings(
     result: dict[str, _TargetEncoding] = {}
     if immigration:
         pairs = list(
-            zip(
+            _baseline_immigration_pair(ssn, status)
+            for ssn, status in zip(
                 table[_IMMIGRATION_STATUS_TARGETS[0]].to_numpy(dtype=object),
                 table[_IMMIGRATION_STATUS_TARGETS[1]].to_numpy(dtype=object),
                 strict=True,
@@ -3517,6 +3795,18 @@ def _target_encodings(
             continue
         result[target] = _target_encoding(table[target], target=target)
     return result
+
+
+def _baseline_immigration_pair(ssn: object, status: object) -> tuple[object, object]:
+    """Remove evidence-constrained labels from the unconstrained codec."""
+
+    if status not in _CONSTRAINED_IMMIGRATION_STATUSES:
+        return ssn, status
+    if ssn == "CITIZEN":
+        return "CITIZEN", "CITIZEN"
+    if ssn == "NONE":
+        return "NONE", "UNDOCUMENTED"
+    return ssn, "LEGAL_PERMANENT_RESIDENT"
 
 
 def _complete_case_target_encodings(
