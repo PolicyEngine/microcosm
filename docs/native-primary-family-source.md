@@ -31,7 +31,7 @@ is explicitly unavailable, even when the primary couple is known.
 
 The [2025 ASEC dictionary](https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf)
 maps `A_EXPRRP` 1/2 to the reference person, 3/4 to the spouse, and 5 to own
-children (printed page 6C-3). Code 6 is unnamed and stays unresolved. `A_MARITL=7`
+children (printed page 6C-2, PDF page 23). Code 6 is unnamed and stays unresolved. `A_MARITL=7`
 supplies never-married status; `A_AGE` supplies age. `A_SPOUSE` is a line number
 (page 6C-1), resolved reciprocally within `PH_SEQ` using `A_LINENO`. Missing,
 out-of-household, self, asymmetric, and marital-inconsistent pointers stay unknown.
