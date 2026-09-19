@@ -222,6 +222,8 @@ def _project_transfer_execution_identity(
             feature["activation"], f"post-transfer feature {feature_id} activation"
         )
         enabled = set(activation.get("all_targets", [])).issubset(target_set)
+        if "any_targets" in activation:
+            enabled = enabled and bool(set(activation["any_targets"]) & target_set)
         if activation.get("derive_schedule_d") is True:
             enabled = enabled and derive_schedule_d
         contract = deepcopy(
