@@ -4,7 +4,7 @@ The US graph must detect changed sources, substituted artifacts and changes to r
 
 ## Adopted: reuse source compilation
 
-The ACS native coverage owner now keeps a bounded process-local cache of compiled code. Its key includes exact source bytes, filename, mode, flags, inheritance setting, effective optimization level and compiler identity. Every source read, AST check and loaded-function, global, alias and closure check remains fresh. Cached code is neither source authority nor a portable receipt.
+The ACS native coverage owner keeps a bounded process-local cache of compiled code. Its key includes exact source bytes, filename, mode, flags, inheritance setting, effective optimization level and compiler identity. Every source read and loaded-function, global, alias and closure check remains fresh. Cached code is neither source authority nor a portable receipt.
 
 The change passes 25 focused controls and the original invented financial fixture, including cold execution, required replay and final checks. One paired profile took 216.82 wall seconds versus 308.26 seconds before the change, a 29.66% reduction. CPU time fell from 303.90 to 214.69 seconds. These instrumented observations establish an improvement for that fixture; they do not establish native-data performance. See [the experiment](../experiments/us-acs-compilation-cache-adoption-20260910.json) for exact source, test and verification identities.
 
@@ -28,7 +28,29 @@ An independent Fable 5.1 review recommended making these checks explicit and per
 
 **Adopted 2026-09-16, as a scoped epoch rather than a boundary rule.** `survey_population_preparation.verification_epoch()` opens a verification epoch around a graph run. Outside one, nothing changes: every borrow re-authenticates in full. Inside one, each borrow still pays the cheap tier — loaded-code identity through `_encode(_producer())`, the attached owner payloads and the live authority — and the expensive file and retained-object tier is skipped only while a signature is unchanged: the stat identity of every path the four foreign verifications and `_source_files` re-read, including `_file_stats` over the whole source roster, the identity and length of every borrowed payload, and a read-free witness of each live Frame's storage. The roster's stat identities are read on every borrow, but into that signature rather than as a comparison of their own: a signature that moved is a memo miss, not a refusal, so the complete validation the miss runs is what refuses, with the code it raises today. Leaving the epoch, at every nesting level, re-validates every memoised capsule in full with the memo bypassed, so a change no signature can see still refuses before the run returns anything; a close whose signature moved while it was validating records no memo answer, and at the outermost close, where no borrow follows, it pays that validation itself. The contract, the residuals it accepts and the argument for each are in [verifying native sources once per run](us-native-verification-once.md); the boundary tests are `packages/microcosm-build/tests/test_us_native_verify_once_epoch.py`.
 
-Similarly, an AST cache would hold mutable objects, unlike compiled code. It needs its own ownership design and evidence; the compilation-cache result does not establish its safety or benefit.
+**Adopted 2026-09-19: cache immutable declaration summaries.** The ACS owner now
+retains ordered tuples of top-level definition names and imported aliases, keyed
+by exact source bytes. It does not retain mutable ASTs. Every check still reads
+the current source and compares its declarations with the current loaded objects;
+the existing loaded-code checks also remain. Source changes therefore select a
+different entry, and a warm entry cannot hide a changed live alias.
+
+The cache accepts only the original parser function, code, compiler, exact typed
+defaults and AST flag values. Altered parser context bypasses it. Up to 128 source
+keys of at most 128 KiB bound retained source bytes to 16 MiB; this is not a total
+memory bound. Failed parsing is not cached. Like the existing code check, this
+operates within a trusted Python process, not against arbitrary private-state
+tampering.
+
+The candidate passes 210 focused source, coverage, membership and row-ceiling
+tests, including warm-cache parser drift, changed source and alias refusals.
+Eight repeated code-only producer checks took 2.033 CPU seconds with declaration
+caching disabled and 0.385 seconds with it enabled. Their complete producer
+documents matched within this candidate. This does not establish a native-run
+speedup or equality with producer identities from earlier source versions. The
+active native retention experiment keeps its separate frozen source. See
+[the declaration-cache experiment](../experiments/us-acs-declaration-cache-adoption-20260919.json)
+for reviewed source and verification identities.
 
 ## Composition review
 

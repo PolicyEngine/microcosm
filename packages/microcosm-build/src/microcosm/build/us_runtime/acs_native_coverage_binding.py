@@ -14,6 +14,7 @@ import sys
 import tempfile
 from _thread import RLock
 from dataclasses import InitVar, dataclass
+from functools import lru_cache
 from pathlib import Path
 from types import BuiltinFunctionType, CodeType, FunctionType
 from weakref import WeakKeyDictionary
@@ -48,8 +49,9 @@ _ACCEPTED = {
 _TOKEN = object()
 _ISSUED = WeakKeyDictionary()
 
-# Only bytecode compilation is reused across producers. Fresh source reads,
-# AST checks, local code indexes and loaded-function checks remain mandatory.
+# Reuse deterministic compilation and declaration parsing, keyed by exact source
+# bytes. Fresh reads, declaration checks against live objects, local code indexes
+# and loaded-function checks remain mandatory.
 _COMPILE_CACHE_MAX_ENTRIES = 128
 _COMPILE_CACHE_MAX_SOURCE_BYTES = 16 * 1024**2
 _COMPILE_CACHE_MAX_ENTRY_BYTES = 1024**2
@@ -57,6 +59,36 @@ _COMPILE_CACHE_COMPILER = compile
 _COMPILE_CACHE_DEFAULT_OPTIMIZE = sys.flags.optimize
 _COMPILE_CACHE = {}
 _COMPILE_CACHE_LOCK = RLock()
+_DECLARATION_PARSER = ast.parse
+_DECLARATION_PARSER_CODE = ast.parse.__code__
+# 128 entries * 128 KiB bounds retained source keys to 16 MiB. Values contain
+# immutable declaration strings/tuples only, never mutable ASTs or module objects.
+_DECLARATION_MAX_ENTRY_BYTES = 128 * 1024
+
+
+def _declaration_parser_profile(parser):
+    """Snapshot the exact immutable parser defaults and compiler flag values."""
+    defaults, keywords = parser.__defaults__, parser.__kwdefaults__
+    if type(defaults) is not tuple or type(keywords) is not dict:
+        return None
+    flags = {
+        name: parser.__globals__.get(name)
+        for name in ("PyCF_ONLY_AST", "PyCF_OPTIMIZED_AST", "PyCF_TYPE_COMMENTS")
+        if name in _DECLARATION_PARSER_CODE.co_names
+    }
+    if any(type(key) is not str for key in keywords) or any(
+        type(value) not in (str, int, bool, type(None))
+        for value in (*defaults, *keywords.values(), *flags.values())
+    ):
+        return None
+    return (
+        tuple((type(value), value) for value in defaults),
+        tuple((key, type(value), value) for key, value in sorted(keywords.items())),
+        tuple((key, type(value), value) for key, value in sorted(flags.items())),
+    )
+
+
+_DECLARATION_PARSER_PROFILE = _declaration_parser_profile(_DECLARATION_PARSER)
 
 
 class ACSNativeCoverageBindingError(ValueError):
@@ -73,9 +105,49 @@ def _require(condition, code):
 
 
 def _clear_compile_cache():
-    """Clear only compiled-source outputs, for process-local test isolation."""
+    """Clear deterministic source outputs, for process-local test isolation."""
     with _COMPILE_CACHE_LOCK:
         _COMPILE_CACHE.clear()
+    _cached_declarations.cache_clear()
+
+
+def _parse_declarations(source):
+    tree = ast.parse(source)
+    declarations = []
+    for node in tree.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            declarations.append(("definition", node.name))
+        elif isinstance(node, ast.ImportFrom) and node.module != "__future__":
+            declarations.append(
+                (
+                    "import",
+                    node.level,
+                    node.module,
+                    tuple((alias.name, alias.asname) for alias in node.names),
+                )
+            )
+    return tuple(declarations)
+
+
+@lru_cache(maxsize=128)
+def _cached_declarations(source):
+    return _parse_declarations(source)
+
+
+def _source_declarations(source):
+    parser = ast.parse
+    if (
+        type(source) is bytes
+        and len(source) <= _DECLARATION_MAX_ENTRY_BYTES
+        and parser is _DECLARATION_PARSER
+        and parser.__code__ is _DECLARATION_PARSER_CODE
+        and _DECLARATION_PARSER_PROFILE is not None
+        and _declaration_parser_profile(parser) == _DECLARATION_PARSER_PROFILE
+        and parser.__globals__.get("compile", builtins.compile)
+        is _COMPILE_CACHE_COMPILER
+    ):
+        return _cached_declarations(source)
+    return _parse_declarations(source)
 
 
 def _compile_source(
@@ -84,8 +156,9 @@ def _compile_source(
     """Reuse bounded immutable bytecode; never reuse loaded-function validity.
 
     Non-original compilers and context-dependent or non-exact inputs bypass the
-    cache. Compiler warning/audit events occur on misses; AST parsing still runs
-    on every _live_code call. This shares the trusted-process scope of that check.
+    cache. Compiler warning/audit events occur on misses. Declaration parsing has
+    a separate exact-source cache; live object checks still run on every call.
+    This shares the trusted-process scope of _live_code.
     """
     compiler = compile
     eligible = (
@@ -169,28 +242,28 @@ def _live_code(module, compiled):
     path = getattr(module, "__file__", None)
     if path is None:
         return
-    tree = ast.parse(Path(path).read_bytes())
-    for node in tree.body:
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            value = getattr(module, node.name, None)
+    for declaration in _source_declarations(Path(path).read_bytes()):
+        if declaration[0] == "definition":
+            value = getattr(module, declaration[1], None)
             _require(
                 value is not None and value.__module__ == module.__name__,
                 "LOADED_PRODUCER",
             )
-        elif isinstance(node, ast.ImportFrom) and node.module != "__future__":
+        else:
+            _, level, name, aliases = declaration
             origin_name = (
                 importlib.util.resolve_name(
-                    "." * node.level + (node.module or ""), module.__package__
+                    "." * level + (name or ""), module.__package__
                 )
-                if node.level
-                else node.module
+                if level
+                else name
             )
             origin = sys.modules.get(origin_name)
-            for alias in node.names:
-                if alias.name != "*" and origin is not None:
+            for alias, local_name in aliases:
+                if alias != "*" and origin is not None:
                     _require(
-                        getattr(module, alias.asname or alias.name, None)
-                        is getattr(origin, alias.name, None),
+                        getattr(module, local_name or alias, None)
+                        is getattr(origin, alias, None),
                         "LOADED_PRODUCER",
                     )
 

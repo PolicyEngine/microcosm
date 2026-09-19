@@ -1,0 +1,64 @@
+{
+  "date": "2026-09-19",
+  "base_commit": "fee4aac9d7be2643fe02ec6b855d231abe5980a4",
+  "scope": "Invented source tests and code-only producer microbenchmark; no native run or whole-run speed claim",
+  "source_files": {
+    "packages/microcosm-build/src/microcosm/build/us_runtime/acs_native_coverage_binding.py": "3db4cc58e9ac024fce734e1faea597ef81c81096962aee45a5ad000d13e0b99f",
+    "packages/microcosm-build/tests/test_us_acs_source_compile_cache.py": "b5f1271839500da7d81b1c7b92452f12e7c0718173087a6bed0b0541d131bdba"
+  },
+  "verification_receipt_sha256": "6574f0da3466d30f20e6ed68bdcbedcc321b11e7cd1f5902ecf7b3a3a214c4ec",
+  "harness_sha256": "2f3bc079c9b37da91c5e079d2ace65de97e30a5a006e7f9f2d94164fe9ff55f4",
+  "tests": {
+    "passed": 210,
+    "failed": 0,
+    "skipped": 0,
+    "wall_seconds": 20.23653604206629
+  },
+  "source_unchanged": true,
+  "versions": {
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "pytest": "8.4.2"
+  },
+  "python": "3.14.4",
+  "producer_microbenchmark": [
+    {
+      "mode": "uncached_declarations",
+      "checks": 8,
+      "cpu_seconds": 2.0329569999999997,
+      "wall_seconds": 2.213043291820213,
+      "declaration_cache": {
+        "hits": 0,
+        "misses": 0,
+        "maxsize": 128,
+        "currsize": 0
+      }
+    },
+    {
+      "mode": "cached_declarations",
+      "checks": 8,
+      "cpu_seconds": 0.3848389999999995,
+      "wall_seconds": 0.42960099992342293,
+      "declaration_cache": {
+        "hits": 456,
+        "misses": 57,
+        "maxsize": 128,
+        "currsize": 57
+      }
+    }
+  ],
+  "producer_documents_identical_within_candidate": true,
+  "producer_document_sha256": "52d45864da349ff33bd39131c9775f12eef21f94ea1c13acf71ad670b150cc19",
+  "review": {
+    "report": "NATIVE-DECLARATION-CACHE-REVIEW-V2-20260919.md",
+    "sha256": "92354dd083446779adbb370c871d96ce07d8aadf0f02679b62a75d219c9e400c",
+    "result": "no actionable finding after parser-context fix",
+    "scope": "independent source review; test results inspected, not independently rerun"
+  },
+  "limits": [
+    "No native data execution or whole-run performance conclusion.",
+    "Source-key bound is not an RSS bound.",
+    "New source code changes implementation identities.",
+    "No active retention source or calculation behavior changed."
+  ]
+}
