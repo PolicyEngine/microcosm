@@ -63,6 +63,16 @@ still authenticate its own receiving population; these columns and the JSON
 receipt are not receiving or release authority. Keep the qualified object and
 call `validate()` after subsequent relevant I/O before consuming its tables.
 
+The physical index/Series digest helpers are live-bound through the retained
+preparation: `survey_population_preparation._modules()` includes
+`asec_2024_native_population._modules()`, whose `parent_owner` is
+`asec_current_money_source`. `_pure_final()` checks that full live function seal
+before trusting frame digests. Regression tests replace either helper to mask
+a changed projection and require refusal even with a warm verification epoch.
+The source module stays under the scoped provenance scanner; only its fixed
+field/owner-map dynamic selectors are reviewed, with no blanket provenance
+exemption.
+
 ## Required next integration
 
 The receipt's `missing_rule_admissions` lists the concrete unfinished steps:

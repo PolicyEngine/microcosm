@@ -436,6 +436,9 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_asec_usual_hours.py",
         "current_survey_hours.py",
         "current_survey_hours_source.py",
+        # Borrowed full/current ASEC and selected ACS immigration literals;
+        # status assignment and source-weight/stock alignment remain separate.
+        "current_survey_immigration_source.py",
         # Retained housing observations, original-design donors and exact clone joins
         "current_survey_housing.py",
         # Qualified original reference-person observations and exact clone bind.
@@ -3551,6 +3554,10 @@ _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
         "current_survey_person_status.py",
         "current_survey_person_status_source.py",
         "current_child_property_income_source.py",
+        # Fixed original literal fields and native-key/owner receipt maps.
+        # Source joins are delegated to reviewed owners; direct provenance
+        # reads remain guarded rather than exempting this whole module.
+        "current_survey_immigration_source.py",
         # Schema-declared entities/columns and typed node/artifact/state maps;
         # source-specific joins remain in the separately reviewed owners.
         "graph_survey_completion.py",
@@ -3632,6 +3639,7 @@ def _non_owner_source_spine_accesses(
         "current_survey_person_status_source.py",
         "current_child_property_income_source.py",
         "current_survey_hours.py",
+        "current_survey_immigration_source.py",
         "graph_survey_completion.py",
         "graph_survey_completion_host.py",
         "native_survey_handoff.py",
@@ -3674,6 +3682,15 @@ def pick(table):
         if not (_US_RUNTIME / name).is_file()
     )
     assert not missing, missing
+
+
+def test_native_immigration_projection_keeps_the_scoped_provenance_guard():
+    module = "current_survey_immigration_source.py"
+    source = (_US_RUNTIME / module).read_text()
+    assert module in _US_LAUNCH_GRAPH_RUNTIME_MODULES
+    assert module not in _SOURCE_SPINE_PROVENANCE_OWNERS
+    assert _source_spine_accesses(source)  # The dynamic selectors are scanned.
+    assert _non_owner_source_spine_accesses(module, source) == ()
 
 
 def _called_function_names(source: str) -> set[str]:
