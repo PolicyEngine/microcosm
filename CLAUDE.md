@@ -153,6 +153,13 @@ A sealed deny-list in `microcosm.build.us_runtime.h5_io` overrides this opt-in
 for known-excluded publications while preserving their scoring-only diagnostic
 path.
 
+The native survey development handoff is documented in
+[the native handoff guide](docs/us-native-survey-development-handoff.md).
+`prepare_native_survey_development_input` in the maintained US release tool
+accepts a live issued enrichment owner and returns a verified Frame checkpoint
+plus missing-input/gate inventory. This development checkpoint is not accepted
+as native authority, a legacy pool manifest, or a certified dataset.
+
 ## Root journals are history, not state
 
 The root `PROGRESS*.md`, `FINAL_REPORT.md`, `*_COVERAGE_PROGRESS.md`, and

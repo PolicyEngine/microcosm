@@ -281,6 +281,33 @@ def test_actual_enrichment_cold_required_and_complete_parent_preservation(enrich
         warm.checked_view()
 
 
+def test_native_development_handoff_uses_real_issued_owner(enriched, tmp_path):
+    from microcosm.build.us_runtime import native_survey_handoff as handoff
+
+    # Reuse this suite's genuine issued owner; no issuer or check is replaced.
+    run = enriched.cold
+    output = tmp_path / "native-development"
+    result = handoff.write_native_survey_development_checkpoint(run, output)
+    assert result.owner_live_verified is True
+    handoff.same_replayed_frame(run.population.frame, result.frame)
+    assert result.report["owner_receipt_sha256"] == run.checked_view().digest
+    assert (
+        result.report["amount_projection_sha256"]
+        == result.report["owner_receipt"]["projection_sha256"]
+    )
+    assert result.report["missing_inputs"]
+    assert result.report["required_release_evidence"]
+    assert result.report["source_model_flags"]["prior_wages_consumed"] is False
+    assert result.report["release_eligible"] is False
+    assert result.report["recloned"] is False
+    assert (
+        handoff.load_native_survey_development_checkpoint(output).owner_live_verified
+        is False
+    )
+    with pytest.raises(ValueError, match="UNISSUED_RUN"):
+        handoff.load_native_survey_development_checkpoint(output, run=replace(run))
+
+
 def test_checked_enrichment_refuses_copied_handle(enriched):
     with pytest.raises(ValueError, match="UNISSUED_RUN"):
         graph.check_survey_enrichment_run(replace(enriched.cold))

@@ -1,0 +1,1 @@
+Add a checked native survey development handoff in the maintained US release builder, preserving complete Frame checkpoints and source/model flags while reporting missing inputs and outstanding release qualifications without cloning or fabricating pool receipts.

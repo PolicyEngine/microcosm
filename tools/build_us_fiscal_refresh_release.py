@@ -2605,6 +2605,26 @@ def _download_base_h5() -> Path:
     )
 
 
+def prepare_native_survey_development_input(
+    run, checkpoint_directory, *, export_contract=None
+):
+    """Hand an issued native survey to this builder's Frame consumers for development.
+
+    The returned Frame preserves the native schema and typed weights. Its audit
+    lists unqualified inputs and remaining release gates. This does not enter
+    ``--base-h5``/``--pool-manifest``, which require different evidence, and it
+    neither constructs a legacy assembly receipt nor certifies the checkpoint.
+    Keep ``run`` alive; the checkpoint cannot restore its source authority.
+    """
+    from microcosm.build.us_runtime.native_survey_handoff import (
+        write_native_survey_development_checkpoint,
+    )
+
+    return write_native_survey_development_checkpoint(
+        run, checkpoint_directory, export_contract=export_contract
+    )
+
+
 def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
     consumer = "US fiscal refresh release builder generic H5 loader (_load_frame)"
     sha256 = refuse_denied_pool_h5(path, consumer=consumer)
