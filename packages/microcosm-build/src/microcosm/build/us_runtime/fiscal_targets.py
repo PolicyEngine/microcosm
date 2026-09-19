@@ -56,6 +56,7 @@ __all__ = [
     "US_JCT_TAX_EXPENDITURE_TARGET_SPECS",
     "US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES",
     "SOI_VARIABLE_MAP",
+    "US_SOI_AGI_SIZE_DISTRIBUTION_MINIMUM_LOWER_BOUND",
     "US_SOI_FISCAL_TARGET_SPECS",
     "US_SOI_FISCAL_TARGET_REFERENCES",
     "US_STATE_INCOME_TAX_TARGET_SPECS",
@@ -332,6 +333,33 @@ _SOI_TOTAL_UPRATED_RETURN_MEASURES = frozenset({"taxable_interest_returns"})
 _SOI_TOTAL_UPRATED_DECOMPOSITION_MEASURES = (
     _SOI_TOTAL_UPRATED_AMOUNT_MEASURES | _SOI_TOTAL_UPRATED_RETURN_MEASURES
 )
+#: SOI Publication 1304 Table 1.1 size-of-AGI distribution (microcosm#958).
+#: National return counts and AGI by size of AGI are the only published
+#: anchors for the SHAPE of the upper income distribution. The all-returns
+#: totals leave it free: certified populace-us-2024-spm-20260915 binds
+#: national AGI at +0.3% while carrying ~3.4x SOI's returns between $1M and
+#: $2M and effectively none above $10M. Table 1.1 publishes one tax year
+#: behind the build period, so every banded row is a cross-period AGI slice.
+#: These measures are rescued from the stale-nominal-bin refusal ONLY through
+#: ``_rebase_stale_soi_agi_size_distributions``, which treats them as shares
+#: of the active national control; a rescued row that the pass cannot anchor
+#: is dropped, never shipped.
+_SOI_AGI_SIZE_DISTRIBUTION_AMOUNT_MEASURES = frozenset({"adjusted_gross_income"})
+_SOI_AGI_SIZE_DISTRIBUTION_RETURN_MEASURES = frozenset({"return_count"})
+_SOI_AGI_SIZE_DISTRIBUTION_MEASURES = (
+    _SOI_AGI_SIZE_DISTRIBUTION_AMOUNT_MEASURES
+    | _SOI_AGI_SIZE_DISTRIBUTION_RETURN_MEASURES
+)
+#: The period-stripped record set that owns the distribution. Tables 1.2, 2.1
+#: and 4.3 carry the same measure ids over other universes and are never
+#: rescued here.
+_SOI_AGI_SIZE_DISTRIBUTION_RECORD_SET = "irs_soi.table_1_1"
+#: Lowest AGI edge from which a size class binds. The SOI slice materializer
+#: counts every tax unit in the AGI band with no filer filter, so a return
+#: count is the same concept as a tax-unit count only where filing is
+#: near-universal. Below this edge the EITC-by-AGI families anchor the
+#: distribution and the filing decision is modeled by its own stage.
+US_SOI_AGI_SIZE_DISTRIBUTION_MINIMUM_LOWER_BOUND = 100_000.0
 _SOI_FORM_W2_ITEM_LAYOUT_DIMENSION = "irs_soi.form_w2_item"
 _SOI_FORM_W2_SOCIAL_SECURITY_TIP_ITEMS = frozenset(
     {
@@ -996,6 +1024,11 @@ def compile_us_fiscal_target_registry(
         materialized_facts,
         target_period=target_period,
     )
+    registry = _rebase_stale_soi_agi_size_distributions(
+        registry,
+        materialized_facts,
+        target_period=target_period,
+    )
     registry = apply_ledger_target_profile(
         registry,
         _load_us_fiscal_target_profile(),
@@ -1459,6 +1492,149 @@ def _soi_capital_gains_uprating_index(kind: str) -> str:
     if kind == "returns":
         return "total_net_capital_gains_returns"
     return "total_net_capital_gains_amount"
+
+
+def _rebase_stale_soi_agi_size_distributions(
+    registry: TargetRegistry,
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> TargetRegistry:
+    """Bind Table 1.1 size-of-AGI classes as shares of the national control.
+
+    microcosm#958, measured on certified populace-us-2024-spm-20260915: with
+    only the all-returns totals bound, the solve met national AGI at +0.3%
+    while holding 1.6x SOI's returns from $200k to $1M, 3.4x from $1M to $2M,
+    a quarter of them from $5M to $10M and none above $10M — ordinary income
+    above the 37% threshold came in at $905B against $1,160B taxed at 37% in
+    SOI TY2023 Table 3.4. The national total cannot see shape; these rows can.
+
+    Doctrine is the interest and capital-gains one: a stale cross-section is
+    a SHARE, never a hard old-year level. Each class rebases by ONE national
+    realized factor, ``control / same-vintage Table 1.1 all-returns total``,
+    onto the latest eligible Table 1.1 national actual for the same measure,
+    and lands at the CONTROL's period; target aging owns the remaining links
+    (microcosm#488), so class AGI ages on the same CBO AGI series as the
+    all-returns AGI row and class counts stay raw like the all-returns count.
+    The classes therefore keep summing to the national rows they decompose.
+
+    The national all-returns rows are untouched: they own the national
+    concept. A class with no same-vintage total or no eligible control is
+    unverifiable and is dropped, never shipped unanchored.
+    """
+
+    controls = _soi_agi_size_distribution_active_totals(
+        facts,
+        target_period=target_period,
+    )
+    source_totals = _soi_agi_size_distribution_source_totals(facts)
+    specs: list[TargetSpec] = []
+    for spec in registry.specs:
+        if spec.metadata.get("requires_agi_size_distribution_rebase") != "true":
+            specs.append(spec)
+            continue
+        measure_id = spec.metadata.get("source_measure_id", "")
+        source_period = spec.metadata.get("source_period", "")
+        source_total = source_totals.get((measure_id, source_period))
+        control = controls.get(measure_id)
+        if (
+            source_total in (None, 0)
+            or control is None
+            or not _period_not_before(
+                control.period_key,
+                _period_key_from_value(source_period),
+            )
+        ):
+            continue
+        factor = control.value / source_total
+        specs.append(
+            replace(
+                spec,
+                value=spec.value * factor,
+                metadata={
+                    **dict(spec.metadata),
+                    "uprating_index": _soi_agi_size_distribution_uprating_index(
+                        measure_id
+                    ),
+                    "uprating_from_period": source_period,
+                    # Lands at the CONTROL's period, not the build period:
+                    # target aging completes the chain from there.
+                    "uprating_to_period": control.source_period,
+                    "uprating_index_source_period": control.source_period,
+                    "uprating_index_source_record_id": control.source_record_id,
+                    "uprating_factor": _format_float(factor),
+                    "stale_distribution_rebased_to_active_total": "true",
+                },
+            )
+        )
+    return TargetRegistry(specs, country=registry.country)
+
+
+def _is_soi_agi_size_distribution_total_fact(fact: object) -> bool:
+    """A national all-returns Table 1.1 total for a distribution measure."""
+    if _source_name(fact) != "irs_soi":
+        return False
+    if _measure_id(fact) not in _SOI_AGI_SIZE_DISTRIBUTION_MEASURES:
+        return False
+    if (
+        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id"))
+        != _SOI_AGI_SIZE_DISTRIBUTION_RECORD_SET
+    ):
+        return False
+    if _geography_level(fact) != "country":
+        return False
+    return _is_all_income_range(fact)
+
+
+def _soi_agi_size_distribution_active_totals(
+    facts: tuple[object, ...],
+    *,
+    target_period: int | str,
+) -> dict[str, _SoiTotalControl]:
+    """Latest eligible Table 1.1 national total per measure, not after build."""
+    controls: dict[str, _SoiTotalControl] = {}
+    target_period_key = _period_key_from_value(target_period)
+    for fact in facts:
+        if not _is_soi_agi_size_distribution_total_fact(fact):
+            continue
+        period_key = _period_key(fact)
+        if not _not_after_target_period(period_key, target_period_key):
+            continue
+        source_record_id = _source_record_id(fact)
+        if not source_record_id:
+            continue
+        candidate = _SoiTotalControl(
+            value=_numeric_value(fact),
+            source_period=str(_period_value(fact)),
+            source_record_id=source_record_id,
+            period_key=period_key,
+        )
+        measure_id = _measure_id(fact)
+        current = controls.get(measure_id)
+        if current is None or _prefer_candidate(
+            candidate.period_key,
+            current.period_key,
+            target_period_key=target_period_key,
+        ):
+            controls[measure_id] = candidate
+    return controls
+
+
+def _soi_agi_size_distribution_source_totals(
+    facts: tuple[object, ...],
+) -> dict[tuple[str, str], float]:
+    """Every vintage's own Table 1.1 national total, keyed (measure, period)."""
+    return {
+        (_measure_id(fact), str(_period_value(fact))): _numeric_value(fact)
+        for fact in facts
+        if _is_soi_agi_size_distribution_total_fact(fact)
+    }
+
+
+def _soi_agi_size_distribution_uprating_index(measure_id: str) -> str:
+    if measure_id in _SOI_AGI_SIZE_DISTRIBUTION_RETURN_MEASURES:
+        return "total_return_count"
+    return "total_adjusted_gross_income"
 
 
 #: Control universes admitted for the stale-interest rebase. A stale spec's
@@ -2408,10 +2584,16 @@ def _soi_reference_from_fact(
         and _is_cross_period_fact(fact, target_period=target_period)
         and _is_soi_total_uprated_decomposition_fact(fact, measure_id)
     )
+    requires_agi_size_distribution_rebase = (
+        cross_period_agi_slice
+        and _is_cross_period_fact(fact, target_period=target_period)
+        and _is_soi_agi_size_distribution_fact(fact, measure_id)
+    )
     if (
         cross_period_agi_slice
         and not requires_total_eitc_uprating
         and not requires_total_soi_uprating
+        and not requires_agi_size_distribution_rebase
     ):
         return None
     status = _filing_status_label(_dimensions(fact).get("filing_status"))
@@ -2459,6 +2641,8 @@ def _soi_reference_from_fact(
         metadata["requires_total_eitc_uprating"] = "true"
     if requires_total_soi_uprating:
         metadata["requires_total_soi_uprating"] = "true"
+    if requires_agi_size_distribution_rebase:
+        metadata["requires_agi_size_distribution_rebase"] = "true"
     return LedgerTargetReference(
         name=source_record_id,
         ledger_source_record_id=source_record_id,
@@ -2556,6 +2740,35 @@ def _is_soi_total_uprated_decomposition_fact(
     if ".historic_table_2." not in _str_at(fact, "layout", "record_set_id"):
         return False
     return not _is_all_income_range(fact)
+
+
+def _is_soi_agi_size_distribution_fact(fact: object, measure_id: str) -> bool:
+    """Whether a fact is a rescuable Table 1.1 size-of-AGI class (microcosm#958).
+
+    Deliberately narrow, for the reason the interest predicate is: a rescued
+    row that the rebase pass does not recognize would compile flagged and
+    ship as a stale hard target. Only national, all-filing-status, bounded
+    classes of the Table 1.1 record set at or above the declared lower edge
+    qualify; everything else stays refused by the cross-period gate.
+    """
+    if measure_id not in _SOI_AGI_SIZE_DISTRIBUTION_MEASURES:
+        return False
+    if (
+        _normalized_record_set_id(_str_at(fact, "layout", "record_set_id"))
+        != _SOI_AGI_SIZE_DISTRIBUTION_RECORD_SET
+    ):
+        return False
+    if _geography_level(fact) != "country":
+        return False
+    if str(_dimensions(fact).get("filing_status", "all")) != "all":
+        return False
+    if _is_all_agi_range_fact(fact):
+        return False
+    lower, _ = _agi_bounds(fact)
+    return (
+        _bound_from_metadata_value(lower)
+        >= US_SOI_AGI_SIZE_DISTRIBUTION_MINIMUM_LOWER_BOUND
+    )
 
 
 def _state_income_tax_reference_from_fact(

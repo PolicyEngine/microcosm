@@ -111,6 +111,62 @@ exclusion register instead.
   wiring is safe and normal (the keogh ALD facts rode the feed unmapped for
   weeks).
 
+### Cross-period AGI slices bind only as shares
+
+SOI publishes most size-of-AGI detail one or two tax years behind the build
+period. `_is_untransformed_cross_period_agi_slice` therefore refuses any SOI
+fact that carries an AGI bound and a tax year other than the build period: an
+old nominal bin is not a target-year level. A family escapes that refusal only
+when it has **both** a narrow rescue predicate in `_soi_reference_from_fact`
+and a pass that rebases it onto an active national control. A rescued row
+with no pass would compile flagged and ship as a stale hard target, which is
+the microcosm#489 defect. The rescued families are:
+
+| Family | Record set | Measures | Pass |
+|---|---|---|---|
+| EITC by AGI and qualifying children | `irs_soi.table_2_5.eitc_by_agi_children` | `eitc_total`, `eitc_returns` | `_uprate_cross_period_eitc_decompositions` |
+| Taxable interest by AGI | `irs_soi.historic_table_2.*` | `taxable_interest_amount`, `taxable_interest_returns` | `_rebase_stale_soi_taxable_interest_distributions` |
+| Size of AGI (microcosm#958) | `irs_soi.table_1_1` | `return_count`, `adjusted_gross_income` | `_rebase_stale_soi_agi_size_distributions` |
+
+The size-of-AGI family is the only national anchor for the **shape** of the
+upper income distribution; the all-returns totals bind its level and nothing
+else. Its rules:
+
+- National, all filing statuses, Publication 1304 Table 1.1 only. Tables
+  1.2, 2.1 and 4.3 carry the same measure ids over other universes and are
+  not rescued.
+- Size classes bind from
+  `US_SOI_AGI_SIZE_DISTRIBUTION_MINIMUM_LOWER_BOUND` ($100,000) up. The SOI
+  slice materializer counts every tax unit in the AGI band with no filer
+  filter, so a return count equals a tax-unit count only where filing is
+  near-universal. Below the edge the EITC-by-AGI families anchor the
+  distribution.
+- Each class is a share of its own vintage's Table 1.1 national total, scaled
+  to the latest eligible Table 1.1 national total and landed at that
+  control's period. Target aging completes the chain, so class AGI ages on
+  the CBO AGI series with the all-returns AGI row, class counts stay raw with
+  the all-returns count, and the classes keep summing to the national rows.
+- A class with no same-vintage total or no eligible control is dropped.
+- **Support requirement.** The $5M–$10M and $10M+ rows need an own-tail
+  stratum in the pool. Measured on certified
+  `populace-us-2024-spm-20260915`, which has none: 9 and 3 records carry
+  12.1k and about 1 weighted returns against SOI's 49.3k and 30.4k, a stretch
+  no solve can make under `max_weight_ratio = 5`. Measured on main's base
+  pool, the capital-gains tail stratum holds about 12k and 9k units at base
+  weights, a 3x to 4x stretch.
+- **Launch pairing.** Do not launch a release on this surface with a tail
+  stratum that carries capital gains only. The family fixes the shape of AGI,
+  and a capital-gains-only tail then fills the top classes with preferential
+  income while the classes below lose the excess returns that had been
+  carrying ordinary income. A prototype on the certified file
+  (`experiments/958-us-top-income-tail-receipts.md`; a graft and an entropy
+  reweighting, not a Microcosm build) scores a 37% to 39.6% top-rate reform
+  at +$23.5B as certified, +$20.8B with no tail and this family, **+$18.8B**
+  with a capital-gains-only tail and this family, +$28.4B with a full-vector tail and this family, and +$30.7B
+  when SOI Table 1.4 wages and net capital gains by size of AGI bind as
+  well. Pair the launch with the full-vector own-tail stratum (microcosm#958
+  increment 2).
+
 ## 4. Keep the exclusion register honest
 
 `US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` is keyed by `source_record_id` and its
