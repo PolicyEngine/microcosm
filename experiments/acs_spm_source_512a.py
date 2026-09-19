@@ -104,6 +104,25 @@ def require_record_schema(records, columns, *, row_count=None) -> None:
         require_columns(list(row), columns)
 
 
+def assert_golden_equal(actual, golden) -> None:
+    """Compare exact values while treating JSON null and pandas NA as missing."""
+    import numpy as np
+    import pandas as pd
+
+    pd.testing.assert_frame_equal(actual.isna(), golden.isna())
+    # Object storage preserves nonmissing values, including exact integer IDs.
+    # Fill only missing cells; never coerce a missing role to False or zero.
+    left = actual.astype(object).where(actual.notna(), None)
+    right = golden.astype(object).where(golden.notna(), None)
+    # Python object equality treats True == 1. Bind Boolean positions separately
+    # so JSON numeric storage cannot substitute for a role/flag Boolean.
+    pd.testing.assert_frame_equal(
+        left.map(lambda value: isinstance(value, (bool, np.bool_))),
+        right.map(lambda value: isinstance(value, (bool, np.bool_))),
+    )
+    pd.testing.assert_frame_equal(left, right, check_dtype=False, check_exact=True)
+
+
 def require_checkout(path: Path, expected_head: str, prefix: str) -> str:
     head = subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=path, text=True
@@ -442,9 +461,7 @@ def run(args: argparse.Namespace, output: Path) -> dict:
             selected = result.membership.loc[
                 :, schemas["golden_membership"]
             ].reset_index(drop=True)
-            pd.testing.assert_frame_equal(
-                selected, golden, check_dtype=False, check_exact=True
-            )
+            assert_golden_equal(selected, golden)
             name = "partner_true" if sensitivity else "partner_false"
             records = json.loads(selected.to_json(orient="records"))
             require(
@@ -508,9 +525,7 @@ def run(args: argparse.Namespace, output: Path) -> dict:
                     ]["rows"],
                 )
                 golden = pd.DataFrame(records, columns=columns)
-                pd.testing.assert_frame_equal(
-                    actual.loc[:, columns], golden, check_dtype=False, check_exact=True
-                )
+                assert_golden_equal(actual.loc[:, columns], golden)
             require(
                 len(regroup.spm_units) == 542
                 and regroup.metadata["group_quarters_units_preserved"] == 62,
@@ -577,6 +592,7 @@ def run(args: argparse.Namespace, output: Path) -> dict:
                 "SPORDER exact numeric to int64",
                 "TYPEHUGQ mapped from household by household_id",
                 "Original twelve SPM fields only; categoricals already decoded",
+                "Comparison only: pandas NA/NaN and JSON null denote missing cells",
             ],
             "receipts": receipts,
             "primitive_tables_and_source_bytes_unchanged": True,

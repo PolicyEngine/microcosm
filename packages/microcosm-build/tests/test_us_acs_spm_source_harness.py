@@ -1,6 +1,7 @@
 """Synthetic checks of the prepared harness; no population files are opened."""
 
 import importlib.util
+import json
 from pathlib import Path
 
 import pytest
@@ -99,3 +100,55 @@ def test_failure_receipt_only_discloses_own_static_reason():
         "scope": "development_source_only",
         "error_type": "AssertionError",
     }
+
+
+def nullable_comparison_fixture():
+    import pandas as pd
+
+    actual = pd.DataFrame(
+        {
+            "person_id": [1, 2, 3],
+            "role": pd.Series([True, False, pd.NA], dtype="boolean"),
+            "label": pd.Series(["one", "two", pd.NA], dtype="string"),
+            "amount": pd.Series([1.25, 0, pd.NA], dtype="Float64"),
+        }
+    )
+    golden = pd.DataFrame(json.loads(actual.to_json(orient="records")))
+    return actual, golden
+
+
+def test_json_null_matches_nullable_role_string_and_amount():
+    actual, golden = nullable_comparison_fixture()
+    before = actual.copy(deep=True)
+    harness.assert_golden_equal(actual, golden)
+    assert actual.equals(before)
+
+
+@pytest.mark.parametrize(
+    "column,row,value",
+    [
+        ("role", 2, False),  # Missing role cannot become a child role.
+        ("role", 0, False),
+        ("role", 0, 1),  # Python's True == 1 must not hide a changed value type.
+        ("role", 1, 0),
+        ("amount", 2, 0),  # Missing amount cannot become an observed zero.
+        ("amount", 0, 1.5),
+        ("label", 0, "changed"),
+        ("person_id", 0, 99),
+    ],
+)
+def test_missing_sentinel_normalization_retains_real_mismatches(column, row, value):
+    actual, golden = nullable_comparison_fixture()
+    golden.loc[row, column] = value
+    with pytest.raises(AssertionError):
+        harness.assert_golden_equal(actual, golden)
+
+
+@pytest.mark.parametrize("golden_id", [2**53, float(2**53 + 1)])
+def test_golden_comparison_preserves_integer_precision_above_float_boundary(golden_id):
+    import pandas as pd
+
+    actual = pd.DataFrame({"person_id": [2**53 + 1]})
+    golden = pd.DataFrame({"person_id": [golden_id]})
+    with pytest.raises(AssertionError):
+        harness.assert_golden_equal(actual, golden)
