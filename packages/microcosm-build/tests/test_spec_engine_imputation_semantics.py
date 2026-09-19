@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
 from dataclasses import fields, is_dataclass
+from pathlib import Path
 
 import pytest
 
 from microcosm.build.spec_engine import ResourceKind, load_bundle
 from microcosm.build.spec_engine.canonical import canonical_json_bytes
 from microcosm.build.spec_engine.imputation_semantics import (
+    _project_transfer_execution_identity,
     derive_primary_effective_predictor_tuples,
     project_imputation_legacy_payloads,
 )
+from microcosm.build.spec_engine.loader import SpecValidationError, load_schema_registry
 from microcosm.build.spec_engine.seeds import LEGACY_V1_PROTOCOL
+from microcosm.build.spec_engine.yaml12 import load_yaml12_file
 from microcosm.build.us_runtime.acs_transfer import (
     DEFAULT_ACS_TRANSFER_MAX_TARGETS_PER_FIT,
     acs_transfer_execution_contract_identity,
@@ -54,6 +59,127 @@ def _json_ready(value: object) -> object:
     if isinstance(value, (set, frozenset)):
         return sorted(_json_ready(child) for child in value)
     return value
+
+
+@pytest.fixture(scope="module")
+def transfer_document() -> dict[str, object]:
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "src/microcosm/build/us/spec/imputation.yaml"
+    )
+    return load_yaml12_file(path)
+
+
+def test_transfer_execution_source_only_renderer_is_byte_equal(
+    transfer_document: dict[str, object],
+) -> None:
+    from tools.generate_us_bundle_from_constants import DEFAULT_OUTPUT_DIR, render_yaml
+    from tools.us_bundle_generation.imputation import build_transfer_execution
+
+    regenerated = deepcopy(transfer_document)
+    regenerated["transfer_execution"] = build_transfer_execution()
+    assert regenerated == transfer_document
+    assert (
+        render_yaml("imputation.yaml", regenerated)
+        == (DEFAULT_OUTPUT_DIR / "imputation.yaml").read_bytes()
+    )
+    load_schema_registry().validate(regenerated, "imputation.schema.json")
+
+
+@pytest.mark.parametrize("profile", ["acs_transfer_default", "acs_transfer_early"])
+@pytest.mark.parametrize(
+    "targets",
+    [
+        [],
+        ["long_term_capital_gains_before_response"],
+        ["non_sch_d_capital_gains"],
+        ["pre_subsidy_care_expenses"],
+        ["is_incapable_of_self_care"],
+        ["ssn_card_type"],
+        ["immigration_status_str"],
+        ["ssn_card_type", "immigration_status_str"],
+    ],
+)
+def test_transfer_execution_boundary_identities_match_live_bytes(
+    transfer_document: dict[str, object], profile: str, targets: list[str]
+) -> None:
+    projected = _project_transfer_execution_identity(
+        transfer_document["transfer_execution"],
+        transfer_document["predictor_blocks"],
+        profile_id=profile,
+        targets=targets,
+    )
+    live = acs_transfer_execution_contract_identity(
+        targets=targets, derive_schedule_d=profile == "acs_transfer_early"
+    )
+    assert canonical_json_bytes(projected) == canonical_json_bytes(live)
+    assert projected["sha256"] == live["sha256"]
+
+
+def test_transfer_execution_declared_family_identities_match_live_bytes(
+    transfer_document: dict[str, object],
+) -> None:
+    cases = [
+        (
+            "acs_transfer_early",
+            [
+                target
+                for families in direction.target_families.values()
+                for targets in families.values()
+                for target in targets
+            ],
+        )
+        for direction in stacked_gap_fill_plan()
+    ]
+    cases.extend(
+        ("acs_transfer_default", list(group.targets))
+        for group in CANONICAL_US_LATE_TRANSFER_GROUPS
+    )
+    assert len(cases) == 21
+    for profile, targets in cases:
+        projected = _project_transfer_execution_identity(
+            transfer_document["transfer_execution"],
+            transfer_document["predictor_blocks"],
+            profile_id=profile,
+            targets=targets,
+        )
+        live = acs_transfer_execution_contract_identity(
+            targets=targets, derive_schedule_d=profile == "acs_transfer_early"
+        )
+        assert canonical_json_bytes(projected) == canonical_json_bytes(live)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda transfer: transfer.pop("immigration_evidence_features"),
+        lambda transfer: transfer["immigration_evidence_features"].update(
+            {"unreviewed": True}
+        ),
+        lambda transfer: transfer["immigration_evidence_features"].update(
+            {"no_arrival_evidence_value": True}
+        ),
+        lambda transfer: transfer["immigration_evidence_features"][
+            "asec_arrival_year_midpoints"
+        ].update({"29": 2025}),
+        lambda transfer: transfer["post_transfer_features"].pop(
+            "humanitarian_immigration"
+        ),
+        lambda transfer: transfer["post_transfer_features"]["humanitarian_immigration"][
+            "contract"
+        ].update({"unreviewed": True}),
+        lambda transfer: transfer["post_transfer_features"][
+            "schedule_d_capital_gain_distributions"
+        ]["activation"].update({"any_targets": []}),
+    ],
+)
+def test_transfer_execution_schema_refuses_unrepresented_semantics(
+    transfer_document: dict[str, object], mutation
+) -> None:
+    changed = deepcopy(transfer_document)
+    mutation(changed["transfer_execution"])
+    with pytest.raises(SpecValidationError):
+        load_schema_registry().validate(changed, "imputation.schema.json")
 
 
 @pytest.fixture(scope="module")

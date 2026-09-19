@@ -410,18 +410,21 @@
          "type": "object",
          "additionalProperties": false,
          "properties": {
-          "all_targets": {
-           "type": "array",
-           "items": {
-            "type": "string"
-           }
-          },
           "derive_schedule_d": {
            "type": "boolean"
+          },
+          "any_targets": {
+           "type": "array",
+           "items": {
+            "type": "string",
+            "minLength": 1
+           },
+           "minItems": 1,
+           "uniqueItems": true
           }
          },
          "required": [
-          "all_targets",
+          "any_targets",
           "derive_schedule_d"
          ]
         },
@@ -522,11 +525,78 @@
         "contract",
         "enabled_overrides"
        ]
+      },
+      "humanitarian_immigration": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "activation": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "all_targets": {
+           "type": "array",
+           "items": {
+            "type": "string",
+            "minLength": 1
+           },
+           "minItems": 1,
+           "uniqueItems": true
+          }
+         },
+         "required": [
+          "all_targets"
+         ]
+        },
+        "contract": {
+         "type": "object",
+         "additionalProperties": false,
+         "properties": {
+          "mutable_rows": {
+           "type": "string",
+           "minLength": 1
+          },
+          "target_basis": {
+           "type": "string",
+           "minLength": 1
+          },
+          "selection": {
+           "type": "string",
+           "minLength": 1
+          },
+          "candidate_shortfall": {
+           "type": "string",
+           "minLength": 1
+          },
+          "targets": {
+           "type": "array",
+           "items": {
+            "type": "string",
+            "minLength": 1
+           },
+           "minItems": 1,
+           "uniqueItems": true
+          }
+         },
+         "required": [
+          "mutable_rows",
+          "target_basis",
+          "selection",
+          "candidate_shortfall",
+          "targets"
+         ]
+        }
+       },
+       "required": [
+        "activation",
+        "contract"
+       ]
       }
      },
      "required": [
       "adult_care",
-      "schedule_d_capital_gain_distributions"
+      "schedule_d_capital_gain_distributions",
+      "humanitarian_immigration"
      ]
     },
     "predictor_bindings": {
@@ -769,6 +839,182 @@
       "RENTED",
       "RENTER"
      ]
+    },
+    "immigration_required_predictors": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1
+     },
+     "minItems": 1,
+     "uniqueItems": true
+    },
+    "immigration_baseline_excluded_statuses": {
+     "type": "array",
+     "items": {
+      "type": "string",
+      "minLength": 1
+     },
+     "minItems": 1,
+     "uniqueItems": true
+    },
+    "immigration_evidence_features": {
+     "type": "object",
+     "additionalProperties": false,
+     "properties": {
+      "version": {
+       "type": "string",
+       "minLength": 1
+      },
+      "no_arrival_evidence_value": {
+       "type": "integer"
+      },
+      "no_arrival_evidence": {
+       "type": "string",
+       "minLength": 1
+      },
+      "asec_arrival_year_midpoints": {
+       "type": "object",
+       "additionalProperties": false,
+       "properties": {
+        "1": {
+         "type": "integer"
+        },
+        "2": {
+         "type": "integer"
+        },
+        "3": {
+         "type": "integer"
+        },
+        "4": {
+         "type": "integer"
+        },
+        "5": {
+         "type": "integer"
+        },
+        "6": {
+         "type": "integer"
+        },
+        "7": {
+         "type": "integer"
+        },
+        "8": {
+         "type": "integer"
+        },
+        "9": {
+         "type": "integer"
+        },
+        "10": {
+         "type": "integer"
+        },
+        "11": {
+         "type": "integer"
+        },
+        "12": {
+         "type": "integer"
+        },
+        "13": {
+         "type": "integer"
+        },
+        "14": {
+         "type": "integer"
+        },
+        "15": {
+         "type": "integer"
+        },
+        "16": {
+         "type": "integer"
+        },
+        "17": {
+         "type": "integer"
+        },
+        "18": {
+         "type": "integer"
+        },
+        "19": {
+         "type": "integer"
+        },
+        "20": {
+         "type": "integer"
+        },
+        "21": {
+         "type": "integer"
+        },
+        "22": {
+         "type": "integer"
+        },
+        "23": {
+         "type": "integer"
+        },
+        "24": {
+         "type": "integer"
+        },
+        "25": {
+         "type": "integer"
+        },
+        "26": {
+         "type": "integer"
+        },
+        "27": {
+         "type": "integer"
+        },
+        "28": {
+         "type": "integer"
+        }
+       },
+       "required": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "13",
+        "14",
+        "15",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24",
+        "25",
+        "26",
+        "27",
+        "28"
+       ]
+      },
+      "asec_top_code_approximation": {
+       "type": "string",
+       "minLength": 1
+      },
+      "acs_arrival_year": {
+       "type": "string",
+       "minLength": 1
+      },
+      "origin_codes": {
+       "type": "string",
+       "minLength": 1
+      }
+     },
+     "required": [
+      "version",
+      "no_arrival_evidence_value",
+      "no_arrival_evidence",
+      "asec_arrival_year_midpoints",
+      "asec_top_code_approximation",
+      "acs_arrival_year",
+      "origin_codes"
+     ]
     }
    },
    "required": [
@@ -784,7 +1030,10 @@
     "recipient_combined_sources",
     "schema_version",
     "structural_target_policies",
-    "tenure_codes"
+    "tenure_codes",
+    "immigration_required_predictors",
+    "immigration_baseline_excluded_statuses",
+    "immigration_evidence_features"
    ]
   },
   "gap_fill_schedule": {

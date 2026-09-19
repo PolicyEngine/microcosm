@@ -342,7 +342,47 @@ waiver_records:
     - dependent_child_status
     - pregnancy_status
 transfer_execution:
-  schema_version: 2
+  schema_version: 4
+  immigration_required_predictors:
+  - __acs_transfer_is_us_citizen
+  - __acs_transfer_birth_country_code
+  - __acs_transfer_arrival_year
+  immigration_evidence_features:
+    version: census-entry-approximation-no-arrival-zero@2
+    no_arrival_evidence_value: 0
+    no_arrival_evidence: ASEC PEINUSYR=0 or ACS YOEP nonfinite
+    asec_arrival_year_midpoints:
+      '1': 1945
+      '2': 1955
+      '3': 1962
+      '4': 1967
+      '5': 1972
+      '6': 1977
+      '7': 1981
+      '8': 1983
+      '9': 1985
+      '10': 1987
+      '11': 1989
+      '12': 1991
+      '13': 1993
+      '14': 1995
+      '15': 1997
+      '16': 1999
+      '17': 2001
+      '18': 2003
+      '19': 2005
+      '20': 2007
+      '21': 2009
+      '22': 2011
+      '23': 2013
+      '24': 2015
+      '25': 2017
+      '26': 2019
+      '27': 2021
+      '28': 2023
+    asec_top_code_approximation: 28 -> 2023; unresolved upper endpoint 2024/2025
+    acs_arrival_year: retain YOEP literal; 1938 and 1939 are coarsened codes
+    origin_codes: raw survey codes; only reviewed named-country selectors correspond
   group_optional_names:
     __acs_transfer_employment_income: __acs_transfer_group_employment_income_sum
     __acs_transfer_interest_dividend_rental_income: __acs_transfer_group_investment_income_sum
@@ -405,6 +445,14 @@ transfer_execution:
   - ssn_card_type
   - immigration_status_str
   immigration_status_model_target: __acs_transfer_immigration_status_pair
+  immigration_baseline_excluded_statuses:
+  - ASYLEE
+  - CUBAN_HAITIAN_ENTRANT
+  - DACA
+  - DEPORTATION_WITHHELD
+  - PAROLED_ONE_YEAR
+  - REFUGEE
+  - TPS
   discrete_numeric_targets:
   - first_home_mortgage_origination_year
   - second_home_mortgage_origination_year
@@ -442,7 +490,6 @@ transfer_execution:
     adult_care:
       activation:
         all_targets:
-        - is_incapable_of_self_care
         - pre_subsidy_care_expenses
       contract:
         flag: is_incapable_of_self_care
@@ -453,8 +500,9 @@ transfer_execution:
     schedule_d_capital_gain_distributions:
       activation:
         derive_schedule_d: true
-        all_targets:
+        any_targets:
         - long_term_capital_gains_before_response
+        - non_sch_d_capital_gains
       contract:
         source: long_term_capital_gains_before_response
         exclusive_with: non_sch_d_capital_gains
@@ -475,6 +523,19 @@ transfer_execution:
             note: 'residual = SOCA all-route CGD minus Pub 1304 Table 1.4 direct-1040 CGD; share = residual
               / (LT net gains minus the direct route, which is not on Schedule D). CGD is entirely long-term
               (s. 852(b)(3): capital gain dividends).'
+    humanitarian_immigration:
+      activation:
+        all_targets:
+        - ssn_card_type
+        - immigration_status_str
+      contract:
+        targets:
+        - ssn_card_type
+        - immigration_status_str
+        mutable_rows: newly_imputed_paired_cells_only
+        target_basis: manifest_residual_after_immutable_asec_mass
+        selection: stable_person_hash_in_manifest_draw_order
+        candidate_shortfall: error
   profiles:
     acs_transfer_default:
       derive_schedule_d: false
