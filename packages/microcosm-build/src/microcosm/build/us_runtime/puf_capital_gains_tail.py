@@ -1530,7 +1530,9 @@ def _validate_arm_record(record: Mapping[str, object]) -> None:
                     )
                 if valid and column not in US_QBI_BOOLEAN_OUTPUT_COLUMNS:
                     with np.errstate(over="ignore", invalid="ignore"):
-                        represented = np.asarray(value, dtype=dtype).item()
+                        represented = np.asarray(
+                            value, dtype=getattr(dtype, "numpy_dtype", dtype)
+                        ).item()
                     if represented != value:
                         raise ValueError(
                             f"AGI arm value is not exactly representable as {dtype}: {column}."

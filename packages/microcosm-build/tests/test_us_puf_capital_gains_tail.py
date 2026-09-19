@@ -1375,3 +1375,14 @@ def test_agi_vector_readback_rejects_corrupted_non_capital_gain(monkeypatch):
         match="full-vector materialized carrier changed person.employment_income",
     ):
         transfer_puf_capital_gains_tail(frame, donor, seed=567)
+
+
+def test_agi_manifest_nullable_numeric_dtype_preserves_exact_value():
+    donor, frame = _agi_donor_and_recipients()
+    _, manifest = transfer_puf_capital_gains_tail(frame, donor, seed=567)
+    record = next(record for record in manifest["records"] if record["arm"] == 3)
+    record["person_dtypes"]["employment_income_before_lsr"] = "Int64"
+    tail_module._validate_arm_record(record)
+    record["person_vectors"]["head"]["employment_income_before_lsr"] += 0.5
+    with pytest.raises(ValueError, match="not exactly representable"):
+        tail_module._validate_arm_record(record)
