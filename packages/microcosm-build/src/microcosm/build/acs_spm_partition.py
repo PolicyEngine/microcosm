@@ -4,13 +4,21 @@ This module does not mutate a Frame, assign tax units, allocate unit amounts, or
 calculate poverty. It deliberately lives outside ``us_runtime``: importing that
 package initializes the legacy country registry. See docs/acs-spm-partition.md
 for the reconstruction policy, unresolved cases and canonical dependency pin.
+
+The assembler this adapter imports is not declared as a workspace dependency, so
+runtimes differ: ``probe_acs_spm_assembler`` reports what the imported assembler
+actually does on fixed synthetic rosters, and a partition that would need an
+unsupported one refuses with ``UnsupportedAssembler`` rather than guessing.
 """
 
 from __future__ import annotations
 
+import hashlib
+import inspect
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from numbers import Integral
+from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
@@ -34,6 +42,171 @@ _REFERENCE_FAMILY = frozenset({20, 21, 23, *range(25, 34)})
 _SPOUSES = frozenset({21, 23})
 _PARTNERS = frozenset({22, 24})
 _SECONDARY = frozenset({22, 24, 34, 35, 36})
+_PROBE_POINTERS = ("mother_id", "spouse_id", "unmarried_partner_id")
+# Fixed synthetic probe rosters, in the exact shape ``_assembly_view`` emits.
+# Household 1 is an under-15 residual child with an accepted parent link, whose
+# parent must resolve before the unrelated-under-15 residual attachment.
+# Household 2 is the foster-age boundary, exercised from either side.
+_PROBE_ROWS = (
+    (1, 1, 1, 45, "head", 1, False, pd.NA),
+    (2, 1, 2, 35, "other", pd.NA, False, pd.NA),
+    (3, 1, 3, 8, "other", pd.NA, False, 2),
+    (4, 2, 1, 45, "head", 1, False, pd.NA),
+    (5, 2, 2, 21, "foster child", pd.NA, True, pd.NA),
+    (6, 2, 3, 22, "foster child", pd.NA, True, pd.NA),
+)
+_PROBE_EXPECTED = {
+    1: ({frozenset({1}), frozenset({2, 3})}, "incompatible_parent_link_order"),
+    2: ({frozenset({4, 5}), frozenset({6})}, "incompatible_foster_boundary"),
+}
+
+
+@dataclass(frozen=True)
+class AcsSpmAssemblerProbe:
+    """What the imported assembler did on the fixed rosters, and which file it is.
+
+    ``supported`` means only that this runtime's assembler reproduced the two
+    membership capabilities and the diagnostics call contract the probe
+    exercises, on those rosters. It is not a version, general-compatibility,
+    empirical-accuracy, consumer-acceptance or release claim, and a supported
+    probe does not qualify any partition for measurement use.
+    """
+
+    supported: bool
+    reason: Literal[
+        "supported",
+        "assembler_unavailable",
+        "incompatible_parent_link_order",
+        "incompatible_foster_boundary",
+        "incompatible_call_contract",
+    ]
+    module_file: str | None
+    module_sha256: str | None
+
+    def as_provenance(self) -> dict[str, Any]:
+        """JSON-safe probe identity; never the assembler object or its output."""
+        return {
+            "supported": self.supported,
+            "reason": self.reason,
+            "module_file": self.module_file,
+            "module_sha256": self.module_sha256,
+        }
+
+
+class UnsupportedAssembler(Exception):  # noqa: N818
+    """This runtime's assembler cannot produce the membership this adapter needs.
+
+    Deliberately not a ``ValueError``: refusals of the caller's source evidence
+    stay distinguishable from a runtime whose assembler is absent or divergent.
+    The name states the runtime condition callers branch on rather than carrying
+    the ``Error`` suffix N818 wants, so the marker on each dependent test reads
+    as the capability it needs.
+    """
+
+    def __init__(self, probe: AcsSpmAssemblerProbe) -> None:
+        super().__init__(
+            "Canonical SPM assembler is unsupported "
+            f"({probe.reason}; module_file={probe.module_file})."
+        )
+        self.probe = probe
+
+
+def _assembler_identity(assembler: Any) -> tuple[str | None, str | None]:
+    """The assembler's defining file and its hash, when both are readable."""
+    try:
+        path = inspect.getsourcefile(assembler)
+    except Exception:
+        return None, None
+    if not path:
+        return None, None
+    try:
+        return path, hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    except Exception:
+        return path, None
+
+
+def probe_acs_spm_assembler() -> AcsSpmAssemblerProbe:
+    """Exercise the imported assembler; report a typed verdict, never raise.
+
+    Checks the two membership capabilities this adapter depends on — an accepted
+    parent link resolving before the unrelated-under-15 residual attachment, and
+    the foster-child age boundary — and the diagnostics call contract its
+    provenance records: a ``(ids, diagnostics)`` pair, complete IDs aligned to
+    the input, and a string-keyed mapping carrying a non-native ``method`` and a
+    ``fallback_rules_used`` sequence of strings. It does not check rule names,
+    any other roster, or anything outside those checks. Any failure to import
+    the assembler — ``ImportError`` included — reports it unavailable; every
+    other ordinary failure is reported as an unsupported reason rather than
+    raised. See ``AcsSpmAssemblerProbe`` for what a supported verdict does and
+    does not establish.
+    """
+    try:
+        from spm_calculator import spm_unit_id
+    except ImportError:
+        return AcsSpmAssemblerProbe(False, "assembler_unavailable", None, None)
+    except Exception:
+        return AcsSpmAssemblerProbe(False, "incompatible_call_contract", None, None)
+    module_file, module_sha256 = _assembler_identity(spm_unit_id)
+
+    def verdict(reason: str) -> AcsSpmAssemblerProbe:
+        return AcsSpmAssemblerProbe(
+            reason == "supported", reason, module_file, module_sha256
+        )
+
+    try:
+        roster = pd.DataFrame(
+            list(_PROBE_ROWS),
+            columns=[
+                "person_id",
+                "household_id",
+                "line_number",
+                "age",
+                "relationship_to_head",
+                "family_id",
+                "is_foster_child",
+                "parent_id",
+            ],
+        )
+        roster["family_id"] = roster.family_id.astype("Int64")
+        roster["parent_id"] = roster.parent_id.astype("Int64")
+        for column in _PROBE_POINTERS:
+            roster[column] = pd.Series(pd.NA, index=roster.index, dtype="Int64")
+        returned = spm_unit_id(roster, diagnostics=True)
+        if not (isinstance(returned, tuple) and len(returned) == 2):
+            return verdict("incompatible_call_contract")
+        ids, diagnostics = returned
+        ids = pd.Series(ids).reset_index(drop=True)
+        rules = (
+            diagnostics.get("fallback_rules_used")
+            if isinstance(diagnostics, Mapping)
+            else None
+        )
+        if not (
+            len(ids) == len(roster)
+            and not ids.isna().any()
+            and isinstance(diagnostics, Mapping)
+            and all(isinstance(key, str) for key in diagnostics)
+            and isinstance(diagnostics.get("method"), str)
+            # The allowlisted view carries no old SPM ID; an assembler that
+            # echoed one back would be reproducing the partition being replaced.
+            and diagnostics["method"] != "native_spm_id"
+            and isinstance(rules, Sequence)
+            and not isinstance(rules, (str, bytes))
+            and all(isinstance(rule, str) for rule in rules)
+        ):
+            return verdict("incompatible_call_contract")
+        assigned = roster.assign(_unit=ids.to_numpy())
+        if not assigned.groupby("_unit").household_id.nunique().le(1).all():
+            return verdict("incompatible_call_contract")
+        for household, (expected, reason) in _PROBE_EXPECTED.items():
+            rows = assigned.loc[assigned.household_id.eq(household)]
+            if {
+                frozenset(unit.person_id) for _, unit in rows.groupby("_unit")
+            } != expected:
+                return verdict(reason)
+    except Exception:
+        return verdict("incompatible_call_contract")
+    return verdict("supported")
 
 
 @dataclass(frozen=True)
@@ -452,7 +625,9 @@ def _roles(
     rules.loc[sensitive] = "classification_required"
     observed = work.RELSHIPP.isin({20, *_SPOUSES})
     values.loc[observed] = True
-    source.loc[observed] = "source_observed"
+    # An observed ACS reference/spouse relationship, which is a strict subset of
+    # the ASEC independence rule; never an observed financial-independence fact.
+    source.loc[observed] = "observed_relationship_rule"
     rules.loc[observed] = "acs_relshipp_reference_head_or_spouse"
     outside = work.TYPEHUGQ.ne(1)
     values.loc[outside] = pd.NA
@@ -543,6 +718,11 @@ def reconstruct_acs_spm_partition(
     Strict mode leaves ambiguous candidate households without proposed membership.
     The explicit development preset applies labeled, counted fallback assumptions.
     Passing ``require_resolved`` is not composition, empirical or release acceptance.
+
+    Raises ``UnsupportedAssembler`` when a household would reach an assembler that
+    ``probe_acs_spm_assembler`` reports unsupported. Source evidence is validated
+    first, so a refusable input still refuses with ``ValueError`` on any runtime,
+    and no fallback membership is ever guessed in the assembler's place.
     """
     _require(
         policy in {ACS_SPM_PARTITION_POLICY, ACS_SPM_DEVELOPMENT_POLICY},
@@ -565,7 +745,11 @@ def reconstruct_acs_spm_partition(
     )
     proposed = pd.Series(pd.NA, index=work.index, dtype="string")
     diagnostics = None
+    probe = None
     if eligible.any():
+        probe = probe_acs_spm_assembler()
+        if not probe.supported:
+            raise UnsupportedAssembler(probe)
         from spm_calculator import spm_unit_id
 
         # The canonical helper, not this adapter, assembles connected units.
@@ -676,6 +860,9 @@ def reconstruct_acs_spm_partition(
             else None,
             "source_relationship": "ACS RELSHIPP; secondary links are approved inferences",
             "canonical_diagnostics": diagnostics,
+            # Null when no household reached the assembler, so an unexercised
+            # runtime never reads as an attested one.
+            "assembler": None if probe is None else probe.as_provenance(),
             "person_count": len(work),
             "old_unit_count": len(old_signatures),
             "proposed_resolved_unit_count": len(new_signatures),

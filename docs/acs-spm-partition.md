@@ -14,10 +14,11 @@ The implementation targets the corrected canonical source in
 commit `bcf45768003bb79addfafb0e6d9c7d2d5e547d9d`. Its `units.py` SHA256 is
 `ce0d328d856ca81862b4e80947b6f6269a89bbd842cbdbb1569411b319da5a33`.
 That source fixes parent-link ordering and the foster-child age boundary.
-The published `1.0.0` and `1.0.0.post1` source predates those fixes. A matching
-version string alone does not qualify this dependency.
+The current locked calculator is `1.0.0`; it lacks these required behaviors.
+`1.0.0.post1` is metadata in the unshipped PR45 checkout, not a published
+dependency qualification. A version string alone does not identify these bytes.
 
-This adapter is a development component. Microcosm's existing `0.3.1` calculator
+This adapter is a development component. Microcosm's existing `1.0.0` calculator
 lock and country pins are unchanged. Dependency adoption, native source
 qualification, policy acceptance and activation in a data builder remain separate
 work. Tests exercise the real corrected assembler; they do not certify a dense
@@ -164,8 +165,10 @@ licensed pointer data is consumed. [Census ACS methodology, pp.5–7](https://ww
 
 ## Independent-minor roles and GQ
 
-Membership and measurement roles are separate. Raw reference-head/spouse
-relationships supply a true role primitive. In strict mode, other household members aged 15–17
+Membership and measurement roles are separate. A rule applied to raw reference-
+head/spouse relationships supplies a true role primitive, labeled
+`observed_relationship_rule`. This covers a strict subset of the ASEC source
+independence rule, not observed financial independence. In strict mode, other household members aged 15–17
 remain unclassified until the caller provides `AcsSpmRoleDecision` with a rule
 and explicit boolean value. This includes minor unmarried partners, related
 teenage parents and residual minor singleton units. Missing pointers do not
@@ -216,3 +219,49 @@ be joined onto 2024 people. [ACS-SPM research files](https://www.census.gov/data
 Native regrouping, canonical measurement, geography checks, before/after
 comparisons and release acceptance follow those decisions. No automatic builder
 activation or release gate change accompanies this module.
+
+## Compatibility and development receipt
+
+`probe_acs_spm_assembler` checks the actual imported assembler's parent-link
+ordering, foster-age boundary and diagnostics call contract. It returns typed
+support/reason evidence and the real module path/hash when available. A missing
+assembler is an ordinary unsupported result. Reconstruction raises the dedicated
+`UnsupportedAssembler` only when an eligible household needs assembly; source
+validation and preserved group quarters remain usable without the dependency.
+These probes establish specific capabilities, not general correctness.
+
+CI must exercise three environments: no assembler, locked `1.0.0`, and exact
+reviewed PR45 source. Existing assembler-dependent tests use strict conditional
+expected failures restricted to `UnsupportedAssembler`. All other tests execute
+normally; all positive tests pass without expected failures on the exact PR45
+source. A future separately qualified dependency update removes obsolete markers.
+
+`build_acs_spm_source_receipt` in `microcosm.build.acs_spm_source_receipt` checks
+supplied proposals by replaying the same pure partition/regroup transformations.
+Its inputs include both minor-partner sensitivities, a caller-supplied pilot
+identity registry with canonical labels, raw roster and household tables, explicit
+legacy-default/care evidence and source-reference hashes. It binds input tables,
+links, roles, crosswalks, ledger, policy provenance and actual assembler identity
+to aggregate-only JSON. It preserves GQ membership and nullable roles, unchanged
+unit IDs and one allocation ledger row per split old unit. Unresolved childcare
+stays unresolved. The receipt never allocates national IDs or reads reference
+files; their hashes are explicitly labeled supplied, not authenticated.
+
+ACS head/spouse role outputs are labeled `observed_relationship_rule`, a strict
+subset of the ASEC source independence rule. This describes a rule applied to
+observed RELSHIPP, not observed financial independence. Observed relationship
+links keep their existing `source_observed` label. Unit evidence is the weakest
+of role evidence, construction assumptions, secondary-relationship uncertainty
+and accepted internal links. Age-insensitive roles supply no stronger authority.
+Unassessed/ambiguous links cannot become observed simply because a development
+policy completed the membership. The receipt has fixed `development_source_only`
+scope and makes no official-universe, consumer, or release claim.
+
+Later structural pilots must pin every primitive and auxiliary input before
+loading, including goldens, registry membership, defaults/null evidence and the
+regroup report. Compare the person/household/old-unit/proposed-unit projection
+separately from role labels. Record the explicit `source_observed` to
+`observed_relationship_rule` role-label migration and both label hashes; the old
+whole-file golden hash cannot authenticate renamed bytes. The original registry
+remains immutable. No 512-household or country-consumer run is implied by this
+source helper or synthetic test evidence.

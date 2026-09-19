@@ -9,7 +9,21 @@ from microcosm.build.acs_spm_partition import (
     AcsSpmLink,
     AcsSpmLinkAssessment,
     AcsSpmRoleDecision,
+    UnsupportedAssembler,
+    probe_acs_spm_assembler,
     reconstruct_acs_spm_partition,
+)
+
+# Marks exactly the cases that reach the canonical assembler. Strict, so an
+# unexpected pass stays a failure, and narrowed to the dedicated exception, so
+# the ValueError refusals some of these reach afterwards are never masked. The
+# source-validation, group-quarters and unresolved-household cases carry no
+# marker: they must keep passing on every runtime.
+requires_assembler = pytest.mark.xfail(
+    not probe_acs_spm_assembler().supported,
+    strict=True,
+    raises=UnsupportedAssembler,
+    reason="Assembled membership requires the reviewed canonical assembler",
 )
 
 
@@ -68,6 +82,7 @@ def complete(pid):
     return AcsSpmLinkAssessment(pid, "complete", "invented_reviewed_links_v1")
 
 
+@requires_assembler
 def test_reference_family_and_partner_keep_raw_evidence():
     persons = roster([20, 21, 25, 29, 22], [45, 44, 10, 70, 40])
     original = persons.copy(deep=True)
@@ -79,6 +94,7 @@ def test_reference_family_and_partner_keep_raw_evidence():
     pd.testing.assert_frame_equal(persons, original)
 
 
+@requires_assembler
 def test_adult_roommates_split_without_external_pointer_graph():
     persons = roster([20, 34, 36], [45, 35, 39])
     result = assemble(persons)
@@ -92,6 +108,7 @@ def test_adult_roommates_split_without_external_pointer_graph():
     assert result.provenance["modeled_residual_separation_people"] == 2
 
 
+@requires_assembler
 def test_parent_link_precedes_unrelated_child_fallback():
     # Census WP2011-22 printed p.7: under-15 fallback excludes another member's child.
     persons = roster([20, 34, 36], [45, 35, 8])
@@ -108,6 +125,7 @@ def test_parent_link_precedes_unrelated_child_fallback():
     )
 
 
+@requires_assembler
 def test_partner_child_links_join_primary_component():
     result = assemble(
         roster([20, 22, 36], [45, 35, 8]),
@@ -119,6 +137,7 @@ def test_partner_child_links_join_primary_component():
     assert "approved_inference" in set(result.links.source)
 
 
+@requires_assembler
 @pytest.mark.parametrize("age", [14, 17, 21, 22, 25])
 def test_foster_age_boundary(age):
     result = assemble(roster([20, 35], [45, age]))
@@ -148,6 +167,7 @@ def test_explicit_ambiguous_assessment_is_not_overridden_by_a_link():
     assert "ambiguous" in set(result.membership.secondary_link_status)
 
 
+@requires_assembler
 def test_married_roommates_split_by_assumption_without_an_accepted_spouse_link():
     persons = roster([20, 34, 34], [45, 35, 36], marital=[5, 1, 1])
     assumed = assemble(persons)
@@ -163,6 +183,7 @@ def test_married_roommates_split_by_assumption_without_an_accepted_spouse_link()
     assert groups(result) == {frozenset([101]), frozenset([102, 103])}
 
 
+@requires_assembler
 def test_residual_under15_vs_independent_minor_role_is_separate():
     child = assemble(roster([20, 36], [45, 14]))
     assert len(groups(child)) == 1
@@ -179,6 +200,7 @@ def test_residual_under15_vs_independent_minor_role_is_separate():
     assert resolved.membership.role_source.iloc[1] == "approved_inference"
 
 
+@requires_assembler
 def test_minor_head_and_spouse_known_but_partner_role_unresolved():
     result = assemble(roster([20, 21, 22], [17, 16, 16]))
     assert result.membership.independent_minor_role.iloc[:2].tolist() == [True, True]
@@ -206,6 +228,7 @@ def test_gq_membership_is_preserved_separately_from_exclusion(policy):
     result.require_resolved()
 
 
+@requires_assembler
 def test_membership_stable_under_shuffle_and_household_complete_chunks():
     first = roster([20, 34], [45, 35])
     second = first.copy()
@@ -253,6 +276,7 @@ def test_cross_household_link_refused():
         assemble(persons, links=[AcsSpmLink(101, 102, "parent", "bad")])
 
 
+@requires_assembler
 def test_direct_role_contradiction_refused():
     with pytest.raises(ValueError, match="observed"):
         assemble(
@@ -276,6 +300,7 @@ def test_invalid_or_missing_source_evidence_refused(column, value):
         assemble(persons)
 
 
+@requires_assembler
 def test_raw_second_parent_alias_is_not_treated_as_an_observation():
     result = assemble(roster([20, 25], [45, 10]))
     parents = result.links.loc[result.links.kind.eq("parent")]
@@ -283,6 +308,7 @@ def test_raw_second_parent_alias_is_not_treated_as_an_observation():
     assert parents.source.tolist() == ["source_observed"]
 
 
+@requires_assembler
 def test_inventory_does_not_read_or_reallocate_old_unit_amounts():
     persons = roster([20, 34], [45, 35])
     amount = object()
@@ -310,6 +336,7 @@ def test_boolean_link_id_cannot_alias_person_one():
         assemble(persons, links=[AcsSpmLink(True, 2, "parent", "bad_id")])
 
 
+@requires_assembler
 def test_unobserved_adult_child_partner_is_a_declared_separation_assumption():
     # RELSHIPP observes only the reference relation, not a child's partner.
     # This proposal does not claim that a secondary partner has been ruled out.
@@ -353,6 +380,7 @@ def test_observed_spouse_requires_coherent_raw_marital_status():
         assemble(roster([20, 21], [45, 44], marital=[5, 1]))
 
 
+@requires_assembler
 def test_development_preset_pools_unknown_parentage_without_fabricating_links():
     result = assemble(
         roster([20, 34, 36], [45, 35, 8]), policy=ACS_SPM_DEVELOPMENT_POLICY
@@ -369,6 +397,7 @@ def test_development_preset_pools_unknown_parentage_without_fabricating_links():
     result.require_resolved()
 
 
+@requires_assembler
 def test_development_preset_assigns_modeled_minor_singleton_reference_roles():
     result = assemble(
         roster([20, 36, 34], [45, 16, 17]), policy=ACS_SPM_DEVELOPMENT_POLICY
@@ -384,6 +413,7 @@ def test_development_preset_assigns_modeled_minor_singleton_reference_roles():
     result.require_resolved()
 
 
+@requires_assembler
 @pytest.mark.parametrize("partner_role", [True, False])
 def test_development_minor_partner_sensitivity_preserves_membership(partner_role):
     result = assemble(
@@ -403,6 +433,7 @@ def test_development_minor_partner_sensitivity_preserves_membership(partner_role
     result.require_resolved()
 
 
+@requires_assembler
 def test_development_accepted_parent_precedes_unknown_parent_pooling():
     result = assemble(
         roster([20, 34, 36], [45, 35, 8]),
@@ -417,6 +448,7 @@ def test_development_accepted_parent_precedes_unknown_parent_pooling():
     result.require_resolved()
 
 
+@requires_assembler
 def test_development_unique_accepted_minor_parent_gets_modeled_reference_role():
     result = assemble(
         roster([20, 34, 36], [45, 16, 0]),
@@ -432,6 +464,7 @@ def test_development_unique_accepted_minor_parent_gets_modeled_reference_role():
     result.require_resolved()
 
 
+@requires_assembler
 def test_development_does_not_promote_under15_parent():
     persons = roster([20, 34, 36], [45, 14, 0])
     kwargs = {
@@ -456,6 +489,7 @@ def test_development_does_not_promote_under15_parent():
         )
 
 
+@requires_assembler
 def test_development_two_possible_minor_parent_references_need_explicit_roles():
     result = assemble(
         roster([20, 34, 36, 36], [45, 16, 17, 0]),
@@ -471,6 +505,7 @@ def test_development_two_possible_minor_parent_references_need_explicit_roles():
         result.require_resolved()
 
 
+@requires_assembler
 def test_development_adult_parent_reference_does_not_promote_minor_coparent():
     result = assemble(
         roster([20, 34, 36, 36], [45, 35, 17, 0]),
