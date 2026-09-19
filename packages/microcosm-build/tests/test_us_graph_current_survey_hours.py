@@ -136,6 +136,34 @@ def test_real_fragment_cold_required_preserves_clones_and_nonowned_values(case):
     )
 
 
+def test_graph_hours_and_nullable_provenance_survive_development_storage(
+    case, tmp_path
+):
+    from microcosm.build.us_runtime import native_survey_handoff as handoff
+
+    frame = case.warm.population(case.version)
+    inventory = handoff.native_survey_input_inventory(frame)
+    hours = next(row for row in inventory if row["variable"] == graph.hours.TARGET)
+    assert hours["status"] == "present" and hours["missing_values"] == 0
+    assert not hours["source_signal_verified"] and not hours["applicability_verified"]
+    report = {
+        "protocol": handoff.PROTOCOL,
+        "input_inventory": inventory,
+        "invented_storage_test": True,
+        "release_eligible": False,
+    }
+    output = tmp_path / "hours-checkpoint"
+    # A genuine hours fragment is insufficient to issue an enrichment owner.
+    # Exercise only storage; public handoff still requires the retained full host.
+    handoff._write_checkpoint(frame, report, output)
+    restored = handoff.load_native_survey_development_checkpoint(output)
+    assert not restored.owner_live_verified
+    assert restored.report == report
+    handoff.same_replayed_frame(frame, restored.frame)
+    for name in (graph.hours.TARGET, "hours_provenance", "hours_policy"):
+        pd.testing.assert_series_equal(frame.person[name], restored.frame.person[name])
+
+
 def artifacts_for(case, node):
     inputs = case.warm.node(node.id).typed_artifacts["inputs"]
     return {

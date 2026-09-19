@@ -322,6 +322,27 @@ def test_native_development_handoff_uses_real_issued_owner(enriched, tmp_path):
         result.report["amount_projection_sha256"]
         == result.report["owner_receipt"]["projection_sha256"]
     )
+    assert result.report["owner_receipt"]["hours_source_receipt_sha256"]
+    assert result.report["owner_receipt"]["hours_attachment_sha256"]
+    assert (
+        result.report["owner_receipt"]["hours_age15_policy"]
+        == graph.hours_graph.hours.AGE15_POLICY
+    )
+    assert (
+        result.report["owner_receipt"]["hours_under15_policy"]
+        == graph.hours_graph.hours.UNDER15_POLICY
+    )
+    hours = next(
+        row
+        for row in result.report["input_inventory"]
+        if row["variable"] == graph.hours_graph.hours.TARGET
+    )
+    assert hours["status"] == "present" and hours["missing_values"] == 0
+    assert not hours["source_signal_verified"] and not hours["applicability_verified"]
+    for name in (graph.hours_graph.hours.TARGET, "hours_provenance", "hours_policy"):
+        pd.testing.assert_series_equal(
+            run.population.frame.person[name], result.frame.person[name]
+        )
     assert result.report["missing_inputs"]
     assert result.report["required_release_evidence"]
     assert result.report["source_model_flags"]["prior_wages_consumed"] is False

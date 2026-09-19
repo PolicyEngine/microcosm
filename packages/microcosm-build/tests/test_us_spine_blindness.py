@@ -400,6 +400,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
 # listed separately in _SOURCE_SPINE_PROVENANCE_OWNERS with their reason.
 _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
     {
+        # Compact immutable observations; only the retained issuer owns authority.
+        "_survey_population_witness.py",
+        # Exact development checkpoint/readback and missing-input inventory.
+        "native_survey_handoff.py",
         # Qualified raw ACS INTP/RETP anchors, preserving literal knownness
         "current_acs_income_anchor_source.py",
         # Exact received/paid child-support source observations; no tax treatment
@@ -3535,6 +3539,9 @@ def _source_spine_accesses(source: str) -> tuple[str, ...]:
 # accepted, and only for the listed modules.
 _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
     {
+        # Maintained input-roster fields for unknown counts and exact checkpoint
+        # readback; no source attachment, donor draw or provenance-routing authority.
+        "native_survey_handoff.py",
         # Supplied literal-source dictionaries selected by fixed ACS/ASEC field
         # families in _literals; no Frame or source-provenance access allowance.
         "current_survey_hours.py",
@@ -3627,6 +3634,7 @@ def _non_owner_source_spine_accesses(
         "current_survey_hours.py",
         "graph_survey_completion.py",
         "graph_survey_completion_host.py",
+        "native_survey_handoff.py",
     ],
 )
 def test_reviewed_dynamic_selector_modules_still_fail_on_provenance_reads(
@@ -3773,11 +3781,58 @@ def _us_runtime_import_graph(
     )
 
 
-def _frame_metadata_drops(source: str) -> tuple[str, ...]:
+_ACS_SPM_RECEIPT_TRANSFER = """
+if construction_evidence is not None:
+    from microcosm.build.acs_spm_source_assembly import RECEIPT_KEY
+    metadata = dict(frame.metadata)
+    _require(
+        _json(metadata.pop(RECEIPT_KEY)) == _json(constructed.receipt),
+        "SPM_AGGREGATE_RECEIPT_CHANGED",
+    )
+    frame = Frame(
+        {entity: frame.table(entity) for entity in frame.entities},
+        frame.schema,
+        dict(frame._weights),
+        frame.strata,
+        mass_log=frame.mass_log,
+        metadata=metadata,
+    )
+"""
+
+
+def _reviewed_acs_spm_receipt_transfer(tree, node, module_name):
+    """Allow only the reviewed aggregate-receipt transfer to its source owner.
+
+    This is a closed source-boundary pattern, not permission to drop operator
+    metadata. Every other key survives; changing the removed key, equality
+    check, conditional, reconstruction, function or module invalidates it.
+    PR45's behavioral source-owner tests independently check retained custody.
+    """
+    if module_name != "acs_housing_universe_source.py":
+        return False
+    expected = ast.dump(ast.parse(_ACS_SPM_RECEIPT_TRANSFER).body[0])
+    for function in tree.body:
+        if not (
+            isinstance(function, ast.FunctionDef)
+            and function.name == "prepare_acs_housing_population"
+        ):
+            continue
+        for statement in ast.walk(function):
+            if (
+                isinstance(statement, ast.If)
+                and ast.dump(statement) == expected
+                and statement.body[-1].value is node
+            ):
+                return True
+    return False
+
+
+def _frame_metadata_drops(source: str, *, module_name=None) -> tuple[str, ...]:
     """Find Frame rebuilds that carry a mass log but drop stage metadata."""
 
     drops: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
         if not isinstance(node, ast.Call) or _call_name(node) != "Frame":
             continue
         keywords = {
@@ -3802,7 +3857,9 @@ def _frame_metadata_drops(source: str) -> tuple[str, ...]:
                 and ast.dump(value.value) == ast.dump(mass_log.value)
                 for key, value in zip(metadata.keys, metadata.values, strict=True)
             )
-        if not same_source:
+        if not same_source and not _reviewed_acs_spm_receipt_transfer(
+            tree, node, module_name
+        ):
             drops.append(
                 f"line {node.lineno}: Frame carrying {ast.unparse(mass_log)} "
                 "must carry metadata from the same source frame"
@@ -3856,12 +3913,52 @@ def test_us_runtime_frame_rebuilds_preserve_immutable_metadata() -> None:
     offenders = {
         path.name: drops
         for path in sorted(_US_RUNTIME.glob("*.py"))
-        if (drops := _frame_metadata_drops(path.read_text()))
+        if (drops := _frame_metadata_drops(path.read_text(), module_name=path.name))
     }
     assert not offenders, (
         "US runtime Frame rebuilds must preserve immutable metadata alongside "
         f"their mass log; found: {offenders}"
     )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        None,
+        "other_key",
+        "extra_key",
+        "no_comparison",
+        "other_function",
+        "other_module",
+        "extra_frame",
+    ],
+)
+def test_acs_source_receipt_transfer_exception_is_exact_and_fail_closed(mutation):
+    import textwrap
+
+    body = _ACS_SPM_RECEIPT_TRANSFER
+    function = "prepare_acs_housing_population"
+    module = "acs_housing_universe_source.py"
+    if mutation == "other_key":
+        body = body.replace("metadata.pop(RECEIPT_KEY)", 'metadata.pop("other")')
+    elif mutation == "extra_key":
+        body = body.replace(
+            "    frame = Frame(", '    metadata.pop("other")\n    frame = Frame('
+        )
+    elif mutation == "no_comparison":
+        body = body.replace(
+            '    _require(\n        _json(metadata.pop(RECEIPT_KEY)) == _json(constructed.receipt),\n        "SPM_AGGREGATE_RECEIPT_CHANGED",\n    )',
+            "    metadata.pop(RECEIPT_KEY)",
+        )
+    elif mutation == "other_function":
+        function = "unrelated_reconstruction"
+    elif mutation == "other_module":
+        module = "unrelated.py"
+    elif mutation == "extra_frame":
+        body += "\nother = Frame({}, frame.schema, {}, frame.strata, mass_log=frame.mass_log, metadata={})\n"
+    source = f"def {function}():\n" + textwrap.indent(body.strip(), "    ")
+    findings = _frame_metadata_drops(source, module_name=module)
+    assert bool(findings) is (mutation is not None)
 
 
 def test_runtime_population_operators_are_source_spine_blind() -> None:
