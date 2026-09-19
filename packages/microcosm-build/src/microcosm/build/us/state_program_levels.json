@@ -8,6 +8,7 @@
    "variable": "ca_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ca_admin",
     "value": 941000000,
     "year": "TY2023",
     "source": "CA FTB, California EITC / YCTC / FYTC Report (Oct 2025), Table 1 p.8",
@@ -21,6 +22,7 @@
    "variable": "ca_yctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ca_admin",
     "value": 413000000,
     "year": "TY2023",
     "source": "CA FTB, California EITC / YCTC / FYTC Report (Oct 2025), Table 1 p.8",
@@ -34,6 +36,7 @@
    "variable": "ny_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ny_admin",
     "value": 1116252683,
     "year": "TY2024",
     "source": "NYS DTF open data, EITC Claims by Place of Residence, Table 3 (Grand Total)",
@@ -47,6 +50,7 @@
    "variable": "ny_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ny_admin",
     "value": 693091767,
     "year": "TY2023",
     "source": "NYS DTF open data, Empire State Child Credit Study by Place of Residence",
@@ -60,6 +64,7 @@
    "variable": "co_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "co_admin",
     "value": 356491619,
     "year": "TY2023",
     "source": "CO DOR Office of Research and Analysis, Individual Income Tax Credits TY2023 (updated Mar 2026)",
@@ -73,6 +78,7 @@
    "variable": "co_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "co_admin",
     "value": 89158930,
     "year": "TY2023",
     "source": "CO DOR Office of Research and Analysis, Individual Income Tax Credits TY2023 (updated Mar 2026)",
@@ -86,6 +92,7 @@
    "variable": "wa_working_families_tax_credit",
    "period": 2024,
    "benchmark": {
+    "publisher": "wa_admin",
     "value": 205589501,
     "year": "TY2024",
     "source": "WA DOR, WFTC Program 2025 Report to the Legislature (Dec 2025), Tables 2 and 4",
@@ -99,6 +106,7 @@
    "variable": "mn_child_and_working_families_credits",
    "period": 2024,
    "benchmark": {
+    "publisher": "mn_admin",
     "value": 755500000,
     "year": "TY2024",
     "source": "MN House Research, Minnesota Child Credit and Working Family Credit (May 2026), p.1",
@@ -112,6 +120,7 @@
    "variable": "mn_wfc",
    "period": 2024,
    "benchmark": {
+    "publisher": "mn_admin",
     "value": 191500000,
     "year": "TY2024",
     "source": "Derived: House Research combined CTC+WFC $755.5M minus MN DOR CTC $564M (both TY2024)",
@@ -126,6 +135,7 @@
    "variable": "ct_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ct_admin",
     "value": 195066537,
     "year": "TY2024",
     "source": "CT DRS Annual Report FY2024-25, p.35",
@@ -139,6 +149,7 @@
    "variable": "nm_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "nm_admin",
     "value": 130807000,
     "year": "TY2024",
     "source": "2025 New Mexico Tax Expenditure Report (TRD), p.259 (reliability 1: separately reported actuals)",
@@ -152,6 +163,7 @@
    "variable": "nm_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "nm_admin",
     "value": 133590000,
     "year": "TY2024",
     "source": "2025 New Mexico Tax Expenditure Report (TRD), p.81 (reliability 1)",
@@ -165,6 +177,7 @@
    "variable": "ri_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ri_admin",
     "value": 26193666,
     "year": "TY2023",
     "source": "2026 RI Tax Expenditures Report (Office of Revenue Analysis, Jan 2026), Credits item 8, p.77",
@@ -178,6 +191,7 @@
    "variable": "il_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "il_admin",
     "value": 437387169,
     "year": "TY2023",
     "source": "IDOR, Individual Income Tax Returns by AGI, TY2023 final stratification (Nov 2025), p.1",
@@ -191,6 +205,7 @@
    "variable": "hi_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "hi_admin",
     "value": 76981028,
     "year": "TY2024",
     "source": "HI DOTAX, Earned Income Tax Credit Report TY2024 (Act 107 report, Dec 2025), Table 1 p.5",
@@ -204,6 +219,7 @@
    "variable": "ia_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ia_admin",
     "value": 72117991,
     "year": "TY2024",
     "source": "IA DOR, Tax Credits Contingent Liabilities Report (Mar 2026), Tables 2 and 8",
@@ -217,6 +233,7 @@
    "variable": "ks_total_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ks_admin",
     "value": 76378592,
     "year": "TY2023",
     "source": "KS DOR, Tax Expenditure Report CY2024, Earned Income Credit (K.S.A. 79-32,205), p.9",
@@ -230,6 +247,7 @@
    "variable": "la_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "la_admin",
     "value": 78713535,
     "year": "FY2025",
     "source": "LA DOR, Tax Exemption Budget 2025-2026, item 78, p.38",
@@ -243,6 +261,7 @@
    "variable": "ne_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ne_admin",
     "value": 30250000,
     "year": "TY2024",
     "source": "NE DOR, Nebraska Statistics of Individual Income Tax, Table F2 2024 (refundable credits)",
@@ -256,6 +275,7 @@
    "variable": "wi_earned_income_credit",
    "period": 2024,
    "benchmark": {
+    "publisher": "wi_admin",
     "value": 87723239,
     "year": "TY2023",
     "source": "WI Legislative Fiscal Bureau, Updated Tax Information for 2025 LFB Informational Papers (Apr 2025), Tables 8-10",
@@ -269,6 +289,7 @@
    "variable": "vt_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "vt_admin",
     "value": 24524566,
     "year": "TY2022",
     "source": "2025 Vermont Tax Expenditures Biennial Report (JFO and Dept of Taxes, Jan 2025), Appendix C p.77",
@@ -282,6 +303,7 @@
    "variable": "vt_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "vt_admin",
     "value": 25423933,
     "year": "TY2022",
     "source": "2025 Vermont Tax Expenditures Biennial Report, Appendix C p.77; VT JFO one-year lookback brief (Dec 2023)",
@@ -295,6 +317,7 @@
    "variable": "md_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "md_admin",
     "value": 550881492,
     "year": "TY2024",
     "source": "Comptroller of Maryland, Income Tax Summary Report TY2024, refund summary pp.18-19 and selected credits pp.21-23",
@@ -308,6 +331,7 @@
    "variable": "or_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "or_admin",
     "value": 47200000,
     "year": "TY2023",
     "source": "TY2023 Oregon Personal Income Tax Statistics (150-101-406, revised), Exhibits 36 and 38",
@@ -321,6 +345,7 @@
    "variable": "or_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "or_admin",
     "value": 34200000,
     "year": "TY2023",
     "source": "TY2023 Oregon Personal Income Tax Statistics (150-101-406, revised), Exhibit 36",
@@ -334,6 +359,7 @@
    "variable": "md_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "md_admin",
     "value": 13800000,
     "year": "FY2024",
     "source": "Maryland Tax Expenditures Report FY2024 (DBM Bureau of Revenue Estimates), pp.23 and 47",
@@ -347,6 +373,7 @@
    "variable": "nj_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "nj_admin",
     "value": 603600000,
     "year": "TY2024",
     "source": "NJ Tax Expenditure Report FY2027 (Treasury/Taxation), item 40 p.33: 617,800 claims x $977 average",
@@ -361,6 +388,7 @@
    "variable": "nj_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "nj_admin",
     "value": 220600000,
     "year": "TY2024",
     "source": "NJ Tax Expenditure Report FY2027 (Treasury/Taxation), item 63 p.44: 232,500 credits x $949 average",
@@ -375,6 +403,7 @@
    "variable": "ma_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ma_admin",
     "value": 300000000,
     "year": "FY2024",
     "source": "MA FY26 Tax Expenditure Budget, item 1.605",
@@ -389,6 +418,7 @@
    "variable": "ma_child_and_family_credit",
    "period": 2024,
    "benchmark": {
+    "publisher": "ma_admin",
     "value": 460000000,
     "year": "FY2025",
     "source": "MA FY26 Tax Expenditure Budget, item 1.628",
@@ -403,6 +433,7 @@
    "variable": "me_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "me_admin",
     "value": 38150000,
     "year": "FY2024",
     "source": "Maine State Tax Expenditure Report 2026-2027 (MRS Office of Tax Policy), item 1.032 p.36",
@@ -417,6 +448,7 @@
    "variable": "mi_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "mi_admin",
     "value": 591900000,
     "year": "TY2024",
     "source": "MI Treasury press releases (Oct 2025, Apr 2024): about 665,000 claims at an $890 average",
@@ -431,6 +463,7 @@
    "variable": "mt_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "mt_admin",
     "value": 15610000,
     "year": "TY2024",
     "source": "Approximation: 10% statutory match x $156.1M federal EITC claimed in MT (IRS EITC Central, TY2024 returns processed in 2025)",
@@ -445,6 +478,7 @@
    "variable": "in_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "in_admin",
     "value": 112500000,
     "year": "FY2024",
     "source": "2024 Indiana Tax Expenditure Review (LSA OFMA, Oct 2024), item IT42 p.21",
@@ -459,6 +493,7 @@
    "variable": "ok_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ok_admin",
     "value": 40249000,
     "year": "TY2022",
     "source": "Oklahoma Tax Commission, Tax Expenditure Report 2023-2024, income tax credits item 13, p.6 (reliability level 1)",
@@ -472,6 +507,7 @@
    "variable": "de_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "de_admin",
     "value": 17500000,
     "year": "FY2025",
     "source": "2025 Delaware Tax Preference Report, Personal Income Tax chapter section 1.16, p.1-28",
@@ -486,6 +522,7 @@
    "variable": "dc_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "dc_admin",
     "value": 98372000,
     "year": "FY2024",
     "source": "DC Tax Expenditure Report (OCFO/ORA, Sept 2024), item 129 p.235",
@@ -500,6 +537,7 @@
    "variable": "il_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "il_admin",
     "value": 50000000,
     "year": "TY2024",
     "source": "Illinois State Budget FY2027 (GOMB, Feb 2026), p.28",
@@ -514,6 +552,7 @@
    "variable": "az_dependent_tax_credit",
    "period": 2024,
    "benchmark": {
+    "publisher": "az_admin",
     "value": 151000000,
     "year": "TY2024",
     "source": "Approximation: ACS 2024 1-year age counts for Arizona x statutory amounts ($100 per dependent under 17, $25 at 17+)",
@@ -528,6 +567,7 @@
    "variable": "id_grocery_credit",
    "period": 2024,
    "benchmark": {
+    "publisher": "id_admin",
     "value": 240200000,
     "year": "TY2024",
     "source": "Approximation: ACS 2024 1-year Idaho population (2,001,619) x the $120 per-person credit",
@@ -542,6 +582,7 @@
    "variable": "va_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "va_admin",
     "value": 224156631,
     "year": "FY2025-processed (mostly TY2024)",
     "source": "VA TAX Annual Report FY2025, Table 3.1 ($224,156,631, 522,435 returns); RD717 FY2025 Tax Preferences Report Table 2 p.7 splits the 15% refundable election at $130.39M/253,759 returns",
@@ -556,6 +597,7 @@
    "variable": "oh_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "oh_admin",
     "value": 59300000,
     "year": "FY2025 (TY2024 proxy)",
     "source": "OH Tax Expenditure Report FY2026-27, item 2.23 (GRF revenue foregone; FY2024 $56.4M, FY2025 $59.3M, FY2026 $60.9M \u2014 all estimates from ODT return data)",
@@ -570,6 +612,7 @@
    "variable": "mo_wftc",
    "period": 2024,
    "benchmark": {
+    "publisher": "mo_admin",
     "value": 46062034,
     "year": "TY2024 (issued CY2025)",
     "source": "MO DOR Working Family Tax Credits Issued Calendar Year 2025: $46,062,034, 182,367 credits, avg $252.58 (Sec. 143.177.5 reports prior tax year; 20% rate confirmed for TY2024, trigger fired). TY2023 at 10%: $28.5M",
@@ -584,6 +627,7 @@
    "variable": "sc_eitc",
    "period": 2024,
    "benchmark": {
+    "publisher": "sc_admin",
     "value": 23220000,
     "year": "FY2024-25",
     "source": "SC RFA Tax Expenditure Report (Jan 27 2026), p.6: $23.22M FY2024-25 estimated GF revenue loss. Concept note: SC DOR reports $212.0M CLAIMED on TY2023 returns (99,122 credits) \u2014 a ~9x claimed-vs-used wedge from nonrefundability plus SC's 0% bracket",
@@ -598,6 +642,7 @@
    "variable": "co_family_affordability_credit",
    "period": 2024,
    "benchmark": {
+    "publisher": "co_admin",
     "value": 654000000,
     "year": "TY2024 (implied)",
     "source": "HB24-1311 Final Fiscal Note (Aug 5 2024), Table 1: -$327M FY2023-24 (half-year accrual) and 'up to -$684M' FY2024-25; implied full-TY2024 = 2 x $327M = $654M at the note's ~75% take-up (~$880M at 100%). C.R.S. 39-22-130; TY2024 pays full statutory $3,200 (age 0-5) / $2,400 (6-16) \u2014 the surplus trigger starts TY2025",
@@ -612,6 +657,7 @@
    "variable": "id_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "id_admin",
     "value": 63962000,
     "year": "CY2024 (revised)",
     "source": "ID DFM General Fund Revenue Book, Jan 2026 ed. p.20, Idaho Tax Preferences row 63-3029L: $63.962M CY2024 (Jan 2025 ed. had $66.475M); DFM foregone-revenue estimate, no Tax Commission actuals published",
@@ -626,6 +672,7 @@
    "variable": "ut_ctc",
    "period": 2024,
    "benchmark": {
+    "publisher": "ut_admin",
     "value": 40022410,
     "year": "TY2024",
     "source": "UT State Tax Commission, Individual Income Tax Credits Claimed by Tax Year 2010-2024 (Apr 30 2026), Nonrefundable Child Tax Credit row: $40,022,410 / 39,754 returns TY2024. Concept: amount CLAIMED (avg ~$1,007 = the per-child amount, i.e. pre-offset); the HB170 fiscal note projected only $9.63M FY2025 revenue impact",

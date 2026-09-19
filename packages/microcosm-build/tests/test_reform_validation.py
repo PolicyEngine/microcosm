@@ -7,10 +7,13 @@ the in-sample/out-of-sample split without running a Microsimulation.
 from __future__ import annotations
 
 import json
+from copy import deepcopy
+from dataclasses import replace
 
 import pytest
 
 import microcosm.build.us_runtime.reform_validation as reform_validation_module
+from microcosm.build.us_runtime.fiscal_targets import SimpleTaxExpenditureReform
 from microcosm.build.us_runtime.reform_validation import (
     REFORM_VALIDATION_SCHEMA_VERSION,
     ReformValidationSpec,
@@ -38,6 +41,176 @@ class _FakeSim:
 
     def calculate(self, measure: str, period):  # noqa: ARG002
         return _FakeSeries(self._totals[measure])
+
+
+def test_obbba_claim_comparisons_match_executed_worlds(monkeypatch):
+    # Invented patches and callback totals: two measures and two periods must
+    # retain separate stacks, even when their rows are interleaved.
+    specs = tuple(
+        replace(
+            _oos_spec(-1, category="OBBBA"),
+            id=name,
+            parameter_changes={f"gov.example.{name}": {"2027-01-01": 0}},
+            budget_measure=measure,
+            period=period,
+            effect_direction="baseline_minus_reform",
+        )
+        for name, measure, period in (
+            ("a", "example_tax", 2027),
+            ("c", "other_tax", 2027),
+            ("b", "example_tax", 2027),
+            ("d", "example_tax", 2028),
+        )
+    )
+    original = deepcopy(specs)
+    patches = {
+        key: value for spec in specs for key, value in spec.parameter_changes.items()
+    }
+
+    def world(names):
+        return {f"gov.example.{name}": patches[f"gov.example.{name}"] for name in names}
+
+    expected_calls = [
+        (world("abcd"), "example_tax", 2027, 1000),
+        (world("bcd"), "example_tax", 2027, 900),
+        (world("cd"), "example_tax", 2027, 920),
+        (world("abcd"), "other_tax", 2027, 50),
+        (world("abd"), "other_tax", 2027, 70),
+        (world("abcd"), "example_tax", 2028, 1100),
+        (world("abc"), "example_tax", 2028, 1080),
+    ]
+    calls = []
+    monkeypatch.setattr(reform_validation_module, "_build_parameter_reform", deepcopy)
+
+    def simulate(reform):
+        changes, measure, at_period, total = expected_calls[len(calls)]
+        assert reform == changes
+        calls.append(deepcopy(reform))
+
+        class FakeSimulation:
+            def calculate(self, actual_measure, actual_period):
+                assert (actual_measure, actual_period) == (measure, at_period)
+                return _FakeSeries(total)
+
+        return FakeSimulation()
+
+    payload = reform_validation_payload(specs, period=2026, simulate=simulate)
+    rows = {row["id"]: row for row in payload["reforms"]}
+    assert len(calls) == len(expected_calls)
+    assert payload["obbba_pre_baseline_parameter_changes"] == patches
+    assert payload["baseline_period"] == 2026
+    for name, before, after, base_total, reform_total in (
+        ("a", "abcd", "bcd", 1000, 900),
+        ("c", "abcd", "abd", 50, 70),
+        ("b", "bcd", "cd", 900, 920),
+        ("d", "abcd", "abc", 1100, 1080),
+    ):
+        comparison = rows[name]["scoring_comparison"]
+        assert comparison == {
+            "baseline": {
+                "framework": "policyengine_us",
+                "parameter_changes": world(before),
+                "neutralized_variables": None,
+            },
+            "reform": {
+                "framework": "policyengine_us",
+                "parameter_changes": world(after),
+                "neutralized_variables": None,
+            },
+            "effect_direction": "reform_minus_baseline",
+        }
+        assert rows[name]["microcosm"]["baseline_total"] == base_total
+        assert rows[name]["microcosm"]["reform_total"] == reform_total
+        assert rows[name]["microcosm"]["budget_effect"] == reform_total - base_total
+        # The configured repeal definition keeps its original convention;
+        # the executed comparison explicitly records the enactment convention.
+        assert rows[name]["reform"]["parameter_changes"] == world(name)
+        assert rows[name]["reform"]["effect_direction"] == "baseline_minus_reform"
+
+    rows["a"]["scoring_comparison"]["baseline"]["parameter_changes"]["gov.example.b"][
+        "2027-01-01"
+    ] = 99
+    rows["a"]["scoring_comparison"]["reform"]["parameter_changes"]["gov.example.b"][
+        "2027-01-01"
+    ] = 98
+    payload["obbba_pre_baseline_parameter_changes"]["gov.example.a"]["2027-01-01"] = 97
+    assert rows["b"]["scoring_comparison"]["baseline"]["parameter_changes"] == world(
+        "bcd"
+    )
+    assert rows["a"]["reform"]["parameter_changes"] == world("a")
+    assert specs == original
+    assert calls == [call[0] for call in expected_calls]
+
+
+def test_obbba_claim_current_law_endpoint_and_identical_shared_patch(monkeypatch):
+    # Identical overlapping reverts are accepted by the existing scorer. Once
+    # the first row enacts the shared path, both later worlds are current law.
+    first = _oos_spec(-1, category="OBBBA")
+    second = replace(first, id="second")
+    monkeypatch.setattr(reform_validation_module, "_build_parameter_reform", deepcopy)
+    calls = []
+
+    def simulate(reform):
+        calls.append(deepcopy(reform))
+        return _FakeSim({"income_tax": 30 if reform else 20})
+
+    payload = reform_validation_payload([first, second], period=2024, simulate=simulate)
+    first_row, second_row = payload["reforms"]
+    current_law = {
+        "framework": "policyengine_us",
+        "parameter_changes": None,
+        "neutralized_variables": None,
+    }
+    assert calls == [first.parameter_changes, None, None]
+    assert first_row["scoring_comparison"]["reform"] == current_law
+    assert second_row["scoring_comparison"]["baseline"] == current_law
+    assert second_row["scoring_comparison"]["reform"] == current_law
+    assert first_row["microcosm"]["budget_effect"] == -10
+    assert second_row["microcosm"]["budget_effect"] == 0
+
+
+@pytest.mark.parametrize("category", ["OBBBA", "Other"])
+def test_obbba_claim_unscored_rows_do_not_claim_executed_baseline(category):
+    spec = _oos_spec(-1, category=category)
+    payload = reform_validation_payload([spec], period=2024)
+    assert payload["out_of_sample_simulated"] is False
+    assert payload["reforms"][0]["microcosm"]["budget_effect"] is None
+    assert (
+        payload["reforms"][0]["reform"]["parameter_changes"] == spec.parameter_changes
+    )
+    assert "scoring_comparison" not in payload["reforms"][0]
+    assert "obbba_pre_baseline_parameter_changes" not in payload
+
+
+def test_obbba_claim_duplicate_ids_follow_existing_score_lookup(monkeypatch):
+    # Duplicate OBBBA IDs already use the last stacked score. Metadata must
+    # describe that same comparison, even with an ordinary row sharing the ID.
+    first = replace(_oos_spec(-1, category="OBBBA"), id="shared")
+    second = replace(
+        first,
+        parameter_changes={"gov.example.other": {"2027": 0}},
+        period=2027,
+    )
+    ordinary = replace(first, category="Other")
+    monkeypatch.setattr(reform_validation_module, "_build_parameter_reform", deepcopy)
+    calls = []
+
+    def simulate(reform):
+        calls.append(deepcopy(reform))
+        return _FakeSim({"income_tax": [100, 90, 100, 80, 110, 105][len(calls) - 1]})
+
+    payload = reform_validation_payload(
+        [first, ordinary, second], period=2024, simulate=simulate
+    )
+    first_row, ordinary_row, second_row = payload["reforms"]
+    assert len(calls) == 6
+    assert first_row["microcosm"]["budget_effect"] == -20
+    assert second_row["microcosm"]["budget_effect"] == -20
+    assert ordinary_row["microcosm"]["budget_effect"] == -5
+    assert first_row["scoring_comparison"] == second_row["scoring_comparison"]
+    assert second_row["scoring_comparison"]["reform"]["parameter_changes"] == calls[3]
+    assert ordinary_row["scoring_comparison"]["reform"]["parameter_changes"] == calls[5]
+    assert ordinary_row["scoring_comparison"]["baseline"]["parameter_changes"] is None
 
 
 def _oos_spec(score: float, *, category: str = "Other") -> ReformValidationSpec:
@@ -1344,3 +1517,440 @@ def test_default_simulate_factory_declares_county_spm_selection(monkeypatch, tmp
     assert reformed["reform"] == "a reform"
     assert baseline["dataset"].file_path == str(dataset_path)
     assert reformed["dataset"].file_path == str(dataset_path)
+
+
+def _spec(**overrides):
+    fields = {
+        "id": "invented_reform",
+        "name": "Invented reform",
+        "category": "Invented category",
+        "in_sample": False,
+        "period": 2031,
+        "jct_score": 17.0,
+        "jct_window": "Invented window",
+        "jct_source": "Invented source mentioning JCT",
+        "jct_source_url": "https://example.test/invented",
+        "neutralized_variable": "invented_credit",
+    }
+    fields.update(overrides)
+    return reform_validation_module.ReformValidationSpec(**fields)
+
+
+def _level(**overrides):
+    fields = {
+        "id": "invented_level",
+        "name": "Invented level",
+        "variable": "invented_total",
+        "period": 2032,
+        "benchmark_value": 43.0,
+        "benchmark_year": "Invented year",
+        "source": "Invented source mentioning IRS",
+        "source_url": "https://example.test/level",
+    }
+    fields.update(overrides)
+    return reform_validation_module.BaselineLevelSpec(**fields)
+
+
+class _FakeTotal:
+    def __init__(self, total):
+        self.total = total
+
+    def sum(self):
+        return self.total
+
+
+class _FakeSimulation:
+    def __init__(self, total, calls):
+        self.total = total
+        self.calls = calls
+
+    def calculate(self, measure, period):
+        self.calls.append((measure, period))
+        return _FakeTotal(self.total)
+
+
+@pytest.mark.parametrize("factory", [_spec, _level])
+def test_claim_benchmark_publisher_is_optional_and_explicit(factory):
+    assert factory().benchmark_publisher is None
+    assert factory(benchmark_publisher="invented_agency").benchmark_publisher == (
+        "invented_agency"
+    )
+
+
+@pytest.mark.parametrize(
+    "loader,benchmark_key,definition",
+    [
+        (
+            reform_validation_module.out_of_sample_reform_specs,
+            "jct",
+            {"parameter_changes": {"gov.invented.amount": {"2031": 7}}},
+        ),
+        (
+            reform_validation_module.tax_expenditure_reform_specs,
+            "benchmark",
+            {"neutralized_variable": "invented_credit"},
+        ),
+        (
+            reform_validation_module.state_program_reform_specs,
+            "benchmark",
+            {"neutralized_variable": ["invented_a", "invented_b"]},
+        ),
+        (
+            reform_validation_module.state_reform_specs,
+            "benchmark",
+            {"parameter_changes": {"gov.invented.amount": {"2031": 7}}},
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "publisher_fields,expected",
+    [
+        ({}, None),
+        ({"publisher": None}, None),
+        ({"publisher": ""}, None),
+        ({"publisher": "invented_agency"}, "invented_agency"),
+    ],
+)
+def test_claim_reform_loaders_preserve_publisher_without_source_inference(
+    tmp_path, loader, benchmark_key, definition, publisher_fields, expected
+):
+    raw = {
+        "id": "invented_reform",
+        "name": "Invented reform",
+        "period": 2031,
+        **definition,
+        benchmark_key: {
+            "score": -17.0,
+            "window": "Invented window",
+            "source": "Invented source mentioning JCT and IRS",
+            "source_url": "https://example.test/source",
+            **publisher_fields,
+        },
+    }
+    path = tmp_path / "invented.json"
+    path.write_text(json.dumps({"reforms": [raw]}))
+    (spec,) = loader(path, period=2099)
+    assert spec.benchmark_publisher == expected
+    assert spec.period == 2031
+    assert spec.jct_score == -17.0
+    assert spec.jct_window == "Invented window"
+    assert spec.jct_source == raw[benchmark_key]["source"]
+    assert spec.jct_source_url == raw[benchmark_key]["source_url"]
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [
+        reform_validation_module.soi_baseline_level_specs,
+        reform_validation_module.state_program_level_specs,
+        reform_validation_module.federal_eitc_state_level_specs,
+        reform_validation_module.state_spm_poverty_level_specs,
+    ],
+)
+@pytest.mark.parametrize(
+    "publisher_fields,expected",
+    [
+        ({}, None),
+        ({"publisher": None}, None),
+        ({"publisher": ""}, None),
+        ({"publisher": "invented_agency"}, "invented_agency"),
+    ],
+)
+def test_claim_baseline_loader_wrappers_preserve_explicit_publisher(
+    tmp_path, loader, publisher_fields, expected
+):
+    raw = {
+        "id": "invented_level",
+        "name": "Invented level",
+        "variable": "invented_total",
+        "period": 2032,
+        "benchmark": {
+            "value": 43.0,
+            "year": "Invented year",
+            "source": "Invented source mentioning Census and IRS",
+            "source_url": "https://example.test/level",
+            **publisher_fields,
+        },
+    }
+    path = tmp_path / "invented.json"
+    path.write_text(json.dumps({"levels": [raw]}))
+    (spec,) = loader(path)
+    assert spec.benchmark_publisher == expected
+    assert spec.period == 2032
+    assert spec.benchmark_value == 43.0
+    assert spec.benchmark_year == "Invented year"
+    assert spec.source == raw["benchmark"]["source"]
+    assert spec.source_url == raw["benchmark"]["source_url"]
+
+
+def test_claim_in_sample_factory_identifies_jct_without_simulation():
+    reform = SimpleTaxExpenditureReform(
+        target_name="invented_target",
+        neutralized_variable="invented_credit",
+        measure="invented_target",
+        period=2001,
+        source="Invented target source",
+        output_variable="income_tax",
+    )
+    (spec,) = reform_validation_module.in_sample_reform_specs([reform], period=2031)
+    assert spec.benchmark_publisher == "jct"
+    assert spec.period == 2031
+    assert spec.jct_source == "Invented target source"
+
+    def simulate(_):
+        pytest.fail("A supplied calibration estimate must not run a simulation")
+
+    payload = reform_validation_module.reform_validation_payload(
+        [spec],
+        period=2030,
+        simulate=simulate,
+        in_sample_estimates={"invented_target": 11.0},
+        in_sample_targets={"invented_target": 13.0},
+    )
+    row = payload["reforms"][0]
+    assert row["jct"]["publisher"] == "jct"
+    assert row["jct"]["score"] == 13.0
+    assert row["microcosm"]["budget_effect"] == 11.0
+    assert row["microcosm"]["measure"] == "income_tax"
+    assert row["microcosm"]["baseline_total"] is None
+    assert row["microcosm"]["reform_total"] is None
+    assert "scoring_comparison" not in row
+
+
+@pytest.mark.parametrize(
+    "direction,expected_effect",
+    [("reform_minus_baseline", 20.0), ("baseline_minus_reform", -20.0)],
+)
+def test_claim_parameter_definition_is_additive_and_preserves_actual_sign_and_year(
+    monkeypatch, tmp_path, direction, expected_effect
+):
+    changes = {"gov.invented.amount": {"2031-01-01.2031-12-31": 7}}
+    spec = _spec(
+        neutralized_variable=None,
+        parameter_changes=changes,
+        effect_direction=direction,
+        benchmark_publisher="invented_agency",
+    )
+    token = object()
+    builds = []
+
+    def build_reform(value):
+        builds.append(value)
+        return token
+
+    monkeypatch.setattr(
+        reform_validation_module.ReformValidationSpec, "build_reform", build_reform
+    )
+    simulations = []
+    calculations = []
+
+    def simulate(reform):
+        simulations.append(reform)
+        assert reform is None or reform is token
+        return _FakeSimulation(100.0 if reform is None else 120.0, calculations)
+
+    payload = reform_validation_module.reform_validation_payload(
+        [spec], period=2030, simulate=simulate, release_id="invented_release"
+    )
+    assert simulations == [None, token]
+    assert builds == [spec]
+    assert calculations == [("income_tax", 2031), ("income_tax", 2031)]
+    row = payload["reforms"][0]
+    assert row["reform"] == {
+        "framework": "policyengine_us",
+        "parameter_changes": changes,
+        "neutralized_variables": None,
+        "effect_direction": direction,
+    }
+    assert row["jct"]["publisher"] == "invented_agency"
+    assert row["scoring_comparison"] == {
+        "baseline": {
+            "framework": "policyengine_us",
+            "parameter_changes": None,
+            "neutralized_variables": None,
+        },
+        "reform": {
+            "framework": "policyengine_us",
+            "parameter_changes": changes,
+            "neutralized_variables": None,
+        },
+        "effect_direction": direction,
+    }
+    legacy = deepcopy(payload)
+    legacy["reforms"][0].pop("reform")
+    legacy["reforms"][0].pop("scoring_comparison")
+    legacy["reforms"][0]["jct"].pop("publisher")
+    assert legacy == {
+        "schema_version": 1,
+        "baseline_period": 2030,
+        "scoring_window": "see per-reform jct.window",
+        "out_of_sample_simulated": True,
+        "release_id": "invented_release",
+        "reforms": [
+            {
+                "id": "invented_reform",
+                "name": "Invented reform",
+                "category": "Invented category",
+                "in_sample": False,
+                "period": 2031,
+                "description": None,
+                "jct": {
+                    "score": 17.0,
+                    "score_fy2027": None,
+                    "score_type": "conventional",
+                    "window": "Invented window",
+                    "source": "Invented source mentioning JCT",
+                    "source_url": "https://example.test/invented",
+                },
+                "microcosm": {
+                    "budget_effect": expected_effect,
+                    "period": 2031,
+                    "window": "Invented window",
+                    "measure": "income_tax",
+                    "baseline_total": 100.0,
+                    "reform_total": 120.0,
+                },
+            }
+        ],
+    }
+    path = reform_validation_module.write_reform_validation(
+        payload, tmp_path / "payload.json"
+    )
+    assert json.loads(path.read_text()) == payload
+    row["scoring_comparison"]["reform"]["parameter_changes"]["gov.invented.amount"][
+        "2031-01-01.2031-12-31"
+    ] = 999
+    assert changes["gov.invented.amount"]["2031-01-01.2031-12-31"] == 7
+    assert row["reform"]["parameter_changes"] == changes
+
+
+@pytest.mark.parametrize(
+    "neutralized,expected",
+    [
+        ("invented_credit", ["invented_credit"]),
+        (["invented_a", "invented_b"], ["invented_a", "invented_b"]),
+        (
+            ["invented_b", "invented_a", "invented_b"],
+            ["invented_b", "invented_a", "invented_b"],
+        ),
+    ],
+)
+def test_claim_neutralizations_are_normalized_and_detached_from_inputs(
+    neutralized, expected
+):
+    spec = _spec(neutralized_variable=neutralized)
+    first = reform_validation_module.reform_validation_payload([spec], period=2031)
+    second = reform_validation_module.reform_validation_payload([spec], period=2031)
+    definition = first["reforms"][0]["reform"]
+    assert definition == {
+        "framework": "policyengine_us",
+        "parameter_changes": None,
+        "neutralized_variables": expected,
+        "effect_direction": "reform_minus_baseline",
+    }
+    definition["neutralized_variables"].append("mutated_output")
+    assert second["reforms"][0]["reform"]["neutralized_variables"] == expected
+    assert (
+        reform_validation_module.reform_validation_payload([spec], period=2031)[
+            "reforms"
+        ][0]["reform"]["neutralized_variables"]
+        == expected
+    )
+    assert spec.neutralized_variable == neutralized
+    if isinstance(neutralized, list):
+        assert neutralized == expected
+
+
+def test_claim_parameter_definitions_deepcopy_nested_inputs_across_payloads():
+    changes = {"gov.invented.amount": {"2031": [7, {"value": 9}]}}
+    original = deepcopy(changes)
+    spec = _spec(neutralized_variable=None, parameter_changes=changes)
+    first = reform_validation_module.reform_validation_payload([spec], period=2031)
+    second = reform_validation_module.reform_validation_payload([spec], period=2031)
+    output_changes = first["reforms"][0]["reform"]["parameter_changes"]
+    output_changes["gov.invented.amount"]["2031"][1]["value"] = 999
+    output_changes["gov.invented.added"] = {"2031": 2}
+    assert changes == original
+    assert second["reforms"][0]["reform"]["parameter_changes"] == original
+    third = reform_validation_module.reform_validation_payload([spec], period=2031)
+    assert third["reforms"][0]["reform"]["parameter_changes"] == original
+    changes["gov.invented.amount"]["2031"][1]["value"] = 123
+    assert second["reforms"][0]["reform"]["parameter_changes"] == original
+    assert third["reforms"][0]["reform"]["parameter_changes"] == original
+
+
+@pytest.mark.parametrize("publisher", [None, "invented_agency"])
+def test_claim_baseline_rows_publish_attribution_without_reform_definition(publisher):
+    level = _level(benchmark_publisher=publisher)
+    simulations = []
+    calculations = []
+
+    def simulate(reform):
+        simulations.append(reform)
+        return _FakeSimulation(43.0, calculations)
+
+    payload = reform_validation_module.reform_validation_payload(
+        [], period=2030, simulate=simulate, baseline_levels=[level]
+    )
+    (row,) = payload["reforms"]
+    assert "reform" not in row
+    assert "scoring_comparison" not in row
+    assert row["jct"]["publisher"] == publisher
+    assert row["jct"]["source"] == "Invented source mentioning IRS"
+    assert row["jct"]["score"] == 43.0
+    assert row["microcosm"]["budget_effect"] == 43.0
+    assert row["microcosm"]["reform_total"] is None
+    assert simulations == [None]
+    assert calculations == [("invented_total", 2032)]
+
+
+def test_claim_unsimulated_rows_publish_definition_and_null_publisher():
+    payload = reform_validation_module.reform_validation_payload(
+        [_spec()], period=2030, baseline_levels=[_level()]
+    )
+    assert payload["schema_version"] == 1
+    assert payload["out_of_sample_simulated"] is False
+    reform, level = payload["reforms"]
+    assert reform["reform"]["neutralized_variables"] == ["invented_credit"]
+    assert "reform" not in level
+    for row in (reform, level):
+        assert "scoring_comparison" not in row
+        assert row["jct"]["publisher"] is None
+        assert row["microcosm"]["budget_effect"] is None
+        assert row["microcosm"]["baseline_total"] is None
+        assert row["microcosm"]["reform_total"] is None
+        assert "populace" not in row
+
+
+@pytest.mark.parametrize(
+    "neutralized,changes",
+    [(None, None), ([], {}), ("invented_credit", {"gov.invented": {"2031": 7}})],
+)
+def test_claim_ambiguous_or_absent_definitions_are_rejected(neutralized, changes):
+    with pytest.raises(ValueError, match="provide exactly one"):
+        _spec(neutralized_variable=neutralized, parameter_changes=changes)
+
+
+def test_claim_invalid_direction_is_rejected_before_reporting():
+    with pytest.raises(ValueError, match="effect_direction"):
+        _spec(effect_direction="invented_unsupported_direction")
+
+
+def test_claim_conflicting_obbba_patches_fail_before_callback():
+    specs = [
+        _spec(
+            id=f"invented_{value}",
+            category="OBBBA",
+            neutralized_variable=None,
+            parameter_changes={"gov.invented.amount": {"2031": value}},
+        )
+        for value in (7, 9)
+    ]
+
+    def simulate(_):
+        pytest.fail("Conflicting patches must fail before any callback")
+
+    with pytest.raises(ValueError, match="conflicts with"):
+        reform_validation_module.reform_validation_payload(
+            specs, period=2031, simulate=simulate
+        )

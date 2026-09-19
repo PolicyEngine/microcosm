@@ -27,6 +27,7 @@ import gc
 import json
 import math
 from collections.abc import Callable, Iterable, Sequence
+from copy import deepcopy
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
@@ -59,8 +60,8 @@ __all__ = [
     "write_reform_validation",
 ]
 
-#: Schema version of reform_validation.json. The calibration-diagnostics
-#: dashboard keys its reader on it; bump with any shape change.
+#: Schema version of reform_validation.json. Consumers ignore additive keys;
+#: bump for breaking changes, not publisher or policy-definition metadata.
 REFORM_VALIDATION_SCHEMA_VERSION = 1
 
 #: The budget effect of a reform is the weighted-sum change of this variable
@@ -114,6 +115,8 @@ class ReformValidationSpec:
     # provisions are validated by a counterfactual *revert* reform — there the
     # provision's effect is baseline − reform (JCT enactment sign).
     effect_direction: str = "reform_minus_baseline"
+    # Explicit publisher slug; None when unknown. Never infer from citations.
+    benchmark_publisher: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id:
@@ -169,6 +172,29 @@ def _finite(value: float) -> float | None:
     return value if math.isfinite(value) else None
 
 
+def _policy_definition(
+    parameter_changes: dict[str, Any] | None = None,
+    neutralized_variable: str | list[str] | None = None,
+) -> dict[str, Any]:
+    """Snapshot an executable policy patch relative to engine current law.
+
+    Two null changes describe current law. Preserve variable order and nested
+    parameter values while detaching the report from mutable spec inputs.
+    """
+    neutralized = (
+        [neutralized_variable]
+        if isinstance(neutralized_variable, str)
+        else list(neutralized_variable)
+        if neutralized_variable
+        else None
+    )
+    return {
+        "framework": "policyengine_us",
+        "parameter_changes": deepcopy(parameter_changes) if parameter_changes else None,
+        "neutralized_variables": neutralized,
+    }
+
+
 def _is_obbba_spec(spec: ReformValidationSpec) -> bool:
     return (
         not spec.in_sample
@@ -217,6 +243,7 @@ def in_sample_reform_specs(
                 jct_source_url="",
                 budget_measure=reform.output_variable or DEFAULT_BUDGET_MEASURE,
                 neutralized_variable=reform.neutralized_variable,
+                benchmark_publisher="jct",
             )
         )
     return tuple(specs)
@@ -266,6 +293,7 @@ def out_of_sample_reform_specs(
                 effect_direction=str(
                     raw.get("effect_direction", "baseline_minus_reform")
                 ),
+                benchmark_publisher=jct.get("publisher") or None,
             )
         )
     return tuple(specs)
@@ -318,6 +346,7 @@ def tax_expenditure_reform_specs(
                 # Neutralizing the provision raises tax by the expenditure amount
                 # (positive), matching the positive published figure.
                 effect_direction="reform_minus_baseline",
+                benchmark_publisher=bench.get("publisher") or None,
             )
         )
     return tuple(specs)
@@ -370,6 +399,7 @@ def state_program_reform_specs(
                 # Repealing a credit raises state tax by the program's cost
                 # (positive), matching the positive published figure.
                 effect_direction="reform_minus_baseline",
+                benchmark_publisher=bench.get("publisher") or None,
             )
         )
     return tuple(specs)
@@ -428,6 +458,7 @@ def state_reform_specs(
                 effect_direction=str(
                     raw.get("effect_direction", "reform_minus_baseline")
                 ),
+                benchmark_publisher=bench.get("publisher") or None,
             )
         )
     return tuple(specs)
@@ -483,6 +514,8 @@ class BaselineLevelSpec:
     # Person-level boolean restricting a rate's population (e.g. ``is_child``
     # for child poverty). Only meaningful with statistic="rate".
     mask_variable: str | None = None
+    # Explicit publisher slug, as on ReformValidationSpec.
+    benchmark_publisher: str | None = None
 
     def __post_init__(self) -> None:
         if not self.id or not self.variable:
@@ -525,6 +558,7 @@ def _baseline_level_specs_from_config(
                 benchmark_score_type=str(bench.get("score_type", "actual")),
                 statistic=str(raw.get("statistic", "total")),
                 mask_variable=raw.get("mask_variable") or None,
+                benchmark_publisher=bench.get("publisher") or None,
             )
         )
     return tuple(specs)
@@ -733,6 +767,13 @@ def reform_validation_payload(
     incremental effect given the lines above it — so the per-line effects sum to
     the bill total, matching JCT (see ``stacked_obbba_effects``). The shape
     matches the calibration-diagnostics dashboard's reform_validation reader.
+
+    Each row's ``reform`` describes its configured patch and sign convention.
+    For OBBBA that is a repeal patch, not the stacked enactment comparison.
+    ``scoring_comparison`` records the actual baseline/reform worlds and sign
+    when simulated; all patches are relative to engine current law. The merged
+    initial OBBBA counterfactual is also emitted when used. It reflects only
+    the supplied reverts, not a claim to reconstruct every pre-OBBBA policy.
     """
     estimates = in_sample_estimates or {}
     targets = in_sample_targets or {}
@@ -741,6 +782,7 @@ def reform_validation_payload(
     obbba_specs = tuple(spec for spec in specs if _is_obbba_spec(spec))
     obbba_pre_baseline_changes = _merged_parameter_changes(obbba_specs)
     obbba_stacked: dict[str, tuple[float, float, float]] | None = None
+    scoring_comparisons: dict[tuple[bool, str], dict[str, Any]] = {}
 
     def baseline_total(measure: str, at_period: int) -> float:
         nonlocal baseline
@@ -803,6 +845,7 @@ def reform_validation_payload(
         effects: dict[str, tuple[float, float, float]] = {}
         for (measure, period), group in groups.items():
             # state 0: pre-OBBBA (every provision reverted, across all groups).
+            prev_definition = _policy_definition(obbba_pre_baseline_changes)
             prev_total = released_weighted_total(
                 simulation_for_parameter_changes(obbba_pre_baseline_changes),
                 measure,
@@ -818,10 +861,17 @@ def reform_validation_payload(
                     for path, change in obbba_pre_baseline_changes.items()
                     if path not in enacted
                 }
+                cur_definition = _policy_definition(state_changes)
                 cur_total = released_weighted_total(
                     simulation_for_parameter_changes(state_changes), measure, period
                 )
                 effects[spec.id] = (cur_total - prev_total, prev_total, cur_total)
+                scoring_comparisons[(True, spec.id)] = {
+                    "baseline": deepcopy(prev_definition),
+                    "reform": cur_definition,
+                    "effect_direction": "reform_minus_baseline",
+                }
+                prev_definition = cur_definition
                 prev_total = cur_total
         return effects
 
@@ -836,12 +886,20 @@ def reform_validation_payload(
                 obbba_stacked = stacked_obbba_effects()
             return obbba_stacked.get(spec.id, (None, None, None))
         base = baseline_total(spec.budget_measure, spec.period)
+        reform_definition = _policy_definition(
+            spec.parameter_changes, spec.neutralized_variable
+        )
         reform_total = released_weighted_total(
             simulate(spec.build_reform()), spec.budget_measure, spec.period
         )
         raw = reform_total - base
         # A counterfactual revert measures the provision as baseline − reform.
         effect = raw if spec.effect_direction == "reform_minus_baseline" else -raw
+        scoring_comparisons[(False, spec.id)] = {
+            "baseline": _policy_definition(),
+            "reform": reform_definition,
+            "effect_direction": spec.effect_direction,
+        }
         return effect, base, reform_total
 
     rows: list[dict[str, Any]] = []
@@ -864,6 +922,12 @@ def reform_validation_payload(
                 "in_sample": spec.in_sample,
                 "period": spec.period,
                 "description": spec.description or None,
+                "reform": {
+                    **_policy_definition(
+                        spec.parameter_changes, spec.neutralized_variable
+                    ),
+                    "effect_direction": spec.effect_direction,
+                },
                 "jct": {
                     "score": None if effective_jct is None else _finite(effective_jct),
                     "score_fy2027": (
@@ -875,6 +939,7 @@ def reform_validation_payload(
                     "window": spec.jct_window or None,
                     "source": spec.jct_source or None,
                     "source_url": spec.jct_source_url or None,
+                    "publisher": spec.benchmark_publisher,
                 },
                 "microcosm": {
                     "budget_effect": None if effect is None else _finite(effect),
@@ -890,6 +955,13 @@ def reform_validation_payload(
                 },
             }
         )
+        comparison_key = (_is_obbba_spec(spec), spec.id)
+        if comparison_key in scoring_comparisons and not (
+            spec.in_sample and spec.id in estimates
+        ):
+            rows[-1]["scoring_comparison"] = deepcopy(
+                scoring_comparisons[comparison_key]
+            )
 
     # Self-describing flag so a null out-of-sample row can be told apart from a
     # genuinely-zero one, and so a release built with simulation skipped is
@@ -993,6 +1065,7 @@ def reform_validation_payload(
                     "window": level.benchmark_year or None,
                     "source": level.source or None,
                     "source_url": level.source_url or None,
+                    "publisher": level.benchmark_publisher,
                 },
                 "microcosm": {
                     "budget_effect": None if total is None else _finite(total),
@@ -1023,6 +1096,10 @@ def reform_validation_payload(
         "out_of_sample_simulated": out_of_sample_simulated,
         "reforms": rows,
     }
+    if obbba_stacked is not None and obbba_pre_baseline_changes:
+        payload["obbba_pre_baseline_parameter_changes"] = deepcopy(
+            obbba_pre_baseline_changes
+        )
     if release_id is not None:
         payload["release_id"] = release_id
     return payload
