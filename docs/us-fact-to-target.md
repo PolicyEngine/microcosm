@@ -111,6 +111,21 @@ exclusion register instead.
   wiring is safe and normal (the keogh ALD facts rode the feed unmapped for
   weeks).
 
+### Table 1.1 size-of-AGI shares
+
+Cross-period national Table 1.1 return counts and AGI from the $100,000 lower
+edge can bind through `_rebase_stale_soi_agi_size_distributions`. Each class
+uses its own vintage's national denominator and the latest eligible national
+control of the same measure. Missing denominators or controls drop the class.
+The amount ager completes only the interval after the control year; counts do
+not receive a CBO dollar factor. Other tables and cross-period lower-income,
+filing-status and state slices remain excluded by this rescue.
+
+The [native integration note](us-native-soi-agi-targets.md) documents exact
+source lineage, the distinction between source and alignment years, preserved
+same-period behavior, and the separate support and release qualifications.
+No tail support or held-out improvement follows from compiling these rows.
+
 ## 4. Keep the exclusion register honest
 
 `US_FISCAL_TARGET_SUPPORT_EXCLUSIONS` is keyed by `source_record_id` and its

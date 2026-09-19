@@ -1,0 +1,1 @@
+Adopt the narrow SOI Table 1.1 cross-period size-of-AGI compiler from #960 for native integration, preserving source identities and control-year alignment with additional invented exclusion and aging tests. No feed, target-surface or dataset pins change.
