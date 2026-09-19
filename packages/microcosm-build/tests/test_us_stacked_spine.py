@@ -60,6 +60,7 @@ from microcosm.build.us_runtime.multispine_pool import (
     derive_multispine_pool_inputs,
     pool_transfer_target_families,
 )
+from microcosm.build.us_runtime.puf_agi_tail import puf_agi_tail_selection_identity
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
     PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
@@ -5495,7 +5496,8 @@ def test_late_primary_resources_bind_donor_content_and_execution_config(
     }
     assert execution["capital_gains_tail"]["soi_e19200_agi_bands"]["asset_sha256"]
     assert execution["capital_gains_tail"]["concentration_gate"] == {
-        "schema_version": 2,
+        "schema_version": 3,
+        "agi_arm": puf_agi_tail_selection_identity(),
         "selection_quantile": 0.995,
         "selection_comparison": "strictly_greater_than",
         "reference_quantile": 0.999,
