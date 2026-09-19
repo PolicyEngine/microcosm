@@ -66,13 +66,18 @@ def _code(value: object, width: int) -> str:
 def _read_export(
     path: Path, contract: ExportContract, period: int
 ) -> tuple[np.ndarray, np.ndarray, dict[str, object]]:
+    from tables.exceptions import HDF5ExtError
+
     if not contract.required:
         raise ValueError("An explicit nonempty export contract is required.")
     tables = {}
-    with pd.HDFStore(path, mode="r") as store:
-        for entity in US_SCHEMA.entities:
-            tables[entity] = read_frame_table(store, entity)
-        stored_period = store["_time_period"]
+    try:
+        with pd.HDFStore(path, mode="r") as store:
+            for entity in US_SCHEMA.entities:
+                tables[entity] = read_frame_table(store, entity)
+            stored_period = store["_time_period"]
+    except HDF5ExtError as exc:
+        raise ValueError("Export is not a readable HDF5 container.") from exc
     if len(stored_period) != 1 or stored_period.iloc[0] != period:
         raise ValueError("Export period does not match the requested model period.")
     columns = [column for table in tables.values() for column in table.columns]

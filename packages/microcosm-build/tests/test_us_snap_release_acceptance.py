@@ -407,6 +407,22 @@ def test_export_missing_stays_pending(export):
     assert result["checks"]["artifact_identity"]["status"] == "pending"
 
 
+def test_matching_hash_does_not_make_a_malformed_hdf_valid(export, monkeypatch):
+    export.path.write_bytes(b"This is an invented malformed HDF container.")
+
+    def refuse_engine(*args, **kwargs):
+        raise AssertionError("Malformed export must refuse before engine creation.")
+
+    monkeypatch.setattr(subject, "default_simulate_factory", refuse_engine)
+    report = evaluate(export)
+    assert report["checks"]["artifact_identity"]["status"] == "passed"
+    assert report["checks"]["artifact_evaluation"] == {
+        "status": "failed",
+        "reason": "Export is not a readable HDF5 container.",
+    }
+    assert report["checks"]["final_export_fit"]["status"] == "pending"
+
+
 @pytest.mark.parametrize("change", ["order", "plain-series", "nonfinite", "negative"])
 def test_engine_array_alignment_and_weight_retention(export, monkeypatch, change):
     original = export.simulation.calculate
