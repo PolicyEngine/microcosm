@@ -207,6 +207,32 @@ def test_complete_high_agi_source_requires_bound_person_projection() -> None:
         _select(donor)
 
 
+@pytest.mark.parametrize(
+    "missing_output", ["charitable_cash_donations", "domestic_production_ald"]
+)
+def test_known_high_agi_requires_complete_vector_even_without_projection(
+    missing_output: str,
+) -> None:
+    donor, _persons = _donors([5_000_000.0])
+    donor.attrs.clear()
+    donor.drop(columns=missing_output, inplace=True)
+    with pytest.raises(
+        ValueError, match=f"complete donor output vector.*{missing_output}"
+    ):
+        _select(donor, np.asarray([True]))
+
+
+def test_partial_vector_with_known_below_floor_agi_is_not_legacy_unknown() -> None:
+    donor, _persons = _donors([4_999_999.0])
+    donor.attrs.clear()
+    donor.drop(columns="charitable_cash_donations", inplace=True)
+    selected, receipt = _select(donor, np.asarray([True]))
+    assert selected._puf_tail_arm.tolist() == [1]
+    assert selected._puf_tail_proxy_agi.tolist() == [4_999_999.0]
+    assert receipt["agi_candidate_count"] == 0
+    assert receipt["projection_status"] == "not_required_no_agi_candidates"
+
+
 def test_legacy_capital_gains_only_fixture_retains_original_columns_and_values() -> (
     None
 ):
