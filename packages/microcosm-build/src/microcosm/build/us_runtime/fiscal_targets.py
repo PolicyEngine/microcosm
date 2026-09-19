@@ -350,8 +350,8 @@ _SOI_AGI_SIZE_DISTRIBUTION_MEASURES = (
     _SOI_AGI_SIZE_DISTRIBUTION_AMOUNT_MEASURES
     | _SOI_AGI_SIZE_DISTRIBUTION_RETURN_MEASURES
 )
-#: The period-stripped record set that owns the distribution. Table 1.2 and
-#: Table 1.4 carry the same measure ids over other universes and are never
+#: The period-stripped record set that owns the distribution. Tables 1.2, 2.1
+#: and 4.3 carry the same measure ids over other universes and are never
 #: rescued here.
 _SOI_AGI_SIZE_DISTRIBUTION_RECORD_SET = "irs_soi.table_1_1"
 #: Lowest AGI edge from which a size class binds. The SOI slice materializer

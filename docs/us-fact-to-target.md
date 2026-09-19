@@ -132,9 +132,9 @@ The size-of-AGI family is the only national anchor for the **shape** of the
 upper income distribution; the all-returns totals bind its level and nothing
 else. Its rules:
 
-- National, all filing statuses, Publication 1304 Table 1.1 only. Table 1.2
-  and Table 1.4 carry the same measure ids over other universes and are not
-  rescued.
+- National, all filing statuses, Publication 1304 Table 1.1 only. Tables
+  1.2, 2.1 and 4.3 carry the same measure ids over other universes and are
+  not rescued.
 - Size classes bind from
   `US_SOI_AGI_SIZE_DISTRIBUTION_MINIMUM_LOWER_BOUND` ($100,000) up. The SOI
   slice materializer counts every tax unit in the AGI band with no filer
