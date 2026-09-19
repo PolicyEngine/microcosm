@@ -1148,8 +1148,8 @@ def _agi_donor_and_recipients(*, agi_only=False):
     arrays["unrecaptured_section_1250_gain"] = base[
         "unrecaptured_section_1250_gain"
     ].to_numpy()
-    # First donor is AGI-only at the inclusive floor. Second enters both arms.
-    arrays["employment_income_before_lsr"][0] = 4_900_000.0
+    # The high-weight body stays below the floor. The second donor has
+    # ordinary income in addition to its capital gains.
     arrays["employment_income_before_lsr"][3:5] = [6_000_000.0, 123_456.0]
     # Third has high gains but an offsetting business loss: CG-only.
     arrays["rental_income"][6] = -90_000_000.0
@@ -1170,9 +1170,6 @@ def _agi_donor_and_recipients(*, agi_only=False):
         is_tax_unit_spouse=np.tile([False, True, False], 3),
         is_tax_unit_dependent=np.tile([False, False, True], 3),
     )
-    # Keep body donor below the floor so its large weight does not consume the
-    # recipient capacity; a separate low-weight AGI-only donor is appended.
-    arrays["employment_income_before_lsr"][0] = 0.0
     if agi_only:
         arrays["household_weight"][0] = 995.0
         for column in PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS:
