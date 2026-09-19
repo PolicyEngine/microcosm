@@ -165,6 +165,9 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # and their exact original-to-clone join; no tax/SPM role inference.
         "current_survey_household_roles.py",
         "graph_current_survey_household_roles.py",
+        # Detached original household classification through the retained
+        # survey and householder owners; no graph attachment or model routing.
+        "current_survey_primary_family_source.py",
         # Declare original/native/clone identities for descriptive status only.
         "graph_current_survey_person_status.py",
         # Explicit child age-transfer candidate: validate original-to-two-clone
@@ -440,6 +443,9 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_survey_housing.py",
         # Qualified original reference-person observations and exact clone bind.
         "current_survey_household_roles.py",
+        # Pure Census household literals and their source-only qualification.
+        "current_survey_primary_family.py",
+        "current_survey_primary_family_source.py",
         # Pure published descriptive-status recodes, without source authority.
         "current_survey_person_status.py",
         # Qualify exact original literal status observations through live owners.
@@ -3546,6 +3552,8 @@ _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
         # families in _literals; no Frame or source-provenance access allowance.
         "current_survey_hours.py",
         # Reviewed 2026-09-13: exact published fields, original catalogue keys,
+        # Literal household/person dictionaries only; no Frame/provenance read.
+        "current_survey_primary_family.py",
         # masks and retained-owner/receipt maps. No direct provenance access;
         # accessor and literal protected-column tripwires continue to apply.
         "current_survey_person_status.py",
@@ -3633,6 +3641,7 @@ def _non_owner_source_spine_accesses(
         "current_child_property_income_source.py",
         "current_survey_hours.py",
         "graph_survey_completion.py",
+        "current_survey_primary_family.py",
         "graph_survey_completion_host.py",
         "native_survey_handoff.py",
     ],
