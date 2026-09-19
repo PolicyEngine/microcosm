@@ -488,10 +488,12 @@ def test_actual_original_member_qualifier_has_spm_membership_and_named_heads(
         prepared
     )
     assert "spm_unit" in frame.entities and "person_spm_unit_id" in frame.person
-    assert "is_household_head" in frame.person
+    assert "is_household_head" not in frame.person
+    assert housing.source.LEGACY_HEAD_COLUMN in frame.person
     assert (
         frame.person.loc[
-            frame.person.person_support_channel.eq("asec"), "is_household_head"
+            frame.person.person_support_channel.eq("asec"),
+            housing.source.LEGACY_HEAD_COLUMN,
         ]
         .isna()
         .all()
