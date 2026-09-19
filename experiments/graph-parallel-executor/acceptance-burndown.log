@@ -1,0 +1,29 @@
+group   markers  properties
+total         0
+
+ markers  file
+       0  packages/microcosm-graph/tests/test_acceptance_a_identity.py
+       0  packages/microcosm-graph/tests/test_acceptance_b_ownership.py
+       0  packages/microcosm-graph/tests/test_acceptance_c_seeds.py
+       0  packages/microcosm-graph/tests/test_acceptance_d_weights.py
+       0  packages/microcosm-graph/tests/test_acceptance_e_store.py
+       0  packages/microcosm-graph/tests/test_acceptance_f_gates.py
+       0  packages/microcosm-graph/tests/test_acceptance_g_legibility.py
+       0  packages/microcosm-graph/tests/test_acceptance_h_parity.py
+       0  packages/microcosm-graph/tests/test_acceptance_replays.py
+
+green     41  A1 A2 A3 A4 A5 A6 A7 B1 B2 B3 B4 B5 B6 B7 C1 C2 C3 C4 C5 D1 D2 D3 D4 D5 D6 E1 E2 E3 E4 E5 F1 F2 F3 F4 F5 G1 G2 G3 H1 H2 H3
+red        0  none
+missing    0  none
+
+baseline=origin/main
+  ok     packages/microcosm-graph/tests/test_acceptance_a_identity.py: 0 -> 0
+  ok     packages/microcosm-graph/tests/test_acceptance_b_ownership.py: 0 -> 0
+  ok     packages/microcosm-graph/tests/test_acceptance_c_seeds.py: 0 -> 0
+  ok     packages/microcosm-graph/tests/test_acceptance_d_weights.py: 0 -> 0
+  ok     packages/microcosm-graph/tests/test_acceptance_e_store.py: 0 -> 0
+  ok     packages/microcosm-graph/tests/test_acceptance_f_gates.py: 0 -> 0
+  ok     packages/microcosm-graph/tests/test_acceptance_g_legibility.py: 0 -> 0
+  ok     packages/microcosm-graph/tests/test_acceptance_h_parity.py: 0 -> 0
+  ok     packages/microcosm-graph/tests/test_acceptance_replays.py: 0 -> 0
+verification=ok
