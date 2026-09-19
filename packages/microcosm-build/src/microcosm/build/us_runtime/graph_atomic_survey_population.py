@@ -29,6 +29,7 @@ from microcosm.graph import (
     run_graph,
 )
 from microcosm.graph.artifact_edges import typed_contracts
+from microcosm.graph.canonical import canonical_json, normative
 from microcosm.graph.codecs import load_raw_bytes
 from microcosm.graph.executor import (
     _all_node_keys,
@@ -76,23 +77,77 @@ class AtomicSurveyPopulationRunValues:
     sources: dict
 
 
-def _states(compiled, kernels, source_keys, expected_populations, raw_receipts):
+def _state_population_inputs(compiled, node_id, population):
+    """Freeze only independently checked population-derived receipt inputs.
+
+    This private byte projection has no authority outside its actual issuer.
+    All current graph/key/implementation/typed/writer obligations are rederived
+    by _states when a completion union borrows these inputs.
+    """
+    node = compiled.graph.node(node_id)
+    structural = node.structural is not StructuralDelta.NONE
+    return canonical_json(
+        {
+            "node": normative(node),
+            "version": compiled.versions[node_id],
+            "mass_partition": compiled.graph.mass_partition,
+            "cells": [
+                [entity, str(column)]
+                for entity in population.frame.entities
+                for column in population.frame.table(entity)
+            ]
+            if structural
+            else [[output.entity, output.column] for output in node.outputs],
+            "mass": dict(mass_record_receipt(population.mass_ledger[-1]))
+            if structural and node.structural is not StructuralDelta.CREATE
+            else None,
+            "weight_cap": dict(weight_cap_receipt(population, node)),
+        }
+    )
+
+
+def _states(
+    compiled,
+    kernels,
+    source_keys,
+    expected_populations,
+    raw_receipts,
+    *,
+    _retained_inputs=None,
+):
     """Bind independent domain receipts to current implementation and graph keys."""
     keys, implementations = _all_node_keys(compiled, kernels, source_keys)
     states, writer_receipts = {}, {}
     for node_id in compiled.order:
         node = compiled.graph.node(node_id)
-        population = expected_populations[node_id]
+        retained = None
+        if _retained_inputs is not None and node_id in _retained_inputs:
+            payload = _retained_inputs[node_id]
+            survey._require(type(payload) is bytes, "RETAINED_STATE_INPUT_TYPE")
+            retained = json.loads(payload)
+            survey._require(
+                canonical_json(retained) == payload
+                and canonical_json(retained["node"]) == canonical_json(normative(node))
+                and retained["version"] == compiled.versions[node_id]
+                and canonical_json(retained["mass_partition"])
+                == canonical_json(compiled.graph.mass_partition),
+                "RETAINED_STATE_SCOPE",
+            )
+        population = expected_populations[node_id] if retained is None else None
         key = keys[node_id]
         structural = node.structural is not StructuralDelta.NONE
         cells = (
-            tuple(
-                (e, str(c))
-                for e in population.frame.entities
-                for c in population.frame.table(e)
+            tuple(tuple(cell) for cell in retained["cells"])
+            if retained is not None
+            else (
+                tuple(
+                    (e, str(c))
+                    for e in population.frame.entities
+                    for c in population.frame.table(e)
+                )
+                if structural
+                else tuple((o.entity, o.column) for o in node.outputs)
             )
-            if structural
-            else tuple((o.entity, o.column) for o in node.outputs)
         )
         weight_entity = (
             node.weights.entity
@@ -112,9 +167,17 @@ def _states(compiled, kernels, source_keys, expected_populations, raw_receipts):
         if structural and node.structural is not StructuralDelta.CREATE:
             receipt["mass"] = {
                 **receipt.get("mass", {}),
-                **mass_record_receipt(population.mass_ledger[-1]),
+                **(
+                    mass_record_receipt(population.mass_ledger[-1])
+                    if retained is None
+                    else retained["mass"]
+                ),
             }
-        receipt.update(weight_cap_receipt(population, node))
+        receipt.update(
+            weight_cap_receipt(population, node)
+            if retained is None
+            else retained["weight_cap"]
+        )
         states[node_id] = {
             "key": key,
             "ref": node.kernel,

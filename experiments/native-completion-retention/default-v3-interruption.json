@@ -1,0 +1,33 @@
+{
+  "target_pid": 42989,
+  "reason": "root authorized scheduling-only interruption after active49-node default passes; remaining45 and51/rest run separately",
+  "required_completed_ids": [
+    "packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py::test_nineteen_node_financial_cold_and_required_replay",
+    "packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py::test_geography_option_preserves_default_three_features",
+    "packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py::test_final_support_return_cannot_mutate_detached_money",
+    "packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py::test_final_owner_return_cannot_mutate_materialized_geography",
+    "packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py::test_financial_donor_requires_actual_geography_gate[payload-GEOGRAPHY_VALIDATION_BINDING]",
+    "packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py::test_financial_donor_requires_actual_geography_gate[producer-GEOGRAPHY_VALIDATION_BINDING]",
+    "packages/microcosm-build/tests/test_us_graph_atomic_survey_financial.py::test_financial_donor_requires_actual_geography_gate[type-DETAIL_ARTIFACT_IDENTITY]",
+    "packages/microcosm-build/tests/test_us_survey_financial_successor.py::test_financial_candidate_replay_and_weight_only_successor",
+    "packages/microcosm-build/tests/test_us_survey_financial_successor.py::test_unissued_copy_and_wrong_original_budget_refuse",
+    "packages/microcosm-build/tests/test_us_survey_financial_successor.py::test_arbitrary_nonweight_changes_still_refuse",
+    "packages/microcosm-build/tests/test_us_survey_financial_successor.py::test_rehashed_graph_artifact_cannot_replace_issued_draw",
+    "packages/microcosm-build/tests/test_us_survey_financial_successor.py::test_final_budget_support_borrow_cannot_mutate_financial_run",
+    "packages/microcosm-build/tests/test_us_survey_financial_successor.py::test_final_support_borrow_cannot_forge_returned_view",
+    "packages/microcosm-build/tests/test_us_survey_financial_successor.py::test_financial_borrow_cannot_relax_detached_budget_bounds",
+    "packages/microcosm-build/tests/test_us_survey_financial_successor.py::test_run_borrow_cannot_forge_original_budget_digest",
+    "packages/microcosm-build/tests/test_us_graph_atomic_completion_host.py::test_refused_options_precede_source_io[changes0-HOUSEHOLD_ROLES_FLAG]",
+    "packages/microcosm-build/tests/test_us_graph_atomic_completion_host.py::test_refused_options_precede_source_io[changes1-HOUSEHOLD_ROLES_FLAG]",
+    "packages/microcosm-build/tests/test_us_graph_atomic_completion_host.py::test_refused_options_precede_source_io[changes2-ROLES_REQUIRE_CHILD]",
+    "packages/microcosm-build/tests/test_us_graph_atomic_completion_host.py::test_refused_options_precede_source_io[changes3-CHILD_REQUIRES_PROPERTY]",
+    "packages/microcosm-build/tests/test_us_graph_atomic_completion_host.py::test_refused_options_precede_source_io[changes4-CHILD_REQUIRES_TAX_REBASE]",
+    "packages/microcosm-build/tests/test_us_graph_atomic_completion_host.py::test_refused_options_precede_source_io[changes5-CHILD_OPTIONS_TYPE]",
+    "packages/microcosm-build/tests/test_us_graph_atomic_completion_host.py::test_roles_disabled_status_enabled_49_cold_required_and_output_identity"
+  ],
+  "required_next_id": "packages/microcosm-build/tests/test_us_graph_atomic_completion_host.py::test_roles_disabled_status_disabled_45_cold_required",
+  "state": "sent_SIGINT_after_49_pass",
+  "started_at_unix": 1789834848.16165,
+  "passed_call_markers": 22,
+  "signal_at_unix": 1789837315.692668
+}

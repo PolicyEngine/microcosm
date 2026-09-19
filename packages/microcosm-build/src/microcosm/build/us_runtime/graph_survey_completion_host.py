@@ -290,11 +290,21 @@ def _population_stamp(boundary, compiled, node_id, population, *, manifest=False
     )
 
 
-def _observe_population(boundary, compiled, observed, stamps, node_id, population):
+def _observe_population(
+    boundary, compiled, observed, stamps, node_id, population, *, witnessed=None
+):
     """A refused observation cannot leave a usable completion owner behind."""
     try:
         require(node_id not in observed, "COMPLETION_OBSERVER_DUPLICATE")
         stamp = _population_stamp(boundary, compiled, node_id, population)
+        if witnessed is not None:
+            require(node_id not in witnessed, "COMPLETION_OBSERVER_DUPLICATE")
+            witnessed[node_id] = host.observation.population_witness(population)
+            if node_id in boundary.base.compiled.order:
+                host.observation.same_witness(
+                    dict(boundary.base_witnesses)[node_id], witnessed[node_id]
+                )
+                return
         observed[node_id], stamps[node_id] = population, stamp
     except Exception:
         _CompletionHost.revoke(boundary)
@@ -308,6 +318,8 @@ class _CompletionHost:
         self.base = base
         self.base_entry = host._run_entry(base)
         state = self.base_entry[2]
+        self.retention_profile = state.retention_profile
+        self.base_witnesses = state.node_witnesses
         require(
             state.property_income is not None and not state.rebase_property_taxes,
             "COMPLETION_ACTUAL_PROPERTY_PARENT",
@@ -325,6 +337,7 @@ class _CompletionHost:
         self.compiled = None
         self.observed = None
         self.observed_stamps = None
+        self.witnessed = None
         self.final_states = None
         self.anchor = None
         self.base.checked_view()
@@ -489,6 +502,8 @@ class _CompletionHost:
             (
                 id(self.base),
                 id(self.base_entry),
+                self.retention_profile,
+                self.base_witnesses,
                 id(self.kernels),
                 id(self.child),
                 None
@@ -543,6 +558,7 @@ class _CompletionHost:
             id(self.observed),
             tuple((name, id(population)) for name, population in self.observed.items()),
             self.observed_stamps,
+            None if self.witnessed is None else tuple(self.witnessed.items()),
         )
 
     def revoke(self):
@@ -560,6 +576,16 @@ class _CompletionHost:
             if self.child is not None:
                 self.child._pure()
             if self.observed is not None:
+                if self.retention_profile == "compact":
+                    require(
+                        self.witnessed is not None
+                        and tuple(self.witnessed) == self.compiled.order
+                        and tuple(self.observed)
+                        == host._compact_retained_roster(
+                            self.compiled, None, False, self
+                        ),
+                        "COMPLETION_COMPACT_ROSTER",
+                    )
                 require(
                     tuple(
                         (n, _population_stamp(self, self.compiled, n, p))
@@ -779,9 +805,18 @@ def _extend(boundary, *, resume):
         state.property_income, True, state.person_status_boundary is not None, boundary
     )
     observed, stamps = {}, {}
+    witnessed = {} if state.retention_profile == "compact" else None
 
     def observe(node_id, population):
-        _observe_population(boundary, compiled, observed, stamps, node_id, population)
+        _observe_population(
+            boundary,
+            compiled,
+            observed,
+            stamps,
+            node_id,
+            population,
+            witnessed=witnessed,
+        )
 
     manifest = host.run_graph(
         compiled,
@@ -791,7 +826,15 @@ def _extend(boundary, *, resume):
         resume=resume,
         _population_observer=observe,
     )
-    _check_observed_union(base, compiled, manifest, observed)
+    _check_observed_union(
+        base, compiled, manifest, observed if witnessed is None else witnessed
+    )
+    if witnessed is not None:
+        require(
+            tuple(observed)
+            == host._compact_retained_roster(compiled, None, False, boundary),
+            "COMPLETION_COMPACT_ROSTER",
+        )
     loaded = host._artifacts(
         manifest, compiled, base.store, kernels, keys, implementations
     )
@@ -811,8 +854,14 @@ def _extend(boundary, *, resume):
         options=state.property_income,
         completion=boundary.tax_edge(),
     )
-    base_expected = dict(
-        zip(base.compiled.order, (p for p, _ in state.node_populations), strict=True)
+    base_expected = (
+        {}
+        if witnessed is not None
+        else dict(
+            zip(
+                base.compiled.order, (p for p, _ in state.node_populations), strict=True
+            )
+        )
     )
     expected = {
         **base_expected,
@@ -827,15 +876,47 @@ def _extend(boundary, *, resume):
         **{n: result.receipt for n, result in tax_results.items()},
     }
     for node_id in compiled.order:
-        host.atomic.same_replayed_population(expected[node_id], observed[node_id])
+        if witnessed is not None and node_id in base.compiled.order:
+            host.observation.same_witness(
+                dict(state.node_witnesses)[node_id], witnessed[node_id]
+            )
+        else:
+            host.atomic.same_replayed_population(expected[node_id], observed[node_id])
     states = host.atomic._states(
-        compiled, kernels, boundary.source_keys, expected, receipts
+        compiled,
+        kernels,
+        boundary.source_keys,
+        expected,
+        receipts,
+        _retained_inputs=None
+        if witnessed is None
+        else dict(state.node_population_inputs),
     )
+    population_inputs = None
+    if witnessed is not None:
+        require(
+            state.node_states is not None
+            and all(
+                states[node_id] == state.node_states[node_id]
+                for node_id in base.compiled.order
+            ),
+            "COMPLETION_BASE_STATE_CHANGED",
+        )
+        base_inputs = dict(state.node_population_inputs)
+        population_inputs = {
+            node_id: base_inputs[node_id]
+            if node_id in base_inputs
+            else host.atomic._state_population_inputs(
+                compiled, node_id, expected[node_id]
+            )
+            for node_id in compiled.order
+        }
     host.survey._check_node_states(manifest, states)
     boundary.payloads.update(child_payloads)
     boundary.completed = observed[child.VERIFY]
     boundary.observed = observed
     boundary.observed_stamps = tuple(stamps.items())
+    boundary.witnessed = witnessed
     boundary.final_states = states
     result = host.AtomicSurveyFinancialRunValues(
         base.prefix,
@@ -886,6 +967,9 @@ def _extend(boundary, *, resume):
     )
     for node_id, population in expected.items():
         host.atomic.same_replayed_population(population, observed[node_id])
+    if witnessed is not None:
+        for node_id, expected_witness in state.node_witnesses:
+            host.observation.same_witness(expected_witness, witnessed[node_id])
     host.survey._check_node_states(manifest, states)
     host._issue_run(
         result,
@@ -906,5 +990,8 @@ def _extend(boundary, *, resume):
         completion_boundary=boundary,
         node_populations=observed,
         node_states=states,
+        retention_profile=state.retention_profile,
+        node_witnesses=witnessed,
+        node_population_inputs=population_inputs,
     )
     return result
