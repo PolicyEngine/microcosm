@@ -1,6 +1,6 @@
 {
- "feed": "consumer_facts_us_c5e5bf8.jsonl",
- "feed_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+ "feed": "consumer_facts.jsonl",
+ "feed_sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
  "families": {
   "bea_nipa.business_current_transfer_receipts": 1,
   "bea_nipa.defined_contribution_actual_contributions": 1,

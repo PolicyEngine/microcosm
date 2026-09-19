@@ -1382,3 +1382,59 @@ The still-earlier PolicyEngine-US 1.819.0 lock-bump lane merged into
 `origin/main` at `7b90bb18` on 2026-08-24; its final state remains at commit
 `05d254aa` and its detailed receipts remain in the historical section of
 `_LANE-NOTES.md`.
+
+## 2026-09-19 — Chronicle consumer artifact qualification
+
+Continuation of the 18 September bare-feed re-pin, in a separate branch stacked
+on #955's `18aaf256d5c5fd5fcc5825b804d6bd94a839b1cc`. Chronicle #278 at
+`b571381fcd875393ea0dabc326558cfa2ca8e8fa` records publisher authorities for the
+994 source-label rows that the existing v3 schema refused. One full rebuild
+passed all 62 package runs and artifact validation in 578.58 seconds.
+
+All 39,158 source cells and values and the 586 record-set/period pairs remain
+unchanged. Both feeds compile 32,867 identical target keys/values in 32 families;
+166 targets change only authority/legacy-key provenance metadata. Full target
+byte equality remains false and is recorded separately. The portable
+`experiments/us-chronicle-feed-repin/qualify_artifact.py` reproduces these checks.
+
+The external artifact is at
+`~/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/`, facts
+`4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f`, manifest
+`38ec5bf1efe5a0bd017ec5279065e2ea7645b37da237197f03ae2fbca28cadac`. The old
+bare feed and all original failed/refused evidence remain preserved. Replaying
+selection through the packaged scope and re-packaging the artifact retained
+both hashes. The manifest binds no filesystem path or scope hash; Microcosm
+pins the exact scope bytes separately.
+
+The local integration updates the declaration and regenerates both parity
+resources through their tool: still 32 compiled families, 52 reviewed exclusions
+and 81 feed families. The targeted feed, parity, epoch, artifact and spec-engine
+battery passed 195 tests with none skipped in 306.55 seconds. Coverage generation
+and `--check` passed 42,162/42,162 fields and 41/41 inventory checks without new
+coverage digest changes. Ruff and test-inventory checks passed. At this journal
+entry, this continuation was local, pending root review; it did not merge #278,
+publish the feed, run a population/calibration, or certify a release.
+
+### Qualification helper correction after independent review
+
+Review of local commit `125f710` found that the portable helper passed entire
+TargetSpecs to the family-name parser. The family count remained 32, but the
+reported names were dataclass representations. The corrected helper passes
+`spec.name`, and two focused regression tests cover the compiled family inventory
+and counting only changed targets. It now enforces the exact changed families
+(155 `cms_medicaid.state_enrollment`, 11 `jct.tax_expenditures`), both previously
+qualified registry versions, and both full canonical TargetSpec hashes.
+
+One bounded repeat against the same three frozen input hashes passed all 13
+provenance checks in 81.89 seconds, peaking at 3,816,718,336 RSS bytes. Strict
+full-target equality remained false and `--require-identical-targets` exited 1
+as intended. The original evidence remains unchanged; the corrected report is
+`portable-comparison-family-corrected-strict.json` in the evidence directory.
+The feed, manifest, scope and generated parity pins did not change. The prior
+195-test production-pin result remains its original evidence; only the two
+focused helper regressions were run for this correction.
+
+Documentation now explicitly distinguishes artifact content validation from
+source provenance: the manifest binds neither scope/path nor source commit;
+the builder's clean-checkout check and build receipt establish the latter.
+This correction is local pending root review and makes no release claim.

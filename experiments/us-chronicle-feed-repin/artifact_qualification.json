@@ -1,0 +1,158 @@
+{
+  "qualification_date": "2026-09-19",
+  "chronicle_source_commit": "b571381fcd875393ea0dabc326558cfa2ca8e8fa",
+  "microcosm_comparison_commit": "18aaf256d5c5fd5fcc5825b804d6bd94a839b1cc",
+  "facts_sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
+  "manifest_sha256": "38ec5bf1efe5a0bd017ec5279065e2ea7645b37da237197f03ae2fbca28cadac",
+  "packaged_scope_sha256": "a2bca1a35206d0ff89ea9329e10288f60634f7d6286667f30cca55e1623df6e4",
+  "original_bare_feed_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+  "scope_pairs": 586,
+  "package_runs": 62,
+  "distinct_source_packages": 48,
+  "fact_rows": 39158,
+  "source_artifact_pin_count": 44,
+  "source_value_differences": 0,
+  "cells_added": 0,
+  "cells_removed": 0,
+  "source_changed_rows": 994,
+  "source_changed_field_paths": {
+    "concept_alignment.authority": 994,
+    "concept_alignment.concept_alignment_key": 994,
+    "layout.record_set_spec_hash": 994,
+    "legacy_fact_key": 994
+  },
+  "source_authority_additions": {
+    "cms": 515,
+    "census": 468,
+    "jct": 11
+  },
+  "compiled_targets": 32867,
+  "compiled_families": 32,
+  "target_value_differences": 0,
+  "target_keys_changed": false,
+  "target_changed_field_paths": {
+    "metadata.ledger_concept_authority": 166,
+    "metadata.ledger_legacy_fact_key": 165
+  },
+  "strict_full_target_equality": false,
+  "prior_registry_version": "b74d86d94a76",
+  "new_registry_version": "749a7b0627ce",
+  "canonical_artifact_repack_byte_identical": true,
+  "full_export_runs": 1,
+  "full_export_wall_seconds": 578.58,
+  "full_export_max_rss_bytes": 1748582400,
+  "qualification": "PASS_WITH_EXPECTED_PROVENANCE_CHANGES",
+  "release_certification_performed": false,
+  "local_evidence_directory": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/chronicle-us-artifact-b571381-20260919",
+  "notes": [
+    "All package exports and canonical row-schema validation passed; no source row was patched.",
+    "Strict TargetSpec equality failed on the two documented provenance paths; all other fields were identical.",
+    "Two canonical re-pack checks passed; only one full source export was run.",
+    "Initial validation-harness count assertion overlooked already-valid source-label rows; original failure preserved and corrected v2 passed.",
+    "Bundle cross-package label/duplicate-semantic-key warnings retained.",
+    "The artifact is external to Git; code review and release gates remain separate.",
+    "Independent review found that the initial portable helper passed TargetSpec objects rather than names to the family parser. Earlier evidence remains preserved, but its mangled family labels are superseded by the corrected inventory here; values, target identities and canonical spec hashes were unaffected.",
+    "The corrected helper enforces the exact changed families, registry versions and canonical TargetSpec hashes; all 13 provenance qualification checks passed.",
+    "Artifact manifest validation binds facts and row schema, not the Chronicle source commit. The builder clean-checkout check and retained build receipt establish source provenance."
+  ],
+  "packaged_scope_replay": {
+    "same_pair_and_run_selection": true,
+    "reselected_package_runs": 62,
+    "rows": 39158,
+    "facts_and_manifest_hashes_unchanged": true,
+    "manifest_binds_scope_or_path": false,
+    "wall_seconds": 51.92,
+    "max_rss_bytes": 2450636800
+  },
+  "comparison_helper": "experiments/us-chronicle-feed-repin/qualify_artifact.py",
+  "portable_helper_qualification": {
+    "helper_sha256": "5fb94c726fc0b28520f109b3b4bf54f9c3e4201e975410355069b95dd1fbf28f",
+    "facts_and_manifest_inputs_pinned": true,
+    "provenance_only_qualification_passed": true,
+    "strict_full_target_equality_passed": false,
+    "require_identical_targets_exit_code": 1,
+    "wall_seconds": 81.89,
+    "max_rss_bytes": 3816718336,
+    "canonical_spec_hashes_match_original_comparison": true,
+    "registry_versions_enforced": true,
+    "changed_families_enforced": true,
+    "evidence_file": "portable-comparison-family-corrected-strict.json"
+  },
+  "integration_tests": {
+    "passed": 195,
+    "skipped": 0,
+    "seconds": 306.55,
+    "coverage_fields": [
+      42162,
+      42162
+    ],
+    "coverage_inventory": [
+      41,
+      41
+    ]
+  },
+  "portable_helper_qualification_before_family_correction": {
+    "helper_sha256": "7225e1e2bc9ba1d6e222ba40c9792a874b938dfa997e95dad0290473c5fe2dae",
+    "facts_and_manifest_inputs_pinned": true,
+    "provenance_only_qualification_passed": true,
+    "strict_full_target_equality_passed": false,
+    "require_identical_targets_exit_code": 1,
+    "wall_seconds": 74.24,
+    "max_rss_bytes": 3812999168,
+    "canonical_spec_hashes_match_original_comparison": true
+  },
+  "compiled_family_inventory": {
+    "bea_nipa.proprietors_income": 1,
+    "bea_nipa.total_wages_salaries": 1,
+    "cbo.revenue_projection": 5,
+    "census_pep.national_resident_population_age": 18,
+    "census_pep.v2024": 918,
+    "census_stc.individual_income_tax_collections": 44,
+    "cms_aca.oep2024": 102,
+    "cms_medicaid.state_enrollment": 155,
+    "cms_medicare.part_b_premium_income": 1,
+    "federal_reserve_z1.households_nonprofits_balance_sheet": 1,
+    "hhs_acf_liheap.national_profile": 1,
+    "hhs_acf_tanf.cash_assistance": 30,
+    "irs_soi.congressional_district_2022": 26788,
+    "irs_soi.filing_season_week47": 34,
+    "irs_soi.form_w2_social_security_tips": 2,
+    "irs_soi.historic_table_2": 4244,
+    "irs_soi.state_2022": 2,
+    "irs_soi.table_1_1": 2,
+    "irs_soi.table_1_2": 4,
+    "irs_soi.table_1_4": 22,
+    "irs_soi.table_2_1": 22,
+    "irs_soi.table_2_5": 235,
+    "irs_soi.table_4_3": 9,
+    "jct.tax_expenditures": 11,
+    "ssa_ssi_monthly.ssi_federal_payment_recipients": 3,
+    "ssa_supplement.oasdi_ssi_payments": 6,
+    "ssa_supplement.ssi_payments": 51,
+    "ssa_supplement.ssi_recipients": 51,
+    "usda_snap.national_average_monthly_households": 1,
+    "usda_snap.national_benefits": 1,
+    "usda_snap.state_average_monthly_households": 51,
+    "usda_snap.state_benefits": 51
+  },
+  "target_changed_specs_by_family": {
+    "cms_medicaid.state_enrollment": 155,
+    "jct.tax_expenditures": 11
+  },
+  "canonical_target_identities": {
+    "old": {
+      "registry_version": "b74d86d94a76",
+      "canonical_specs_sha256": "bb72cf6028ffb9943dab25a0751477f703620d6dd694c76174c355a67fccd151"
+    },
+    "new": {
+      "registry_version": "749a7b0627ce",
+      "canonical_specs_sha256": "f57fa5a526d2afdcf1daa5d7a0649b15c68b0b26761e8e2102d110b8bfa8b189"
+    }
+  },
+  "helper_family_regression_tests": {
+    "passed": 2,
+    "skipped": 0,
+    "command": ".venv/bin/python -m pytest packages/microcosm-build/tests/test_us_chronicle_feed.py -k qualification -q"
+  },
+  "manifest_binds_source_commit": false
+}

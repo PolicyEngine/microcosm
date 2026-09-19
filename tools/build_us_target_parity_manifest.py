@@ -61,9 +61,15 @@ US_PACKAGE_DIR = (
 MANIFEST_PATH = US_PACKAGE_DIR / "target_parity_manifest.json"
 FEED_FAMILIES_PATH = US_PACKAGE_DIR / "target_parity_feed_families.json"
 
-DEFAULT_FEED_NAME = "consumer_facts_us_c5e5bf8.jsonl"
+DEFAULT_FEED_NAME = "consumer_facts.jsonl"
 DEFAULT_FEED_PATH = (
-    Path.home() / "PolicyEngine" / "_buildh-runtime" / "inputs" / DEFAULT_FEED_NAME
+    Path.home()
+    / "PolicyEngine"
+    / "_buildh-runtime"
+    / "inputs"
+    / "chronicle_us_b571381"
+    / "artifact"
+    / DEFAULT_FEED_NAME
 )
 #: The pinned feed digest (us/chronicle_feed.json); any other feed is refused.
 EXPECTED_FEED_SHA256 = load_us_chronicle_feed().facts_sha256
