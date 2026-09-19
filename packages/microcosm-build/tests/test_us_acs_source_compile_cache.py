@@ -58,6 +58,160 @@ def _module(tmp_path, monkeypatch, source, *, name="invented_acs_compile_cache")
     return module, path
 
 
+@contextmanager
+def _declaration_parse_calls():
+    assert sys.getprofile() is None
+    calls = []
+
+    def observe(frame, event, _arg):
+        if event == "call" and frame.f_code is native._DECLARATION_PARSER_CODE:
+            calls.append(None)
+
+    sys.setprofile(observe)
+    try:
+        yield calls
+    finally:
+        sys.setprofile(None)
+
+
+def test_declarations_cache_exact_bytes_and_keep_source_order():
+    first_source = b"from math import pi as circle\ndef first(): pass\n"
+    second_source = b"def first(): pass\nfrom math import e as circle\n"
+    with _declaration_parse_calls() as calls:
+        first = native._source_declarations(first_source)
+        assert native._source_declarations(first_source) is first
+        second = native._source_declarations(second_source)
+    assert len(calls) == 2
+    assert first == (
+        ("import", 0, "math", (("pi", "circle"),)),
+        ("definition", "first"),
+    )
+    assert second == (
+        ("definition", "first"),
+        ("import", 0, "math", (("e", "circle"),)),
+    )
+    with pytest.raises(TypeError):
+        first[0] = second[0]
+
+
+def test_declarations_oversize_and_changed_parser_bypass(monkeypatch):
+    source = b"def first(): pass\n"
+    monkeypatch.setattr(native, "_DECLARATION_MAX_ENTRY_BYTES", 1)
+    with _declaration_parse_calls() as calls:
+        native._source_declarations(source)
+        native._source_declarations(source)
+    assert len(calls) == 2
+    assert native._cached_declarations.cache_info().currsize == 0
+    monkeypatch.setattr(native, "_DECLARATION_MAX_ENTRY_BYTES", 128 * 1024)
+    expected = native._source_declarations(source)
+    original = ast.parse
+    invoked = []
+
+    def changed(*args, **kwargs):
+        invoked.append(None)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(ast, "parse", changed)
+    assert native._source_declarations(source) == expected
+    assert native._source_declarations(source) == expected
+    assert len(invoked) == 2
+
+
+def test_declarations_changed_ast_compiler_bypasses_warm_cache(monkeypatch):
+    source = b"def first(): pass\n"
+    expected = native._source_declarations(source)
+    invoked = []
+
+    def changed(*args, **kwargs):
+        invoked.append(None)
+        return builtins.compile(*args, **kwargs)
+
+    monkeypatch.setattr(ast, "compile", changed, raising=False)
+    assert native._source_declarations(source) == expected
+    assert native._source_declarations(source) == expected
+    assert len(invoked) == 2
+
+
+def test_declarations_changed_parser_defaults_bypass_warm_cache(monkeypatch):
+    source = b"def first(): pass\n"
+    expected = native._source_declarations(source)
+    with monkeypatch.context() as context:
+        context.setattr(ast.parse, "__defaults__", ("<unknown>", "eval"))
+        with pytest.raises(SyntaxError):
+            native._source_declarations(source)
+        with pytest.raises(SyntaxError):
+            native._parse_declarations(source)
+        assert native._cached_declarations.cache_info().hits == 0
+    assert native._source_declarations(source) is expected
+
+
+def test_declarations_changed_keyword_type_bypasses_warm_cache(monkeypatch):
+    source = b"def first(): pass\n"
+    expected = native._source_declarations(source)
+    key = "optimize" if "optimize" in ast.parse.__kwdefaults__ else "feature_version"
+    with monkeypatch.context() as context:
+        context.setitem(ast.parse.__kwdefaults__, key, -1.0)
+        with pytest.raises(TypeError):
+            native._source_declarations(source)
+        with pytest.raises(TypeError):
+            native._parse_declarations(source)
+        assert native._cached_declarations.cache_info().hits == 0
+    # False and 0 compare equal, but changing the exact default type still bypasses.
+    with monkeypatch.context() as context, _declaration_parse_calls() as calls:
+        context.setitem(ast.parse.__kwdefaults__, "type_comments", 0)
+        assert native._source_declarations(source) == expected
+        assert native._source_declarations(source) == expected
+    assert len(calls) == 2
+    assert native._cached_declarations.cache_info().hits == 0
+
+
+@pytest.mark.parametrize("flag", ["PyCF_ONLY_AST", "PyCF_TYPE_COMMENTS"])
+def test_declarations_changed_parser_flags_bypass_warm_cache(monkeypatch, flag):
+    source = b"def first(): pass\n"
+    expected = native._source_declarations(source)
+    with monkeypatch.context() as context, _declaration_parse_calls() as calls:
+        context.setattr(ast, flag, 0)
+        if flag == "PyCF_ONLY_AST":
+            with pytest.raises(AttributeError):
+                native._source_declarations(source)
+            with pytest.raises(AttributeError):
+                native._parse_declarations(source)
+        else:
+            assert native._source_declarations(source) == expected
+            assert native._source_declarations(source) == expected
+    assert len(calls) == 2
+    assert native._cached_declarations.cache_info().hits == 0
+
+
+def test_declaration_failures_do_not_stick_and_cache_is_bounded():
+    with _declaration_parse_calls() as calls:
+        for _ in range(2):
+            with pytest.raises(SyntaxError):
+                native._source_declarations(b"def invalid(:")
+    assert len(calls) == 2
+    assert native._cached_declarations.cache_info().currsize == 0
+    for index in range(130):
+        native._source_declarations(f"def value_{index}(): pass\n".encode())
+    assert native._cached_declarations.cache_info().currsize == 128
+    native._clear_compile_cache()
+    assert native._cached_declarations.cache_info().currsize == 0
+
+
+def test_warm_declarations_still_refuse_changed_live_alias(tmp_path, monkeypatch):
+    module, path = _module(tmp_path, monkeypatch, b"from math import pi as circle\n")
+    with _declaration_parse_calls() as calls:
+        native._live_code(module, {})
+        native._live_code(module, {})
+    assert len(calls) == 1
+    module.circle = 0
+    with pytest.raises(native.ACSNativeCoverageBindingError, match="LOADED_PRODUCER"):
+        native._live_code(module, {})
+    # A changed source declaration is read again even with the old entry warm.
+    path.write_bytes(b"def missing(): pass\n")
+    with pytest.raises(native.ACSNativeCoverageBindingError, match="LOADED_PRODUCER"):
+        native._live_code(module, {})
+
+
 def _index(code):
     result = {}
 
