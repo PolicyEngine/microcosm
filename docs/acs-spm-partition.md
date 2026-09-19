@@ -257,11 +257,33 @@ Unassessed/ambiguous links cannot become observed simply because a development
 policy completed the membership. The receipt has fixed `development_source_only`
 scope and makes no official-universe, consumer, or release claim.
 
-Later structural pilots must pin every primitive and auxiliary input before
+Structural pilots must pin every primitive and auxiliary input before
 loading, including goldens, registry membership, defaults/null evidence and the
 regroup report. Compare the person/household/old-unit/proposed-unit projection
 separately from role labels. Record the explicit `source_observed` to
 `observed_relationship_rule` role-label migration and both label hashes; the old
 whole-file golden hash cannot authenticate renamed bytes. The original registry
-remains immutable. No 512-household or country-consumer run is implied by this
-source helper or synthetic test evidence.
+remains immutable.
+
+## Bounded structural proof
+
+The September 19, 2026 [structural proof](../experiments/acs-spm-source-512a.md)
+passed on 1,183 people in 512 complete households using the exact PR45 source.
+It proposed 542 SPM units, preserved 62 group-quarters units, and retained one
+childcare allocation ledger row for each of 21 split old units. Both partner-role
+sensitivities and tenure policies matched the authenticated historical goldens.
+All six primitive tables and source files remained unchanged.
+
+Eight households retain source relationship uncertainty. Their proposed units
+include 20 with unresolved source authority, even though the explicit development
+policy supplies complete membership. The receipt also counts 396 units with
+observed-relationship-rule authority and 64 with modeled-assumption authority;
+62 group-quarters units remain outside the ACS household universe.
+
+The proof ran source commit `4d567e2e04bb6494ae895638fe5f675bda4bc0f7`.
+Later documentation commits do not change that execution identity. The
+[aggregate receipt](../experiments/acs-spm-source-512a-20260919.json) records the
+source, input-manifest, pin-document and original report hashes. This structural
+result does not qualify the country consumer, annual SPM measurement universe,
+full population or release. The locked calculator remains unsupported, and the
+separate Fable implementation review is pending credential availability.
