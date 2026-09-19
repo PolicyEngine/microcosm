@@ -5271,7 +5271,7 @@ producer_graph:
               - estate_income
               - alimony_income
               - salt_refund_income
-              proxy_agi_floor: 5000000.0
+              proxy_agi_floor: 5000000
               floor_comparison: greater_than_or_equal
               source_levels: donor_frame_build_period
               maximum_agi_only_donors: 3000

@@ -195,7 +195,7 @@ def test_tail_references_compile_to_the_constants_era_object() -> None:
     puf = actual["puf_capital_gains_tail"]
     assert "support_contract_ref" not in puf
     assert "execution_binding_ref" not in puf
-    assert puf["support_contract"]["version"] == 1
+    assert puf["support_contract"]["version"] == 2
     assert puf["soi_e19200_agi_bands"]["runtime_sha256"]
 
 

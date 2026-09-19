@@ -2504,7 +2504,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "cff68a337ec701e6439c8279c152241ae15d3625cb88accd0c8d8f7414ef5af8",
+            "spec_sha256": "189916d646fc21847573c5472515d993996728bfd47e8103b67b4ec141010112",
         },
     }
 
@@ -3604,7 +3604,7 @@ def test_stacked_checkpoint_identity_binds_v13_semantic_contracts(
             stacked_spine_module._late_contract_available_input_keys(contract)
         )
     assert pool_code["primary_qrf_checkpoint_schema_version"] == 6
-    assert pool_code["puf_capital_gains_tail_manifest_schema_version"] == 2
+    assert pool_code["puf_capital_gains_tail_manifest_schema_version"] == 3
     assert pool_code["puf_capital_gains_tail_support_contract"] == (
         pool_tool.puf_capital_gains_tail_support_contract_identity()
     )

@@ -20,7 +20,10 @@ from microcosm.build.us_runtime.qbi_inputs import US_QBI_BOOLEAN_OUTPUT_COLUMNS
 # Declared source-stratum boundary, never a tuning knob: the measured pooled
 # ASEC person-income ceiling is $3.15M, and only 18 of 231,007 QRF clones reach
 # $5M. The processed PUF contains 19,034 donors at or above this boundary.
-PUF_AGI_TAIL_FLOOR = 5_000_000.0
+# A whole-dollar boundary, declared as an integer so the live identity and the
+# canonical spec projection (which normalizes integral floats to integers)
+# carry the same scalar.
+PUF_AGI_TAIL_FLOOR = 5_000_000
 PUF_AGI_TAIL_MAX_COUNT = 3_000
 
 
