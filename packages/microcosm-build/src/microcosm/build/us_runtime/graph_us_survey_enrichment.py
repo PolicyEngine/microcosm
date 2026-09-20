@@ -425,7 +425,24 @@ def _state_expected_population(incoming, node, artifacts, persisted):
             node, incoming.frame.table("household"), artifacts
         )
     require(persisted == result.artifacts, "STATE_RESULT_ARTIFACT")
-    return health_completion_graph.expected_population(incoming, node, result)
+    expected = health_completion_graph.expected_population(incoming, node, result)
+    if node.structural is StructuralDelta.FILTER:
+        # Selecting every person can still drop an orphan group. A canonical
+        # representation boundary must preserve every entity axis, not prune it.
+        require(
+            all(
+                expected.frame.table(entity)[
+                    expected.frame.schema.entity_id_column(entity)
+                ].equals(
+                    incoming.frame.table(entity)[
+                        incoming.frame.schema.entity_id_column(entity)
+                    ]
+                )
+                for entity in incoming.frame.entities
+            ),
+            "STATE_VERSION_AXIS_CHANGED",
+        )
+    return expected
 
 
 def _spm_configuration(acs_profile, asec_scope_policy, outside_role_placeholder):
