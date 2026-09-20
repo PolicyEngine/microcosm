@@ -1,0 +1,1 @@
+Add a private dense/L0 calibration bridge that attaches weights to unchanged projected inputs and verifies whole-household retention against the supplied parent without claiming native ancestry or release readiness.

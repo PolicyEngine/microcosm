@@ -66,6 +66,32 @@ a valid enum representation while still preventing SPM measurement. Omitting
 the consumer preserves the previous import-free, unqualified projection path.
 Both paths retain the final live-owner and exact-storage comparisons.
 
+The builder's private `_calibrate_native_input_frame` bridge can then solve
+already-materialized targets with the maintained dense or L0/refit calibrator.
+It requires an explicit formula-ownership provider and a closed solve-only
+option set; warm starts, checkpoints and exact-k identities are not accepted.
+Numerical option validation remains with the maintained calibrator; this bridge
+does not define another solver parameter policy.
+Before solving, the target frame must retain every projected input column,
+structural ID, membership, row order, stratum and typed initial weight. Target
+materialization may add calculated columns; those columns never enter the
+exported input frame.
+
+The bridge works on detached copies, attaches weights using the maintained
+helpers and verifies the result against its supplied parent. It reconstructs a
+complete float64 weight vector in original household order. L0 keeps exactly
+the maintained selected support, including zero post-refit weights, without a
+second pruning threshold. The returned `comparison_specification` records the
+exact solve options, registry and loss-weight identities, both frame identities,
+and the supplied specification digest. The existing comparison `binding` hashes
+those specification bytes, so the pair must be retained together. Target
+materialization may have different metadata and mass history; the exported
+input frame preserves its input parent's metadata and mass-history prefix.
+Callback changes to caller configuration cannot
+rewrite those captured inputs; changes to either supplied frame refuse.
+The returned measured result and comparison binding do not issue native owner
+authority, establish target/scientific qualification or authorize publication.
+
 The report preserves the owner's receipt and source content identities, the
 native population version and graph manifest identity, and the amount model's
 source/draw flags. It merges the maintained pool input roster, release-source
