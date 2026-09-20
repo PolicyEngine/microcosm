@@ -235,19 +235,15 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
         kernel_registry=KernelRegistry.from_ids(SELECTION_KERNEL_IDS),
     )
     # Pin the domain separator, normalization rules, schema-set receipt, and
-    # exact normative projection as one reviewable golden vector.
-    #
-    # The vector binds ``seed_protocol.to_wire()``, whose implementation hash
-    # is a source hash over seed modules that this branch and main both
-    # changed. The merged tree therefore carries a value neither side had
-    # (``inventory_coverage.EXPECTED_HASHES["seed_protocol"]`` moved the same
-    # way), and the assertion below ties this vector to that one.
+    # exact normative projection as one reviewable golden vector. This includes
+    # the prior-year module and its extracted canonical constants in the seed
+    # source closure; the assertion below binds the corresponding protocol pin.
     assert (
         first.seed_protocol.implementation_sha256
         == (inventory_coverage.EXPECTED_HASHES["seed_protocol"])
     )
     assert first.spec_sha256 == (
-        "b95d746257777fac5f088fb3a9aa32beb6713e7dd5f5c9562963d97ecd245796"
+        "f55229a38c8b073f79ed479c17fa1b05d8e483453dd07dc3829331b0e2dff603"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

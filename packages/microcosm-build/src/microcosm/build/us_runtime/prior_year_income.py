@@ -39,6 +39,9 @@ from microcosm.build.source_runtime import (
     SourceRuntimeError,
     run_source_stage,
 )
+from microcosm.build.us_runtime.prior_year_income_constants import (
+    US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS,
+)
 from microcosm.build.us_runtime.support_provenance import (
     has_assembled_support_metadata,
     has_support_role_metadata,
@@ -98,11 +101,6 @@ PRIOR_YEAR_INCOME_ARCHIVED_FINALIZER_URL = (
 )
 
 US_PRIOR_YEAR_INCOME_STAGE_NAME = "prior_year_income"
-US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS: tuple[str, ...] = (
-    "employment_income_last_year",
-    "self_employment_income_last_year",
-    "previous_year_income_available",
-)
 US_PRIOR_YEAR_INCOME_PERSISTED_OUTPUT_COLUMNS: tuple[str, ...] = (
     "self_employment_income_last_year",
     "previous_year_income_available",

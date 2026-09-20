@@ -46,6 +46,7 @@ from .input_coverage_profile import (
     MANIFEST_SHA256,
     USInputProfile,
     required_us_inputs,
+    scope_excluded_us_inputs,
 )
 from .support_provenance import (
     spine_source_id_column,
@@ -122,6 +123,8 @@ class PopulationInputCoverage:
     applicability_complete: bool = False
     statistical_signal_verified: bool = False
     release_eligible: bool = False
+    # Scope declarations do not establish applicability or waive source gates.
+    scope_excluded_inputs: tuple[str, ...] = ()
 
     def to_bytes(self) -> bytes:
         return canonical_json(asdict(self))
@@ -533,4 +536,5 @@ def diagnose_us_input_coverage(
         tuple(ambiguous),
         block,
         tuple(block_issues),
+        scope_excluded_inputs=scope_excluded_us_inputs(profile),
     )

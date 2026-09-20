@@ -81,9 +81,13 @@ The approved native scope excludes the legacy prior-year income family:
 `employment_income_last_year`, `self_employment_income_last_year` and
 `previous_year_income_available`. The handoff does not generate, fit or require
 these as native completion targets. Existing columns, if any, remain preserved
-for inspection. The legacy release/profile declarations still need a separately
-reviewed reconciliation; the report names that gate rather than silently
-restoring prior wages or weakening the historical release path.
+for inspection. The [input-coverage diagnostic](us-input-coverage-diagnostic.md)
+now offers an explicit `USInputProfile.NATIVE_NATIONAL_CD` name profile with
+159 inputs: it excludes the two prior-year fields still in the 161-name
+national/CD roster; prior-year wages were already absent. This resolves only
+the name-profile selection. Native scientific/source gates and historical
+release requirements still need separate reconciliation; the handoff continues
+to name that outstanding gate.
 
 ## Follow-on release integration
 

@@ -20,6 +20,27 @@ def diagnostic():
     return module
 
 
+def test_diagnostic_source_roster_retains_extracted_seed_constants(diagnostic):
+    from microcosm.build.spec_engine.seeds import LEGACY_V1_PROTOCOL
+
+    modules = tuple(
+        sorted(
+            {
+                name
+                for kernel in LEGACY_V1_PROTOCOL.kernels
+                for name in kernel.source_modules
+            }
+        )
+    )
+    assert diagnostic.SEED_MODULES == modules
+    module = "microcosm.build.us_runtime.prior_year_income_constants"
+    assert module in modules
+    assert (
+        "packages/microcosm-build/src/" + module.replace(".", "/") + ".py"
+        in diagnostic.SOURCE_PATHS
+    )
+
+
 @pytest.mark.parametrize(
     ("value", "scope", "shown"),
     (
