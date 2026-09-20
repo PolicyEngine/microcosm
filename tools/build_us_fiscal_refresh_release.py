@@ -5118,6 +5118,67 @@ def _target_spec_is_materialized(spec, household_table: pd.DataFrame) -> bool:
     return measure_ready and filter_ready
 
 
+def _compile_fiscal_release_target_registry(
+    args: argparse.Namespace,
+    *,
+    congressional_district_vintage_crosswalk,
+):
+    """Load and compile the maintained target surface before source preparation.
+
+    Profile and source-specific take-up checks remain at their existing call
+    sites. Both native and legacy preparation must consume these same targets.
+    """
+    ledger_artifact = load_ledger_consumer_artifact(
+        args.ledger_facts,
+        expected_facts_sha256=args.ledger_facts_sha256,
+        expected_manifest_sha256=args.ledger_manifest_sha256,
+    )
+    target_registry = compile_us_fiscal_target_registry(
+        ledger_artifact.facts,
+        target_period=PERIOD,
+        congressional_district_vintage_crosswalk=(
+            congressional_district_vintage_crosswalk
+        ),
+        age_targets=args.age_targets,
+        allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
+    )
+    # Reviewed CMS Medicaid enrollment substitutions (microcosm#386): a state
+    # whose point-in-time snapshot is unreported at source ships its cited
+    # nearest-prior-month count instead of failing the take-up gate closed.
+    # The records ride the take-up diagnostics; the gate fails a stale entry
+    # (CMS backfilled the substituted-for month) so the register cannot rot.
+    # Applied once here, before the dense/sparse split, so the injected spec
+    # flows through `target_specs` into the materialized calibration registry
+    # that BOTH the dense (`calibrate`) and sparse (`calibrate_l0_refit`) arms
+    # consume, and into the take-up target table and build manifest.
+    target_registry, medicaid_enrollment_substitutions = (
+        apply_us_medicaid_enrollment_substitutions(target_registry)
+    )
+    # Target-parity contract (launch gate): every administrative target family
+    # the retired us-data/eCPS pipeline calibrated to must be compiled into the
+    # registry or carry a reviewed exclusion (target_parity_manifest.json). Runs
+    # on the full compiled + substituted registry — before the optional
+    # diagnostic JCT skip — so the gate sees the true family surface, and
+    # hard-fails the build on a silently dropped family or a rotted manifest,
+    # exactly like the release input-coverage gate on the export frame.
+    assert_target_parity_manifest_current(registry=target_registry)
+    target_parity_gate = us_release_target_parity_gate(target_registry)
+    if not target_parity_gate.passed:
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"Target parity coverage failed: {failure}"
+                for failure in target_parity_gate.failures
+            )
+        )
+    return (
+        ledger_artifact,
+        target_registry,
+        medicaid_enrollment_substitutions,
+        target_parity_gate,
+    )
+
+
 def _calibrate_fiscal_support(
     target_frame: Frame,
     registry: TargetRegistry,
@@ -8983,49 +9044,17 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # build, not merely a test.
     assert_take_up_contract_current()
     assert_take_up_treatments_consistent()
-    ledger_artifact = load_ledger_consumer_artifact(
-        args.ledger_facts,
-        expected_facts_sha256=args.ledger_facts_sha256,
-        expected_manifest_sha256=args.ledger_manifest_sha256,
-    )
-    target_registry = compile_us_fiscal_target_registry(
-        ledger_artifact.facts,
-        target_period=PERIOD,
+    (
+        ledger_artifact,
+        target_registry,
+        medicaid_enrollment_substitutions,
+        target_parity_gate,
+    ) = _compile_fiscal_release_target_registry(
+        args,
         congressional_district_vintage_crosswalk=(
             congressional_district_vintage_crosswalk
         ),
-        age_targets=args.age_targets,
-        allow_unaged_dollar_targets=args.allow_unaged_dollar_targets,
     )
-    # Reviewed CMS Medicaid enrollment substitutions (microcosm#386): a state
-    # whose point-in-time snapshot is unreported at source ships its cited
-    # nearest-prior-month count instead of failing the take-up gate closed.
-    # The records ride the take-up diagnostics; the gate fails a stale entry
-    # (CMS backfilled the substituted-for month) so the register cannot rot.
-    # Applied once here, before the dense/sparse split, so the injected spec
-    # flows through `target_specs` into the materialized calibration registry
-    # that BOTH the dense (`calibrate`) and sparse (`calibrate_l0_refit`) arms
-    # consume, and into the take-up target table and build manifest.
-    target_registry, medicaid_enrollment_substitutions = (
-        apply_us_medicaid_enrollment_substitutions(target_registry)
-    )
-    # Target-parity contract (launch gate): every administrative target family
-    # the retired us-data/eCPS pipeline calibrated to must be compiled into the
-    # registry or carry a reviewed exclusion (target_parity_manifest.json). Runs
-    # on the full compiled + substituted registry — before the optional
-    # diagnostic JCT skip — so the gate sees the true family surface, and
-    # hard-fails the build on a silently dropped family or a rotted manifest,
-    # exactly like the release input-coverage gate on the export frame.
-    assert_target_parity_manifest_current(registry=target_registry)
-    target_parity_gate = us_release_target_parity_gate(target_registry)
-    if not target_parity_gate.passed:
-        raise RuntimeError(
-            "Release gates failed: "
-            + "; ".join(
-                f"Target parity coverage failed: {failure}"
-                for failure in target_parity_gate.failures
-            )
-        )
     target_specs = target_registry.specs
     active_target_registry = TargetRegistry(target_specs, country="us")
     # SSI take-up wiring resolves as soon as the registry exists (fail-fast,
