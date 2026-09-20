@@ -445,6 +445,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_asec_unemployment_source.py",
         # Qualified WC receipt/amount observations, preserving NIU/under-15 unknowns
         "current_asec_workers_compensation_source.py",
+        # Complete original ASEC amount support, separate from receiving selection.
+        "current_asec_amount_donor.py",
         # Qualified original property donor/recipient branch composition
         "current_property_income_sources.py",
         # Descriptive original component routes and DESIGN support; no model
