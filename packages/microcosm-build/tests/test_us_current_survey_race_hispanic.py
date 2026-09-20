@@ -296,6 +296,43 @@ def test_host_options_preserve_false_defaults_and_disabled_state():
         host.Boundary._race_pure(state)
 
 
+@pytest.mark.parametrize("health", (False, True))
+@pytest.mark.parametrize("sex", (False, True))
+@pytest.mark.parametrize("race", (False, True))
+@pytest.mark.parametrize(
+    "entrypoint,callee",
+    (("run_us_survey_enrichment", "_construct"), ("_construct", "Boundary")),
+)
+def test_integrated_host_preserves_independent_options_and_wc_group(
+    monkeypatch, health, sex, race, entrypoint, callee
+):
+    """Forwarding only: the deliberate stop precedes any source/owner work."""
+    captured = []
+
+    def stop(parent, **kwargs):
+        captured.append((parent, kwargs))
+        raise RuntimeError("stop before source qualification")
+
+    monkeypatch.setattr(host, callee, stop)
+    parent = object()
+    groups = ("workers_compensation",)
+    with pytest.raises(RuntimeError, match="stop before source qualification"):
+        getattr(host, entrypoint)(
+            parent,
+            groups=groups,
+            n_estimators=2,
+            health_completion=health,
+            demographic_inputs=sex,
+            race_hispanic_inputs=race,
+        )
+    assert len(captured) == 1 and captured[0][0] is parent
+    options = captured[0][1]
+    assert options["health_completion"] is health
+    assert options["demographic_inputs"] is sex
+    assert options["race_hispanic_inputs"] is race
+    assert options["groups"] is groups
+
+
 def source_arguments(tmp_path, monkeypatch):
     import test_us_survey_population_preparation as fixture_module
     from test_us_survey_population_preparation import fixture
