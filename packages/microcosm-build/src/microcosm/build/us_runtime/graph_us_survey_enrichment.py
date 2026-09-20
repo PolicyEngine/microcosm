@@ -55,6 +55,7 @@ from . import graph_current_survey_hours as hours_graph
 from . import graph_current_survey_housing as housing_graph
 from . import graph_current_survey_immigration as immigration_graph
 from . import graph_current_survey_predictors as predictor_graph
+from . import graph_current_survey_race_hispanic as race_graph
 from . import graph_current_survey_sex as sex_graph
 from . import graph_current_survey_spm as spm_graph
 
@@ -95,6 +96,8 @@ def _live():
         sex_graph,
         sex_graph.source,
         sex_graph.comparison,
+        race_graph,
+        race_graph.source,
     ):
         for name, item in vars(module).items():
             if type(item) is FunctionType:
@@ -173,6 +176,7 @@ def _live():
     result.append(("spm_configuration", spm_graph.PROTOCOL, spm_graph.source._live()))
     result.append(("immigration_configuration", immigration_graph.configuration()))
     result.append(("sex_configuration", sex_graph.source._live()))
+    result.append(("race_hispanic_configuration", race_graph.source._live()))
     result.append(
         (
             "housing_configuration",
@@ -240,6 +244,17 @@ def _sex_after_edge(spm_enabled, immigration_enabled):
             immigration_graph.ATTACHMENT_TYPE,
         )
     return _immigration_after_edge(spm_enabled)
+
+
+def _race_after_edge(spm_enabled, immigration_enabled, sex_enabled):
+    if sex_enabled:
+        return ArtifactInput(
+            "previous_attachment",
+            sex_graph.ATTACH_NODE,
+            "attachment",
+            sex_graph.ATTACHMENT_TYPE,
+        )
+    return _sex_after_edge(spm_enabled, immigration_enabled)
 
 
 def _spm_configuration(acs_profile, asec_scope_policy, outside_role_placeholder):
@@ -425,12 +440,15 @@ class Boundary:
         immigration_transfer=None,
         health_completion=False,
         demographic_inputs=False,
+        race_hispanic_inputs=False,
     ):
         require(type(demographic_inputs) is bool, "DEMOGRAPHIC_OPTION")
+        require(type(race_hispanic_inputs) is bool, "RACE_HISPANIC_OPTION")
         live = _live()
         require(type(health_completion) is bool, "HEALTH_COMPLETION_OPTION")
         self.health_completion_enabled = health_completion
         self.demographic_inputs = demographic_inputs
+        self.race_hispanic_inputs = race_hispanic_inputs
         self.spm_options = (
             spm_acs_profile,
             spm_asec_scope_policy,
@@ -474,6 +492,15 @@ class Boundary:
             sex_graph.source.seal(self.sex) if self.sex is not None else None
         )
         self.sex_nodes = ()
+        self.race = (
+            race_graph.source.qualify_current_survey_race_hispanic(self.preparation)
+            if race_hispanic_inputs
+            else None
+        )
+        self.race_stamp = (
+            race_graph.source.seal(self.race) if self.race is not None else None
+        )
+        self.race_nodes = ()
         self.health = health_graph.qualify_health_coverage(self.preparation)
         self.health_stamp = health_graph.health_coverage_seal(self.health)
         self.health_completion = (
@@ -574,6 +601,18 @@ class Boundary:
                 ),
             )
             self.nodes = (*self.nodes, *self.sex_nodes)
+        if self.race is not None:
+            self.race_nodes = race_graph.race_hispanic_nodes(
+                self.race,
+                run.population.frame,
+                receiving_version=parent.attach.FILTER_NODE,
+                after=_race_after_edge(
+                    self.spm is not None,
+                    self.immigration_transfer is not None,
+                    self.sex is not None,
+                ),
+            )
+            self.nodes = (*self.nodes, *self.race_nodes)
         self.declaration = tuple(self.nodes)
         self.live = _live()
         require(self.live == live, "QUALIFIER_CALLBACK_CHANGED_IMPLEMENTATION")
@@ -628,6 +667,23 @@ class Boundary:
                 and self.sex_nodes == ()
             ),
             "DEMOGRAPHIC_STATE_CHANGED",
+        )
+
+    def _race_pure(self):
+        require(type(self.race_hispanic_inputs) is bool, "RACE_HISPANIC_OPTION")
+        require(
+            (
+                self.race_hispanic_inputs
+                and self.race is not None
+                and race_graph.source.seal(self.race) == self.race_stamp
+            )
+            or (
+                not self.race_hispanic_inputs
+                and self.race is None
+                and self.race_stamp is None
+                and self.race_nodes == ()
+            ),
+            "RACE_HISPANIC_STATE_CHANGED",
         )
 
     def _immigration_pure(self):
@@ -697,6 +753,7 @@ class Boundary:
 
     def pure(self):
         self._sex_pure()
+        self._race_pure()
         parent._pure_run(self.run, self.parent_entry)
         require(
             parent._run_entry(self.run) is self.parent_entry
@@ -789,6 +846,7 @@ class Boundary:
                 *self.spm_nodes,
                 *self.immigration_nodes,
                 *self.sex_nodes,
+                *self.race_nodes,
             ),
             "BOUNDARY_DECLARATIONS",
         )
@@ -831,6 +889,24 @@ class Boundary:
             ),
             "DEMOGRAPHIC_DECLARATIONS",
         )
+        require(
+            self.race_nodes
+            == (
+                ()
+                if self.race is None
+                else race_graph.race_hispanic_nodes(
+                    self.race,
+                    self.run.population.frame,
+                    receiving_version=parent.attach.FILTER_NODE,
+                    after=_race_after_edge(
+                        self.spm is not None,
+                        self.immigration_transfer is not None,
+                        self.sex is not None,
+                    ),
+                )
+            ),
+            "RACE_HISPANIC_DECLARATIONS",
+        )
 
     def borrow(self):
         require(
@@ -858,6 +934,8 @@ class Boundary:
             self.immigration_transfer.validate()
         if self.sex is not None:
             self.sex.validate()
+        if self.race is not None:
+            self.race.validate()
         self.pure()
 
     def context(self, context):
@@ -940,6 +1018,8 @@ class Boundary:
             self.immigration_transfer.validate()
         if self.sex is not None:
             self.sex.validate()
+        if self.race is not None:
+            self.race.validate()
         self.pure()
 
 
@@ -1141,6 +1221,7 @@ def _construct(
     immigration_transfer=None,
     health_completion=False,
     demographic_inputs=False,
+    race_hispanic_inputs=False,
 ):
     boundary = Boundary(
         run,
@@ -1152,6 +1233,7 @@ def _construct(
         immigration_transfer=immigration_transfer,
         health_completion=health_completion,
         demographic_inputs=demographic_inputs,
+        race_hispanic_inputs=race_hispanic_inputs,
     )
     compiled = compile_graph(
         replace(run.compiled.graph, nodes=(*run.compiled.graph.nodes, *boundary.nodes))
@@ -1217,6 +1299,21 @@ def _construct(
             require_context=boundary.context,
         ):
             require(kernel.ref not in kernels.refs(), "SEX_KERNEL_COLLISION")
+            kernels.register(kernel)
+    if boundary.race is not None:
+        for kernel in race_graph.race_hispanic_kernels(
+            boundary.race,
+            run.population.frame,
+            receiving_version=parent.attach.FILTER_NODE,
+            after=_race_after_edge(
+                boundary.spm is not None,
+                boundary.immigration_transfer is not None,
+                boundary.sex is not None,
+            ),
+            require_current=boundary.pure,
+            require_context=boundary.context,
+        ):
+            require(kernel.ref not in kernels.refs(), "RACE_HISPANIC_KERNEL_COLLISION")
             kernels.register(kernel)
     registry = parent._registry(run.store.codecs, codecs.SourceCodecRegistry())
     store = ContentStore(run.store.root, codecs=registry)
@@ -1407,6 +1504,7 @@ def run_us_survey_enrichment(
     immigration_transfer=None,
     health_completion=False,
     demographic_inputs=False,
+    race_hispanic_inputs=False,
 ):
     """Execute and verify enrichment with optional SPM and realized immigration.
 
@@ -1417,7 +1515,8 @@ def run_us_survey_enrichment(
     Health completion is an explicit development model from original ASEC 2025
     coverage onto original ACS 2024 people; scientific qualification is pending.
     Demographic inputs bind source-qualified nullable sex on originals and copy
-    it to both clones; unknown values remain unknown.
+    it to both clones; unknown values remain unknown. Race/Hispanic inputs have
+    a separate opt-in and preserve unsupported ACS categories as unknown.
     """
     require(resume in ("auto", "require"), "RESUME")
     boundary = _construct(
@@ -1430,6 +1529,7 @@ def run_us_survey_enrichment(
         immigration_transfer=immigration_transfer,
         health_completion=health_completion,
         demographic_inputs=demographic_inputs,
+        race_hispanic_inputs=race_hispanic_inputs,
     )
     observed, stamps = {}, {}
 
@@ -1516,6 +1616,7 @@ def run_us_survey_enrichment(
     spm_ids = {n.id for n in boundary.spm_nodes}
     immigration_ids = {n.id for n in boundary.immigration_nodes}
     sex_ids = {n.id for n in boundary.sex_nodes}
+    race_ids = {n.id for n in boundary.race_nodes}
     group_nodes = {_ids(g)[0]: g for g in boundary.qualified.groups}
     column_nodes = {_ids(g)[1]: g for g in boundary.qualified.groups}
     original = population_ops.Population.from_frame(
@@ -1527,7 +1628,26 @@ def run_us_survey_enrichment(
         if node_id in run.compiled.order:
             current[version] = observed[node_id]
             continue
-        if node_id in sex_ids:
+        if node_id in race_ids:
+            race_result = race_graph.race_hispanic_result(
+                boundary.race,
+                node,
+                parent._loaded_values(boundary, manifest, loaded, node),
+                None if current.get(version) is None else current[version].frame.person,
+            )
+            require(
+                all(
+                    loaded[node_id, name] == payload
+                    for name, payload in race_result.artifacts.items()
+                ),
+                "RACE_HISPANIC_RESULT_ARTIFACT",
+            )
+            expected = (
+                population_ops.Population.from_frame(race_result.frame, node.id)
+                if node.structural is StructuralDelta.CREATE
+                else population_ops.patch(current[version], node, race_result)
+            )
+        elif node_id in sex_ids:
             sex_result = sex_graph.sex_result(
                 boundary.sex,
                 node,
@@ -1793,13 +1913,30 @@ def run_us_survey_enrichment(
                 if boundary.sex is not None
                 else {}
             ),
+            **(
+                {
+                    "race_hispanic": {
+                        "enabled": True,
+                        "fields": list(race_graph.source.OUTPUTS),
+                        "source_evidence_sha256": codec.sha(boundary.race.evidence),
+                        "attachment_sha256": codec.sha(
+                            loaded[race_graph.ATTACH_NODE, "attachment"]
+                        ),
+                        "unsupported_categories": "explicitly nullable; no imputation",
+                    }
+                }
+                if boundary.race is not None
+                else {}
+            ),
             "release_eligible": False,
         }
     )
     output = SurveyEnrichmentRun(
         run,
         observed[
-            sex_graph.ATTACH_NODE
+            race_graph.ATTACH_NODE
+            if boundary.race is not None
+            else sex_graph.ATTACH_NODE
             if boundary.sex is not None
             else immigration_graph.ATTACH_NODE
             if boundary.immigration_transfer is not None

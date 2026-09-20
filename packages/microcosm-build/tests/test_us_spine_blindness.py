@@ -422,7 +422,9 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "policyengine_h5_readback.py",
         # Genuine current sex/allocation projections and visible original/clone binding.
         "current_survey_sex_source.py",
+        "current_survey_race_hispanic_source.py",
         "graph_current_survey_sex.py",
+        "graph_current_survey_race_hispanic.py",
         # Qualified raw ACS INTP/RETP anchors, preserving literal knownness
         "current_acs_income_anchor_source.py",
         # Exact received/paid child-support source observations; no tax treatment
@@ -3614,6 +3616,9 @@ _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
         # Fixed qualified sex/provenance column names and typed artifact maps;
         # no direct source-channel access or population-treatment exemption.
         "graph_current_survey_sex.py",
+        "graph_current_survey_race_hispanic.py",
+        # Fixed literal/flag tables and declared source-key scanner selections.
+        "current_survey_race_hispanic_source.py",
         # Schema-declared entities/columns and typed node/artifact/state maps;
         # Health completion indexes fixed model/feature families and typed
         # artifact histories; direct provenance reads remain guarded.
@@ -3705,6 +3710,8 @@ def _non_owner_source_spine_accesses(
         "current_survey_spm_source.py",
         "graph_current_survey_spm.py",
         "graph_current_survey_sex.py",
+        "graph_current_survey_race_hispanic.py",
+        "current_survey_race_hispanic_source.py",
         "graph_survey_completion.py",
         "graph_current_survey_health_completion.py",
         "current_survey_primary_family.py",
@@ -3772,7 +3779,13 @@ def test_native_spm_source_and_graph_keep_the_scoped_provenance_guard(module):
 
 
 @pytest.mark.parametrize(
-    "module", ["current_survey_sex_source.py", "graph_current_survey_sex.py"]
+    "module",
+    [
+        "current_survey_sex_source.py",
+        "graph_current_survey_sex.py",
+        "current_survey_race_hispanic_source.py",
+        "graph_current_survey_race_hispanic.py",
+    ],
 )
 def test_native_sex_source_and_graph_keep_the_scoped_provenance_guard(module):
     source = (_US_RUNTIME / module).read_text()
