@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import json
 import shutil
+import sys
+from fractions import Fraction
 
 import numpy as np
 import pandas as pd
@@ -399,3 +402,156 @@ def test_actual_current_source_qualifier_preserves_totals_reasons_and_unknownnes
     ).all()
     for entity, original in originals.items():
         pd.testing.assert_frame_equal(before.table(entity), original, check_exact=True)
+
+
+@pytest.fixture(scope="module")
+def full_ss_preparation(tmp_path_factory):
+    root = tmp_path_factory.mktemp("full-ss-source")
+    with pytest.MonkeyPatch.context() as patch:
+        arguments = _social_security_arguments(root, patch, ambiguous=True)
+        request_path = arguments["source_dir"] / "selection-request.json"
+        request = json.loads(request_path.read_bytes())
+        request["fraction"] = [2, 3]
+        request_path.write_text(
+            json.dumps(request, sort_keys=True, separators=(",", ":"))
+        )
+        arguments["fraction"] = Fraction(2, 3)
+        preparation = source.source.prepare_authenticated_survey_population(**arguments)
+        yield preparation, arguments
+
+
+def test_full_ss_retains_original_design_donors_omitted_by_selection(
+    full_ss_preparation,
+):
+    preparation, _ = full_ss_preparation
+    selected = source.qualify_current_social_security(preparation)
+    result = source.qualify_full_current_social_security(preparation)
+    pd.testing.assert_frame_equal(
+        result.selected.person, selected.person, check_exact=True
+    )
+    pd.testing.assert_frame_equal(result.selected.asec_literals, selected.asec_literals)
+    assert result.selected.evidence == selected.evidence
+    assert tuple(result.asec_basis.index) == (105, 106, 107, 108)
+    assert result.asec_basis.index.equals(
+        pd.Index(result.asec_frame.person.person_id, name="person_id")
+    )
+    receiving = set(
+        selected.person.loc[selected.person.source.eq("asec"), "native_person_id"]
+    )
+    assert len(receiving) == 2
+    assert set(result.asec_basis.index) - receiving
+    # Seed41's selected household omits105, a positive resolved report eligible
+    # for the proposed category donor basis, not merely an ambiguous report.
+    assert 105 not in receiving
+    assert result.asec_frame.weights_for("household").kind.value == "design"
+    np.testing.assert_array_equal(
+        result.asec_frame.weights_for("household").values, [2552.12, 100.0]
+    )
+    basis = result.asec_basis
+    assert basis.loc[105, "social_security_disability"] == 12000
+    assert basis.loc[105, "basis_origin"] == "source_reason_total_allocation"
+    assert basis.loc[105, "source_reporting_universe"]
+    assert basis.loc[105, "allocation_origin"] == "publisher_no_allocation"
+    assert basis.loc[107, list(ss.COMPONENTS)].isna().all()
+    assert not basis.loc[107, "allowed_social_security_retirement"]
+    assert basis.loc[[106, 108], "social_security_source_total"].isna().all()
+    assert basis.loc[[106, 108], list(ss.COMPONENTS)].isna().all().all()
+    assert basis.loc[[106, 108], "SS_VAL"].eq("0").all()
+    assert basis.loc[107, "I_SSVAL"] == "15"
+    assert basis.loc[107, "reason_allocation_code"] == 9
+    assert basis.loc[107, "allocation_origin"] == "publisher_allocated"
+    assert not result.evidence["source_admission_issued"]
+    assert not result.evidence["release_eligible"]
+    assert result.evidence["donor_eligibility_selected"] is False
+    before = source.full_social_security_seal(result)
+    result.asec_basis.loc[105, "social_security_disability"] = 0
+    assert source.full_social_security_seal(result) != before
+    fresh = source.qualify_full_current_social_security(preparation)
+    assert fresh.asec_basis.loc[105, "social_security_disability"] == 12000
+
+
+@pytest.mark.parametrize("change", ["mapping", "mapping_type", "dictionary", "columns"])
+def test_full_ss_rejects_changed_mapping_configuration(
+    full_ss_preparation, monkeypatch, change
+):
+    preparation, _ = full_ss_preparation
+    if change == "mapping":
+        monkeypatch.setitem(ss.REASON_COMPONENTS, 1, (1,))
+    elif change == "mapping_type":
+
+        class ChangedMapping(dict):
+            def __getitem__(self, key):
+                return (0,)
+
+        monkeypatch.setattr(
+            ss, "REASON_COMPONENTS", ChangedMapping(ss.REASON_COMPONENTS)
+        )
+    elif change == "dictionary":
+        monkeypatch.setitem(source.DICTIONARY, "sha256", "0" * 64)
+    else:
+        monkeypatch.setattr(source, "READ_COLUMNS", source.READ_COLUMNS[::-1])
+    with pytest.raises(ValueError, match="IMPLEMENTATION_CHANGED"):
+        source.qualify_full_current_social_security(preparation)
+
+
+def test_full_ss_rechecks_detached_result_after_final_owner_io(full_ss_preparation):
+    preparation, _ = full_ss_preparation
+    # Use this before destructive source tests when selected directly. A new
+    # genuine preparation is supplied by the module fixture for this test run.
+    changed = []
+    previous = sys.getprofile()
+
+    def late_change(frame, event, value):
+        if previous is not None:
+            previous(frame, event, value)
+        caller = frame.f_back
+        if (
+            event == "return"
+            and frame.f_code
+            is source.source.AuthenticatedSurveyPopulationPreparation._checked.__code__
+            and caller is not None
+            and caller.f_code is source._qualify_current_social_security.__code__
+            and "result" in caller.f_locals
+        ):
+            caller.f_locals["result"].asec_basis.loc[
+                105, "social_security_disability"
+            ] = 99.0
+            changed.append(True)
+
+    try:
+        sys.setprofile(late_change)
+        with pytest.raises(ValueError, match="FINAL_OWNER_OR_VALUES"):
+            source.qualify_full_current_social_security(preparation)
+    finally:
+        sys.setprofile(previous)
+    assert changed == [True]
+
+
+@pytest.mark.parametrize(
+    "column,old,new", [("RESNSS1", "7", "8"), ("I_SSVAL", "15", "14")]
+)
+def test_full_ss_refuses_changed_literal_source(
+    full_ss_preparation, tmp_path, column, old, new
+):
+    _, arguments = full_ss_preparation
+    # Each destructive literal check gets fresh genuine custody. Restoring file
+    # bytes does not restore ctime and must not revive the preceding owner.
+    preparation = source.source.prepare_authenticated_survey_population(
+        **{**arguments, "snapshot_root": tmp_path}
+    )
+    path = arguments["source_dir"] / "asec/pppub25.csv"
+    original = path.read_bytes()
+    raw = pd.read_csv(path, dtype=str, keep_default_na=False)
+    assert raw[column].eq(old).any()
+    raw.loc[raw[column].eq(old), column] = new
+    try:
+        raw.to_csv(path, index=False)
+        with pytest.raises(ValueError):
+            source.qualify_full_current_social_security(preparation)
+    finally:
+        path.write_bytes(original)
+
+
+def test_full_ss_does_not_accept_detached_projection_or_receipt():
+    with pytest.raises(ValueError, match="PREPARATION_TYPE"):
+        source.qualify_full_current_social_security({"source_authenticated": True})
