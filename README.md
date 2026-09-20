@@ -175,6 +175,12 @@ tools/publish_release.sh releases/<id> --repo-id policyengine/populace-us
 publish CLI posts a release alert to Slack — `#populace-us` or `#populace-uk`,
 chosen from the repo id.
 
+Promotable UK release lines use pointers named `latest-<line>.json`. Publish a
+cut for inspection with `--no-latest --tag-name <cut-tag>`, then promote the
+reviewed cut with `--promote-line <line> --tag-name <cut-tag>`. Promotion moves
+only that line pointer; the UK repository-global `latest.json` remains frozen
+on the June 2023 release.
+
 US exact-k ladder candidates use a tag-only lane. Run
 `tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`
 recorded in `package_result.json`. That command includes `--create-tag`,

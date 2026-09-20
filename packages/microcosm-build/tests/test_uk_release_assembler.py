@@ -22,6 +22,7 @@ from microcosm.build.uk_runtime.release_certification import (
 )
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
 from microcosm.data.contract import validate_release_dir
+from microcosm.data.registry import REGISTRY
 from microcosm.frame import WeightKind
 
 
@@ -67,6 +68,14 @@ def test_uk_release_publisher_labels_come_from_target_contract() -> None:
     }
 
     assert driver._uk_publisher_labels() == expected
+
+
+def test_national_dataset_filename_mirrors_registry() -> None:
+    driver = _load_driver_module()
+
+    assert driver._DATASET_KEY == "microcosm_uk_2024_25"
+    assert driver._DATASET_FILENAME == f"{driver._DATASET_KEY}.h5"
+    assert REGISTRY[("uk", 2025, "compact")].filename == driver._DATASET_FILENAME
 
 
 def _frame(weights: list[float], *, weight_kind: WeightKind):
@@ -330,7 +339,7 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
 
     validate_release_dir(release_dir)
     calibration_path = assembler_inputs["candidate"].with_name(
-        "microcosm_uk_2024_calibration.npz"
+        "microcosm_uk_2024_25_calibration.npz"
     )
     with np.load(calibration_path) as calibration:
         np.testing.assert_array_equal(
@@ -348,6 +357,7 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
 
     build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
     release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["dataset"]["filename"] == driver._DATASET_FILENAME
     assert build_manifest["staging"] == {
         "contract_version": 2,
         "enabled": False,
@@ -362,6 +372,14 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
     }
     assert build_manifest["attempt_id"] == _ATTEMPT_ID
     assert build_manifest["cut_tag"] == _CUT_TAG
+    assert release_manifest["default_datasets"] == {"national": driver._DATASET_KEY}
+    assert release_manifest["artifacts"][driver._DATASET_KEY]["path"] == (
+        driver._DATASET_FILENAME
+    )
+    assert (
+        release_manifest["artifacts"][f"{driver._DATASET_KEY}_calibration"]["path"]
+        == f"{driver._DATASET_KEY}_calibration.npz"
+    )
     assert {entry["revision"] for entry in release_manifest["artifacts"].values()} == {
         _CUT_TAG
     }
@@ -391,6 +409,24 @@ def test_assemble_green_release_dir(assembler_inputs, capsys) -> None:
         "--tag-name",
         _CUT_TAG,
     ]
+    promote_command = shlex.split(summary["promote_command"])
+    assert promote_command == [
+        "uv",
+        "run",
+        "python",
+        "-m",
+        "microcosm.data.publish_cli",
+        str(release_dir),
+        "--repo-id",
+        "policyengine/populace-uk-private",
+        "--artifact-root",
+        str(assembler_inputs["candidate"].parent),
+        "--promote-line",
+        "national",
+        "--tag-name",
+        _CUT_TAG,
+    ]
+    assert "--no-latest" not in promote_command
 
 
 def test_assemble_preserves_successful_version_2_delivery(
@@ -430,6 +466,23 @@ def test_assemble_refuses_candidate_sha_mismatch(assembler_inputs) -> None:
     )
     with pytest.raises(SystemExit, match="candidate bytes"):
         _load_driver_module().main(assembler_inputs["argv"])
+
+
+def test_assemble_refuses_candidate_with_wrong_filename(assembler_inputs) -> None:
+    candidate = assembler_inputs["candidate"]
+    wrongly_named_candidate = candidate.with_name("microcosm_uk_2024.h5")
+    wrongly_named_candidate.write_bytes(candidate.read_bytes())
+    argv = list(assembler_inputs["argv"])
+    argv[argv.index("--candidate-h5") + 1] = str(wrongly_named_candidate)
+
+    with pytest.raises(
+        SystemExit,
+        match=(
+            r"national line's candidate is microcosm_uk_2024_25\.h5 as written by "
+            r"tools/build_uk_rowwise_candidate\.py --release-role national"
+        ),
+    ):
+        _load_driver_module().main(argv)
 
 
 def test_assemble_refuses_unshippable_certification(assembler_inputs) -> None:

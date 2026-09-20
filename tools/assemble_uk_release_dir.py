@@ -34,6 +34,8 @@ _ATTEMPT_PREFIX = "uk-frs-calibration-attempt-"
 _ATTEMPT_SUFFIX = re.compile(r"(?P<timestamp>\d{8}T\d{6}Z)-(?P<uuid>[0-9a-f]{8})")
 _GIT_COMMIT = re.compile(r"[0-9a-f]{40}")
 _REPO_ID = "policyengine/populace-uk-private"
+_DATASET_KEY = "microcosm_uk_2024_25"
+_DATASET_FILENAME = f"{_DATASET_KEY}.h5"
 _RUNTIME_PACKAGES = (
     "python",
     "policyengine-core",
@@ -92,6 +94,13 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _assemble(args: argparse.Namespace) -> dict[str, object]:
+    if args.candidate_h5.name != _DATASET_FILENAME:
+        raise SystemExit(
+            "error: the national line's candidate is "
+            f"{_DATASET_FILENAME} as written by "
+            "tools/build_uk_rowwise_candidate.py --release-role national; "
+            f"--candidate-h5 was {args.candidate_h5.name}"
+        )
     _refuse_non_release_smoke_spine(args.spine_h5)
     certification_bytes = args.certification_json.read_bytes()
     certification = _load_json_bytes(certification_bytes, label="--certification-json")
@@ -235,11 +244,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     cut_tag = _cut_tag(attempt_id, args.cut_tag)
     runtime = _runtime_versions(build_block, dict(args.runtime_version))
     code_pin = _diagnostics_code_pin(diagnostics)
-    candidate_filename = candidate.get("filename")
-    if not isinstance(candidate_filename, str) or not candidate_filename:
-        raise SystemExit("error: certification.candidate.filename must be non-empty")
-    dataset_key = Path(candidate_filename).stem
-    calibration_filename = f"{dataset_key}_calibration.npz"
+    calibration_filename = f"{_DATASET_KEY}_calibration.npz"
     # Nothing is written in place: assembly stages into a private directory,
     # validates there, and only then atomically renames into empty
     # destinations — a late failure can never leave a plausible partial
@@ -311,8 +316,6 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             household_weight=household_weight,
             initial_household_weight=initial_household_weight,
             measured=measured,
-            candidate_filename=candidate_filename,
-            dataset_key=dataset_key,
             cut_tag=cut_tag,
             attempt_id=attempt_id,
             runtime=runtime,
@@ -341,8 +344,6 @@ def _stage_and_finalize(
     household_weight: np.ndarray,
     initial_household_weight: np.ndarray,
     measured: Mapping[str, str],
-    candidate_filename: str,
-    dataset_key: str,
     cut_tag: str,
     attempt_id: str,
     runtime: Mapping[str, str],
@@ -375,7 +376,7 @@ def _stage_and_finalize(
         "build_sha": code_pin[:7],
         "runtime": runtime,
         "dataset": {
-            "filename": candidate_filename,
+            "filename": _DATASET_FILENAME,
             "sha256": measured["candidate"],
         },
         "calibration": {
@@ -442,7 +443,7 @@ def _stage_and_finalize(
             "name": "microcosm-data",
             "version": runtime["microcosm-data"],
         },
-        "default_datasets": {"national": dataset_key},
+        "default_datasets": {"national": _DATASET_KEY},
         "build": {
             "build_id": UK_NATIONAL_RELEASE_ID,
             "built_at": created_at,
@@ -470,10 +471,10 @@ def _stage_and_finalize(
             }
         ],
         "artifacts": {
-            dataset_key: artifact(
-                "microdata", candidate_filename, measured["candidate"]
+            _DATASET_KEY: artifact(
+                "microdata", _DATASET_FILENAME, measured["candidate"]
             ),
-            f"{dataset_key}_calibration": artifact(
+            f"{_DATASET_KEY}_calibration": artifact(
                 "calibration", calibration_filename, calibration_sha
             ),
             **{
@@ -563,6 +564,24 @@ def _stage_and_finalize(
             cut_tag,
         ]
     )
+    promote_command = shlex.join(
+        [
+            "uv",
+            "run",
+            "python",
+            "-m",
+            "microcosm.data.publish_cli",
+            str(destination),
+            "--repo-id",
+            _REPO_ID,
+            "--artifact-root",
+            str(args.candidate_h5.parent),
+            "--promote-line",
+            "national",
+            "--tag-name",
+            cut_tag,
+        ]
+    )
     return {
         "release_id": UK_NATIONAL_RELEASE_ID,
         "release_dir": str(destination),
@@ -585,6 +604,7 @@ def _stage_and_finalize(
         },
         "evidence": evidence_summary,
         "publish_command": publish_command,
+        "promote_command": promote_command,
     }
 
 
