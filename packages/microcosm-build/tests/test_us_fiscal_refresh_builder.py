@@ -4912,6 +4912,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             details={"checked": True},
         ),
     )
+    # The fake frame carries no NSECE attendance stage; the fail-fast refusal
+    # has its own test below.
+    monkeypatch.setattr(
+        builder, "_require_bound_childcare_attendance", lambda frame: None
+    )
 
     monkeypatch.setattr(
         builder,
@@ -7525,6 +7530,7 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
         schema = object()
         weighted_entities = ()
         strata = None
+        metadata = {"upstream_receipt": "preserved"}
 
         def table(self, entity):
             assert entity == "tax_unit"
@@ -7561,7 +7567,9 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
     monkeypatch.setattr(
         builder,
         "Frame",
-        lambda tables, schema, weights, strata: SimpleNamespace(tables=tables),
+        lambda tables, schema, weights, strata, *, metadata=None: SimpleNamespace(
+            tables=tables, metadata=metadata
+        ),
     )
 
     specs = (
@@ -7593,13 +7601,15 @@ def test_aca_source_runtime_uses_bronze_targets_when_available(
         ),
     )
 
-    builder._with_aca_marketplace_source_outputs(
+    result = builder._with_aca_marketplace_source_outputs(
         FakeFrame(),
         specs,
         seed=42,
         simulation=object(),
     )
 
+    # Upstream receipts (e.g. the attendance binding) must survive this stage.
+    assert result.metadata == {"upstream_receipt": "preserved"}
     assert captured["stage"] == builder.US_ACA_MARKETPLACE_STAGE
     assert captured["stop_after"] is None
     target_tables = captured["tables"]
@@ -12295,3 +12305,60 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
     assert len(owner_check_calls) == 5, (
         f"expected 5 owner-resolution sites in _main(), found {len(owner_check_calls)}"
     )
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        ["--childcare-attendance-household-tsv", "household.tsv"],
+        ["--childcare-attendance-calendar-tsv", "calendar.tsv"],
+        ["--childcare-attendance-inherit-outside-domain-baseline"],
+    ],
+)
+def test_attendance_source_cli_requires_paired_inputs(options):
+    builder = _load_builder_module()
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            ["--ledger-facts", "facts.jsonl", "--out", "release", *options]
+        )
+
+
+def test_build_without_attendance_source_is_refused_before_calibration():
+    # No attendance columns and no receipt: what every base without the stage has.
+    frame = SimpleNamespace(
+        table=lambda entity: pd.DataFrame({"person_id": [1], "age": [4]}),
+        metadata={},
+    )
+    with pytest.raises(RuntimeError, match="--childcare-attendance-household-tsv"):
+        _load_builder_module()._require_bound_childcare_attendance(frame)
+
+
+def test_attendance_integrity_is_unconditional_at_final_native_write():
+    """Neither coverage overrides nor omitted TSV flags can skip integrity.
+
+    Pair this ordering contract with the behavioral receipt, row validation,
+    and real native reload tests in test_us_nsece_childcare.py.
+    """
+    import ast
+
+    main = ast.parse(inspect.getsource(_load_builder_module()._main)).body[0]
+    calls = []
+    # Direct body statements prove these checks are outside optional branches.
+    for statement in main.body:
+        value = getattr(statement, "value", None)
+        if isinstance(value, ast.Call):
+            function = value.func
+            name = (
+                function.attr
+                if isinstance(function, ast.Attribute)
+                else getattr(function, "id", None)
+            )
+            calls.append(name)
+    expected = [
+        "assert_childcare_attendance_exportable",
+        "assert_bound_childcare_attendance",
+        "write_dataset",
+        "persist_native_childcare_receipt",
+    ]
+    positions = [calls.index(name) for name in expected]
+    assert positions == list(range(positions[0], positions[0] + 4))

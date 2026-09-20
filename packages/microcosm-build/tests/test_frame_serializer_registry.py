@@ -351,20 +351,41 @@ def _round_trip_fiscal_checkpoint(
         )
 
 
+def _round_trip_childcare_candidate(
+    tmp_path: Path, nullable_case: str
+) -> BooleanRoundTrip:
+    pytest.importorskip("tables")
+    from microcosm.build.us_runtime.childcare_attendance_stage import (
+        _write_childcare_candidate_person_table,
+    )
+
+    source = _dtype_family_table(nullable_case)
+    before = source.copy(deep=True)
+    path = tmp_path / "childcare-candidate.h5"
+    receipt = {"childcare_attendance_stage": {"test_receipt": "preserved"}}
+    # Unrelated frame metadata must never reach the persisted receipt.
+    _write_childcare_candidate_person_table(
+        path, source, {**receipt, "unrelated_metadata": "dropped"}
+    )
+    with pd.HDFStore(path, mode="r") as store:
+        loaded = read_frame_table(store, "person")
+        assert json.loads(store["_childcare_attendance_receipt"].iloc[0]) == receipt
+    return _semantic_observation(source, before, loaded)
+
+
 def _round_trip_us_annual_static_aging(
     tmp_path: Path, nullable_case: str
 ) -> BooleanRoundTrip:
     pytest.importorskip("policyengine_us")
     from microcosm.build.us_annual_static_aging import _write_year
+    from microcosm.frame.materialize import engine_tables
 
     source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     frame = _us_frame(source)
     path = tmp_path / "annual.h5"
     try:
-        _write_year(
-            path, {entity: frame.table(entity) for entity in frame.entities}, 2025
-        )
+        _write_year(path, engine_tables(frame, weighted_entities=("household",)), 2025)
     finally:
         pd.testing.assert_frame_equal(
             source, before, check_exact=True, check_dtype=True
@@ -375,6 +396,7 @@ def _round_trip_us_annual_static_aging(
 
 
 ROUND_TRIP_ADAPTERS: dict[str, RoundTripAdapter] = {
+    "nsece_childcare_native_candidate": _round_trip_childcare_candidate,
     "frame_checkpoint": _round_trip_frame_checkpoint,
     "nullable_us_h5": _round_trip_nullable_us_h5,
     "uk_single_year_h5": _round_trip_uk_single_year,
@@ -453,10 +475,10 @@ def test_registry_classifies_every_writable_production_hdf_site() -> None:
     assert _discover_writable_hdf_sites() == classified
 
 
-def test_registry_has_exactly_nine_unique_frame_table_serializers() -> None:
-    assert len(FRAME_TABLE_SERIALIZERS) == 9
-    assert len({spec.serializer_id for spec in FRAME_TABLE_SERIALIZERS}) == 9
-    assert len({spec.writer.key for spec in FRAME_TABLE_SERIALIZERS}) == 9
+def test_registry_has_exactly_ten_unique_frame_table_serializers() -> None:
+    assert len(FRAME_TABLE_SERIALIZERS) == 10
+    assert len({spec.serializer_id for spec in FRAME_TABLE_SERIALIZERS}) == 10
+    assert len({spec.writer.key for spec in FRAME_TABLE_SERIALIZERS}) == 10
 
 
 def test_round_trip_adapter_registry_exactly_matches_serializer_registry() -> None:

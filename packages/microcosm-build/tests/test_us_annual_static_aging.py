@@ -146,6 +146,67 @@ def test_small_actual_calibration_exports_independent_years(inputs):
     assert receipt["column_series"]["employment_income_before_lsr"] in receipt["totals"]
 
 
+def test_annual_projection_preserves_bound_attendance(inputs):
+    from microcosm.build.us_runtime.childcare_attendance import (
+        US_CHILDCARE_ATTENDANCE_COLUMNS,
+    )
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        ATTENDANCE_RECEIPT_KEY,
+        assert_bound_childcare_attendance,
+        bind_childcare_attendance,
+        write_native_childcare_receipt,
+    )
+    from microcosm.build.us_runtime.l0_refit_export import load_us_frame
+    from microcosm.frame import Frame
+
+    base = inputs["base_h5"]
+    frame = load_us_frame(base)
+    person = frame.table("person")
+    for column, values in zip(
+        US_CHILDCARE_ATTENDANCE_COLUMNS,
+        ([22.0, 0.0, 13.0], [5.0, 0.0, 3.0], [8.0, 0.0, 4.0]),
+        strict=True,
+    ):
+        person[column] = values
+    frame = bind_childcare_attendance(
+        Frame(
+            {e: frame.table(e) for e in frame.entities},
+            frame.schema,
+            {"household": frame.weights_for("household")},
+            metadata={"nsece_childcare_attendance": {"synthetic_fixture": True}},
+        )
+    )
+    with pd.HDFStore(base, "a") as store:
+        put_frame_table(
+            store, "person", person, preferred_format="table", data_columns=True
+        )
+    write_native_childcare_receipt(base, frame.metadata)
+    inputs["base_sha256"] = annual._sha256(base)
+    annual.build_annual_static_aging(**inputs)
+    for year in (2024, 2025, 2026):
+        projected = load_us_frame(inputs["output_dir"] / f"populace_us_{year}.h5")
+        assert_bound_childcare_attendance(projected, require_stage=False)
+        assert (
+            projected.metadata[ATTENDANCE_RECEIPT_KEY]
+            == frame.metadata[ATTENDANCE_RECEIPT_KEY]
+        )
+        pd.testing.assert_frame_equal(
+            projected.table("person")[list(US_CHILDCARE_ATTENDANCE_COLUMNS)],
+            person[list(US_CHILDCARE_ATTENDANCE_COLUMNS)],
+        )
+    # A changed schedule must fail before the annual file is finalized, even
+    # when the supplied receipt itself is valid for the original population.
+    from microcosm.frame.materialize import engine_tables
+
+    tables = engine_tables(frame, weighted_entities=("household",))
+    tables["person"] = tables["person"].copy()
+    tables["person"].loc[0, "childcare_days_per_week"] = 4
+    invalid_output = inputs["output_dir"] / "invalid.h5"
+    with pytest.raises(ValueError, match="differ from the source receipt"):
+        annual._write_year(invalid_output, tables, 2027, frame_metadata=frame.metadata)
+    assert not invalid_output.exists()
+
+
 def test_base_h5_symlink_to_extensionless_cache_blob(inputs):
     base = inputs["base_h5"]
     blob = base.with_name("cached-blob-without-extension")

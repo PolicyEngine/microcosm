@@ -1,0 +1,350 @@
+# Child-care attendance: NSECE source and population integration
+
+Related: [Microcosm #915](https://github.com/PolicyEngine/microcosm/issues/915).
+
+The US fiscal refresh builder can now produce three **person-level** inputs:
+`childcare_attending_days_per_month`, `childcare_days_per_week`, and
+`childcare_hours_per_day`. The source model covers children ages 0–12. It does
+not change PolicyEngine-US defaults. Attendance, subsidy eligibility, provider
+pricing, and benefit receipt are separate concepts.
+
+The build runs `with_us_childcare_attendance_inputs` after the childcare expense
+producer and before release validation. The generated release input contract
+requires all three attendance columns. Licensed local source paths are explicit
+build inputs; CI does not download or redistribute survey records. This PR
+provides build integration and a local population candidate under review; it does
+not publish a replacement population or certify national CCDF spending.
+
+The September 17 candidate was rebuilt from the pinned parent under
+PolicyEngine-US 2.2.1 and Core 3.32.5, after the receipt, builder and bridge
+changes from the second review. Both native loaders verify the new receipt;
+all original values and weights are preserved. The new all-state comparison
+reduces all-zero results from 31 jurisdictions to two (MD and NV). The
+[aggregate experiment](../experiments/us-childcare-attendance/README.md) records
+the current population, sensitivity and model diagnostics. Older 1.819.0 reports
+remain historical; their receipts are not reused under the new runtime.
+
+The latest diagnostic keeps each child's selected donor fixed when varying
+modeled schedules. It flags SD, TN and WV for irregular-care sensitivity, WV for
+one more day, plus an OK day sensitivity of only about $2. The September 16
+flag for IL disappeared when the bridge change moved a few donor draws, so state
+flags are sensitive to single draws. An interval-informed QRF experiment uses the
+measured bounds of incomplete training calendars, but still underpredicts weekly
+hours for observed children with unresolved siblings by 37.7%. All three tested
+completion assumptions fail that subgroup's screens; none is integrated into
+the population candidate.
+
+## Source and mapping
+
+The [2024 NSECE V1 release](https://www.childandfamilydataarchive.org/cfda/archives/cfda/studies/39466/datadocumentation)
+contains household DS5 and calendar DS4 TSVs. Each contains 6,403 households.
+The loader verifies the exact source hashes in `us/childcare_attendance_source.json`
+before parsing. This separate `SourceStageSpec` compatibility resource preserves
+the byte-frozen generation-0 source manifest. It contains declarative operations,
+source pins, income bands, and price-year conventions.
+
+| Field | Meaning |
+| --- | --- |
+| `HH4_METH_CASEID` | One-to-one household/calendar join |
+| `HHC4_AGE_AT_USAGE_X` | Child age in months in the reference week |
+| `HHC4_METH_WEIGHT_X` | Child design weight for donor draws |
+| `HH4_METH_WEIGHT` | Household design weight for sibling dependence |
+| `HH4_MISSING_STATUS_CC_X` | Missing, partial, or complete calendar |
+| `HH4_CHCAL_R_X_Z` | 672 successive 15-minute blocks, starting Monday midnight |
+| `HH4_TYPEOFCARE_AGG_X_Y` | Child/provider care type |
+| `HH4_RPARENT` | Whether respondent care is parental care |
+| `HH4_REGION` | Census region |
+| `HH4_PARWORK_STATUS` | Work status of parents of any under-13 household child; codes -1, 0, 1, 2 |
+| `HH4_METH_QUEXVERSION` | Main, summer/typical-May, or new-school-year instrument |
+| `HH4_ECON_INCOME_ANNUAL` | Published household pretax income for 2023 |
+| `HHC4_NPC_HRSWEEK_TOC1..5_X` | Regular-care weekly hours for the noncalendar bridge |
+
+Regular ECE includes provider types 1–5; type 7 is irregular care. K–8 schooling
+(type 6) is excluded. Certain unpaid-care gap codes count as ECE. Respondent
+care depends on `HH4_RPARENT`; school gap code 68 is classifiable as non-ECE only
+at age six or older. Ambiguous codes remain unknown. A complete parental,
+self-care, or school-only calendar is a measured zero donor. Missing calendars
+never become observed zeros.
+
+Diagnostic `calendar_ece_hours_lower/upper` and `calendar_ece_days_lower/upper`
+retain the definite and possible care in incomplete calendars. For partial
+calendars, code 0 is unresolved because unreported time can be encoded as assumed
+parental care (User Guide HH-334). Wholly missing calendars have uninformative
+bounds. These fields do not populate attendance inputs. Regular-instrument
+summary hours derive from the same calendar and are not independent evidence
+for completing its missing blocks.
+
+Attendance uses the union of classified ECE blocks. Days count days with any
+ECE; hours per day equal weekly ECE hours divided by days. Monthly days use
+`floor(days_per_week * 52 / 12 + 0.5)` (five days becomes 22). This represents a
+typical week, not an observed month or a provider-specific schedule.
+
+## Noncalendar reconstruction and joint transfer
+
+Summer and new-school-year instruments have no calendars. The summer instrument
+refers to a typical May week; this is **not measured summer attendance**. The
+bridge preserves their published regular weekly hours and borrows days and
+irregular hours jointly from ten nearest complete-calendar donors (including all distance ties), using
+log regular hours, matching covariates, and survey weights. Regular-care
+participation must agree. Zero regular hours does not establish zero irregular
+care. Bridged rows are labeled `summary_bridge`, never `complete`. A cell with
+fewer than ten donors widens to the next matching level, so a thin cell cannot
+keep donors however distant their regular hours; the receipt counts children by
+matching level.
+
+The loader accepts only regions 1-4, parent-work codes -1, 0, 1 and 2, and
+non-negative income; any other value, including a negative reserve code, fails
+instead of becoming a matching cell. The pinned files hold no other values.
+`HH4_PARWORK_STATUS` (User's Guide HH-483) records whether all, some or no
+parents of any under-13 household child attended work in the week before the
+interview, and its -1 is "No parents". The ASEC side uses the same last-week
+concept and the same -1 ("no resident parent of an under-13 child"), so an
+employed parent who was absent that week counts as not working in both sources.
+`HH4_ECON_INCOME_ANNUAL` (HH-175) is imputed where unreported, top coded, and
+has a minimum of 0, so the lowest income band holds reported or imputed zeros.
+
+Default matching uses age, Census region, parent work, and household income band.
+The declared sparse-cell hierarchy drops region, then income, then parent work;
+age is always retained. Chosen levels are recorded. Empty support or incompatible
+observations fail; there is no invented full-time schedule.
+
+The imputer draws a complete schedule jointly with child survey weights.
+Observed cells, including observed zeros, constrain matching and are preserved.
+Stable source person IDs keep clones identical and assignments independent of
+row order. The native adapter losslessly encodes integer IDs temporarily.
+A fitted mixture of independent child ranks and a shared household rank models
+sibling dependence while preserving each child's conditional donor distribution.
+It is fitted on youngest sibling pairs in fully observed households using
+household weights and evaluated with household-separated folds.
+The same rank also couples days and hours. The expanded validation therefore
+integrates the actual weighted donor distributions to test joint day/hour
+moments, correlations, and every child's contribution to totals in households
+with three or more children. Its provisional screens currently fail; matching
+the average participation rate does not qualify this household model.
+
+The September 16 [household-size experiment](../experiments/us-childcare-attendance/README.md)
+tested one additional predictor: all rostered under-13 children, capped at three.
+The challenger improves larger-family mean days/hours on a separately reserved
+internal partition, but still fails 8 of 15 joint-schedule screens and has much
+sparser donor support. It remains diagnostic-only; the build still uses the
+four matching fields above. Complete-household evaluation also selects children
+with lower observed attendance than children whose siblings have unresolved
+calendars. That selection is a separate limitation, not evidence that all
+population attendance should simply be scaled downward. The survey had already
+informed development, so the reserved comparison is not external validation.
+
+A subsequent diagnostic model partially pools sparse cells and fits measured
+sibling participation, days, and hours jointly. Its exploratory population-moment
+fit passes 13 of 15 original household screens. The remaining two hours screens
+require incompatible joint moments under its predicted marginal distributions;
+changing sibling dependence alone cannot fix both. All 18 observed-child checks
+are also reported, including three failures for children with unresolved siblings
+(hours underpredicted by 40.7%). This remains experimental, has no production
+source/target integration, and does not change population attendance values.
+See the [plans and full comparison](../experiments/us-childcare-attendance/README.md)
+for source-selection limits and reproducible commands. All inspected survey
+partitions now count as development evidence.
+
+Two further diagnostics add roster composition or use `microcosm.fit`'s canonical
+weighted QRF with common household predictors. Composition reduces household
+screen failures to one but worsens the unresolved-sibling hours error to −42.8%.
+QRF closely matches overall means while still underpredicting that subgroup's
+hours by 36.9%, so it was not advanced to joint/production integration. Both
+remain experimental; neither relaxes the selection or transport assumptions.
+
+## ASEC target harmonization
+
+`harmonize_asec_childcare_predictors` resolves `PEPAR1` and `PEPAR2` against
+`A_LINENO` within physical households. It counts measured last-week work among
+parents of any under-13 household child, matching the NSECE unit. Unrelated
+working adults do not become parents. Dangling parent pointers fail.
+Missing household source identities, blank IDs, stringified nulls, and unresolved
+person-to-household links fail before shared ranks are assigned. Unrelated
+households must never acquire one shared `"nan"` identity.
+
+Regions derive from the shared Census state mapping. Household income is the
+sum of raw `PTOTVAL`, expressed in 2023 dollars using annual CPI-U. The pinned
+BuildP parent omits raw income for its 2022/2023 source cohorts. The optional
+ASEC cache recovers a temporary income array from the existing pinned Census
+archives, joining exact 22-digit `PERIDNUM` plus source year and checking raw
+age, line number, and any already observed income. Original population columns,
+including raw missingness, remain unchanged. No downloader runs inside the stage.
+
+## Build and reproduction
+
+Obtain the two ICPSR TSVs under the archive's terms and the pinned ASEC CSVs in
+`education_assistance_source.py` (its existing fetch helper verifies them).
+Run the complete local candidate and source diagnostics:
+
+```bash
+uv sync --all-packages --locked --extra us
+uv run python tools/prepare_us_childcare_attendance.py \
+  --household-tsv /local/39466-0005-Data.tsv \
+  --calendar-tsv /local/39466-0004-Data.tsv \
+  --asec-population-h5 /local/populace_us_2024.h5 \
+  --population-sha256 48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e \
+  --asec-source-cache /local/asec \
+  --production-stage --extended-assessment \
+  --inherit-outside-domain-baseline \
+  --output-checkpoint /local/attendance-checkpoint.h5 \
+  --output-native-h5 /local/attendance-candidate.h5 \
+  --report /local/preparation.json
+```
+
+All output paths must be new. The checkpoint retains per-cell provenance,
+matching levels, source and parent receipts, weights, strata, and mass history.
+Native export adds only the three inputs and a receipt, reloads the result, and
+verifies every original entity column, household weight, and time period.
+Code hashes and environment versions accompany the aggregate preparation report.
+
+The receipt binds the source hashes, contract, recipe code, runtime versions,
+seed, matching/bridge settings, fitted dependence, and outside-domain policy to
+each person's ID, household link, age, and three attendance values. Both native
+US loaders and the fiscal builder's `--base-h5` loader restore and check it. The
+builder's Social Security and capital-gains repairs preserve that metadata even
+when no rescaling is needed, so a prepared candidate can reach the attendance
+reuse check without losing its receipt. A
+missing or altered receipt fails at load. Recipe code and runtime versions are
+compared when a stage binds and when the fiscal build exports, not at read-only
+load, so a released file stays readable as a reference after a dependency bump.
+Changing seed or settings requires rebuilding from the original parent. An
+identical rerun verifies and reuses the existing values. A production-stage
+input with existing under-13 attendance and no production receipt is rejected,
+including all-zero columns; use the original unmodified parent. The lower-level
+observed-cell imputer remains available for separately sourced observations.
+
+Calibration weights and row selection/order may change without invalidating
+retained people. Changed IDs, membership, ages or attendance require a new source
+execution. The final fiscal export checks every row for completeness, bounds,
+integral monthly days, coherent zero schedules, and its source binding before
+writing. Generic coverage overrides cannot waive this check. The written native
+file receives the receipt and is reloaded and checked before source evidence is
+reported. The receipt key holds only the attendance context and binding, never
+other frame metadata, and adding it does not rewrite any entity table. The L0
+refit export carries the receipt forward, as do
+[annual static-aging exports](us-annual-static-aging.md), which retain and check
+the original ages and attendance. Private per-person hashes stay in local checkpoints/H5; public reports
+contain only aggregate receipt summaries. The private inventory is a sequence
+of ID/hash pairs: population-sized dictionaries cause quadratic traversal in
+the Frame metadata container, which is intended for small mappings. These hashes detect accidental stale
+or modified artifacts; they are not signatures or publication authorization.
+
+Supply the same source inputs to the normal fiscal build using
+`--childcare-attendance-household-tsv`, `--childcare-attendance-calendar-tsv`,
+`--childcare-attendance-asec-cache`, and
+`--childcare-attendance-inherit-outside-domain-baseline` alongside its usual flags.
+Source receipts enter the fiscal source-coverage report. The frozen pool ABI
+continues to describe the earlier pool simulation; attendance is supplied by this
+subsequent fiscal-build stage and enforced by the final release input contract.
+Existing release input
+gates still apply; a build without required attendance inputs cannot substitute
+an engine default for a persisted input. A fiscal build given neither the TSV
+flags nor bound attendance is refused before calibration, and the
+exact-k ladder wrapper forwards these inputs from an optional top-level
+`childcare_attendance` object in its existing schema-v1 configuration:
+
+```json
+{
+  "childcare_attendance": {
+    "household_tsv": "/local/39466-0005-Data.tsv",
+    "calendar_tsv": "/local/39466-0004-Data.tsv",
+    "asec_source_cache": "/local/asec",
+    "inherit_outside_domain_baseline": true
+  }
+}
+```
+
+Add this object alongside `pool`, `ladder`, `targets`, `calibration`, and
+`release`; it is not a complete launcher configuration. Relative paths resolve
+against the config file. Both TSVs and an explicit boolean outside-domain policy
+are required when the object is present; the ASEC cache is optional. The launcher
+checks the TSVs against the packaged source hashes before invoking the builder,
+and the source stage checks them again when loading. Omit the object only when
+the input already carries attendance accepted by the production receipt checks.
+This wiring does not qualify a new survey origin or replace the full fiscal
+build and population validation.
+
+Unknown values outside ages 0–12 stay null in the source model. The explicit
+outside-domain export policy fills only these missing cells with the pinned
+engine's existing baseline and labels them `inherited_engine_baseline_outside_age_0_12`.
+This permits an attendance-only candidate without asserting observed
+nonattendance for teens or disability-related older-child care. Observed older
+values are preserved; unresolved under-13 values always fail export.
+
+Compare every state model against the exact parent:
+
+```bash
+uv run python tools/validate_us_childcare_population.py \
+  --parent-h5 /local/populace_us_2024.h5 \
+  --parent-sha256 48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e \
+  --candidate-checkpoint /local/attendance-checkpoint.h5 \
+  --year 2026 --report /local/population-comparison.json
+```
+
+Both arms use fixed source ages and incomes without aging or uprating. Direct
+state subsidy variables avoid conflating attendance with the separate household
+aggregation issue [PolicyEngine-US #9405](https://github.com/PolicyEngine/policyengine-us/issues/9405).
+Outputs describe potential modeled benefits, not caseload or spending estimates.
+
+Run the separate noncalendar assumption stress test with the same parent and
+source files:
+
+```bash
+uv run python tools/validate_us_childcare_sensitivity.py \
+  --parent-h5 /local/populace_us_2024.h5 \
+  --parent-sha256 48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e \
+  --household-tsv /local/39466-0005-Data.tsv \
+  --calendar-tsv /local/39466-0004-Data.tsv \
+  --asec-source-cache /local/asec --seed 915 \
+  --candidate-checkpoint /local/attendance-checkpoint.h5 \
+  --year 2026 --report /local/transport-sensitivity.json
+```
+
+The alternatives remove modeled irregular hours or shift modeled attended days
+by one in either direction, subject to hours/day feasibility. Each preserves
+measured regular hours. All arms retain the same donor identities and population
+weights. Candidate donor labels must match the original donor values; measured
+recipient cells and measured-calendar donors remain unchanged. Inconsistent
+lineage or observed constraints cause the comparison to fail. Without an explicit
+checkpoint, the tool draws the baseline once before applying paired changes.
+The older reports re-sorted and transferred modified donors at fixed random ranks;
+those reports include donor reassignment as well as schedule changes. Both are
+assumption stress tests, not confidence intervals. The
+[declared diagnostic screens](../experiments/us-childcare-attendance/review-validation-criteria.txt)
+flag national changes above 10% or state changes above 20% against the candidate,
+and separately assess sibling schedule distributions. They were written before
+the expanded runs, after seeing earlier development diagnostics, and require
+review rather than serving as automatic release acceptance.
+
+## Validation and limits
+
+See [the aggregate experiment](../experiments/us-childcare-attendance/README.md).
+Diagnostics include five-fold household cross-validation, instrument selection,
+income/age/work/region comparisons, masked-calendar reconstruction, sibling joint
+attendance, full target support, and all-state benefit comparisons. Development
+used these diagnostics; they are not an untouched external acceptance sample.
+
+`tools/validate_us_childcare_intervals.py` evaluates a separate training-only
+experiment. It conditions a QRF/empirical schedule distribution on incomplete
+calendars' bounds, divides each child's design weight over eight modeled rows,
+and refits once. Whole evaluation households are excluded from initial fitting,
+completion and refitting. Unsupported intervals stay unknown. Modeled rows carry
+`interval_model` status and require explicit experimental opt-in; they are never
+scored as observations. Lower- and higher-hours tilts expose sensitivity to the
+unidentified coarsening assumption. All arms retain the original subgroup screens
+and fail three of 18; this experiment does not alter the production matcher.
+
+Calendar selection remains unidentifiable for excluded ambiguous/partial cases.
+Conditional matching assumes their schedules resemble supported children with
+similar covariates. Bridged schedules are modeled, despite observed regular hours.
+Source weights and good predictive means do not establish national validity.
+Provider-specific schedules, true summer care, and older-child attendance need
+additional evidence. Attendance alone cannot fix other missing CCDF inputs.
+The reports retain `production_ready: false` to distinguish this candidate from
+a calibrated, independently reviewed and published population release.
+
+CI uses synthetic records only. Tests cover survey parsing, unknown/zero
+separation, weighted joint draws, observed-cell and clone preservation, parent
+links, verified income joins, noncalendar reconstruction, sibling ranks, build
+orchestration, and native engine export. New runtime modules are classified in
+the existing inventory and remain subject to the full source-spine AST guard.

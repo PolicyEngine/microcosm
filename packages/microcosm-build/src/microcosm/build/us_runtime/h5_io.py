@@ -948,6 +948,12 @@ def load_legacy_calibrated_us_h5(path: str | Path) -> Frame:
         },
     )
     assert_h5_unchanged(path, sha256, consumer=consumer)
+    from microcosm.build.us_runtime.childcare_attendance_receipt import (
+        restore_native_childcare_receipt,
+    )
+
+    frame = restore_native_childcare_receipt(path, frame)
+    assert_h5_unchanged(path, sha256, consumer=consumer)
     refuse_denied_frame(frame, consumer=consumer)
     return canonicalize_frame_string_dtypes(
         frame,

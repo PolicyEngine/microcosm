@@ -222,8 +222,10 @@ def test_incumbent_and_target_surface_pins_fail_closed(
         )
 
 
+@pytest.mark.parametrize("inherit_baseline", [None, False, True])
 def test_launcher_arguments_are_accepted_by_the_house_builder_parser(
     tmp_path: Path,
+    inherit_baseline: bool | None,
 ) -> None:
     launcher = _launcher_module()
     payload = _config_payload(
@@ -232,6 +234,13 @@ def test_launcher_arguments_are_accepted_by_the_house_builder_parser(
     )
     payload["targets"]["ssi_take_up_prior_weight_basis"] = "ssi.json"
     payload["targets"]["ssi_take_up_prior_weight_basis_sha256"] = "1" * 64
+    if inherit_baseline is not None:
+        payload["childcare_attendance"] = {
+            "household_tsv": "household.tsv",
+            "calendar_tsv": str(tmp_path / "calendar.tsv"),
+            "asec_source_cache": "asec",
+            "inherit_outside_domain_baseline": inherit_baseline,
+        }
     config = launcher._read_config(_write_config(tmp_path, payload))
 
     argv = launcher._builder_argv(
@@ -249,6 +258,124 @@ def test_launcher_arguments_are_accepted_by_the_house_builder_parser(
     assert parsed.no_staging is True
     assert parsed.ssi_take_up_prior_weight_basis == tmp_path / "ssi.json"
     assert parsed.ssi_take_up_prior_weight_basis_sha256 == "1" * 64
+    if inherit_baseline is None:
+        assert parsed.childcare_attendance_household_tsv is None
+        assert parsed.childcare_attendance_calendar_tsv is None
+        assert parsed.childcare_attendance_asec_cache is None
+        assert parsed.childcare_attendance_inherit_outside_domain_baseline is False
+    else:
+        assert parsed.childcare_attendance_household_tsv == tmp_path / "household.tsv"
+        assert parsed.childcare_attendance_calendar_tsv == tmp_path / "calendar.tsv"
+        assert parsed.childcare_attendance_asec_cache == tmp_path / "asec"
+        assert (
+            parsed.childcare_attendance_inherit_outside_domain_baseline
+            is inherit_baseline
+        )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        None,
+        {},
+        {"household_tsv": "household.tsv"},
+        {"calendar_tsv": "calendar.tsv"},
+        {
+            "household_tsv": "h",
+            "calendar_tsv": "c",
+            "inherit_outside_domain_baseline": "false",
+        },
+        {
+            "household_tsv": "h",
+            "calendar_tsv": "c",
+            "inherit_outside_domain_baseline": 1,
+        },
+        {
+            "household_tsv": "h",
+            "calendar_tsv": "c",
+            "inherit_outside_domain_baseline": True,
+            "asec_source_cache": "",
+        },
+        {
+            "household_tsv": "h",
+            "calendar_tsv": "c",
+            "inherit_outside_domain_baseline": True,
+            "unknown": True,
+        },
+    ],
+)
+def test_attendance_config_rejects_incomplete_or_ambiguous_inputs(tmp_path, source):
+    payload = _config_payload()
+    payload["childcare_attendance"] = source
+    with pytest.raises(ValueError, match="childcare_attendance"):
+        _launcher_module()._read_config(_write_config(tmp_path, payload))
+
+
+@pytest.mark.parametrize("bad_source", [None, "household", "calendar", "cache"])
+def test_attendance_source_pins_are_checked_before_the_builder(
+    tmp_path, monkeypatch, bad_source
+):
+    from microcosm.build.us_runtime import childcare_attendance
+
+    launcher = _launcher_module()
+    (tmp_path / "ledger").mkdir()
+    incumbent = tmp_path / "incumbent.json"
+    incumbent.write_text(json.dumps({"target_surface": {"sha256": "e" * 64}}))
+    household = tmp_path / "household.tsv"
+    calendar = tmp_path / "calendar.tsv"
+    household.write_text("synthetic household fixture")
+    calendar.write_text("synthetic calendar fixture")
+    # Licensed source bytes stay out of CI; the real contract is pinned in
+    # test_source_stage_contract_pins_outputs_and_assets.
+    pins = {"DS5": _sha256(household), "DS4": _sha256(calendar)}
+    monkeypatch.setattr(
+        childcare_attendance,
+        "childcare_attendance_contract",
+        lambda: {"artifacts": [{"dataset": k, "sha256": v} for k, v in pins.items()]},
+    )
+    payload = _config_payload()
+    payload["targets"]["incumbent_diagnostics_sha256"] = _sha256(incumbent)
+    payload["childcare_attendance"] = {
+        "household_tsv": "household.tsv",
+        "calendar_tsv": "calendar.tsv",
+        "inherit_outside_domain_baseline": True,
+    }
+    if bad_source in ("household", "calendar"):
+        (tmp_path / f"{bad_source}.tsv").write_text("changed after pinning")
+    if bad_source == "cache":
+        payload["childcare_attendance"]["asec_source_cache"] = "missing-cache"
+    monkeypatch.setattr(
+        launcher,
+        "load_simulation_ready_us_multispine_pool_manifest",
+        lambda *a, **kw: {
+            "publication_run_id": "fixture-publication",
+            "agreement_gate": {"passed": True},
+            "provenance_counts": {"household": {"rows": 8}},
+        },
+    )
+    calls = []
+
+    def builder(argv):
+        parsed = launcher.fiscal_release._parse_args(argv)
+        assert parsed.childcare_attendance_household_tsv == household
+        assert parsed.childcare_attendance_calendar_tsv == calendar
+        assert parsed.childcare_attendance_asec_cache is None
+        assert parsed.childcare_attendance_inherit_outside_domain_baseline
+        calls.append(argv)
+
+    kwargs = dict(
+        pool_manifest=tmp_path / "pool.manifest.json",
+        config_path=_write_config(tmp_path, payload),
+        out=tmp_path / "out",
+        release_builder=builder,
+    )
+    if bad_source is None:
+        launcher.launch(**kwargs)
+        assert len(calls) == 1
+    else:
+        with pytest.raises(ValueError, match="SHA-256 mismatch|must be a directory"):
+            launcher.launch(**kwargs)
+        assert calls == []
 
 
 def test_launcher_delegates_to_house_builder_and_never_publishes(

@@ -109,6 +109,15 @@ to the private repository; when you run `tools/build_uk_rowwise_candidate.py`
 yourself, pass `--staging-local-only` unless the operator asked for a staged
 upload.
 
+US fiscal builds require the NSECE childcare-attendance stage
+(`--childcare-attendance-household-tsv`, `--childcare-attendance-calendar-tsv`,
+`--childcare-attendance-inherit-outside-domain-baseline`): attendance is a
+required, non-waivable export input bound by a per-person receipt, a build
+without it is refused before calibration. The exact-k launcher accepts the same
+inputs through an optional `childcare_attendance` configuration object, checks
+the packaged survey pins, and forwards them to the fiscal builder. See
+[the attendance runbook](docs/us-childcare-attendance.md).
+
 The US native-SPM-role source-enrichment lane is a separate release type:
 `tools/build_us_spm_role_enrichment.py` creates a local candidate from the exact
 reviewed BuildP parent, preserving original variables and inherited schema-5

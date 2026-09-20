@@ -1,0 +1,194 @@
+{
+  "design": "whole-household masked-calendar test; regular weekly hours remain observed",
+  "split_seeds": [
+    161803,
+    1,
+    2,
+    3,
+    4
+  ],
+  "source": {
+    "study": "ICPSR39466.v1",
+    "source_year": 2024,
+    "measurement": "union_of_ECE_calendar_blocks_excluding_K8",
+    "monthly_conversion": "floor(days_per_week * 52 / 12 + 0.5)",
+    "national_representativeness_validated": false,
+    "calendar_bounds": {
+      "source": "NSECE 2024 Household User Guide HH-334, HH-565--568",
+      "meaning": "definite and possible ECE blocks; not imputations or confidence intervals",
+      "partial_calendar_zero": "unresolved assumed parental care, not observed nonattendance",
+      "missing_calendar": "uninformative 0--168 hours and 0--7 days"
+    },
+    "artifacts": [
+      {
+        "sha256": "b42c69874de627273cdf698e4b8cdd39d3d4fdfef7d1295c239772cbc4e6c5a2",
+        "size_bytes": 122764947
+      },
+      {
+        "sha256": "c2e04a7a3eb6e187dc6d4496be1de77508354e05c6249725ae072f8a5f2ce18e",
+        "size_bytes": 269542239
+      }
+    ]
+  },
+  "code_sha256": {
+    "previous_bridge": "70a7edea8b28c6da21ff4fa9bb220766a3e6cd714926684af29bdba1a8421b0a",
+    "widened_bridge": "517b3c3ae02e2316b028fd15bc60a090e7962d716d46b80e3e73067f08d5ff29",
+    "diagnostic": "036aa608e71a30cdd6f0d4eec5db699b3ebc0eb15501ba3384d90daa6035af72"
+  },
+  "splits": [
+    {
+      "split_seed": 161803,
+      "arm": "previous",
+      "children": 1581,
+      "mean_days_error": 0.07555584784203043,
+      "mean_weekly_hours_error": 0.06442258174952367,
+      "mean_absolute_days_error": 0.8194388977061153,
+      "mean_absolute_days_error_regular_care": 1.416307757193369,
+      "mean_absolute_weekly_hours_error": 2.472029687416687,
+      "mean_absolute_hours_per_day_error_regular_care": 2.6749171113103776,
+      "share_over_12_hours_per_day": 0.06433796427135285,
+      "measured_share_over_12_hours_per_day": 0.04767127717601749
+    },
+    {
+      "split_seed": 161803,
+      "arm": "widened",
+      "children": 1581,
+      "mean_days_error": 0.08338954399965659,
+      "mean_weekly_hours_error": 0.7881707582301872,
+      "mean_absolute_days_error": 0.8178912727204896,
+      "mean_absolute_days_error_regular_care": 1.262449587041967,
+      "mean_absolute_weekly_hours_error": 3.1937517487302904,
+      "mean_absolute_hours_per_day_error_regular_care": 2.325289937528589,
+      "share_over_12_hours_per_day": 0.06917085310447134,
+      "measured_share_over_12_hours_per_day": 0.04767127717601749
+    },
+    {
+      "split_seed": 1,
+      "arm": "previous",
+      "children": 1498,
+      "mean_days_error": 0.05901730629950177,
+      "mean_weekly_hours_error": 0.25523504667880387,
+      "mean_absolute_days_error": 0.9846677194359647,
+      "mean_absolute_days_error_regular_care": 1.508455957977742,
+      "mean_absolute_weekly_hours_error": 2.637295564533044,
+      "mean_absolute_hours_per_day_error_regular_care": 3.2668024843376298,
+      "share_over_12_hours_per_day": 0.07809780461481491,
+      "measured_share_over_12_hours_per_day": 0.03668644349178023
+    },
+    {
+      "split_seed": 1,
+      "arm": "widened",
+      "children": 1498,
+      "mean_days_error": 0.07007170464299348,
+      "mean_weekly_hours_error": 0.4971809136961676,
+      "mean_absolute_days_error": 0.8516253813775049,
+      "mean_absolute_days_error_regular_care": 1.1339477880687852,
+      "mean_absolute_weekly_hours_error": 2.8984253467086747,
+      "mean_absolute_hours_per_day_error_regular_care": 2.161694403089898,
+      "share_over_12_hours_per_day": 0.06953668955621194,
+      "measured_share_over_12_hours_per_day": 0.03668644349178023
+    },
+    {
+      "split_seed": 2,
+      "arm": "previous",
+      "children": 1531,
+      "mean_days_error": 0.06827414596760045,
+      "mean_weekly_hours_error": 1.2760359374239916,
+      "mean_absolute_days_error": 0.9546795851053014,
+      "mean_absolute_days_error_regular_care": 1.5626003934801598,
+      "mean_absolute_weekly_hours_error": 3.9925135878772293,
+      "mean_absolute_hours_per_day_error_regular_care": 3.1923033168138097,
+      "share_over_12_hours_per_day": 0.09415047341304701,
+      "measured_share_over_12_hours_per_day": 0.040057325298559814
+    },
+    {
+      "split_seed": 2,
+      "arm": "widened",
+      "children": 1531,
+      "mean_days_error": 0.08053525489098147,
+      "mean_weekly_hours_error": 0.5300039894078206,
+      "mean_absolute_days_error": 0.7919407627366568,
+      "mean_absolute_days_error_regular_care": 1.1466730847700461,
+      "mean_absolute_weekly_hours_error": 3.2895767695540394,
+      "mean_absolute_hours_per_day_error_regular_care": 2.052681509836228,
+      "share_over_12_hours_per_day": 0.05670737293048663,
+      "measured_share_over_12_hours_per_day": 0.040057325298559814
+    },
+    {
+      "split_seed": 3,
+      "arm": "previous",
+      "children": 1537,
+      "mean_days_error": 0.0756790816380128,
+      "mean_weekly_hours_error": -0.39455595017490974,
+      "mean_absolute_days_error": 1.01617397353552,
+      "mean_absolute_days_error_regular_care": 1.6219769697494701,
+      "mean_absolute_weekly_hours_error": 3.740383729412565,
+      "mean_absolute_hours_per_day_error_regular_care": 3.112855735923538,
+      "share_over_12_hours_per_day": 0.08215998229723588,
+      "measured_share_over_12_hours_per_day": 0.05475743603089253
+    },
+    {
+      "split_seed": 3,
+      "arm": "widened",
+      "children": 1537,
+      "mean_days_error": 0.07374619811894458,
+      "mean_weekly_hours_error": -0.7280626961939485,
+      "mean_absolute_days_error": 0.925768148568642,
+      "mean_absolute_days_error_regular_care": 1.425660250964262,
+      "mean_absolute_weekly_hours_error": 3.3817656077824663,
+      "mean_absolute_hours_per_day_error_regular_care": 2.7577762584587044,
+      "share_over_12_hours_per_day": 0.0541435371411225,
+      "measured_share_over_12_hours_per_day": 0.05475743603089253
+    },
+    {
+      "split_seed": 4,
+      "arm": "previous",
+      "children": 1438,
+      "mean_days_error": 0.10673552047128448,
+      "mean_weekly_hours_error": 0.20305407843145099,
+      "mean_absolute_days_error": 0.8338693326761498,
+      "mean_absolute_days_error_regular_care": 1.2702457836361305,
+      "mean_absolute_weekly_hours_error": 2.5668019738013648,
+      "mean_absolute_hours_per_day_error_regular_care": 2.1150567518211094,
+      "share_over_12_hours_per_day": 0.04550264288404825,
+      "measured_share_over_12_hours_per_day": 0.033240843787941086
+    },
+    {
+      "split_seed": 4,
+      "arm": "widened",
+      "children": 1438,
+      "mean_days_error": 0.0700161012601131,
+      "mean_weekly_hours_error": 0.20505374309392338,
+      "mean_absolute_days_error": 0.7668603978885158,
+      "mean_absolute_days_error_regular_care": 1.1066075269633475,
+      "mean_absolute_weekly_hours_error": 2.554031477778747,
+      "mean_absolute_hours_per_day_error_regular_care": 2.0714607823879065,
+      "share_over_12_hours_per_day": 0.033934274927228544,
+      "measured_share_over_12_hours_per_day": 0.033240843787941086
+    }
+  ],
+  "mean_over_splits": {
+    "previous": {
+      "mean_days_error": 0.07705238044368598,
+      "mean_weekly_hours_error": 0.280838338821772,
+      "mean_absolute_days_error": 0.9217659016918102,
+      "mean_absolute_days_error_regular_care": 1.4759173724073742,
+      "mean_absolute_weekly_hours_error": 3.081804908608178,
+      "mean_absolute_hours_per_day_error_regular_care": 2.872387080041293,
+      "share_over_12_hours_per_day": 0.07284977349609978,
+      "measured_share_over_12_hours_per_day": 0.04248266515703823
+    },
+    "widened": {
+      "mean_days_error": 0.07555176058253785,
+      "mean_weekly_hours_error": 0.2584693416468301,
+      "mean_absolute_days_error": 0.8308171926583618,
+      "mean_absolute_days_error_regular_care": 1.2150676475616815,
+      "mean_absolute_weekly_hours_error": 3.0635101901108435,
+      "mean_absolute_hours_per_day_error_regular_care": 2.273780578260266,
+      "share_over_12_hours_per_day": 0.05669854553190419,
+      "measured_share_over_12_hours_per_day": 0.04248266515703823
+    }
+  },
+  "production_ready": false,
+  "interpretation": "Development evidence on calendars that exist; not a test of the unobserved days or irregular care of the noncalendar instruments."
+}
