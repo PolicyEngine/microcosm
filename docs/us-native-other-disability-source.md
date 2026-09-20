@@ -5,7 +5,8 @@ CPS ASEC disability income slots to one non-workers-compensation leaf. It adds
 no raw reader of its own: it borrows
 [`current_asec_retirement_detail_source`](../packages/microcosm-build/src/microcosm/build/us_runtime/current_asec_retirement_detail_source.py),
 which already qualifies `DIS_VAL1/2`, `DIS_SC1/2`, `DIS_YN` and their allocation
-and topcode literals against the retained money owner. The public entry point
+and topcode literals, and cross-checks the two retained `DIS_VAL` amounts — and
+only those — against the authenticated money owner's own bits. The public entry point
 calls that owner's qualifier, so the single member capture and its
 requalification happen there and are not repeated or replaced here; the pure
 `compose_other_disability` and `project_other_disability` entry points read no
@@ -33,7 +34,7 @@ outside this family's provenance.
 
 The archived arithmetic returned a number for every row whose four literals
 it could read, and never an unknown; a row that was never asked the question
-simply read as zero. This adapter does not. Each slot is classified into one closed vocabulary
+read whatever its literals happened to hold, usually but not always zero. This adapter does not. Each slot is classified into one closed vocabulary
 (`SLOT_KINDS`); only the first four resolve, and the rest leave the person
 unknown:
 
@@ -42,10 +43,15 @@ unknown:
 | `reported_source_slot` | the published amount | yes receipt, readable non-workers-compensation code, nonzero amount |
 | `excluded_workers_compensation` | 0 | yes receipt, a readable code 1, and a readable amount, whatever that amount was |
 | `unused_source_slot` | 0 | yes receipt, code 0, zero literal: no source in this slot |
-| `nonreceipt_slot` | 0 | an observed "no" to `DIS_YN` |
-| `niu_not_observed_zero` | unknown | `DIS_YN = 0` |
+| `nonreceipt_slot` | 0 | a "no" to `DIS_YN` with code 0 and a zero literal |
+| `niu_not_observed_zero` | unknown | `DIS_YN = 0` with code 0 and a zero literal |
 | `outside_age_universe` | unknown | under the printed 15+ reporting universe |
 | `unresolved_slot_reporting` | unknown | missing, malformed, out-of-range or contradictory literals |
+
+A receipt answer alone does not settle a slot. A "no" or an NIU answer that
+arrives beside a nonzero amount or a populated source code is a contradiction,
+not a nonreceipt or an NIU: the owner labels it as such and the slot stays
+unresolved.
 
 A workers' compensation slot whose amount cell is missing or unreadable is
 `unresolved_slot_reporting`, not a known zero: a record that cannot be read
@@ -110,8 +116,9 @@ its semantics can be inspected and tested; neither it nor
 seals the borrowed detail owner before and after projection and rechecks its
 own active implementation dependencies. That fence binds every module-level
 constant of this file, detached rather than aliased; every function defined in
-it; the bytes of the file as imported, so an edit after import refuses instead
-of being reported; and an **enumerated** set of borrowed callables — the detail
+it; the file's bytes as read at the end of its own import, so an edit after
+that point refuses instead of being reported — the window between the loader's
+read and that one is not attested — and an **enumerated** set of borrowed callables — the detail
 owner's qualifier, literal projection, slot status, amount pair, member capture
 and amount comparison and seal; the routing owner's receipt, literal,
 code-frame, capture, digest and allocation helpers; and the archived arithmetic

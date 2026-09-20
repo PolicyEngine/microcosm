@@ -27,6 +27,21 @@ DETAIL_EVIDENCE = {
     "survey_year": routing.CURRENT_INCOME_YEAR + 1,
     "source_admission_issued": False,
 }
+# Pinned by value, so a silent edit to the owner's table is caught here rather
+# than read back out of the same table the assertions came from.
+PUBLISHED_DISABILITY_CODES = {
+    0: "NIU",
+    1: "worker's compensation",
+    2: "company or union disability",
+    3: "federal government disability",
+    4: "US military retirement disability",
+    5: "state or local government employee disability",
+    6: "US railroad retirement disability",
+    7: "accident or disability insurance",
+    8: "blacklung miners disability",
+    9: "state temporary sickness",
+    10: "other or don't know",
+}
 UNRELATED_CELLS = {
     "PNSN_VAL": "700",
     "ANN_VAL": "-1",
@@ -165,7 +180,14 @@ def test_both_slots_sum_only_non_workers_compensation_sources(
         assert value[od.AMOUNT_COLUMN] == total
 
 
-@pytest.mark.parametrize("code", sorted(detail.DISABILITY_CODES))
+def test_the_published_source_code_table_is_pinned_by_value():
+    assert dict(detail.DISABILITY_CODES) == PUBLISHED_DISABILITY_CODES
+    assert od.WORKERS_COMPENSATION_CODE == 1
+    assert od.WORKERS_COMPENSATION_LABEL == PUBLISHED_DISABILITY_CODES[1]
+    assert od.WORKERS_COMPENSATION_LABEL == "worker's compensation"
+
+
+@pytest.mark.parametrize("code", sorted(PUBLISHED_DISABILITY_CODES))
 def test_every_published_source_code_is_admitted_or_excluded_explicitly(code):
     value = one(DIS_SC1=str(code), DIS_VAL1="400")
     if code == 0:
@@ -180,7 +202,7 @@ def test_every_published_source_code_is_admitted_or_excluded_explicitly(code):
         return
     assert value.DIS_VAL1_slot_kind == "reported_source_slot"
     assert value[od.AMOUNT_COLUMN] == 400.0
-    assert value.DIS_SC1_label == detail.DISABILITY_CODES[code]
+    assert value.DIS_SC1_label == PUBLISHED_DISABILITY_CODES[code]
 
 
 def test_workers_compensation_exclusion_is_bound_to_its_printed_meaning(monkeypatch):
@@ -209,6 +231,47 @@ def test_workers_compensation_excludes_on_a_readable_code_not_on_its_amount(
     assert value.DIS_VAL1_reporting_status == status
     assert value.DIS_VAL1_slot_kind == kind
     assert bool(value[od.KNOWN_COLUMN]) is (kind == "excluded_workers_compensation")
+
+
+@pytest.mark.parametrize(
+    "amount,status,kind",
+    [
+        ("500", "known_receipt", "excluded_workers_compensation"),
+        ("0", "ambiguous_recipient_zero", "excluded_workers_compensation"),
+        ("", "missing_amount", "unresolved_slot_reporting"),
+        ("abc", "invalid_amount_literal", "unresolved_slot_reporting"),
+    ],
+)
+def test_the_second_slot_excludes_on_the_same_terms(amount, status, kind):
+    value = one(DIS_SC1="2", DIS_VAL1="300", DIS_SC2="1", DIS_VAL2=amount)
+    assert value.DIS_VAL2_reporting_status == status
+    assert value.DIS_VAL2_slot_kind == kind
+    assert bool(value[od.KNOWN_COLUMN]) is (kind == "excluded_workers_compensation")
+    if kind == "excluded_workers_compensation":
+        assert value[od.AMOUNT_COLUMN] == 300.0
+
+
+@pytest.mark.parametrize(
+    "age,known", [("0", False), ("14", False), ("15", True), ("16", True)]
+)
+def test_the_reporting_universe_starts_at_the_printed_age(age, known):
+    value = one(A_AGE=age)
+    assert bool(value[od.KNOWN_COLUMN]) is known
+    assert od.REPORTING_AGE == 15
+    if known:
+        assert value[od.AMOUNT_COLUMN] == 200.0
+    else:
+        assert value[od.REASON_COLUMN] == "outside_age_universe"
+
+
+def test_receipt_universe_drift_refuses(monkeypatch):
+    entry = detail.RECEIPT_ENTRIES["DIS_YN"]
+    changed = routing.ReceiptEntry(*entry[:4], "All Persons", entry[5])
+    monkeypatch.setattr(
+        detail, "RECEIPT_ENTRIES", {**detail.RECEIPT_ENTRIES, "DIS_YN": changed}
+    )
+    with pytest.raises(ValueError, match="PRINTED_SEMANTICS"):
+        one()
 
 
 def test_a_second_slot_is_read_independently_of_the_first():
@@ -348,6 +411,19 @@ def test_archived_zeroes_are_recorded_but_never_adopted(changes):
     assert pd.isna(value.other_disability_archived_arithmetic_agrees)
 
 
+def test_a_contradictory_out_of_universe_row_keeps_a_positive_archived_reading():
+    """The archived arithmetic did not only read zero where nobody was asked."""
+    value = one(A_AGE="10")
+    assert value.DIS_VAL1_reporting_status == (
+        "contradictory_outside_reporting_universe"
+    )
+    assert value[od.REASON_COLUMN] == "outside_age_universe"
+    assert value.other_disability_archived_arithmetic_evaluable
+    assert value.other_disability_archived_arithmetic_amount == 200.0
+    assert pd.isna(value[od.AMOUNT_COLUMN])
+    assert pd.isna(value.other_disability_archived_arithmetic_agrees)
+
+
 def test_unreadable_literals_leave_the_archived_arithmetic_unevaluable():
     value = one(DIS_VAL1="abc")
     assert not value.other_disability_archived_arithmetic_evaluable
@@ -476,6 +552,28 @@ def test_a_nonreceipt_answer_is_still_inside_the_receipt_flag_universe():
     assert value.I_DISYN_allocation_status == "not_allocated_in_flag_universe"
     assert value.other_disability_allocation_status == "not_allocated_in_flag_universe"
     assert value[od.REASON_COLUMN] == "known_zero_nonreceipt"
+
+
+def test_a_definite_allocation_outranks_an_unresolved_flag():
+    value = one(I_DISVL1="5", I_DISSC1="3")
+    assert value.I_DISVL1_allocation_status == "publisher_allocated"
+    assert value.I_DISSC1_allocation_status == "unresolved_allocation_literal"
+    # The owner's universe-blind reading leads with the unresolved literal;
+    # this family's reading leads with the allocation it did establish.
+    assert (
+        value.other_disability_published_flag_origin
+        == "unresolved_allocation_provenance"
+    )
+    assert (
+        value.other_disability_allocation_status
+        == "publisher_allocated_in_flag_universe"
+    )
+
+
+def test_a_missing_flag_outside_its_universe_is_not_reported_as_missing():
+    value = one(I_DISVL2="")
+    assert value.I_DISVL2_allocation_status == "outside_flag_universe"
+    assert value.other_disability_allocation_status == "not_allocated_in_flag_universe"
 
 
 def test_an_unreadable_amount_leaves_its_flag_universe_unresolved():
@@ -744,7 +842,10 @@ def test_the_recorded_implementation_digest_is_the_imported_bytes():
     assert od._IMPLEMENTATION_SHA256 == digest
     evidence = values(row()).evidence
     assert evidence["implementation_sha256"] == digest
-    assert "as imported" in evidence["implementation_sha256_scope"]
+    scope = evidence["implementation_sha256_scope"]
+    assert "at the end of its own import" in scope
+    # The pin does not attest the loader's own earlier read, and says so.
+    assert "is not attested" in scope
 
 
 def test_a_file_that_changed_after_import_refuses(monkeypatch):
@@ -967,6 +1068,38 @@ def test_attached_values_are_the_qualified_rows_themselves():
             expected.reset_index(drop=True),
             check_names=False,
         )
+
+
+def test_clone_transport_follows_identity_not_row_order():
+    result = values(row(), row(DIS_SC1="2", DIS_VAL1="450"))
+    frame = receiving(result, clones=2)
+    leaf = legacy.US_DISABILITY_BENEFITS_OUTPUT_COLUMNS[0]
+    ordered = od.attach_other_disability_columns(result, frame)
+    shuffled_people = frame.person.iloc[[3, 0, 2, 1]].reset_index(drop=True)
+    shuffled = od.attach_other_disability_columns(
+        result, SimpleNamespace(person=shuffled_people)
+    )
+    by_person = dict(
+        zip(shuffled_people.person_id, shuffled.columns["person", leaf], strict=True)
+    )
+    for person_id, value in zip(
+        frame.person.person_id, ordered.columns["person", leaf], strict=True
+    ):
+        assert by_person[person_id] == value
+
+
+def test_attachment_refuses_an_implementation_changed_by_the_receiver(monkeypatch):
+    """The receiver's own table() runs after the entry check."""
+    result = values(row())
+    people = receiving(result).person
+
+    class HostileReceiver:
+        def table(self, name):
+            monkeypatch.setattr(od, "OUTPUT", "invented_leaf")
+            return people
+
+    with pytest.raises(ValueError, match="IMPLEMENTATION_CHANGED"):
+        od.attach_other_disability_columns(result, HostileReceiver())
 
 
 def test_a_copied_values_object_attaches_identically():

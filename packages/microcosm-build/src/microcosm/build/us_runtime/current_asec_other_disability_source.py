@@ -739,8 +739,10 @@ def _evidence(person, detail_values, seal):
                 "retirement_detail_evidence": detail_values.evidence,
                 "implementation_sha256": _IMPLEMENTATION_SHA256,
                 "implementation_sha256_scope": (
-                    "the bytes of this module as imported; a later edit refuses "
-                    "rather than being reported"
+                    "this module's file as read at the end of its own import; a "
+                    "later edit refuses rather than being reported, but the "
+                    "window between the loader's read and this one is not "
+                    "attested"
                 ),
                 "acs_completion_assigned": False,
                 "under15_completed_with_zero": False,
@@ -967,6 +969,9 @@ def attach_other_disability_columns(values, receiving):
             }
         )
     )
+    # The receiver supplies its table through its own callable, which runs
+    # after the entry check, so the implementation is rechecked before return.
+    _require(_implementation_unchanged(), "IMPLEMENTATION_CHANGED")
     _require(other_disability_values_seal(values) == seal, "FINAL_VALUES_CHANGED")
     return OtherDisabilityAttachment(columns, receipt)
 
