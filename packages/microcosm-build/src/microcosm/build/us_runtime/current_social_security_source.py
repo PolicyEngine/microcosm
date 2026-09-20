@@ -12,12 +12,16 @@ import csv
 import hashlib
 import json
 import re
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from types import FunctionType
 
 import numpy as np
 import pandas as pd
+
+from microcosm.frame import Frame, WeightKind
 
 from . import asec_coverage_authentication as coverage
 from . import source_csv_builtin
@@ -182,12 +186,132 @@ class CurrentSocialSecurityProjection:
     evidence: dict
 
 
+@dataclass(frozen=True)
+class FullCurrentSocialSecurityProjection:
+    """Detached full report basis and selected descriptions, never authority.
+
+    The ASEC Frame retains original DESIGN support before receiving selection.
+    Hosts must retain and requalify the genuine preparation after relevant I/O;
+    neither this object nor its descriptive seal establishes source admission.
+    """
+
+    selected: CurrentSocialSecurityProjection
+    asec_frame: Frame
+    asec_basis: pd.DataFrame
+    evidence: dict
+
+
+def _table_seal(table):
+    require(type(table) is pd.DataFrame and table.columns.is_unique, "TABLE")
+    digest = hashlib.sha256()
+    digest.update(
+        source._encode(
+            (
+                tuple(table.columns),
+                type(table.index).__name__,
+                str(table.index.dtype),
+                tuple(table.index.names),
+                type(table.columns).__name__,
+                str(table.columns.dtype),
+                tuple(table.columns.names),
+                tuple(
+                    (
+                        str(d),
+                        getattr(d, "storage", None),
+                        str(getattr(d, "na_value", "")),
+                    )
+                    for d in table.dtypes
+                ),
+            )
+        )
+    )
+    digest.update(source._index_blob(table.index))
+    for column in table:
+        digest.update(source._cells_blob(table[column]))
+    return digest.hexdigest()
+
+
+def full_social_security_seal(value):
+    """Describe exact detached values; this hash confers no source authority."""
+    require(type(value) is FullCurrentSocialSecurityProjection, "FULL_VALUES_TYPE")
+    require(type(value.selected) is CurrentSocialSecurityProjection, "SELECTED_TYPE")
+    return _sha(
+        source._encode(
+            (
+                source._frame_identity(value.asec_frame),
+                _table_seal(value.asec_basis),
+                _table_seal(value.selected.person),
+                _table_seal(value.selected.asec_literals),
+                value.selected.evidence,
+                value.evidence,
+            )
+        )
+    )
+
+
+def _live():
+    return (
+        tuple(
+            (
+                module,
+                tuple(
+                    (name, source._function_seal(value))
+                    for name, value in vars(module).items()
+                    if type(value) is FunctionType
+                ),
+            )
+            for module in (sys.modules[__name__], basis_owner, source_csv_builtin)
+        ),
+        source,
+        coverage,
+        source.asec_native,
+        Frame,
+        WeightKind,
+        WeightKind.DESIGN,
+        CurrentSocialSecurityProjection,
+        FullCurrentSocialSecurityProjection,
+        PROTOCOL,
+        READ_COLUMNS,
+        type(WIDTHS),
+        tuple(WIDTHS.items()),
+        type(DICTIONARY),
+        source._encode(DICTIONARY),
+        basis_owner.PROTOCOL,
+        basis_owner.COMPONENTS,
+        type(basis_owner.REASON_COMPONENTS),
+        tuple(basis_owner.REASON_COMPONENTS.items()),
+        tuple(
+            source._function_seal(f)
+            for f in (
+                source._function_seal,
+                source._encode,
+                source._frame_identity,
+                source._index_blob,
+                source._cells_blob,
+            )
+        ),
+    )
+
+
 def qualify_current_social_security(preparation):
+    """Preserve the existing selected-person source projection and evidence."""
+    return _qualify_current_social_security(preparation, full_original=False)
+
+
+def qualify_full_current_social_security(preparation):
+    """Borrow the full current ASEC basis plus unchanged selected descriptions."""
+    require(_live() == _LIVE, "IMPLEMENTATION_CHANGED")
+    return _qualify_current_social_security(preparation, full_original=True)
+
+
+def _qualify_current_social_security(preparation, *, full_original):
     require(
         type(preparation) is source.AuthenticatedSurveyPopulationPreparation,
         "PREPARATION_TYPE",
     )
     entry = preparation._checked()
+    implementation = _file_sha(__file__) if full_original else None
+    registry = tuple(coverage._MEMBER_PINS)
     state = entry[2]
     acs_owned = source.acs_native._owned(state.native[0])
     acs_receipt = json.loads(acs_owned.payload)
@@ -413,8 +537,96 @@ def qualify_current_social_security(preparation):
         "source_admission_issued": False,
         "release_eligible": False,
     }
+    selected = CurrentSocialSecurityProjection(out, ordered, evidence)
+    if full_original:
+        retained = issued[2]
+        mask, weights, _, _ = source.asec_native._roster(
+            parent, retained.coverage, retained.anchors, retained.fields, None
+        )
+        full_frame = source._normalized_source_copy(
+            source.asec_native._descendant(parent, mask, weights)
+        )
+        require(
+            full_frame.weights_for("household").kind is WeightKind.DESIGN,
+            "DESIGN_WEIGHTS",
+        )
+        ids = pd.Index(full_frame.person.person_id.to_numpy(), name="person_id")
+        require(
+            ids.is_unique and len(ids) == rows and set(ids) == set(original_ids),
+            "FULL_NATIVE_AXIS",
+        )
+        full = pd.DataFrame(index=pd.Index(original_ids, name="person_id"))
+        full["native_person_id"] = original_ids
+        full["source"] = "asec"
+        full["social_security_source_total"] = report_amount
+        full["source_reporting_universe"] = (
+            ordered.A_AGE.to_numpy(dtype=np.float64) >= 15
+        )
+        full["source_reporting_unit"] = "person_report_may_combine_family_payments"
+        for j, c in enumerate(basis_owner.COMPONENTS):
+            full[c], full["allowed_" + c] = components[:, j], allowed[:, j]
+        full["basis_origin"] = labels
+        for column in allocation:
+            full[column] = allocation[column].to_numpy(copy=True)
+        for column in READ_COLUMNS:
+            full[column] = ordered[column].to_numpy(copy=True)
+        full["published_amount"] = amount
+        for name, values in (
+            ("money_status", field.statuses),
+            ("money_validity", field.validity),
+            ("money_zero_origin", field.zero_origin),
+        ):
+            full[name] = values[current_positions].copy()
+        full = full.reindex(ids)
+        # A selected original is a keyed view of this full source basis, never
+        # a separately recoded or selected donor observation.
+        for column in out.columns:
+            actual = out.loc[asec_ids, column].reset_index(drop=True)
+            expected = full.loc[
+                out.loc[asec_ids, "native_person_id"], column
+            ].reset_index(drop=True)
+            require(actual.equals(expected), "SELECTED_BASIS_IDENTITY:" + column)
+        result = FullCurrentSocialSecurityProjection(
+            selected,
+            full_frame,
+            full,
+            {
+                "protocol": PROTOCOL + "/full-original-basis",
+                "preparation_sha256": _sha(entry[1]),
+                "full_asec_rows": len(full),
+                "selected_asec_rows": len(asec_ids),
+                "source_member_sha256": digest,
+                "weight_kind": "design",
+                "frame_sha256": source._frame_identity(full_frame),
+                "basis_sha256": _table_seal(full),
+                "donor_eligibility_selected": False,
+                "individual_beneficiary_assignment_claim": False,
+                "source_admission_issued": False,
+                "release_eligible": False,
+            },
+        )
+        result_seal = full_social_security_seal(result)
     require(
         preparation._checked()[1] == entry[1] and parent.ready().header == ready.header,
         "SOURCE_CHANGED",
     )
-    return CurrentSocialSecurityProjection(out, ordered, evidence)
+    if full_original:
+        require(
+            _live() == _LIVE and _file_sha(__file__) == implementation,
+            "IMPLEMENTATION_CHANGED",
+        )
+        source._pure_final(state)
+        require(
+            source._ISSUED.get(id(preparation)) is entry
+            and source.asec_native._ISSUED.get(id(native)) is issued
+            and issued[2].parent is parent
+            and native.payload == issued[1]
+            and tuple(coverage._MEMBER_PINS) == registry
+            and full_social_security_seal(result) == result_seal,
+            "FINAL_OWNER_OR_VALUES",
+        )
+        return result
+    return selected
+
+
+_LIVE = _live()

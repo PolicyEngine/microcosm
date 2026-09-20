@@ -332,6 +332,8 @@ def test_detached_source_result_mutation_is_not_source_evidence(retained_source)
     changed = []
 
     def callback(frame, event, value):
+        if prior is not None:
+            prior(frame, event, value)
         if (
             event == "return"
             and frame.f_code
@@ -357,6 +359,8 @@ def test_final_owner_return_callback_cannot_change_detached_output(retained_sour
     changed = []
 
     def callback(frame, event, value):
+        if prior is not None:
+            prior(frame, event, value)
         caller = frame.f_back
         if (
             event == "return"

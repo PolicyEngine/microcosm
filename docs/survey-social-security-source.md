@@ -60,6 +60,35 @@ convention, allocation to individual beneficiaries where necessary, explicit
 income periods, design-weighted training, native-to-clone inheritance and
 held-out checks remain separate required work.
 
+## Full original ASEC report basis
+
+`qualify_full_current_social_security(preparation)` adds a full original ASEC
+basis without changing `qualify_current_social_security(preparation)`. It
+requires the same live authenticated preparation and recodes the same captured
+member once. Its `selected` result preserves the existing selected ASEC/ACS
+description, including its evidence.
+
+The returned `asec_frame` retains every original current ASEC person and the
+original household DESIGN weights before receiving-sample selection. The
+`asec_basis` table uses those native person IDs and the same row order. It
+contains report totals, resolved components, reason-allowed masks, reporting
+universe, basis origin, allocation codes and labels, every captured source
+literal, and current-money status, validity and zero-origin bytes. Every
+selected ASEC row must agree exactly with its full-basis row.
+
+Receiving selection can therefore omit a resolved positive ASEC report while
+the full basis retains it for a later donor-selection decision. This API does
+not select eligible donors, fit component probabilities, assign beneficiaries,
+or attach canonical component values to a receiving population. Under-15 NIU
+zeros and ambiguous report components retain their existing unknownness.
+
+These returned objects contain detached data. `full_social_security_seal`
+describes their exact contents; it cannot authenticate a copied object or
+replace the live preparation. A future graph host must retain that preparation,
+requalify its source after relevant I/O, and bind the fitted artifacts and
+native-to-clone attachment separately. The qualifier checks source, callable,
+configuration and detached-result identity after its final owner I/O.
+
 ## Conditioning measurement judgment, 2026-09-09
 
 The recipient measurement for predictor nine remains undecided. Passing the
@@ -122,3 +151,19 @@ The run completed in 67.6 seconds with 428.9 MB peak RSS. Receipt SHA256:
 `2b9d8e45cec11a6ebda2ccc01c5f12374e794ec0c006ba6525f082fd6454049b`.
 These controls are not native-source execution, a fitted component model,
 native PUF55 integration, policy-engine validation or release acceptance.
+
+The additive full-original API has nine further passing invented-source tests.
+They retain a resolved positive ASEC report omitted by receiving selection and
+its original DESIGN weight, compare the selected projection exactly, preserve
+under-15 and ambiguous unknowns, and reject configuration, source-literal and
+late detached-result mutations. The existing PUF Social Security measurement
+module also passes all 31 tests, including retained-source qualification and
+mutation callbacks through the unchanged selected API.
+
+These two separate runs used 63.2 and 63.9 total supervisor-and-child CPU seconds,
+with peak combined resident memory of 455.1 and 538.8 MB. Neither run loaded a
+country model, fitted a model, executed a graph, accessed actual microdata, or
+changed its pinned source/runtime files. Both restored the no-fit profiler,
+reported zero guard denials and reaped their child. They establish this source
+interface and its existing measurement consumer; a fitted component estimator
+and full graph attachment remain separate work.
