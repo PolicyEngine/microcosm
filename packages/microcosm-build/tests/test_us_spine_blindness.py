@@ -151,6 +151,8 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # Exact original/clone person, household and SPM-unit membership only;
         # source qualification stays with the retained owner, with no model routing.
         "current_survey_spm_projection.py",
+        # Original unit-money observations; no fit or canonical tax treatment.
+        "current_survey_spm_amount_source.py",
         # Original ASEC pension/disability/survivor details; no population model.
         "current_asec_retirement_detail_source.py",
         "current_asec_unemployment_source.py",  # UC literal -> original ASEC ids.
@@ -431,6 +433,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_acs_income_anchor_source.py",
         # Exact received/paid child-support source observations; no tax treatment
         "current_asec_child_support_source.py",
+        # Unit money borrowed from matching source owners; no new authority.
+        "current_survey_spm_amount_source.py",
         # Dividend receipt/amount and survivor-route source qualification
         "current_asec_dividend_source.py",
         # Qualified ASEC interest components and unreconciled total diagnostics
