@@ -19,6 +19,7 @@ from . import child_support as child_mapper
 from . import current_asec_amount_donor as full_donor
 from . import current_asec_child_support_source as child_source
 from . import current_asec_unemployment_source as unemployment
+from . import current_asec_veterans_source as veterans
 from . import current_asec_workers_compensation_source as workers_compensation
 from . import current_survey_predictors as predictors
 from . import graph_full_puf_enrichment as physical
@@ -51,6 +52,7 @@ GROUPS = (
     ),
     AmountGroup("workers_compensation", (("WC_VAL", "workers_compensation"),)),
     AmountGroup("child_support", (("CSP_VAL", "child_support_received"),)),
+    AmountGroup("veterans_benefits", (("VET_VAL", veterans.OUTPUT),)),
 )
 UC_REPORT_COLUMNS = (
     "source_amount",
@@ -85,7 +87,7 @@ def selected_groups(names):
 
 
 def receipt_sources():
-    """Closed source modules for the two printed age-15+ receipt universes."""
+    """Closed source modules for the printed age-15+ receipt universes."""
     return (
         ("unemployment", "UC_VAL", "survey_uc_", unemployment),
         (
@@ -94,6 +96,7 @@ def receipt_sources():
             "survey_wc_",
             workers_compensation,
         ),
+        ("veterans_benefits", "VET_VAL", "survey_veterans_", veterans),
     )
 
 
@@ -105,6 +108,8 @@ def _qualify_receipt_groups(preparation, groups):
         result["WC_VAL"] = (
             workers_compensation.qualify_current_asec_workers_compensation(preparation)
         )
+    if "veterans_benefits" in groups:
+        result["VET_VAL"] = veterans.qualify_current_asec_veterans(preparation)
     return result
 
 
@@ -191,6 +196,41 @@ def origin_digest(origins):
     )
 
 
+def _receipt_reports(receipt, ids, asec, prefix):
+    """Typed source reports; absent ACS observations remain nullable."""
+    require(receipt.person.index.equals(ids[asec]), "RECEIPT_REPORT_AXIS")
+    reports = pd.DataFrame(index=ids)
+    report_names = (
+        *UC_REPORT_COLUMNS,
+        *(
+            name
+            for name in receipt.person
+            if name.startswith("I_VET") or name == "amount_literal"
+        ),
+    )
+    for name in report_names:
+        column = prefix + name
+        if name in (
+            "source_reporting_universe",
+            "receipt_code_known",
+            "canonical_amount_known",
+        ) or name.endswith("_flag_universe"):
+            reports[column] = pd.Series(pd.NA, index=ids, dtype="boolean")
+        elif name in (
+            "receipt_code",
+            "amount_status",
+            "amount_validity",
+            "zero_origin",
+        ) or name.endswith("_code"):
+            reports[column] = pd.Series(pd.NA, index=ids, dtype="Int64")
+        elif name == "source_amount":
+            reports[column] = pd.Series(np.nan, index=ids, dtype="float64")
+        else:
+            reports[column] = pd.Series(pd.NA, index=ids, dtype="string")
+        reports.loc[ids[asec], column] = receipt.person[name].to_numpy()
+    return reports
+
+
 def _child_projection(preparation, ids, asec, native_ids):
     """Join actual source-qualified observations; paid support is never a target."""
     observed = child_source.qualify_current_asec_child_support(preparation)
@@ -247,13 +287,25 @@ def _child_projection(preparation, ids, asec, native_ids):
     return observed, native, reports
 
 
+def canonical_outputs(qualified):
+    """Closed canonical outputs deferred to an explicit final version."""
+    groups = {g.spec.key for g in qualified.groups}
+    return (
+        *(
+            child_mapper.US_CHILD_SUPPORT_OUTPUT_COLUMNS
+            if "child_support" in groups
+            else ()
+        ),
+        *((veterans.OUTPUT,) if "veterans_benefits" in groups else ()),
+    )
+
+
 def attachment_dtype(qualified, receiving, name, default):
-    """Only explicit child-support outputs may replace carried canonical values."""
+    """Only explicitly selected child/veterans outputs replace carried canonicals."""
     if name not in receiving.person:
         return default
     require(
-        any(g.spec.key == "child_support" for g in qualified.groups)
-        and name in child_mapper.US_CHILD_SUPPORT_OUTPUT_COLUMNS,
+        name in canonical_outputs(qualified),
         "ATTACH_OWNERSHIP_COLLISION",
     )
     dtype = receiving.person[name].dtype
@@ -273,6 +325,10 @@ def qualify_current_survey_amounts(
     require(
         "child_support" not in groups or full_original_donors,
         "CHILD_FULL_ORIGINAL_REQUIRED",
+    )
+    require(
+        "veterans_benefits" not in groups or full_original_donors,
+        "VETERANS_FULL_ORIGINAL_REQUIRED",
     )
     # The owning country host performs the full parent checker at entry/final
     # I/O fences. This projection borrows its actual issued handle purely and
@@ -341,7 +397,7 @@ def qualify_current_survey_amounts(
         if raw not in receipts:
             continue
         receipt = receipts[raw]
-        label = "UC" if raw == "UC_VAL" else "WC"
+        label = raw.removesuffix("_VAL")
         require(
             codec.sha(receipt.person.to_json(orient="table").encode())
             == receipt.evidence["projection_sha256"],
@@ -354,30 +410,13 @@ def qualify_current_survey_amounts(
             ),
             label + "_SOURCE_JOIN",
         )
-        for name in UC_REPORT_COLUMNS:
-            column = prefix + name
-            if name in (
-                "source_reporting_universe",
-                "receipt_code_known",
-                "canonical_amount_known",
-            ):
-                reports[column] = pd.Series(pd.NA, index=ids, dtype="boolean")
-            elif name in (
-                "receipt_code",
-                "amount_status",
-                "amount_validity",
-                "zero_origin",
-            ):
-                reports[column] = pd.Series(pd.NA, index=ids, dtype="Int64")
-            elif name == "source_amount":
-                reports[column] = pd.Series(np.nan, index=ids, dtype="float64")
-            else:
-                reports[column] = pd.Series(pd.NA, index=ids, dtype="string")
-            reports.loc[ids[asec], column] = receipt.person[name].to_numpy()
+        reports = pd.concat(
+            (reports, _receipt_reports(receipt, ids, asec, prefix)), axis=1
+        )
     for spec in specs:
         for raw, output in spec.fields:
             require(
-                spec.key == "child_support"
+                spec.key in ("child_support", "veterans_benefits")
                 or output not in run.population.frame.person,
                 "OUTPUT_ALREADY_OWNED:" + output,
             )
@@ -386,7 +425,7 @@ def qualify_current_survey_amounts(
             require(
                 domain.entity == "person"
                 and (
-                    spec.key == "child_support"
+                    spec.key in ("child_support", "veterans_benefits")
                     or (
                         (field.validity[take] == 1).all()
                         and np.isfinite(field.amounts[take]).all()
@@ -405,9 +444,12 @@ def qualify_current_survey_amounts(
                 require(
                     np.array_equal(
                         receipts[raw].person.source_amount.to_numpy(),
-                        field.amounts[take],
+                        np.where(
+                            field.validity[take] == 1, field.amounts[take], np.nan
+                        ),
+                        equal_nan=True,
                     ),
-                    ("UC" if raw == "UC_VAL" else "WC") + "_AMOUNT_IDENTITY",
+                    raw.removesuffix("_VAL") + "_AMOUNT_IDENTITY",
                 )
             origin = "survey_current_" + raw + "_origin"
             if spec.key != "child_support":
@@ -511,6 +553,19 @@ def qualify_current_survey_amounts(
                 }
             }
             if child is not None
+            else {}
+        ),
+        **(
+            {
+                "veterans_benefits": {
+                    "source": receipts["VET_VAL"].evidence,
+                    "model": "zero_aware_full_original_known_ASEC_receipts_and_nonreceipts_to_ACS_age15plus",
+                    "development_transport": "ASEC2025_income2024_to_ACS2024",
+                    "allocation_flags_qualify_receipt": False,
+                    "veteran_status_or_VA_health_filter": False,
+                }
+            }
+            if "VET_VAL" in receipts
             else {}
         ),
         "groups": [

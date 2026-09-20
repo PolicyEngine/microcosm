@@ -74,6 +74,8 @@ FULL_DONOR_SOURCE_NODE = "survey_amounts.full_original_asec_source"
 ATTACH_NODE = "survey_amounts.attach"
 CHILD_VERSION_NODE = "survey_amounts.child_support.version"
 CHILD_ATTACH_NODE = "survey_amounts.child_support.attach"
+CANONICAL_VERSION_NODE = "survey_amounts.canonical.version"
+CANONICAL_ATTACH_NODE = "survey_amounts.canonical.attach"
 PROJECTION_TYPE = ArtifactType("microcosm.us.current_survey_amount_projection", 1)
 ATTACHMENT_TYPE = ArtifactType("microcosm.us.current_survey_amount_attachment", 1)
 STATE_VERSION_NODE = "survey_geography.canonical_state_version"
@@ -89,6 +91,8 @@ def _live():
         values.unemployment,
         values.workers_compensation,
         values.workers_compensation.mapper,
+        values.veterans,
+        values.veterans.routing,
         values.child_source,
         values.child_source.routing,
         values.child_mapper,
@@ -156,6 +160,16 @@ def _live():
             values.workers_compensation.PROTOCOL,
             values.workers_compensation.READ_COLUMNS,
             codec.encode_json(values.workers_compensation.DICTIONARY),
+            values.veterans.PROTOCOL,
+            values.veterans.READ_COLUMNS,
+            values.veterans.OUTPUT,
+            type(values.veterans.ALLOCATION_CODES),
+            tuple(
+                (name, type(codes), codes)
+                for name, codes in values.veterans.ALLOCATION_CODES.items()
+            ),
+            type(values.veterans.DICTIONARY),
+            codec.encode_json(values.veterans.DICTIONARY),
             values.child_source.PROTOCOL,
             values.child_source.READ_COLUMNS,
             values.child_source.AMOUNT_FIELDS,
@@ -555,6 +569,16 @@ def _child_enabled(qualified):
     return any(g.spec.key == "child_support" for g in qualified.groups)
 
 
+def _canonical_enabled(qualified):
+    return bool(values.canonical_outputs(qualified))
+
+
+def _canonical_ids(qualified):
+    if any(g.spec.key == "veterans_benefits" for g in qualified.groups):
+        return CANONICAL_VERSION_NODE, CANONICAL_ATTACH_NODE
+    return CHILD_VERSION_NODE, CHILD_ATTACH_NODE
+
+
 def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
     require(
         type(n_estimators) is int and n_estimators > 0 and codec._hash(parent_digest),
@@ -707,8 +731,8 @@ def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
             )
     columns = pd.concat([qualified.native, qualified.reports], axis=1)
     child_columns = (
-        columns.loc[:, list(values.child_mapper.US_CHILD_SUPPORT_OUTPUT_COLUMNS)]
-        if _child_enabled(qualified)
+        columns.loc[:, list(values.canonical_outputs(qualified))]
+        if _canonical_enabled(qualified)
         else None
     )
     if child_columns is not None:
@@ -740,19 +764,19 @@ def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
         nodes.extend(
             (
                 Node(
-                    CHILD_VERSION_NODE,
+                    _canonical_ids(qualified)[0],
                     CurrentSurveyChildVersionKernel.ref,
                     base=parent.attach.FILTER_NODE,
                     structural=StructuralDelta.FILTER,
                     inputs=predictor_graph._inputs(receiving),
                     params=params,
                     artifact_inputs=(_projection_edge(),),
-                    description="Keep every receiving row in a derived version after prior enrichment; preserve all memberships, weights and source cells before child-support canonical writes.",
+                    description="Keep every receiving row in a derived version after prior enrichment; preserve all memberships, weights and source cells before canonical amount writes.",
                 ),
                 Node(
-                    CHILD_ATTACH_NODE,
+                    _canonical_ids(qualified)[1],
                     CurrentSurveyChildAttachKernel.ref,
-                    population=CHILD_VERSION_NODE,
+                    population=_canonical_ids(qualified)[0],
                     inputs=predictor_graph._inputs(receiving),
                     params=params,
                     outputs=tuple(
@@ -768,7 +792,7 @@ def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
                     ),
                     artifact_inputs=tuple(attach_edges),
                     artifact_outputs=(ArtifactOutput("attachment", ATTACHMENT_TYPE),),
-                    description="Attach received-support original draws and observed-only paid support to the existing clones in a new version; explicitly replace carried canonical child amounts.",
+                    description="Attach qualified original canonical amounts and ACS draws to existing clones in a new version; explicitly replace only selected child/veterans outputs.",
                 ),
             )
         )
@@ -999,16 +1023,16 @@ class Boundary:
         require(type(self.canonical_state_input) is bool, "CANONICAL_STATE_OPTION")
         if not self.canonical_state_input:
             return ()
-        child = _child_enabled(self.qualified)
+        child = _canonical_enabled(self.qualified)
         return _state_nodes(
             self.run.population.frame,
-            receiving_version=CHILD_VERSION_NODE
+            receiving_version=_canonical_ids(self.qualified)[0]
             if child
             else parent.attach.FILTER_NODE,
             after=(
                 ArtifactInput(
                     "child_support_attachment",
-                    CHILD_ATTACH_NODE,
+                    _canonical_ids(self.qualified)[1],
                     "attachment",
                     ATTACHMENT_TYPE,
                 )
@@ -1440,6 +1464,8 @@ class _Kernel(KernelBase):
             values.unemployment,
             values.workers_compensation,
             values.workers_compensation.mapper,
+            values.veterans,
+            values.veterans.routing,
             values.child_source,
             values.child_source.routing,
             values.child_mapper,
@@ -1655,15 +1681,14 @@ def _attachment_result(boundary, artifacts, *, child_only=False):
     draws = read_draws(qualified, artifacts)
     columns = values.attach_columns(qualified, boundary.run.population.frame, draws)
     require(
-        type(child_only) is bool and (not child_only or _child_enabled(qualified)),
+        type(child_only) is bool and (not child_only or _canonical_enabled(qualified)),
         "CHILD_ATTACHMENT_OPTION",
     )
-    if _child_enabled(qualified):
+    if _canonical_enabled(qualified):
         columns = {
             key: value
             for key, value in columns.items()
-            if (key[1] in values.child_mapper.US_CHILD_SUPPORT_OUTPUT_COLUMNS)
-            == child_only
+            if (key[1] in values.canonical_outputs(qualified)) == child_only
         }
     receipt = {
         "protocol": values.PROTOCOL,
@@ -1676,7 +1701,7 @@ def _attachment_result(boundary, artifacts, *, child_only=False):
             {
                 "canonical_replacements": {
                     name: str(columns["person", name].dtype)
-                    for name in values.child_mapper.US_CHILD_SUPPORT_OUTPUT_COLUMNS
+                    for name in values.canonical_outputs(qualified)
                     if name in boundary.run.population.frame.person
                 }
             }
@@ -1690,6 +1715,15 @@ def _attachment_result(boundary, artifacts, *, child_only=False):
                 else "deferred_to_derived_version"
             }
             if _child_enabled(qualified)
+            else {}
+        ),
+        **(
+            {
+                "canonical_amount_attachment": "canonical_final"
+                if child_only
+                else "deferred_to_derived_version"
+            }
+            if any(g.spec.key == "veterans_benefits" for g in qualified.groups)
             else {}
         ),
         "source_unknowns_preserved": True,
@@ -1723,7 +1757,7 @@ class CurrentSurveyChildVersionKernel(_Kernel):
 
     def run(self, context):
         qualified = self.boundary.context(context)
-        require(_child_enabled(qualified), "CHILD_VERSION_DISABLED")
+        require(_canonical_enabled(qualified), "CHILD_VERSION_DISABLED")
         values.predictors.host._current_context_frame(
             context, self.boundary.run.population.frame
         )
@@ -1755,7 +1789,7 @@ class CurrentSurveyChildAttachKernel(_Kernel):
 def _child_version_population(population, node):
     """Independently reconstruct keep-all with the actual completed base Frame."""
     require(
-        node.id == CHILD_VERSION_NODE
+        node.id in (CHILD_VERSION_NODE, CANONICAL_VERSION_NODE)
         and node.structural is StructuralDelta.FILTER
         and node.mass == "conserve",
         "CHILD_VERSION_DECLARATION",
@@ -2366,9 +2400,9 @@ def run_us_survey_enrichment(
                 ),
                 "HEALTH_RESULT_ARTIFACT",
             )
-        elif node_id == CHILD_VERSION_NODE:
+        elif node_id == _canonical_ids(boundary.qualified)[0]:
             expected = _child_version_population(current[node.base], node)
-        elif node_id == CHILD_ATTACH_NODE:
+        elif node_id == _canonical_ids(boundary.qualified)[1]:
             child_result = _attachment_result(
                 boundary,
                 parent._loaded_values(boundary, manifest, loaded, node),
@@ -2552,10 +2586,21 @@ def run_us_survey_enrichment(
             **(
                 {
                     "child_support_attachment_sha256": codec.sha(
-                        loaded[CHILD_ATTACH_NODE, "attachment"]
+                        loaded[_canonical_ids(boundary.qualified)[1], "attachment"]
                     )
                 }
                 if _child_enabled(boundary.qualified)
+                else {}
+            ),
+            **(
+                {
+                    "canonical_amount_attachment_sha256": codec.sha(
+                        loaded[CANONICAL_ATTACH_NODE, "attachment"]
+                    )
+                }
+                if any(
+                    g.spec.key == "veterans_benefits" for g in boundary.qualified.groups
+                )
                 else {}
             ),
             **(
@@ -2582,8 +2627,8 @@ def run_us_survey_enrichment(
         observed[
             state_graph.NODE
             if boundary.canonical_state_input
-            else CHILD_ATTACH_NODE
-            if _child_enabled(boundary.qualified)
+            else _canonical_ids(boundary.qualified)[1]
+            if _canonical_enabled(boundary.qualified)
             else race_graph.ATTACH_NODE
             if boundary.race is not None
             else sex_graph.ATTACH_NODE

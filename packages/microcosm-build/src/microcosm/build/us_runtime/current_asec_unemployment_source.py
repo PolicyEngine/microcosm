@@ -46,7 +46,13 @@ def require(condition, reason):
         raise ValueError("CURRENT_ASEC_UNEMPLOYMENT_" + reason)
 
 
-def reporting_basis(amount, age, receipt_tokens):
+def _amount_width(amount_field):
+    """Closed published ranges; veterans alone has a six-digit amount."""
+    require(amount_field in ("UC_VAL", "WC_VAL", "VET_VAL"), "AMOUNT_FIELD")
+    return 6 if amount_field == "VET_VAL" else 5
+
+
+def reporting_basis(amount, age, receipt_tokens, *, amount_field="UC_VAL"):
     """Classify invented or observed arrays without issuing source authority.
 
     Invalid/missing receipt literals are unresolved, rather than recoded to no.
@@ -54,6 +60,7 @@ def reporting_basis(amount, age, receipt_tokens):
     modeled donor and canonical amount. Age only gates the printed universe;
     it never creates an income zero.
     """
+    maximum = 10 ** _amount_width(amount_field) - 1
     amounts = np.asarray(amount)
     ages = np.asarray(age)
     tokens = tuple(receipt_tokens)
@@ -74,7 +81,7 @@ def reporting_basis(amount, age, receipt_tokens):
         and not np.isinf(amounts).any()
         and (
             (amounts[np.isfinite(amounts)] >= 0)
-            & (amounts[np.isfinite(amounts)] <= 99999)
+            & (amounts[np.isfinite(amounts)] <= maximum)
         ).all(),
         "AMOUNT_OR_TOKEN_DOMAIN",
     )
@@ -119,10 +126,13 @@ def reporting_basis(amount, age, receipt_tokens):
 def _read_capture(path, *, rows, amount_field="UC_VAL", receipt_field="UC_YN"):
     """Bounded literal reader; its path and row count do not establish authority."""
     require(
-        (amount_field, receipt_field) in (("UC_VAL", "UC_YN"), ("WC_VAL", "WC_YN")),
+        (amount_field, receipt_field)
+        in (("UC_VAL", "UC_YN"), ("WC_VAL", "WC_YN"), ("VET_VAL", "VET_YN")),
         "RECEIPT_FIELD_PAIR",
     )
-    columns = (*READ_COLUMNS[:4], amount_field, receipt_field)
+    flags = ("I_VETYN", "I_VETVAL") if amount_field == "VET_VAL" else ()
+    columns = (*READ_COLUMNS[:4], amount_field, receipt_field, *flags)
+    width = _amount_width(amount_field)
     reader = source_csv_builtin.capture_csv_reader(csv)
     require(reader is not None, "CSV_READER_CHANGED")
     records, keys, coordinates = [], set(), set()
@@ -142,9 +152,17 @@ def _read_capture(path, *, rows, amount_field="UC_VAL", receipt_field="UC_YN"):
             record = dict(zip(columns, (row[i] for i in positions), strict=True))
             key = record["PERIDNUM"]
             require(re.fullmatch(r"[0-9]{22}", key, re.ASCII) is not None, "PERSON_KEY")
-            for name, width in (("PH_SEQ", 5), ("A_LINENO", 2), ("A_AGE", 2)):
+            for name, coordinate_width in (
+                ("PH_SEQ", 5),
+                ("A_LINENO", 2),
+                ("A_AGE", 2),
+            ):
                 require(
-                    re.fullmatch(r"[0-9]{1," + str(width) + "}", record[name], re.ASCII)
+                    re.fullmatch(
+                        r"[0-9]{1," + str(coordinate_width) + "}",
+                        record[name],
+                        re.ASCII,
+                    )
                     is not None,
                     "COORDINATE:" + name,
                 )
@@ -155,11 +173,14 @@ def _read_capture(path, *, rows, amount_field="UC_VAL", receipt_field="UC_YN"):
             )
             require(
                 record[amount_field] == ""
-                or re.fullmatch(r"[0-9]{1,5}", record[amount_field], re.ASCII)
+                or re.fullmatch(
+                    r"[0-9]{1," + str(width) + "}", record[amount_field], re.ASCII
+                )
                 is not None,
                 "AMOUNT_TOKEN",
             )
             require(len(record[receipt_field]) <= 64, "RECEIPT_TOKEN_BOUND")
+            require(all(len(record[name]) <= 64 for name in flags), "FLAG_TOKEN_BOUND")
             records.append(record)
             keys.add(key)
             coordinates.add(pair)
@@ -175,7 +196,7 @@ def _file_sha(path):
     return digest.hexdigest()
 
 
-def _amount_observations(field, positions, literals):
+def _amount_observations(field, positions, literals, *, amount_field="UC_VAL"):
     """Join literal validity; missing backing storage never becomes a survey zero.
 
     Today's retained parent requires complete ready money before issuing a
@@ -187,11 +208,13 @@ def _amount_observations(field, positions, literals):
     require(
         positions.dtype == np.dtype("int64") and positions.ndim == 1, "MONEY_POSITIONS"
     )
+    width = _amount_width(amount_field)
     tokens = tuple(literals)
     require(
         len(tokens) == len(positions)
         and all(
-            type(t) is str and (t == "" or re.fullmatch(r"[0-9]{1,5}", t, re.ASCII))
+            type(t) is str
+            and (t == "" or re.fullmatch(r"[0-9]{1," + str(width) + "}", t, re.ASCII))
             for t in tokens
         ),
         "AMOUNT_TOKEN",
@@ -218,7 +241,7 @@ class CurrentAsecUnemploymentValues:
 
 
 def _qualify_receipt_amount(preparation, *, family, full_original=False):
-    """Share the two closed 15+ receipt captures without issuing source authority."""
+    """Share the closed 15+ receipt captures without issuing source authority."""
     require(type(full_original) is bool, "FULL_ORIGINAL_OPTION")
     if family == "unemployment":
         protocol, columns, dictionary = PROTOCOL, READ_COLUMNS, DICTIONARY
@@ -234,9 +257,22 @@ def _qualify_receipt_amount(preparation, *, family, full_original=False):
         )
         reader, classify = workers.read_capture, workers.reporting_basis
         prefix = "microcosm-current-wc-"
+    elif family == "veterans_benefits":
+        from . import current_asec_veterans_source as veterans
+
+        protocol, columns, dictionary = (
+            veterans.PROTOCOL,
+            veterans.READ_COLUMNS,
+            veterans.DICTIONARY,
+        )
+        reader, classify = veterans.read_capture, veterans.reporting_basis
+        prefix = "microcosm-current-veterans-"
     else:
         require(False, "RECEIPT_FAMILY")
-    amount_field, receipt_field = columns[-2:]
+    amount_field, receipt_field = (
+        dictionary["amount_field"],
+        dictionary["receipt_field"],
+    )
 
     require(
         type(preparation) is source.AuthenticatedSurveyPopulationPreparation,
@@ -314,10 +350,14 @@ def _qualify_receipt_amount(preparation, *, family, full_original=False):
             "PARENT_COORDINATE_IDENTITY",
         )
     field = ready.field(amount_field)
-    amounts = _amount_observations(field, positions, ordered[amount_field])
+    amounts = _amount_observations(
+        field, positions, ordered[amount_field], amount_field=amount_field
+    )
     basis = classify(
         amounts, ordered.A_AGE.to_numpy(dtype="float64"), ordered[receipt_field]
     )
+    if family == "veterans_benefits":
+        basis = veterans.allocation_basis(basis, ordered)
     basis.index = pd.Index(
         np.asarray(parent.scope.person_ids)[positions], name="native_person_id"
     )
