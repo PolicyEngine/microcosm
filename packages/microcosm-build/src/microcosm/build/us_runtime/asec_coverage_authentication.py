@@ -262,7 +262,63 @@ class _CsvBounds:
         self.header_bytes.clear()
 
     def feed(self, chunk):
-        for byte in chunk:
+        position = 0
+        cr, lf = chunk.find(b"\r"), chunk.find(b"\n")
+        while position < len(chunk):
+            if self.after_cr:
+                self.after_cr = False
+                if chunk[position] == 10:
+                    position += 1
+                    continue
+            # Retain the next terminators while advancing: rescanning the
+            # whole suffix for an absent CR on every LF would be quadratic.
+            if 0 <= cr < position:
+                cr = chunk.find(b"\r", position)
+            if 0 <= lf < position:
+                lf = chunk.find(b"\n", position)
+            end = lf if cr < 0 else cr if lf < 0 else min(cr, lf)
+            if (
+                not (self.header or self.row or self.field or self.column)
+                and self.start
+                and not (self.quoted or self.after_quote)
+                and self._fast_record(chunk, position, end)
+            ):
+                position = end + 1
+            else:
+                position = self._slow_record(chunk, position)
+
+    def _fast_record(self, chunk, position, end):
+        """Admit only a complete quote-free record whose every bound passes.
+
+        The record includes its terminator. Its length bounds every field;
+        charging the complete body cost bounds every intermediate budget.
+        Any possible refusal goes through the original byte-wise checks, so
+        failure order and the state at the failing byte remain unchanged.
+        """
+        length = end - position + 1
+        if (
+            end < 0
+            or length > _ROW_MAX
+            or length > _TOKEN_MAX
+            or chunk.find(b'"', position, end) >= 0
+        ):
+            return False
+        # At most one bounded record is copied. Limit split work to the
+        # published token column; missing trailing fields cost no token bytes.
+        fields = chunk[position:end].split(b",", self.token_column + 1)
+        charge = 4 + _NUMBERS.size + 12 + 22 + 32
+        if self.token_column < len(fields):
+            charge += len(fields[self.token_column]) + 1
+        if self.budget[0] < charge:
+            return False
+        self.budget[0] -= charge
+        self.after_cr = chunk[end] == 13
+        return True
+
+    def _slow_record(self, chunk, start):
+        """Original checks through the next unquoted terminator or chunk end."""
+        for position in range(start, len(chunk)):
+            byte = chunk[position]
             if self.after_cr and byte == 10:
                 self.after_cr = False
                 continue
@@ -297,6 +353,7 @@ class _CsvBounds:
                 self.header = self.after_quote = False
                 self.start = True
                 self.after_cr = byte == 13
+                return position + 1
             elif byte == 44:
                 self.field = 0
                 self.column += 1
@@ -304,6 +361,7 @@ class _CsvBounds:
             else:
                 self.quoted = self.start and byte == 34
                 self.start = self.after_quote = False
+        return len(chunk)
 
 
 def _capture(path, destination, *, size, digest, budget):

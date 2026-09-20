@@ -467,6 +467,8 @@ def test_candidate_self_rehash_is_not_authority_and_reconstruction_runs_first(
         "self_rehash",
         "field",
         "status_function",
+        "fast_record",
+        "slow_record",
         "roster_contract",
         "integer_contract",
         "string_contract",
@@ -497,6 +499,8 @@ def test_runtime_mutation_cannot_inherit_issued_authority(
         monkeypatch.setattr(literal, "coverage_field_contract", lambda: contract)
     elif mutation == "status_function":
         monkeypatch.setattr(literal, "_state", lambda token: "observed_code")
+    elif mutation in ("fast_record", "slow_record"):
+        monkeypatch.setattr(coverage._CsvBounds, "_" + mutation, lambda *args: None)
     elif mutation == "roster_contract":
         monkeypatch.setattr(coverage, "COLUMNS", tuple(reversed(coverage.COLUMNS)))
     elif mutation == "integer_contract":
