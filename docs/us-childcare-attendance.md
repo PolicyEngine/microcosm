@@ -221,7 +221,9 @@ writing. Generic coverage overrides cannot waive this check. The written native
 file receives the receipt and is reloaded and checked before source evidence is
 reported. The receipt key holds only the attendance context and binding, never
 other frame metadata, and adding it does not rewrite any entity table. The L0
-refit export carries the receipt forward. Private per-person hashes stay in local checkpoints/H5; public reports
+refit export carries the receipt forward, as do
+[annual static-aging exports](us-annual-static-aging.md), which retain and check
+the original ages and attendance. Private per-person hashes stay in local checkpoints/H5; public reports
 contain only aggregate receipt summaries. The private inventory is a sequence
 of ID/hash pairs: population-sized dictionaries cause quadratic traversal in
 the Frame metadata container, which is intended for small mappings. These hashes detect accidental stale
