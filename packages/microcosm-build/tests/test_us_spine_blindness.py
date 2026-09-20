@@ -425,6 +425,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_survey_race_hispanic_source.py",
         "graph_current_survey_sex.py",
         "graph_current_survey_race_hispanic.py",
+        # Canonical state representation from existing atomic geography; no assignment.
+        "graph_current_survey_state.py",
         # Qualified raw ACS INTP/RETP anchors, preserving literal knownness
         "current_acs_income_anchor_source.py",
         # Exact received/paid child-support source observations; no tax treatment
