@@ -202,10 +202,35 @@ def test_genuine_full_donor_is_independent_of_selected_support(tmp_path, monkeyp
     import shutil
     from fractions import Fraction
 
+    import test_us_survey_population_preparation as preparation_fixture
     from test_us_current_survey_health_coverage import _health_source_arguments
 
     from microcosm.frame import WeightKind
 
+    original_household, original_person = (
+        preparation_fixture._household,
+        preparation_fixture._person,
+    )
+
+    def household(serial, **kwargs):
+        return original_household(
+            serial, **{**kwargs, "ST": "36" if serial == "2024HU0000002" else "06"}
+        )
+
+    def person(serial, order, relationship, **kwargs):
+        return original_person(
+            serial,
+            order,
+            relationship,
+            **{
+                **kwargs,
+                "ST": "36" if serial == "2024HU0000002" else "06",
+                "SEX": 2 if serial == "2024HU0000002" or order == 2 else 1,
+            },
+        )
+
+    monkeypatch.setattr(preparation_fixture, "_household", household)
+    monkeypatch.setattr(preparation_fixture, "_person", person)
     arguments = _health_source_arguments(tmp_path, monkeypatch)
     partial = tmp_path / "partial-health-source"
     shutil.copytree(arguments["source_dir"], partial)
@@ -249,6 +274,29 @@ def test_genuine_full_donor_is_independent_of_selected_support(tmp_path, monkeyp
             36.0,
             36.0,
         ]
+        matrix = completion.model_input.decode_recipient_matrix(result.matrix).features
+        native = prepared._checked()[2].source_frames[0].person.set_index("person_id")
+        acs_origins = observations.origins.loc[observations.origins.source.eq("acs")]
+        assert matrix.index.equals(acs_origins.index)
+        for original_id, origin in acs_origins.iterrows():
+            row = native.loc[origin.native_person_id]
+            expected_state = 36.0 if int(row.AGEP) == 80 else 6.0
+            expected_sex = float(int(row.AGEP) == 80 or int(row.SPORDER) == 2)
+            assert matrix.loc[original_id].tolist() == [
+                float(row.AGEP),
+                expected_sex,
+                expected_state,
+            ]
+        # Reordering the borrowed original axis must reindex by native identity.
+        from dataclasses import replace
+
+        reordered = replace(observations, origins=observations.origins.iloc[::-1])
+        reordered_features = completion._acs_features(prepared._checked(), reordered)
+        pd.testing.assert_frame_equal(
+            reordered_features,
+            matrix.reindex(reordered_features.index),
+            check_exact=True,
+        )
         assert result.evidence["temporal_equivalence_claim"] is False
         assert result.evidence["release_eligible"] is False
         results.append(result)
@@ -429,6 +477,36 @@ def test_opt_in_graph_trains_applies_and_replays_original_draws(tmp_path):
         for node in compiled.graph.nodes
         for name, key in warm.node(node.id).opaque_artifacts.items()
     }
+    # Exercise the exact host reconstruction helper over real CREATE, columns
+    # and FILTER outputs, independently of the executor's own mask handling.
+    reconstructed = None
+    for node in added[:3]:
+        inputs = {
+            edge.name: SimpleNamespace(
+                payload=loaded[edge.producer, edge.artifact],
+                producer_key=warm.node(edge.producer).key,
+            )
+            for edge in node.artifact_inputs
+        }
+        expected_result = graph.result(
+            qualified,
+            observations,
+            node,
+            inputs,
+            None if reconstructed is None else reconstructed.frame.person,
+        )
+        reconstructed = graph.expected_population(reconstructed, node, expected_result)
+    actual_donor = warm.population(graph.DONOR_NODE)
+    for entity in actual_donor.entities:
+        pd.testing.assert_frame_equal(
+            reconstructed.frame.table(entity),
+            actual_donor.table(entity),
+            check_exact=True,
+        )
+    assert population_ops.storage_equal(
+        pd.Series(reconstructed.frame.weights_for("household").values),
+        pd.Series(actual_donor.weights_for("household").values),
+    )
     graph.verify_models(
         boundary,
         loaded,
@@ -467,3 +545,117 @@ def test_opt_in_graph_trains_applies_and_replays_original_draws(tmp_path):
             ),
         )
     pure()
+
+
+def test_host_reconstruction_materializes_donor_filter_without_mutating_parent():
+    from test_us_current_survey_health_coverage import _frame
+
+    from microcosm.build.us_runtime import (
+        graph_current_survey_health_completion as graph,
+    )
+    from microcosm.graph import KernelResult, Node, StructuralDelta
+    from microcosm.graph import population as population_ops
+
+    frame = _frame(donor_people())
+    parent = population_ops.Population.from_frame(frame, "invented.parent")
+    stamp = completion.source._frame_identity(frame)
+    node = Node(
+        graph.DONOR_NODE,
+        graph.DonorKernel.ref,
+        base="invented.parent",
+        structural=StructuralDelta.FILTER,
+        mass="free",
+    )
+    # Different mask order is intentional: selection must bind person identity.
+    keep = pd.Series(
+        [True, False, True], index=pd.Index([12, 13, 11], name="person_id")
+    )
+    result = KernelResult(keep=keep, artifacts={"fixture": b"kept"})
+    expected = graph.expected_population(parent, node, result)
+    assert expected.frame.person.person_id.tolist() == [11, 12]
+    assert expected.frame.weights_for("household").values.tolist() == [1.0, 1.0]
+    assert (
+        expected.frame.weights_for("household").kind
+        is frame.weights_for("household").kind
+    )
+    assert completion.source._frame_identity(parent.frame) == stamp
+    assert result.keep is keep and result.frame is None
+
+
+@pytest.mark.parametrize(
+    "case", ["duplicate", "missing", "foreign", "nullable", "numeric"]
+)
+def test_host_reconstruction_refuses_invalid_donor_mask(case):
+    from test_us_current_survey_health_coverage import _frame
+
+    from microcosm.build.us_runtime import (
+        graph_current_survey_health_completion as graph,
+    )
+    from microcosm.graph import KernelResult, Node, StructuralDelta
+    from microcosm.graph import population as population_ops
+
+    frame = _frame(donor_people())
+    parent = population_ops.Population.from_frame(frame, "invented.parent")
+    node = Node(
+        graph.DONOR_NODE,
+        graph.DonorKernel.ref,
+        base="invented.parent",
+        structural=StructuralDelta.FILTER,
+        mass="free",
+    )
+    keep = pd.Series(
+        [True, True, False], index=pd.Index([11, 12, 13], name="person_id")
+    )
+    if case == "duplicate":
+        keep.index = [11, 11, 13]
+    elif case == "missing":
+        keep = keep.iloc[:2]
+    elif case == "foreign":
+        keep.index = [11, 12, 99]
+    elif case == "nullable":
+        keep = keep.astype("boolean")
+        keep.iloc[0] = pd.NA
+    else:
+        keep = keep.astype("int64")
+    with pytest.raises(ValueError, match="RECONSTRUCTION_FILTER_MASK"):
+        graph.expected_population(parent, node, KernelResult(keep=keep))
+
+
+def test_distinct_original_draws_follow_interleaved_clones_without_broadcast():
+    from test_us_current_survey_health_coverage import (
+        invented_origins,
+        invented_receiving,
+    )
+
+    raw = invented_raw()
+    raw.loc[30] = raw.loc[20].copy()
+    raw = raw.loc[[30, 10, 20]]
+    origins = invented_origins()
+    origins.loc[30] = ["acs", 9]
+    origins = origins.loc[raw.index]
+    # Deliberately opposite values for each original, across all seven targets.
+    draws = pd.DataFrame(
+        {t: [0.0, 1.0] for t in completion.TARGETS},
+        index=raw.index[raw.source.eq("acs")],
+    )
+    columns = completion.completed_columns(raw, draws)
+    receiving = invented_receiving()
+    people = receiving.person
+    p = health.provenance
+    extra = people.iloc[[0, 2]].copy(deep=True)
+    extra["person_id"] = [500, 600]
+    extra[p.support_source_id_column("person")] = 30
+    extra[p.spine_source_id_column("person")] = 9
+    receiving.person = (
+        pd.concat([people, extra], ignore_index=True)
+        .iloc[[4, 1, 2, 5, 0, 3]]
+        .reset_index(drop=True)
+    )
+    before = receiving.person.copy(deep=True)
+    attached = health.attach_columns(origins, receiving, columns)
+    for field in completion.FIELDS:
+        result = attached["person", field.output]
+        for row in receiving.person.itertuples(index=False):
+            original = getattr(row, p.support_source_id_column("person"))
+            assert result.loc[row.person_id] == bool(original == 20)
+    pd.testing.assert_frame_equal(receiving.person, before, check_exact=True)

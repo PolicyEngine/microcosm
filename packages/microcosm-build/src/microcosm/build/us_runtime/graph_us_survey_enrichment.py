@@ -1503,10 +1503,8 @@ def run_us_survey_enrichment(
                     ),
                     "HEALTH_COMPLETION_ARTIFACT",
                 )
-                expected = (
-                    population_ops.Population.from_frame(health_result.frame, node_id)
-                    if node.structural is StructuralDelta.CREATE
-                    else population_ops.patch(incoming, node, health_result)
+                expected = health_completion_graph.expected_population(
+                    incoming, node, health_result
                 )
                 if node_id == health_completion_graph.DONOR_NODE:
                     health_completion_donor = expected
