@@ -51,22 +51,16 @@ the row's resolved level, in the order below; when no declaration at that
 level carries one the identifier stays empty with
 :data:`UNBOUND_GEOGRAPHY_ID_SOURCE`, never substituted from another level.
 
-This is a contract repair, not a correction to any number a scorecard has
-emitted. Every reference the US compiler builds carries a hierarchy seed, and
-``_calibration_hierarchy`` refuses an empty or non-single-valued fact
-geography (``ledger_targets.py:934-952``) while ``HierarchyNode`` refuses an
-empty id (``calibrate/hierarchy.py:24-37``), so on today's compiled registry
-every row resolves through ``hierarchy_geography`` with a bound id and the
-binding below returns exactly what the previous unbound key search returned.
-The repair matters because the previous search would have named the wrong area
-the moment a producer emitted a row without a view-level hierarchy, and
-because the level resolution already admits three routes that the identifier
-search did not follow.
+The US compiler supplies hierarchy seeds and requires nonempty, consistent
+fact geography. Those checks do not validate an identifier's encoding: both
+hierarchy and ledger fields can still contain bare or unrecognized text.
+Canonical counts therefore validate the bound value at its resolved level.
+No actual registry has been evaluated by this classifier's invented tests.
 
 Two identifier encodings exist, and this module treats exactly one of them as
 the canonical name of an area:
 
-* **canonical** --- the prefixed census GEOID (``0100000US``, ``0400000US06``,
+* **canonical** --- a validated prefixed census GEOID (``0100000US``, ``0400000US06``,
   ``5001900US0601``) that the ledger compiler copies verbatim from the
   Chronicle fact into both ``hierarchy.geography.id``
   (``ledger_targets.py:947,978-986``) and ``metadata['ledger_geography_id']``
@@ -75,7 +69,7 @@ the canonical name of an area:
   facts agree on ``(level, id)`` (``ledger_targets.py:934-947``) --- they are
   comparable to each other, and
   :attr:`TargetGeographyView.geography_id_declarations_conflict` is the
-  defensive assertion that they do agree. On the compiled path it is expected
+  defensive assertion that their text agrees. On the compiled path it is expected
   to be false for every row; a true value means a producer bypassed that
   constructor.
 * **bare** --- ``state_fips`` (``fiscal_targets.py:3452-3459``) and
@@ -84,6 +78,12 @@ the canonical name of an area:
   summary-level prefix. This is a restatement, not a second declaration of an
   area, so it is never compared against a canonical id and never counted as a
   conflict.
+
+Bare values can also occur in the hierarchy and ledger fields; the source
+field name alone never establishes the encoding. Validation reuses the fiscal
+target compiler's state/CD parsers and the national activation's identifier.
+Unrecognized nonempty values stay visible in their own count, outside both
+canonical and bare counts. Values are never rewritten.
 
 The bare form is **not** an interchangeable spelling, and this module makes no
 claim that it is. Stripping is lossless for a state (one prefix,
@@ -112,6 +112,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 
+from microcosm.build.us_runtime.fiscal_targets import (
+    _congressional_district_geoid,
+    _state_fips,
+)
+from microcosm.build.us_runtime.national_age_activation import NATIONAL_GEOGRAPHY_ID
+from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
 from microcosm.data.us_critical_targets import is_congressional_district_target
 
 __all__ = [
@@ -207,7 +213,33 @@ class TargetGeographyView:
         set counts one area twice.
         """
 
-        return self.geography_id_source in _CANONICAL_GEOGRAPHY_ID_SOURCES
+        if (
+            self.geography_id_source not in _CANONICAL_GEOGRAPHY_ID_SOURCES
+            or not self.geography_id.isascii()
+        ):
+            return False
+        if self.level == "national":
+            return self.geography_id == NATIONAL_GEOGRAPHY_ID
+        fact = {"geography": {"id": self.geography_id}}
+        if self.level == "state":
+            return _state_fips(fact) is not None
+        if self.level == "congressional_district":
+            return _congressional_district_geoid(fact) is not None
+        return False
+
+    @property
+    def geography_id_is_bare(self) -> bool:
+        """Recognize a bare code without assigning its missing prefix/vintage."""
+
+        if self.level == "state":
+            return self.geography_id in US_STATE_FIPS_TO_POSTAL
+        return (
+            self.level == "congressional_district"
+            and len(self.geography_id) == 4
+            and self.geography_id.isascii()
+            and self.geography_id.isdigit()
+            and self.geography_id[:2] in US_STATE_FIPS_TO_POSTAL
+        )
 
     @property
     def geography_id_declarations_conflict(self) -> bool:
@@ -310,7 +342,8 @@ def us_target_geography_view(
     compiler produces it: the calibration hierarchy's geography tier, then the
     ledger geography level, then the compiler's ``geography_scope`` metadata.
     Only when no explicit level exists does the shared congressional-district
-    classifier act as evidence of its own. Anything else is
+    classifier act as evidence of its own. An unsupported explicit level is
+    not missing evidence and cannot be replaced by that fallback. Anything else is
     :data:`UNRESOLVED_GEOGRAPHY_VIEW_LEVEL`.
 
     The identifier is then read only from a declaration at that same resolved
@@ -331,7 +364,13 @@ def us_target_geography_view(
             if level:
                 level_source = key
                 break
-    if not level and cd_evidence:
+    # An unsupported declaration is evidence of another scope, not missing
+    # evidence that a name substring may replace. A supported declaration
+    # above can still resolve the row (e.g. county hierarchy + state scope).
+    has_explicit_level = bool(_text(hierarchy_level)) or any(
+        _text(metadata.get(key)) for key in _EXPLICIT_LEVEL_METADATA_KEYS
+    )
+    if not level and not has_explicit_level and cd_evidence:
         level = "congressional_district"
         level_source = "congressional_district_evidence"
     if not level:
