@@ -34,7 +34,8 @@ outside this family's provenance.
 
 The archived arithmetic returned a number for every row whose four literals
 it could read, and never an unknown; a row that was never asked the question
-read whatever its literals happened to hold, usually but not always zero. This adapter does not. Each slot is classified into one closed vocabulary
+read whatever its literals happened to hold, which on a consistent
+never-asked row is zero and on a contradictory one need not be. This adapter does not. Each slot is classified into one closed vocabulary
 (`SLOT_KINDS`); only the first four resolve, and the rest leave the person
 unknown:
 
@@ -68,6 +69,13 @@ all when a literal will not parse — is recorded in
 `other_disability_archived_arithmetic_amount` and
 `other_disability_archived_arithmetic_evaluable`, and never adopted.
 
+That replay runs over the four fields **as the owner parsed them**, so it is
+evaluable only where each read inside its own printed domain. The archived
+function itself accepted any finite number, so a source code outside the
+published table — `11`, say — is a row the retired pipeline would have summed
+and this replay reports as unevaluable. It is a replay of the admitted
+literals, not of every byte the old pipeline consumed.
+
 ## Provenance is not knownness
 
 Every published allocation flag for this family (`I_DISYN`, `I_DISSC1`,
@@ -82,7 +90,8 @@ was in its universe to begin with.
 Two family-level answers are reported, under names that say which is which.
 `other_disability_published_flag_origin` is the routing owner's reading, which
 is universe-blind by that owner's charter: a nonzero flag read outside its own
-printed universe still counts as a publisher allocation there.
+printed universe can still count as a publisher allocation there — unless some
+flag's literal is unresolved, which that owner answers first.
 `other_disability_allocation_status` is this module's own reading, built from
 the per-flag labels above, so a flag outside its universe does not allocate
 this family. Its precedence is: an in-universe publisher allocation settles the
