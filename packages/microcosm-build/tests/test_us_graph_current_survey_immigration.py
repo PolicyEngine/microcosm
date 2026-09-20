@@ -1,5 +1,6 @@
 """Typed pair encoding and clone mapping; these pure tests issue no authority."""
 
+import importlib.util
 import json
 from dataclasses import replace
 from types import SimpleNamespace
@@ -229,6 +230,29 @@ def test_mutated_owner_entrypoint_code_refuses_before_invocation(monkeypatch, na
     monkeypatch.setattr(getattr(container, name), "__code__", replacement.__code__)
     with pytest.raises(ValueError, match="OWNER_IMPLEMENTATION_CHANGED"):
         graph.retained_entry(object())
+
+
+@pytest.mark.parametrize("name", ["_pure", "_live", "_modules", "_require", "validate"])
+def test_first_fragment_import_cannot_bless_changed_owner(monkeypatch, name):
+    container = (
+        graph.owner.CurrentSurveyImmigrationTransfer
+        if name == "validate"
+        else graph.owner
+    )
+
+    def replacement(*args, **kwargs):
+        raise AssertionError("A replaced validation body must not run")
+
+    monkeypatch.setattr(container, name, replacement)
+    # Load the maintained fragment fresh after changing an already-imported
+    # original owner. No registry entry or source authority is manufactured.
+    spec = importlib.util.spec_from_file_location(
+        graph.__name__ + "_guard_probe", graph.__file__
+    )
+    fresh = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fresh)
+    with pytest.raises(ValueError, match="OWNER_IMPLEMENTATION_CHANGED"):
+        fresh.retained_entry(object())
 
 
 @pytest.mark.parametrize("spm", [False, True])
