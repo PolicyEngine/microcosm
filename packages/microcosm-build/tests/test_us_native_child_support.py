@@ -202,7 +202,9 @@ def _full_original_child_source_and_donor(tmp_path, monkeypatch):
     return donor
 
 
-def _run_child_source_graph(tmp_path, monkeypatch, projection, carried):
+def _run_child_source_graph(
+    tmp_path, monkeypatch, projection, carried, *, canonical_state=False
+):
     from types import SimpleNamespace
 
     from microcosm.fit import model_input
@@ -232,6 +234,16 @@ def _run_child_source_graph(tmp_path, monkeypatch, projection, carried):
     monkeypatch.setenv("POPULACE_FIT_PREDICT_WORKERS", "1")
     qualified, receiving = _child_family()
     spec = qualified.groups[0].spec
+    if canonical_state:
+        # Invented receiving geography only. Genuine geography qualification is
+        # separately covered by test_us_current_survey_state_host; this fixture
+        # proves terminal composition, never a native PUF/enrichment issuer.
+        household = receiving.table("household")
+        for name in graph.state_graph.INPUTS:
+            household[name] = pd.array(
+                ["06"] * len(household), dtype=population_ops.dtype_for_token("string")
+            )
+        household["state_fips"] = np.full(len(household), 99, dtype="int64")
     full = projection.frame
     keep = np.isfinite(projection.features.to_numpy()).all(axis=1) & np.isfinite(
         projection.amounts.CSP_VAL.to_numpy()
@@ -374,11 +386,51 @@ def _run_child_source_graph(tmp_path, monkeypatch, projection, carried):
             ),
         ),
     )
+    extra = ()
+    if canonical_state:
+
+        class GeographyFixture(KernelBase):
+            ref = "test.child.state_geography@1"
+            capabilities = Capabilities(Determinism.DETERMINISTIC)
+
+            def run(self, context):
+                return KernelResult(
+                    artifacts={
+                        "validation": graph.state_graph.canonical_json(
+                            {
+                                "outcome": "pass",
+                                "scope": "atomic_geography_mapping_integrity",
+                            }
+                        )
+                    }
+                )
+
+        gate = Node(
+            "geography.gate",
+            GeographyFixture.ref,
+            population=receiving_node.id,
+            artifact_outputs=(
+                ArtifactOutput(
+                    "validation", graph.state_graph.ATOMIC_GEOGRAPHY_VALIDATION_TYPE
+                ),
+            ),
+        )
+        state_nodes = graph.Boundary._state_nodes(
+            SimpleNamespace(
+                canonical_state_input=True,
+                qualified=qualified,
+                run=SimpleNamespace(population=SimpleNamespace(frame=receiving)),
+            )
+        )
+        assert state_nodes[0].base == graph.CHILD_VERSION_NODE
+        assert state_nodes[0].artifact_inputs[0].producer == graph.CHILD_ATTACH_NODE
+        nodes = (*nodes, *state_nodes)
+        extra = (gate,)
     compiled = compile_graph(
         Graph(
             "us",
             (SourceRef(graph.health_graph.SOURCE_NAME, "raw-bytes-v1"),),
-            (create, receiving_node, finalization, *nodes, later),
+            (create, receiving_node, finalization, *nodes, later, *extra),
         )
     )
     original_seal = amounts.seal(qualified)
@@ -417,6 +469,10 @@ def _run_child_source_graph(tmp_path, monkeypatch, projection, carried):
         LegacyQRFApplyMatrixKernel(),
     ):
         registry.register(kernel)
+    if canonical_state:
+        registry.register(GeographyFixture())
+        registry.register(graph.CurrentSurveyStateVersionKernel(boundary))
+        registry.register(graph.CurrentSurveyCanonicalStateKernel(boundary))
     path = tmp_path / "invented.txt"
     path.write_bytes(b"invented full-original amount graph")
     store = ContentStore(tmp_path / "store")
@@ -518,6 +574,38 @@ def _run_child_source_graph(tmp_path, monkeypatch, projection, carried):
     graph.physical.replay.same_replayed_population(
         replayed_child, observed[graph.CHILD_ATTACH_NODE]
     )
+    if canonical_state:
+        prior = observed[graph.CHILD_ATTACH_NODE]
+        for node in state_nodes:
+            reconstructed = graph._state_expected_population(
+                prior,
+                node,
+                graph.parent._loaded_values(boundary, warm, loaded, node),
+                {a.name: loaded[node.id, a.name] for a in node.artifact_outputs},
+            )
+            graph.physical.replay.same_replayed_population(
+                reconstructed, observed[node.id]
+            )
+            prior = reconstructed
+        final = warm.population(graph.STATE_VERSION_NODE)
+        for entity in output.entities:
+            other = [
+                c
+                for c in output.table(entity)
+                if (entity, c) != ("household", "state_fips")
+            ]
+            pd.testing.assert_frame_equal(
+                final.table(entity)[other],
+                output.table(entity)[other],
+                check_exact=True,
+            )
+        assert final.table("household").state_fips.eq(6).all()
+        assert output.table("household").state_fips.eq(99).all()
+        assert final.person.test_late.equals(output.person.test_late)
+        assert warm.mass_ledger(graph.STATE_VERSION_NODE)[:-1] == warm.mass_ledger(
+            graph.CHILD_VERSION_NODE
+        )
+        assert final.weights_for("household").values.tobytes() == weight_bytes
     graph._verify_models(
         boundary,
         loaded,

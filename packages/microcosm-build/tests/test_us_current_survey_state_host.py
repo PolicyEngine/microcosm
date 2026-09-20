@@ -373,3 +373,87 @@ def test_state_version_wrapper_preserves_structural_context(genuine_atomic):  # 
     context.tables["person"].loc[0, "person_household_id"] += 1
     with pytest.raises(ValueError, match="STATE_VERSION_PERSONS"):
         host.CurrentSurveyStateVersionKernel(boundary).run(context)
+
+
+def test_combined_child_then_state_preserves_later_writes_and_both_ledgers(
+    tmp_path, monkeypatch
+):
+    from test_us_native_child_support import (
+        _full_original_child_source_and_donor,
+        _run_child_source_graph,
+    )
+
+    donor = _full_original_child_source_and_donor(tmp_path, monkeypatch)
+    graph_dir = tmp_path / "combined-graph"
+    graph_dir.mkdir()
+    _run_child_source_graph(graph_dir, monkeypatch, donor, -999.0, canonical_state=True)
+
+
+@pytest.mark.parametrize("options", itertools.product((False, True), repeat=4))
+@pytest.mark.parametrize("child", [False, True])
+def test_host_state_nodes_compose_after_optional_child(options, child):
+    from test_us_graph_current_survey_state import _table, _view
+
+    spm, immigration, sex, race = options
+    qualified = SimpleNamespace(
+        groups=(
+            SimpleNamespace(
+                spec=SimpleNamespace(
+                    key="child_support" if child else "workers_compensation"
+                )
+            ),
+        )
+    )
+    nodes = host.Boundary._state_nodes(
+        SimpleNamespace(
+            canonical_state_input=True,
+            qualified=qualified,
+            run=SimpleNamespace(population=SimpleNamespace(frame=_view(_table()))),
+            spm=object() if spm else None,
+            immigration_transfer=object() if immigration else None,
+            sex=object() if sex else None,
+            race=object() if race else None,
+        )
+    )
+    assert nodes[0].base == (
+        host.CHILD_VERSION_NODE if child else host.parent.attach.FILTER_NODE
+    )
+    assert nodes[0].artifact_inputs[0] == (
+        ArtifactInput(
+            "child_support_attachment",
+            host.CHILD_ATTACH_NODE,
+            "attachment",
+            host.ATTACHMENT_TYPE,
+        )
+        if child
+        else host._state_after_edge(*options)
+    )
+    assert nodes[1].population == nodes[0].id
+
+
+def test_state_keep_all_reconstruction_explicitly_refuses_mutated_group_axis():
+    """A normal Frame refuses orphans; emulate mutation after its construction."""
+    from test_us_native_child_support import _child_family
+
+    from microcosm.graph import population as population_ops
+
+    _, receiving = _child_family()
+    edge = ArtifactInput("prior", "prior", "attachment", host.ATTACHMENT_TYPE)
+    node = host._state_version_node(receiving_version="prior", after=edge)
+    incoming = population_ops.Population.from_frame(receiving, node.base)
+    artifacts = {
+        "prior": ArtifactValue(
+            payload=b"prior",
+            type=edge.type,
+            key="a" * 64,
+            producer_key="b" * 64,
+            numerics=NumericScope(Numeric.BITWISE),
+        )
+    }
+    person = receiving.person[["person_id", "person_support_clone_index"]]
+    result = host._state_version_result(node, person, artifacts)
+    membership = receiving.schema.membership_column("household")
+    first, second = receiving.person[membership].drop_duplicates().iloc[:2]
+    receiving.person.loc[receiving.person[membership].eq(first), membership] = second
+    with pytest.raises(ValueError, match="STATE_VERSION_AXIS_CHANGED"):
+        host._state_expected_population(incoming, node, artifacts, result.artifacts)
