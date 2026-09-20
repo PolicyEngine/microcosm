@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import sys
-from types import SimpleNamespace
+from types import FunctionType, SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -44,6 +44,16 @@ _REFS = {
     ATTACH_NODE: "us.survey_immigration.attach@1",
 }
 STRING = pd.StringDtype(storage="python")
+# A guard cannot authenticate itself after a caller has rebound it. Capture the
+# maintained entry points before borrowing an owner, independently of their bodies.
+_OWNER_CALLABLES = tuple(
+    (container, name, owner.source._function_seal(getattr(container, name)))
+    for container, names in (
+        (owner, ("_pure", "_live", "_modules", "_require")),
+        (owner.CurrentSurveyImmigrationTransfer, ("validate",)),
+    )
+    for name in names
+)
 
 
 def _require(condition, reason):
@@ -54,6 +64,7 @@ def _require(condition, reason):
 def configuration():
     return (
         owner,
+        _OWNER_CALLABLES,
         attachment,
         attachment.provenance,
         population_ops,
@@ -71,6 +82,14 @@ def configuration():
 
 def retained_entry(transfer):
     """Borrow the genuine owner; an equal frame or receipt is not authority."""
+    _require(
+        all(
+            type(current := getattr(container, name, None)) is FunctionType
+            and owner.source._function_seal(current) == seal
+            for container, name, seal in _OWNER_CALLABLES
+        ),
+        "OWNER_IMPLEMENTATION_CHANGED",
+    )
     entry = owner._ISSUED.get(id(transfer))
     _require(
         type(transfer) is owner.CurrentSurveyImmigrationTransfer

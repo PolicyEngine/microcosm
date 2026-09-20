@@ -395,6 +395,8 @@ def test_genuine_full51_clone_mapping_prefix(originals):
         receiving.frame.person.person_id
     )
     output = terminal.artifact_outputs[0]
+    assert output.name == "verification"
+    assert output.type == fragment.owner.host._tax_module().VERIFICATION_TYPE
     after = ArtifactInput(
         "financial_verification", terminal.id, output.name, output.type
     )

@@ -84,6 +84,7 @@ def _live():
         housing_graph.participation,
         spm_graph,
         immigration_graph,
+        immigration_graph.owner,
     ):
         for name, item in vars(module).items():
             if type(item) is FunctionType:
