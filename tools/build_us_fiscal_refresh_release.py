@@ -44,9 +44,11 @@ import time
 import tomllib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import contextmanager
+from copy import deepcopy
+from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -5381,6 +5383,282 @@ def _calibrate_fiscal_support(
             "refit_final_loss": _finite_or_none(result.final_loss),
         }
     return result, default_dataset
+
+
+class _NativeCalibrationAttachment(NamedTuple):
+    """Detached measured outputs, not a native issuer or release verdict."""
+
+    frame: Frame
+    result: Any
+    default_dataset: dict
+    ordered_household_ids: np.ndarray
+    full_parent_weights: np.ndarray
+    comparison_specification: bytes
+    binding: bytes
+
+
+def _calibrate_native_input_frame(
+    input_frame: Frame,
+    target_frame: Frame,
+    registry: TargetRegistry,
+    *,
+    args: argparse.Namespace,
+    target_loss_weights: np.ndarray,
+    formula_metadata,
+    parent_reference: str,
+    calibration_specification: bytes,
+    progress_callback=None,
+) -> _NativeCalibrationAttachment:
+    """Solve supplied targets and attach weights only to unchanged input cells.
+
+    This private bridge accepts a closed ordinary-solve option set, not legacy
+    checkpoints, warm starts or exact-k identities. Target/source/runtime
+    qualification remains the host's responsibility. Caller metadata and target
+    configuration are snapshotted; all returned Frames are detached. Sparse
+    output preserves the maintained selected support, including any zero refit
+    weights, rather than applying a second pruning rule.
+    """
+    from microcosm.build.us_runtime.common_frame_export_contract import (
+        MAX_SPECIFICATION_BYTES,
+        verify_retained_frame_export,
+    )
+    from microcosm.build.us_runtime.native_survey_handoff import _projection_stamp
+    from microcosm.calibrate import CalibrationResult, L0RefitResult
+    from microcosm.graph.population import storage_equal
+
+    def require(condition, code):
+        if not condition:
+            raise ValueError("NATIVE_CALIBRATION_" + code)
+
+    def detached(frame):
+        return Frame(
+            {entity: frame.table(entity).copy(deep=True) for entity in frame.entities},
+            frame.schema,
+            {
+                entity: Weights(
+                    frame.weights_for(entity).values.copy(),
+                    frame.weights_for(entity).kind,
+                )
+                for entity in frame.weighted_entities
+            },
+            frame.strata.copy(deep=True),
+            metadata=frame.metadata,
+            mass_log=deepcopy(frame.mass_log),
+        )
+
+    def same(left, right):
+        return storage_equal(pd.Series(left), pd.Series(right))
+
+    try:
+        solve_fields = {
+            "exact_k",
+            "dense_default_dataset",
+            "epochs",
+            "learning_rate",
+            "max_weight_ratio",
+            "seed",
+            "l2_lambda",
+            "refit_l2_lambda",
+            "l0_refit_lambda_share",
+        }
+        require(
+            type(args) is argparse.Namespace and set(vars(args)) == solve_fields,
+            "OPTIONS",
+        )
+        require(
+            args.exact_k is None and type(args.dense_default_dataset) is bool, "OPTIONS"
+        )
+        options = argparse.Namespace(**json.loads(_strict_json_bytes(vars(args))))
+        require(formula_metadata is not None, "FORMULA_METADATA")
+        require(type(parent_reference) is str and bool(parent_reference), "REFERENCE")
+        require(
+            type(calibration_specification) is bytes
+            and 0 < len(calibration_specification) <= MAX_SPECIFICATION_BYTES,
+            "SPECIFICATION",
+        )
+        require(
+            type(target_loss_weights) is np.ndarray
+            and target_loss_weights.dtype == np.dtype("float64")
+            and target_loss_weights.shape == (len(registry),)
+            and np.isfinite(target_loss_weights).all()
+            and (target_loss_weights >= 0).all(),
+            "LOSS_WEIGHTS",
+        )
+        loss_weights = target_loss_weights.copy()
+        owned_registry = deepcopy(registry)
+        require(type(registry) is TargetRegistry, "REGISTRY")
+        require(
+            isinstance(input_frame, Frame) and isinstance(target_frame, Frame), "FRAME"
+        )
+        require(
+            input_frame.schema == target_frame.schema
+            and not input_frame.schema.links
+            and input_frame.weighted_entities
+            == target_frame.weighted_entities
+            == ("household",),
+            "STRUCTURE",
+        )
+        original_stamps = (
+            _projection_stamp(input_frame),
+            _projection_stamp(target_frame),
+        )
+        parent, targets = detached(input_frame), detached(target_frame)
+        for entity in parent.entities:
+            left, right = parent.table(entity), targets.table(entity)
+            require(
+                len(left) == len(right) and left.index.identical(right.index),
+                "TARGET_ORDER",
+            )
+            for name in left:
+                require(
+                    name in right and storage_equal(left[name], right[name]),
+                    "TARGET_INPUT:" + entity + "." + str(name),
+                )
+        require(storage_equal(parent.strata, targets.strata), "TARGET_STRATA")
+        initial = parent.weights_for("household")
+        target_initial = targets.weights_for("household")
+        require(
+            initial.kind is target_initial.kind
+            and same(initial.values, target_initial.values),
+            "TARGET_WEIGHTS",
+        )
+        parent_stamp, target_stamp = (
+            _projection_stamp(parent),
+            _projection_stamp(targets),
+        )
+        ids = (
+            parent.table("household")[parent.schema.id_column("household")]
+            .to_numpy()
+            .copy()
+        )
+        require(
+            ids.dtype.kind in "iu" and len(np.unique(ids)) == len(ids), "HOUSEHOLD_IDS"
+        )
+        specification = _strict_json_bytes(
+            {
+                "supplied_specification_sha256": hashlib.sha256(
+                    calibration_specification
+                ).hexdigest(),
+                "input_frame_sha256": parent_stamp,
+                "target_frame_sha256": target_stamp,
+                "registry_sha256": hashlib.sha256(
+                    _strict_json_bytes(
+                        {
+                            "country": owned_registry.country,
+                            "specs": [asdict(spec) for spec in owned_registry],
+                        }
+                    )
+                ).hexdigest(),
+                "solver_options": vars(options),
+                "target_loss_weights": {
+                    "dtype": loss_weights.dtype.str,
+                    "rows": len(loss_weights),
+                    "sha256": hashlib.sha256(loss_weights.tobytes()).hexdigest(),
+                },
+                "mass": "conserve",
+                "target_loss_cap": US_FISCAL_TARGET_LOSS_CAP,
+            }
+        )
+        _assert_no_formula_owned_columns(parent, formula_metadata=formula_metadata)
+        result, default_dataset = _calibrate_fiscal_support(
+            targets,
+            owned_registry,
+            args=options,
+            target_loss_weights=loss_weights,
+            warm_start_weights=None,
+            progress_callback=progress_callback,
+        )
+        dense = options.dense_default_dataset
+        require(
+            type(result) is (CalibrationResult if dense else L0RefitResult),
+            "RESULT_TYPE",
+        )
+        require(result.weight_entity == "household", "RESULT_ENTITY")
+        weights = result.weights
+        require(
+            type(weights) is np.ndarray
+            and weights.dtype == np.dtype("float64")
+            and weights.ndim == 1
+            and np.isfinite(weights).all()
+            and (weights >= 0).all()
+            and (weights > 0).any(),
+            "RESULT_WEIGHTS",
+        )
+        initial.assert_mass_conserved(
+            Weights(weights, WeightKind.CALIBRATED), rtol=1e-9
+        )
+        if dense:
+            require(
+                weights.shape == ids.shape
+                and same(result.initial_weights, initial.values),
+                "RESULT_INITIAL_WEIGHTS",
+            )
+            full_weights, scope = weights.copy(), None
+            candidate = _with_calibrated_weights(
+                parent, weights, formula_metadata=formula_metadata
+            )
+        else:
+            selected = result.selected_entity_ids
+            mask = result.selected_mask
+            require(
+                type(selected) is np.ndarray
+                and selected.dtype == ids.dtype
+                and selected.ndim == 1
+                and selected.shape == weights.shape,
+                "RESULT_IDS",
+            )
+            require(
+                type(mask) is np.ndarray
+                and mask.dtype == np.dtype("bool")
+                and mask.shape == ids.shape
+                and np.array_equal(ids[mask], selected),
+                "RESULT_SUPPORT",
+            )
+            require(
+                same(result.selection.initial_weights, initial.values),
+                "RESULT_INITIAL_WEIGHTS",
+            )
+            full_weights = np.zeros(len(ids), dtype=np.float64)
+            full_weights[mask] = weights
+            scope = selected.copy()
+            candidate = _with_l0_refit_weights(
+                parent, result, formula_metadata=formula_metadata
+            )
+        comparison = dict(
+            parent_reference=parent_reference,
+            ordered_household_ids=ids,
+            calibrated_weights=full_weights,
+            calibration_specification=specification,
+            scope_household_ids=scope,
+            prune_zero_weight=False,
+        )
+        # Check the solver's returned support independently of the clean input
+        # attachment. A same-shaped result from a different target parent refuses.
+        verify_retained_frame_export(targets, result.frame, **comparison)
+        binding = verify_retained_frame_export(parent, candidate, **comparison)
+        require(
+            _projection_stamp(parent) == parent_stamp
+            and _projection_stamp(targets) == target_stamp
+            and (_projection_stamp(input_frame), _projection_stamp(target_frame))
+            == original_stamps,
+            "CHANGED",
+        )
+        ids.setflags(write=False)
+        full_weights.setflags(write=False)
+        return _NativeCalibrationAttachment(
+            candidate,
+            result,
+            deepcopy(default_dataset),
+            ids,
+            full_weights,
+            specification,
+            binding,
+        )
+    except (AttributeError, KeyError, TypeError, ValueError, OverflowError) as error:
+        if type(error) is ValueError and str(error).startswith("NATIVE_CALIBRATION_"):
+            raise
+        # Frame/solver exceptions may otherwise include private row examples.
+        raise ValueError("NATIVE_CALIBRATION_STRUCTURE_OR_RESULT") from None
 
 
 def _with_calibrated_weights(
