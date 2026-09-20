@@ -1300,7 +1300,9 @@ class PolicyEngineUSEngine:
 
     def _tax_benefit_system(self) -> Any:
         if self._system is None:
-            self._system = self._import_policyengine_us().CountryTaxBenefitSystem()
+            self._system = self._import_policyengine_us().CountryTaxBenefitSystem(
+                **({"spm": dict(self._spm)} if self._spm is not None else {})
+            )
         return self._system
 
     def _variable(self, name: str) -> Any:
