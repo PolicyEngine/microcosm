@@ -31,7 +31,7 @@ from .l0_refit_export import (
     US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS,
 )
 from .multispine_pool import pool_input_surface
-from .prior_year_income import US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
+from .prior_year_income_constants import US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
 from .survey_population_replay import same_replayed_frame
 
 if TYPE_CHECKING:

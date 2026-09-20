@@ -9,10 +9,13 @@ Grain/applicability are deliberately not guessed from engine variable names.
 
 from enum import StrEnum
 
+from .prior_year_income_constants import US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
+
 
 class USInputProfile(StrEnum):
     HISTORICAL = "us_release_163_v1"
     NATIONAL_CD = "us_national_cd_161_v1"
+    NATIVE_NATIONAL_CD = "us_native_national_cd_159_v1"
 
 
 MANIFEST_SHA256 = "d96d0e98078906a9b47d47662e173553b1937851c7a8dd576010b50705ca1b1d"
@@ -187,6 +190,11 @@ NATIONAL_CD_REQUIRED_INPUTS = tuple(
     for name in HISTORICAL_REQUIRED_INPUTS
     if name not in NATIONAL_CD_ENGINE_OMISSIONS
 )
+NATIVE_NATIONAL_CD_REQUIRED_INPUTS = tuple(
+    name
+    for name in NATIONAL_CD_REQUIRED_INPUTS
+    if name not in US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
+)
 # Independent build state, even when not an engine input in the selected profile.
 ASSIGNED_BLOCK_COLUMN = "census_block_geoid"
 
@@ -199,4 +207,21 @@ def required_us_inputs(
         raise TypeError("US_INPUT_PROFILE_TYPE")
     if profile is USInputProfile.HISTORICAL:
         return HISTORICAL_REQUIRED_INPUTS
+    if profile is USInputProfile.NATIVE_NATIONAL_CD:
+        return NATIVE_NATIONAL_CD_REQUIRED_INPUTS
     return NATIONAL_CD_REQUIRED_INPUTS
+
+
+def scope_excluded_us_inputs(
+    profile: USInputProfile = USInputProfile.HISTORICAL,
+) -> tuple[str, ...]:
+    """Return declared scope exclusions, not missing-data or source exemptions.
+
+    The entire prior-year family is outside the native scope, although wages
+    were already absent from both historical and national/CD name rosters.
+    """
+    if type(profile) is not USInputProfile:
+        raise TypeError("US_INPUT_PROFILE_TYPE")
+    if profile is USInputProfile.NATIVE_NATIONAL_CD:
+        return US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
+    return ()

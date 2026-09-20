@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 import sys
 from dataclasses import replace
+from enum import StrEnum
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -63,6 +65,14 @@ def _frame(spec):
     )
     if spec.get("unknown_origin"):
         people.loc[0, "person_support_channel"] = pd.NA
+    if spec.get("prior_year_columns"):
+        people["employment_income_last_year"] = np.arange(6, dtype=np.float64)
+        people["self_employment_income_last_year"] = pd.Series(
+            [np.nan] * 6, dtype="float64"
+        )
+        people["previous_year_income_available"] = pd.Series(
+            [pd.NA] * 6, dtype="boolean"
+        )
     households = pd.DataFrame(
         {
             "household_id": household_ids,
@@ -247,10 +257,7 @@ def _input(report, name, entity="person"):
 
 
 def test_closed_profiles_match_manifest_without_changing_historical_default():
-    path = (
-        Path(profile.__file__).parents[1]
-        / "us/release_input_coverage_manifest.json"
-    )
+    path = Path(profile.__file__).parents[1] / "us/release_input_coverage_manifest.json"
     manifest = json.loads(path.read_text())
     expected = tuple(
         name for name, row in manifest["columns"].items() if row["status"] == "required"
@@ -267,6 +274,143 @@ def test_closed_profiles_match_manifest_without_changing_historical_default():
     assert "employment_income_last_year" not in expected
     with pytest.raises(TypeError, match="PROFILE_TYPE"):
         profile.required_us_inputs("us_national_cd_161_v1")
+
+
+def test_native_profile_excludes_only_the_canonical_prior_year_family():
+    from microcosm.build.us_runtime import prior_year_income as legacy
+    from microcosm.build.us_runtime.prior_year_income_constants import (
+        US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS,
+    )
+
+    assert (
+        legacy.US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
+        is US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
+    )
+    native = profile.required_us_inputs(profile.USInputProfile.NATIVE_NATIONAL_CD)
+    assert len(native) == len(set(native)) == 159
+    assert native == tuple(
+        name
+        for name in profile.NATIONAL_CD_REQUIRED_INPUTS
+        if name not in US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
+    )
+    assert set(profile.NATIONAL_CD_REQUIRED_INPUTS) - set(native) == {
+        "self_employment_income_last_year",
+        "previous_year_income_available",
+    }
+    assert set(native).isdisjoint(US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS)
+    assert (
+        profile.scope_excluded_us_inputs(profile.USInputProfile.NATIVE_NATIONAL_CD)
+        is US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
+    )
+    assert profile.scope_excluded_us_inputs(profile.USInputProfile.HISTORICAL) == ()
+    assert profile.scope_excluded_us_inputs(profile.USInputProfile.NATIONAL_CD) == ()
+
+
+class _OtherProfile(StrEnum):
+    NATIVE_NATIONAL_CD = "us_native_national_cd_159_v1"
+
+
+@pytest.mark.parametrize(
+    "invalid",
+    [
+        "us_native_national_cd_159_v1",
+        "us_national_cd_161_v1",
+        "invalid",
+        _OtherProfile.NATIVE_NATIONAL_CD,
+        None,
+        159,
+    ],
+)
+def test_profile_selection_refuses_non_profile_values_before_population_use(invalid):
+    with pytest.raises(TypeError, match="^US_INPUT_PROFILE_TYPE$"):
+        profile.required_us_inputs(invalid)
+    with pytest.raises(TypeError, match="^US_INPUT_PROFILE_TYPE$"):
+        profile.scope_excluded_us_inputs(invalid)
+    with pytest.raises(TypeError, match="^US_INPUT_PROFILE_TYPE$"):
+        coverage.diagnose_us_input_coverage(
+            None, compiled=None, manifest=None, profile=invalid
+        )
+
+
+def test_profile_and_constants_have_no_runtime_or_resource_imports(monkeypatch):
+    from microcosm.build.us_runtime import prior_year_income_constants as constants
+
+    modules = (constants, profile)
+    sources = [
+        (module, compile(Path(module.__file__).read_bytes(), module.__file__, "exec"))
+        for module in modules
+    ]
+    original_import = builtins.__import__
+
+    def light_import(name, *args, **kwargs):
+        assert name in {"enum", "prior_year_income_constants"}, name
+        return original_import(name, *args, **kwargs)
+
+    def no_read(*args, **kwargs):
+        pytest.fail("Input-name declarations must not read resources")
+
+    with monkeypatch.context() as guard:
+        guard.setattr(builtins, "open", no_read)
+        guard.setattr(Path, "open", no_read)
+        for module, source in sources:
+            namespace = {
+                "__name__": module.__name__,
+                "__package__": module.__package__,
+                "__builtins__": {**vars(builtins), "__import__": light_import},
+            }
+            exec(source, namespace)
+
+
+@pytest.mark.parametrize("present", [False, True])
+def test_native_diagnostic_reports_scope_without_waiving_other_inputs(actual, present):
+    from microcosm.build.us_runtime.prior_year_income_constants import (
+        US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS,
+    )
+
+    run = actual(prior_year_columns=present, missing_block=True)
+    national = _diagnose(run)
+    historical = coverage.diagnose_us_input_coverage(
+        run.population,
+        compiled=run.compiled,
+        manifest=run.manifest,
+        profile=profile.USInputProfile.HISTORICAL,
+    )
+    native = coverage.diagnose_us_input_coverage(
+        run.population,
+        compiled=run.compiled,
+        manifest=run.manifest,
+        profile=profile.USInputProfile.NATIVE_NATIONAL_CD,
+    )
+    excluded = set(US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS)
+    assert national.profile is profile.USInputProfile.NATIONAL_CD
+    assert len(national.inputs) == 161
+    assert len(historical.inputs) == 163
+    assert historical.scope_excluded_inputs == ()
+    assert {"block_geoid", "tract_geoid"} <= set(historical.missing_inputs)
+    assert national.scope_excluded_inputs == ()
+    assert native.scope_excluded_inputs == US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
+    assert len(native.inputs) == 159
+    assert native.inputs == tuple(
+        row for row in national.inputs if row.name not in excluded
+    )
+    assert native.missing_inputs == tuple(
+        name for name in national.missing_inputs if name not in excluded
+    )
+    assert "first_home_mortgage_balance" in native.missing_inputs
+    assert native.assigned_block == national.assigned_block
+    assert native.block_storage_issues == ("missing_assigned_block",)
+    assert native.producers == national.producers
+    assert native.population_storage_sha256 == national.population_storage_sha256
+    assert not native.release_eligible
+    assert not native.source_ancestry_verified
+    assert not native.applicability_complete
+    assert not native.statistical_signal_verified
+    document = json.loads(native.to_bytes())
+    assert document["profile"] == "us_native_national_cd_159_v1"
+    assert document["scope_excluded_inputs"] == list(
+        US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
+    )
+    assert all((name in run.population.frame.person) is present for name in excluded)
 
 
 def test_actual_masked_coverage_separates_origin_clone_grain_and_unknownness(actual):
