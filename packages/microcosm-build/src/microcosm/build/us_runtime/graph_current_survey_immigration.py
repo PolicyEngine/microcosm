@@ -44,15 +44,18 @@ _REFS = {
     ATTACH_NODE: "us.survey_immigration.attach@1",
 }
 STRING = pd.StringDtype(storage="python")
-# A guard cannot authenticate itself after a caller has rebound it. Capture the
-# maintained entry points before borrowing an owner, independently of their bodies.
+# A guard cannot authenticate itself after a caller has rebound it. Use the
+# original owner's baseline, even if this fragment is first imported later.
+_OWNER_CLASS = owner._LIVE[owner.__name__, "CurrentSurveyImmigrationTransfer"]
 _OWNER_CALLABLES = tuple(
-    (container, name, owner.source._function_seal(getattr(container, name)))
-    for container, names in (
-        (owner, ("_pure", "_live", "_modules", "_require")),
-        (owner.CurrentSurveyImmigrationTransfer, ("validate",)),
-    )
-    for name in names
+    (owner, name, owner._LIVE[owner.__name__, name])
+    for name in ("_pure", "_live", "_modules", "_require")
+) + (
+    (
+        _OWNER_CLASS,
+        "validate",
+        owner._LIVE[owner.__name__, "CurrentSurveyImmigrationTransfer", "validate"],
+    ),
 )
 
 
@@ -64,6 +67,7 @@ def _require(condition, reason):
 def configuration():
     return (
         owner,
+        _OWNER_CLASS,
         _OWNER_CALLABLES,
         attachment,
         attachment.provenance,
@@ -83,7 +87,8 @@ def configuration():
 def retained_entry(transfer):
     """Borrow the genuine owner; an equal frame or receipt is not authority."""
     _require(
-        all(
+        owner.CurrentSurveyImmigrationTransfer is _OWNER_CLASS
+        and all(
             type(current := getattr(container, name, None)) is FunctionType
             and owner.source._function_seal(current) == seal
             for container, name, seal in _OWNER_CALLABLES
