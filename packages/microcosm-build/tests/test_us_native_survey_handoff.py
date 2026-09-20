@@ -433,6 +433,74 @@ def test_projection_public_entry_refuses_frames_checkpoints_and_forged_runs(tmp_
     for unsupported in (source, checkpoint, checkpoint.report, forged, object()):
         with pytest.raises(ValueError, match="UNISSUED_RUN"):
             handoff.prepare_native_survey_engine_input(unsupported, declaration=spec)
+        # Authentication must precede any inspection of the optional consumer.
+        with pytest.raises(ValueError, match="UNISSUED_RUN"):
+            handoff.prepare_native_survey_engine_input(
+                unsupported, declaration=spec, consumer=object()
+            )
+
+
+def test_optional_consumer_omission_preserves_unqualified_projection():
+    source = _projection_parent()
+    spec = _projection_declaration(source)
+    result = handoff._project_native_survey_frame(source, spec)
+    before = handoff._json(result.report)
+    handoff._validate_engine_projection_consumer(result, spec, None)
+    assert handoff._json(result.report) == before
+
+
+def test_optional_consumer_adds_only_representation_flag(monkeypatch):
+    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+    source = _projection_parent()
+    spec = _projection_declaration(source)
+    result = handoff._project_native_survey_frame(source, spec)
+    before = dict(result.report)
+    calls = []
+    consumer = PolicyEngineUSEngine()
+    # Recording orchestration test, not a fake issuer or numerical model.
+    monkeypatch.setattr(
+        consumer,
+        "validate_input_representation",
+        lambda frame, *, period: calls.append((frame, period)),
+    )
+    handoff._validate_engine_projection_consumer(result, spec, consumer)
+    assert calls == [(result.frame, 2024)]
+    assert result.report == {**before, "consumer_representation_compatible": True}
+    assert not result.report["consumer_qualified"]
+    assert not result.report["simulation_ready"]
+    assert not result.report["release_eligible"]
+
+
+@pytest.mark.parametrize("mutation", [False, True])
+def test_optional_consumer_cannot_modify_projection_or_claim_failed_check(
+    monkeypatch, mutation
+):
+    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+    source = _projection_parent()
+    spec = _projection_declaration(source)
+    result = handoff._project_native_survey_frame(source, spec)
+    consumer = PolicyEngineUSEngine()
+
+    def check(frame, *, period):
+        if mutation:
+            frame.person.loc[0, "money"] = 999.0
+        else:
+            raise ValueError("INPUT_REPRESENTATION_REFUSED")
+
+    monkeypatch.setattr(consumer, "validate_input_representation", check)
+    with pytest.raises(ValueError):
+        handoff._validate_engine_projection_consumer(result, spec, consumer)
+    assert "consumer_representation_compatible" not in result.report
+
+
+def test_optional_consumer_refuses_metadata_dictionary():
+    source = _projection_parent()
+    spec = _projection_declaration(source)
+    result = handoff._project_native_survey_frame(source, spec)
+    with pytest.raises(ValueError, match="CONSUMER_TYPE"):
+        handoff._validate_engine_projection_consumer(result, spec, {})
 
 
 @pytest.mark.parametrize(

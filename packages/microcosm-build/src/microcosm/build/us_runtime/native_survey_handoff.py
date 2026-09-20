@@ -11,6 +11,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from microcosm.build.frame_checkpoint import (
     load_frame_checkpoint,
@@ -32,6 +33,9 @@ from .l0_refit_export import (
 from .multispine_pool import pool_input_surface
 from .prior_year_income import US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
 from .survey_population_replay import same_replayed_frame
+
+if TYPE_CHECKING:
+    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
 PROTOCOL = "microcosm.us.native-survey-development-handoff.v1"
 # These are outstanding qualifications, not failed numerical measurements.
@@ -725,19 +729,37 @@ def _validate_engine_projection_after_owner_io(result, spec, final, *, expected)
         raise ValueError("NATIVE_ENGINE_PROJECTION_FINAL_STRUCTURE") from None
 
 
+def _validate_engine_projection_consumer(result, declaration, consumer):
+    """Optional representation check; this helper cannot issue native authority."""
+    if consumer is None:
+        return
+    from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+    _projection_require(isinstance(consumer, PolicyEngineUSEngine), "CONSUMER_TYPE")
+    consumer.validate_input_representation(result.frame, period=declaration.period)
+    _compare_engine_projection(result.source_frame, result.frame, declaration)
+    result.report["consumer_representation_compatible"] = True
+
+
 def prepare_native_survey_engine_input(
-    run: native.SurveyEnrichmentRun, *, declaration: NativeSurveyEngineProjectionSpec
+    run: native.SurveyEnrichmentRun,
+    *,
+    declaration: NativeSurveyEngineProjectionSpec,
+    consumer: PolicyEngineUSEngine | None = None,
 ) -> NativeSurveyEngineProjection:
     """Select cells from a live issued owner without admitting an engine consumer.
 
     Source and projected views remain separate. Checkpoints, receipts, Frames,
     and forged run dataclasses cannot pass the existing owner's public check.
-    No engine is imported and no source variable is cast, filled, or recomputed.
+    Omitting consumer imports no engine. An optional adapter checks representation
+    against its live metadata, without runtime or scientific qualification. No
+    source variable is cast, filled, or recomputed in either path.
     """
     # Authenticate before even examining the caller's descriptive declaration.
     borrowed = inspect_native_survey_release_input(run)
     population = run.population
     result = _project_native_survey_frame(borrowed.frame, declaration)
+    _validate_engine_projection_consumer(result, declaration, consumer)
     result.report["owner_receipt_sha256"] = borrowed.report["owner_receipt_sha256"]
     expected = (
         borrowed.report["owner_receipt_sha256"],

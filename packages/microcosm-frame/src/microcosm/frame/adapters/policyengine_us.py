@@ -615,11 +615,18 @@ def _validate_source_input_names(source_inputs, variables):
 
 def _engine_dataset_source_inputs(policyengine_us: Any) -> frozenset[str]:
     """Read source ownership from the consuming engine, never a local name list."""
+    return _engine_dataset_input_declarations(policyengine_us)[0]
+
+
+def _engine_dataset_input_declarations(
+    policyengine_us: Any,
+) -> tuple[frozenset[str], frozenset[str]]:
     spm = importlib.import_module(f"{policyengine_us.__name__}.spm")
-    return _validate_dataset_source_inputs(
-        getattr(spm, "DATASET_SOURCE_INPUTS", None),
-        getattr(spm, "REJECTED_DATASET_INPUTS", None),
+    rejected = getattr(spm, "REJECTED_DATASET_INPUTS", None)
+    declared = _validate_dataset_source_inputs(
+        getattr(spm, "DATASET_SOURCE_INPUTS", None), rejected
     )
+    return declared, rejected
 
 
 def _source_dataset_source_inputs(
@@ -880,6 +887,85 @@ def _stored_enum_name(value: object) -> str | None:
     return str(value)
 
 
+def _input_representation_reason(series, variable, enum_type) -> str | None:
+    """Return a fixed reason only; never include source values in diagnostics."""
+    if series.isna().any():
+        return "NULL"
+    try:
+        # No default dtype: np.dtype(None) would silently choose float64.
+        if getattr(variable, "dtype", None) is None:
+            return "DTYPE"
+        dtype = np.dtype(variable.dtype)
+    except (TypeError, ValueError):
+        return "DTYPE"
+    values = np.asarray(series.values)
+    value_type = getattr(variable, "value_type", None)
+    if value_type is enum_type:
+        allowed = _enum_domain(variable)
+        if not allowed or dtype.kind not in "iu":
+            return "ENUM"
+        # Core handles a homogeneous array of actual members, or named inputs.
+        # An arbitrary object with a .name (or mixed members/strings) is not
+        # equivalent to either input path, even when its name matches.
+        named = values.dtype.kind in "OUS" and all(
+            isinstance(value, (str, bytes)) for value in values
+        )
+        possible_values = variable.possible_values
+        members = (
+            values.dtype.kind == "O"
+            and isinstance(possible_values, type)
+            and all(isinstance(value, possible_values) for value in values)
+        )
+        if not named and not members:
+            return "ENUM"
+        if named:
+            # Match Core Enum.encode's array-level normalization, including
+            # the different encoding behavior of byte and object arrays.
+            if values.dtype.kind == "S":
+                values = np.char.decode(values, "utf-8")
+            elif values.dtype.kind == "O":
+                values = values.astype(str)
+        if any(_stored_enum_name(value) not in allowed for value in values):
+            return "ENUM"
+    elif value_type is int:
+        if values.dtype.kind not in "iu" or dtype.kind not in "iu":
+            return "INTEGER_DTYPE"
+        bounds = np.iinfo(dtype)
+        if len(values) and (
+            int(values.min()) < bounds.min or int(values.max()) > bounds.max
+        ):
+            return "INTEGER_RANGE"
+        converted = values.astype(dtype)
+        if not np.array_equal(converted.astype(values.dtype), values):
+            return "INTEGER_LOSS"
+    elif value_type is bool:
+        if values.dtype.kind != "b" or dtype.kind != "b":
+            return "BOOL"
+    elif value_type is float:
+        if values.dtype.kind not in "iuf" or dtype.kind != "f":
+            return "FLOAT"
+        with np.errstate(over="ignore", invalid="ignore"):
+            converted = values.astype(dtype)
+        if (
+            np.isnan(converted).any()
+            or (np.isfinite(values) & ~np.isfinite(converted)).any()
+        ):
+            return "FLOAT_RANGE"
+    elif value_type is str:
+        if dtype.kind not in "OUS" or not all(
+            isinstance(value, str) for value in values
+        ):
+            return "STRING"
+        converted = values.astype(dtype)
+        if dtype.kind == "S":
+            converted = np.char.decode(converted, "ascii")
+        if not np.array_equal(converted, values):
+            return "STRING_LOSS"
+    else:
+        return "TYPE"
+    return None
+
+
 class PolicyEngineUSEngine:
     """RulesEngine adapter backed by ``policyengine_us``.
 
@@ -922,6 +1008,79 @@ class PolicyEngineUSEngine:
     # ------------------------------------------------------------------
     # Variable metadata
     # ------------------------------------------------------------------
+
+    def validate_input_representation(
+        self, bundle: Frame, *, period: int | str
+    ) -> None:
+        """Check inputs against this consumer's effective variable metadata.
+
+        Copies entity tables and materializes the typed household weight; never
+        applies defaults, mutates source cells, constructs a dataset or calculates.
+        Success establishes only the supported representation profile, not source
+        authority, runtime admission, scientific validity or simulation readiness.
+        In particular, ordinary float rounding and representable infinities do not
+        become scientific qualifications. Unsupported null inputs are not filled.
+        """
+        from policyengine_core.enums import Enum
+        from policyengine_core.periods import period as parse_period
+
+        try:
+            if type(period) not in (int, str) or (
+                isinstance(period, str)
+                and (not period.isascii() or not period.isdecimal())
+            ):
+                raise ValueError
+            selected = parse_period(period)
+            year = int(period)
+            if (
+                selected.unit != "year"
+                or selected.size != 1
+                or selected.start.date.isoformat() != f"{year:04d}-01-01"
+            ):
+                raise ValueError
+        except (TypeError, ValueError, AttributeError, OverflowError):
+            raise ValueError("INPUT_REPRESENTATION_PERIOD") from None
+
+        variables = self._tax_benefit_system().variables
+        declared, rejected = _engine_dataset_input_declarations(
+            self._import_policyengine_us()
+        )
+        _validate_source_input_names(declared, variables)
+        tables = self._engine_tables(bundle)
+        computed = self._engine_computed_columns(tables, period=period)
+        for entity, table in tables.items():
+            for column in table:
+                variable = variables.get(column)
+                reason = None
+                if variable is None:
+                    reason = "UNKNOWN"
+                elif getattr(getattr(variable, "entity", None), "key", None) != entity:
+                    reason = "ENTITY"
+                elif column in rejected or column in computed:
+                    reason = "OWNERSHIP"
+                elif getattr(variable, "definition_period", None) not in (
+                    "year",
+                    "eternity",
+                ):
+                    reason = "PERIOD"
+                elif getattr(variable, "is_neutralized", False):
+                    reason = "NEUTRALIZED"
+                else:
+                    try:
+                        end = getattr(variable, "end", None)
+                        if end is not None and selected.start.date > end:
+                            reason = "EXPIRED"
+                        else:
+                            reason = _input_representation_reason(
+                                table[column], variable, Enum
+                            )
+                    except (TypeError, ValueError, AttributeError, OverflowError):
+                        # Conversion/encoding failures can contain row examples.
+                        reason = "UNSUPPORTED"
+                if reason:
+                    raise ValueError(
+                        f"INPUT_REPRESENTATION_{reason}: {entity}.{column}"
+                    ) from None
 
     def variable_metadata(self, name: str) -> VariableMetadata:
         """Return entity, dtype kind, and period semantics for a variable.
