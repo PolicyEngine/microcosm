@@ -1772,3 +1772,45 @@ def test_scorecard_markdown_renders_the_view_axis(monkeypatch, tmp_path) -> None
     second = module.write_scorecard(payload, tmp_path / "two" / "scorecard")
     for path_one, path_two in zip(first, second, strict=True):
         assert path_one.read_bytes() == path_two.read_bytes()
+
+
+def test_incumbent_only_scorecard_still_reports_the_view(monkeypatch) -> None:
+    """The published incumbent-only shape keeps the national/CD evidence.
+
+    `experiments/replacement_scorecard/incumbent_48b9d479.json` is an
+    incumbent-only run (`comparison: null`). That path must still render the
+    per-artifact view and its unresolved count, or the evidence item would
+    only exist once a candidate exists.
+    """
+
+    module = _load_head_to_head_module()
+    _patch_release_seams(module, monkeypatch)
+    yardstick = _fixture_yardstick(module, _geography_registry())
+    incumbent = _fixture_artifact(
+        module, sha256="e" * 64, measure_values=(100.0, 300.0)
+    )
+    monkeypatch.setattr(module, "compile_yardstick", lambda **kwargs: yardstick)
+    monkeypatch.setattr(module, "load_artifact", lambda path, **kwargs: incumbent)
+    payload = module.score_head_to_head(
+        incumbent=incumbent.h5_path,
+        candidate=None,
+        ledger_facts=Path("/fixture/facts.jsonl"),
+        congressional_district_vintage_crosswalk=Path("/fixture/crosswalk.parquet"),
+        maximum_microsim_batch_size=1,
+    )
+
+    assert payload["comparison"] is None
+    fiscal = payload["artifacts"]["incumbent"]["fiscal"]
+    assert [group["geography_level"] for group in fiscal["by_geography_level"]] == [
+        "national",
+        "state",
+        "congressional_district",
+        "unresolved",
+    ]
+    assert fiscal["geography_view_resolution"]["unresolved_target_count"] == 1
+
+    markdown = module.render_markdown(payload)
+    assert "## incumbent: loss by national / state / CD view" in markdown
+    assert "## candidate: loss by national / state / CD view" not in markdown
+    assert "### National / state / CD view" not in markdown
+    assert "Unresolved-scope rows: **1**" in markdown
