@@ -1,0 +1,1 @@
+Keep the invented enrichment fixture's Social Security nonreceipt answer consistent when its age-14 donor is deliberately changed to age 15, and check the genuine source qualifier preserves other unknown reporting statuses.

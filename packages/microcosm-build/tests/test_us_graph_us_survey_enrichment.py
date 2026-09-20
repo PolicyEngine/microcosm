@@ -32,6 +32,7 @@ from microcosm.build.frame_checkpoint import load_frame_checkpoint
 from microcosm.build.us_runtime import asec_person_income_source as restoration
 from microcosm.build.us_runtime import current_asec_demographics as demographics
 from microcosm.build.us_runtime import current_asec_unemployment_source as uc
+from microcosm.build.us_runtime import current_social_security_source as ss_source
 from microcosm.build.us_runtime import graph_us_survey_enrichment as graph
 from microcosm.graph.keys import opaque_artifact_key
 
@@ -68,7 +69,9 @@ def enrichment_source_arguments(root, patch):
     changes = {}
     # One invented current-year ASEC teenager supplies the complete donor cohort.
     ages = person.A_AGE.to_numpy(copy=True)
-    ages[person.person_id.to_numpy() == 106] = 15
+    teenager = person.person_id.to_numpy() == 106
+    assert teenager.sum() == 1 and ages[teenager].tolist() == [14]
+    ages[teenager] = 15
     changes["A_AGE"] = ages
     for field, amounts in (
         ("UC_VAL", [120.0, 0.0, 0.0, 500.0]),
@@ -84,12 +87,23 @@ def enrichment_source_arguments(root, patch):
         changes[field] = data
     _changed_parent(parent_path, attachment, patch, changes)
     updated = load_frame_checkpoint(parent_path).frame.person.set_index("PERIDNUM")
-    paths, pins = {}, []
+    paths, pins, ss_answers_changed = {}, [], 0
     for year, member, archive, *_ in uc.coverage._MEMBER_PINS:
         path = source / f"pppub{year - 1999}.csv"
         raw = _health_asec_table(pd.read_csv(path, dtype=str, keep_default_na=False))
         for field in changes:
             raw[field] = [str(int(updated.loc[key, field])) for key in raw.PERIDNUM]
+        # This fixture intentionally moves one child into the age-15 question
+        # universe. Supply an explicit invented nonreceipt answer for that
+        # person; the old below-15 NIU answer is no longer consistent with age.
+        teenager = raw.PERIDNUM.map(updated.person_id).eq(106)
+        if teenager.any():
+            assert int(teenager.sum()) == 1
+            assert raw.loc[
+                teenager, ["A_AGE", "SS_VAL", "SS_YN", "RESNSS1", "RESNSS2"]
+            ].values.tolist() == [["15", "0", "0", "0", "0"]]
+            raw.loc[teenager, "SS_YN"] = "2"
+            ss_answers_changed += 1
         raw["UC_YN"] = [
             "0" if int(age) < 15 else "1" if int(amount) > 0 else "2"
             for age, amount in zip(raw.A_AGE, raw.UC_VAL, strict=True)
@@ -111,6 +125,7 @@ def enrichment_source_arguments(root, patch):
             )
         )
         paths[year] = path
+    assert ss_answers_changed == 1
     for owner in (uc.coverage, restoration, demographics.demographic):
         patch.setattr(owner, "_MEMBER_PINS", tuple(pins))
     output = root / "amount-restored-money"
@@ -122,6 +137,36 @@ def enrichment_source_arguments(root, patch):
     )
     add_hours_source_fields(arguments, patch)
     return add_housing_source_fields(arguments, patch)
+
+
+def test_enrichment_fixture_age_change_keeps_ss_reporting_universe_consistent(
+    tmp_path, monkeypatch
+):
+    arguments = enrichment_source_arguments(tmp_path, monkeypatch)
+    prepared = ss_source.source.prepare_authenticated_survey_population(**arguments)
+    qualified = ss_source.qualify_current_social_security(prepared)
+    asec = qualified.person.loc[qualified.person.source.eq("asec")].set_index(
+        "native_person_id"
+    )
+    assert set(asec.index) == {105, 106, 107, 108}
+    assert asec.loc[106, "source_reporting_universe"]
+    assert asec.loc[106, "social_security_source_total"] == 0
+    assert asec.loc[106, "basis_origin"] == "known_total_zero"
+    assert asec.loc[106, list(ss_source.basis_owner.COMPONENTS)].eq(0).all()
+    literals = qualified.asec_literals
+    assert literals.loc[
+        str(6).zfill(22), ["A_AGE", "SS_VAL", "SS_YN", "RESNSS1", "RESNSS2"]
+    ].tolist() == ["15", "0", "2", "0", "0"]
+    # Other source observations and unresolved semantics survive the fixture
+    # correction: no exclusion, component fill, or NIU-to-zero conversion.
+    assert not asec.loc[108, "source_reporting_universe"]
+    assert pd.isna(asec.loc[108, "social_security_source_total"])
+    assert asec.loc[108, list(ss_source.basis_owner.COMPONENTS)].isna().all()
+    assert asec.loc[107, "social_security_source_total"] == 3000
+    assert asec.loc[107, "basis_origin"] == "unresolved_component_split"
+    assert asec.loc[107, list(ss_source.basis_owner.COMPONENTS)].isna().all()
+    assert asec.loc[105, "social_security_disability"] == 12000
+    prepared.checked_view()
 
 
 def test_actual_current_uc_projection_preserves_ambiguous_and_contradictory_sources(
