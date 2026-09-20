@@ -50,6 +50,7 @@ from microcosm.graph.serialize import graph_to_json
 
 from . import current_survey_amounts as values
 from . import graph_current_survey_health as health_graph
+from . import graph_current_survey_health_completion as health_completion_graph
 from . import graph_current_survey_hours as hours_graph
 from . import graph_current_survey_housing as housing_graph
 from . import graph_current_survey_immigration as immigration_graph
@@ -77,6 +78,9 @@ def _live():
         health_graph,
         health_graph.health,
         health_graph.source,
+        health_completion_graph,
+        health_completion_graph.values,
+        health_completion_graph.values.demographics,
         hours_graph,
         hours_graph.source,
         hours_graph.hours,
@@ -138,6 +142,21 @@ def _live():
             health_graph.health.SOURCE_PREFIX,
             health_graph.source.ASEC_COLUMNS,
             health_graph.source.ACS_COLUMNS,
+            health_completion_graph.values.PROTOCOL,
+            tuple(
+                (f.output, f.asec, f.acs, f.acs_gap)
+                for f in health_completion_graph.values.FIELDS
+            ),
+            health_completion_graph.values.FEATURES,
+            health_completion_graph.values.TARGETS,
+            health_completion_graph.values.ELIGIBLE,
+            health_completion_graph.values.SEED,
+            tuple(
+                sorted(
+                    health_completion_graph.values.US_STATE_NUMERIC_FIPS_TO_POSTAL.items()
+                )
+            ),
+            health_completion_graph.PHASE,
         )
     )
     result.append(
@@ -388,8 +407,11 @@ class Boundary:
         spm_asec_scope_policy=None,
         spm_outside_role_placeholder=None,
         immigration_transfer=None,
+        health_completion=False,
     ):
         live = _live()
+        require(type(health_completion) is bool, "HEALTH_COMPLETION_OPTION")
+        self.health_completion_enabled = health_completion
         self.spm_options = (
             spm_acs_profile,
             spm_asec_scope_policy,
@@ -426,6 +448,18 @@ class Boundary:
         self.preparation = run.financial_run.prefix.preparation
         self.health = health_graph.qualify_health_coverage(self.preparation)
         self.health_stamp = health_graph.health_coverage_seal(self.health)
+        self.health_completion = (
+            health_completion_graph.values.qualify_current_survey_health_completion(
+                self.preparation, self.health
+            )
+            if health_completion
+            else None
+        )
+        self.health_completion_stamp = (
+            None
+            if self.health_completion is None
+            else health_completion_graph.values.seal(self.health_completion)
+        )
         self.housing = housing_graph.housing.qualify_current_survey_housing(run)
         self.housing_stamp = housing_graph.housing.seal(self.housing)
         self.hours = hours_graph.source.qualify_current_survey_hours(
@@ -473,11 +507,8 @@ class Boundary:
             parent_digest=self.parent_view.digest,
             n_estimators=n_estimators,
         )
-        self.health_nodes = health_graph.health_coverage_nodes(
-            self.health,
-            receiving_version=parent.attach.FILTER_NODE,
-            after=_amount_edge(),
-        )
+        self.health_completion_nodes = self._health_completion_nodes()
+        self.health_nodes = self._health_nodes()
         self.housing_nodes = housing_graph.housing_nodes(
             self.housing,
             run.population.frame,
@@ -520,6 +551,29 @@ class Boundary:
         )
         self._spm_pure()
         self._immigration_pure()
+
+    def _health_completion_nodes(self):
+        if self.health_completion is None:
+            return ()
+        return health_completion_graph.nodes(
+            self.health_completion,
+            self.health,
+            receiving_version=parent.attach.FILTER_NODE,
+            after=_amount_edge(),
+            n_estimators=self.n_estimators,
+        )
+
+    def _health_nodes(self):
+        observed = health_graph.health_coverage_nodes(
+            self.health,
+            receiving_version=parent.attach.FILTER_NODE,
+            after=_amount_edge(),
+        )
+        return (
+            observed
+            if self.health_completion is None
+            else (*observed[:-1], *self._health_completion_nodes())
+        )
 
     def _immigration_pure(self):
         if self.immigration_transfer is None:
@@ -609,6 +663,14 @@ class Boundary:
             and values.seal(self.qualified) == self.qualified_stamp
             and self.run.financial_run.prefix.preparation is self.preparation
             and health_graph.health_coverage_seal(self.health) == self.health_stamp
+            and type(self.health_completion_enabled) is bool
+            and self.health_completion_enabled == (self.health_completion is not None)
+            and self.health_completion_stamp
+            == (
+                None
+                if self.health_completion is None
+                else health_completion_graph.values.seal(self.health_completion)
+            )
             and housing_graph.housing.seal(self.housing) == self.housing_stamp
             and hours_graph.hours_seal(self.hours) == self.hours_stamp
             and self.nodes == self.declaration
@@ -623,12 +685,8 @@ class Boundary:
                 parent_digest=self.parent_view.digest,
                 n_estimators=self.n_estimators,
             )
-            and self.health_nodes
-            == health_graph.health_coverage_nodes(
-                self.health,
-                receiving_version=parent.attach.FILTER_NODE,
-                after=_amount_edge(),
-            )
+            and self.health_nodes == self._health_nodes()
+            and self.health_completion_nodes == self._health_completion_nodes()
             and self.housing_nodes
             == housing_graph.housing_nodes(
                 self.housing,
@@ -784,6 +842,17 @@ class Boundary:
             health_graph.health_coverage_seal(fresh_health) == self.health_stamp,
             "HEALTH_SOURCE_REQUALIFICATION_CHANGED",
         )
+        if self.health_completion is not None:
+            fresh_completion = (
+                health_completion_graph.values.qualify_current_survey_health_completion(
+                    self.preparation, fresh_health
+                )
+            )
+            require(
+                health_completion_graph.values.seal(fresh_completion)
+                == self.health_completion_stamp,
+                "HEALTH_COMPLETION_REQUALIFICATION_CHANGED",
+            )
         fresh_housing = housing_graph.housing.qualify_current_survey_housing(self.run)
         require(
             housing_graph.housing.seal(fresh_housing) == self.housing_stamp,
@@ -815,6 +884,8 @@ class _Kernel(KernelBase):
             values.workers_compensation,
             values.workers_compensation.mapper,
             health_graph,
+            health_completion_graph,
+            health_completion_graph.values,
             hours_graph,
             hours_graph.source,
             hours_graph.hours,
@@ -991,6 +1062,7 @@ def _construct(
     spm_asec_scope_policy=None,
     spm_outside_role_placeholder=None,
     immigration_transfer=None,
+    health_completion=False,
 ):
     boundary = Boundary(
         run,
@@ -1000,6 +1072,7 @@ def _construct(
         spm_asec_scope_policy=spm_asec_scope_policy,
         spm_outside_role_placeholder=spm_outside_role_placeholder,
         immigration_transfer=immigration_transfer,
+        health_completion=health_completion,
     )
     compiled = compile_graph(
         replace(run.compiled.graph, nodes=(*run.compiled.graph.nodes, *boundary.nodes))
@@ -1025,6 +1098,9 @@ def _construct(
         kernels.register(kernel)
     for kernel in housing_graph.kernels(boundary):
         require(kernel.ref not in kernels.refs(), "HOUSING_KERNEL_COLLISION")
+        kernels.register(kernel)
+    for kernel in health_completion_graph.kernels(boundary):
+        require(kernel.ref not in kernels.refs(), "HEALTH_COMPLETION_KERNEL_COLLISION")
         kernels.register(kernel)
     for kernel in hours_graph.hours_kernels(
         boundary.hours,
@@ -1237,6 +1313,7 @@ def run_us_survey_enrichment(
     spm_asec_scope_policy=None,
     spm_outside_role_placeholder=None,
     immigration_transfer=None,
+    health_completion=False,
 ):
     """Execute and verify enrichment with optional SPM and realized immigration.
 
@@ -1244,6 +1321,8 @@ def run_us_survey_enrichment(
     absent ASEC scope policy preserves UNRESOLVED for the country refusal gate.
     Immigration consumes the same financial parent's genuine original transfer;
     this host only fans its final pair to existing clones, without another draw.
+    Health completion is an explicit development model from original ASEC 2025
+    coverage onto original ACS 2024 people; scientific qualification is pending.
     """
     require(resume in ("auto", "require"), "RESUME")
     boundary = _construct(
@@ -1254,6 +1333,7 @@ def run_us_survey_enrichment(
         spm_asec_scope_policy=spm_asec_scope_policy,
         spm_outside_role_placeholder=spm_outside_role_placeholder,
         immigration_transfer=immigration_transfer,
+        health_completion=health_completion,
     )
     observed, stamps = {}, {}
 
@@ -1333,6 +1413,8 @@ def run_us_survey_enrichment(
     )
     current, donors = {}, {}
     housing_donor = None
+    health_completion_donor = None
+    health_completion_ids = {n.id for n in boundary.health_completion_nodes}
     health_ids = {n.id for n in boundary.health_nodes}
     hours_ids = {n.id for n in boundary.hours_nodes}
     spm_ids = {n.id for n in boundary.spm_nodes}
@@ -1392,6 +1474,42 @@ def run_us_survey_enrichment(
                 "HOURS_RESULT_ARTIFACT",
             )
             expected = population_ops.patch(current[version], node, hours_result)
+        elif node_id in health_completion_ids:
+            if node_id.startswith(
+                (
+                    health_completion_graph.FIT_PREFIX + ".",
+                    health_completion_graph.APPLY_PREFIX + ".",
+                )
+            ):
+                expected = current[version]
+            else:
+                health_artifacts = parent._loaded_values(
+                    boundary, manifest, loaded, node
+                )
+                incoming = current.get(
+                    node.base if node.structural is StructuralDelta.FILTER else version
+                )
+                health_result = health_completion_graph.result(
+                    boundary.health_completion,
+                    boundary.health,
+                    node,
+                    health_artifacts,
+                    None if incoming is None else incoming.frame.person,
+                )
+                require(
+                    all(
+                        loaded[node_id, name] == payload
+                        for name, payload in health_result.artifacts.items()
+                    ),
+                    "HEALTH_COMPLETION_ARTIFACT",
+                )
+                expected = (
+                    population_ops.Population.from_frame(health_result.frame, node_id)
+                    if node.structural is StructuralDelta.CREATE
+                    else population_ops.patch(incoming, node, health_result)
+                )
+                if node_id == health_completion_graph.DONOR_NODE:
+                    health_completion_donor = expected
         elif node_id in health_ids:
             health_artifacts = parent._loaded_values(boundary, manifest, loaded, node)
             expected = health_graph.expected_health_population(
@@ -1464,6 +1582,7 @@ def run_us_survey_enrichment(
         current[version] = expected
     _verify_models(boundary, loaded, donors)
     housing_graph.verify_model(boundary, loaded, housing_donor)
+    health_completion_graph.verify_models(boundary, loaded, health_completion_donor)
     for version, population in current.items():
         physical.replay.same_replayed_population(
             population_ops.Population.from_frame(
@@ -1514,6 +1633,23 @@ def run_us_survey_enrichment(
                 loaded[health_graph.ATTACH_NODE, "attachment"]
             ),
             "health_fields": [f.output for f in health_graph.health.FIELDS],
+            **(
+                {}
+                if boundary.health_completion is None
+                else {
+                    "health_completion": {
+                        "enabled": True,
+                        "projection_sha256": codec.sha(
+                            boundary.health_completion.projection
+                        ),
+                        "features": list(health_completion_graph.values.FEATURES),
+                        "source_knownness_preserved": True,
+                        "one_draw_per_original": True,
+                        "temporal_equivalence_claim": False,
+                        "scientific_qualification": "pending",
+                    }
+                }
+            ),
             "housing_projection_sha256": codec.sha(boundary.housing.projection),
             "housing_attachment_sha256": codec.sha(
                 loaded[housing_graph.ATTACH_NODE, "attachment"]
