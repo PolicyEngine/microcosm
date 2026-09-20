@@ -26,7 +26,7 @@ from __future__ import annotations
 import gc
 import json
 import math
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from importlib.resources import files
@@ -718,20 +718,39 @@ def _capped_weighted_total(
 US_RELEASE_SPM_SELECTION: dict[str, object] = {"geography_kind": "county"}
 
 
-def default_simulate_factory(dataset_path: Path) -> SimulateFn:
-    """Build a simulate() that runs a Microsimulation over the release H5."""
+def default_simulate_factory(
+    dataset_path: Path,
+    *,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    spm: Mapping[str, object] | None = None,
+) -> SimulateFn:
+    """Build a release-H5 simulator with explicit or default county SPM options.
+
+    Injected constructors select execution dependencies, not runtime approval.
+    Each simulation receives a separate copy of the selection captured here.
+    """
+    selection = dict(US_RELEASE_SPM_SELECTION if spm is None else spm)
 
     def simulate(reform: Any) -> Any:
-        from policyengine_us import Microsimulation
-        from policyengine_us.data import USSingleYearDataset
+        simulation_type = microsimulation_cls
+        dataset_type = dataset_cls
+        if simulation_type is None:
+            from policyengine_us import Microsimulation
 
-        dataset = USSingleYearDataset(file_path=str(dataset_path))
+            simulation_type = Microsimulation
+        if dataset_type is None:
+            from policyengine_us.data import USSingleYearDataset
+
+            dataset_type = USSingleYearDataset
+
+        dataset = dataset_type(file_path=str(dataset_path))
         if reform is None:
-            return Microsimulation(dataset=dataset, spm=US_RELEASE_SPM_SELECTION)
-        return Microsimulation(
+            return simulation_type(dataset=dataset, spm=dict(selection))
+        return simulation_type(
             dataset=dataset,
             reform=reform,
-            spm=US_RELEASE_SPM_SELECTION,
+            spm=dict(selection),
         )
 
     return simulate

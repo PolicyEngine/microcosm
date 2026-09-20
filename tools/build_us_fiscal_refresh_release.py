@@ -2625,7 +2625,9 @@ def prepare_native_survey_development_input(
     )
 
 
-def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
+def _load_frame(
+    path: Path, *, expected_sha256: str | None = None, dataset_cls=None
+) -> Frame:
     consumer = "US fiscal refresh release builder generic H5 loader (_load_frame)"
     sha256 = refuse_denied_pool_h5(path, consumer=consumer)
     if expected_sha256 is not None and sha256 != expected_sha256:
@@ -2634,9 +2636,12 @@ def _load_frame(path: Path, *, expected_sha256: str | None = None) -> Frame:
             f"(SHA-256 {sha256}, expected {expected_sha256}); the read is refused."
         )
 
-    from policyengine_us.data import USSingleYearDataset
+    if dataset_cls is None:
+        from policyengine_us.data import USSingleYearDataset
 
-    dataset = USSingleYearDataset(file_path=str(path))
+        dataset_cls = USSingleYearDataset
+
+    dataset = dataset_cls(file_path=str(path))
     tables = {
         "person": dataset.person.copy(),
         "household": dataset.household.copy(),
@@ -3180,7 +3185,10 @@ def _aca_source_tax_unit_table_batched(
     microsimulation_cls,
     maximum_microsim_batch_size: int | None,
     formula_metadata=None,
+    dataset_cls=None,
+    spm: Mapping[str, object] | None = None,
 ) -> pd.DataFrame:
+    spm = None if spm is None else dict(spm)
     _assert_no_formula_owned_columns(frame, formula_metadata=formula_metadata)
     tax_unit = frame.table("tax_unit").copy()
     household = frame.table("household")
@@ -3235,7 +3243,9 @@ def _aca_source_tax_unit_table_batched(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
                     formula_metadata=formula_metadata,
-                )
+                    dataset_cls=dataset_cls,
+                ),
+                **_spm_simulation_kwargs(spm),
             )
             batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
                 batch_frame,
@@ -3480,6 +3490,10 @@ def _ssi_person_uncapped_amount(
     *,
     simulation=None,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    formula_metadata=None,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    spm: Mapping[str, object] | None = None,
 ) -> np.ndarray:
     """December person-level potential federal SSI, batched like Medicaid.
 
@@ -3488,6 +3502,15 @@ def _ssi_person_uncapped_amount(
     candidate mask and does not depend on the take-up input being assigned.
     """
 
+    spm = None if spm is None else dict(spm)
+    if formula_metadata is not None:
+        _assert_no_formula_owned_columns(frame, formula_metadata=formula_metadata)
+    if simulation is not None and (
+        dataset_cls is not None or microsimulation_cls is not None or spm is not None
+    ):
+        raise ValueError(
+            "An existing SSI simulation cannot receive constructor or SPM overrides."
+        )
     period = f"{PERIOD}-12"
 
     def calculate(active_simulation) -> np.ndarray:
@@ -3508,7 +3531,10 @@ def _ssi_person_uncapped_amount(
     if simulation is not None:
         return calculate(simulation)
 
-    from policyengine_us import Microsimulation
+    if microsimulation_cls is None:
+        from policyengine_us import Microsimulation
+
+        microsimulation_cls = Microsimulation
 
     person_ids = frame.table("person")["person_id"].to_numpy()
     uncapped = np.zeros(len(person_ids), dtype=np.float64)
@@ -3534,11 +3560,14 @@ def _ssi_person_uncapped_amount(
                 if full_batch
                 else _select_households_by_position(frame, household_positions)
             )
-            batch_simulation = Microsimulation(
+            batch_simulation = microsimulation_cls(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
-                )
+                    formula_metadata=formula_metadata,
+                    dataset_cls=dataset_cls,
+                ),
+                **_spm_simulation_kwargs(spm),
             )
             batch_uncapped = calculate(batch_simulation)
             positions = person_positions.reindex(
@@ -3854,11 +3883,15 @@ def _dataset_from_frame(
     system=None,
     assert_no_formula_owned_columns: bool = True,
     formula_metadata=None,
+    dataset_cls=None,
 ):
     if assert_no_formula_owned_columns:
         _assert_no_formula_owned_columns(frame, formula_metadata=formula_metadata)
 
-    from policyengine_us.data import USSingleYearDataset
+    if dataset_cls is None:
+        from policyengine_us.data import USSingleYearDataset
+
+        dataset_cls = USSingleYearDataset
 
     tables = {entity: frame.table(entity).copy() for entity in frame.entities}
     for variable_name in zero_variables:
@@ -3868,7 +3901,7 @@ def _dataset_from_frame(
         if entity is not None and variable_name in tables[entity]:
             tables[entity][variable_name] = 0
     tables["household"]["household_weight"] = frame.weights_for("household").values
-    return USSingleYearDataset(
+    return dataset_cls(
         person=tables["person"],
         household=tables["household"],
         tax_unit=tables["tax_unit"],
@@ -3877,6 +3910,11 @@ def _dataset_from_frame(
         marital_unit=tables["marital_unit"],
         time_period=PERIOD,
     )
+
+
+def _spm_simulation_kwargs(spm: Mapping[str, object] | None) -> dict[str, object]:
+    """Copy explicit flat SPM options without changing an omitted engine default."""
+    return {} if spm is None else {"spm": dict(spm)}
 
 
 def _calculate_array(
@@ -3989,12 +4027,14 @@ class _BatchedReformValidationSimulation:
         maximum_microsim_batch_size: int | None,
         microsimulation_cls,
         dataset_from_frame,
+        spm: Mapping[str, object] | None = None,
     ):
         self._frame = frame
         self._reform = reform
         self._maximum_microsim_batch_size = maximum_microsim_batch_size
         self._microsimulation_cls = microsimulation_cls
         self._dataset_from_frame = dataset_from_frame
+        self._spm = None if spm is None else dict(spm)
         self._cache: dict[tuple[str, int], float] = {}
         self._reform_system = None
 
@@ -4032,7 +4072,9 @@ class _BatchedReformValidationSimulation:
                 )
                 dataset = self._dataset_from_frame(batch_frame)
                 if self._reform is None:
-                    simulation = self._microsimulation_cls(dataset=dataset)
+                    simulation = self._microsimulation_cls(
+                        dataset=dataset, **_spm_simulation_kwargs(self._spm)
+                    )
                 else:
                     # microcosm#456: one reform system per scored reform, not
                     # one per batch (each engine build permanently leaks
@@ -4040,13 +4082,15 @@ class _BatchedReformValidationSimulation:
                     if self._reform_system is None:
                         self._reform_system = (
                             self._microsimulation_cls.default_tax_benefit_system(
-                                reform=self._reform
+                                reform=self._reform,
+                                **_spm_simulation_kwargs(self._spm),
                             )
                         )
                     simulation = self._microsimulation_cls(
                         tax_benefit_system=self._reform_system,
                         dataset=dataset,
                         reform=self._reform,
+                        **_spm_simulation_kwargs(self._spm),
                     )
                 total += float(simulation.calculate(measure, period).sum())
                 release_engine_simulation(simulation)
@@ -4063,7 +4107,12 @@ def _batched_reform_validation_simulate_factory_from_frame(
     microsimulation_cls=None,
     dataset_from_frame=None,
     formula_metadata=None,
+    dataset_cls=None,
+    spm: Mapping[str, object] | None = None,
 ):
+    spm = None if spm is None else dict(spm)
+    if dataset_from_frame is not None and dataset_cls is not None:
+        raise ValueError("Choose dataset_from_frame or dataset_cls, not both.")
     if formula_metadata is not None:
         _assert_no_formula_owned_columns(frame, formula_metadata=formula_metadata)
     if microsimulation_cls is None:
@@ -4077,6 +4126,7 @@ def _batched_reform_validation_simulate_factory_from_frame(
                 batch_frame,
                 assert_no_formula_owned_columns=False,
                 formula_metadata=formula_metadata,
+                dataset_cls=dataset_cls,
             )
 
     def simulate(reform):
@@ -4086,6 +4136,7 @@ def _batched_reform_validation_simulate_factory_from_frame(
             maximum_microsim_batch_size=maximum_microsim_batch_size,
             microsimulation_cls=microsimulation_cls,
             dataset_from_frame=dataset_from_frame,
+            spm=spm,
         )
 
     return simulate
@@ -4100,7 +4151,10 @@ def _reform_household_income_tax(
     n_households: int,
     batch_size: int | None,
     formula_metadata=None,
+    dataset_cls=None,
+    spm: Mapping[str, object] | None = None,
 ) -> np.ndarray:
+    spm = None if spm is None else dict(spm)
     _assert_no_formula_owned_columns(base_frame, formula_metadata=formula_metadata)
     reform_income_tax = np.zeros(n_households, dtype=np.float64)
     reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
@@ -4113,7 +4167,9 @@ def _reform_household_income_tax(
     # system once per target family instead — the same
     # ``default_tax_benefit_system(reform=...)`` construction the engine ran
     # per batch — and hand it to every batch simulation explicitly.
-    reform_system = microsimulation_cls.default_tax_benefit_system(reform=reform)
+    reform_system = microsimulation_cls.default_tax_benefit_system(
+        reform=reform, **_spm_simulation_kwargs(spm)
+    )
     batches = tuple(_household_position_batches(n_households, batch_size))
     if len(batches) > 1:
         print(
@@ -4137,11 +4193,13 @@ def _reform_household_income_tax(
                 system=system,
                 assert_no_formula_owned_columns=False,
                 formula_metadata=formula_metadata,
+                dataset_cls=dataset_cls,
             )
             reformed = microsimulation_cls(
                 tax_benefit_system=reform_system,
                 dataset=reformed_dataset,
                 reform=reform,
+                **_spm_simulation_kwargs(spm),
             )
             batch_income_tax = _collapse_tax_unit(
                 _calculate_array(reformed, "income_tax"),
@@ -4590,7 +4648,14 @@ def _load_or_materialize_target_frame(
     target_materialization_cache_context: Mapping[str, object] | None = None,
     gate_congressional_district_targets: bool = True,
     formula_metadata=None,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    system_factory=None,
+    spm: Mapping[str, object] | None = None,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
+    # Dependency injection does not declare cache identity: the caller must
+    # bind the actual consumer and effective SPM selection in its context.
+    spm = None if spm is None else dict(spm)
     if formula_metadata is not None:
         # A checkpoint is not a substitute for the current consumer's source
         # ownership check. Keep the legacy checkpoint path unchanged.
@@ -4624,6 +4689,10 @@ def _load_or_materialize_target_frame(
         target_materialization_cache_context=target_materialization_cache_context,
         gate_congressional_district_targets=gate_congressional_district_targets,
         formula_metadata=formula_metadata,
+        dataset_cls=dataset_cls,
+        microsimulation_cls=microsimulation_cls,
+        system_factory=system_factory,
+        spm=spm,
     )
     if (
         target_frame_checkpoint_path is not None
@@ -4656,10 +4725,21 @@ def _materialize_target_frame(
     target_materialization_cache_context: Mapping[str, object] | None = None,
     gate_congressional_district_targets: bool = False,
     formula_metadata=None,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    system_factory=None,
+    spm: Mapping[str, object] | None = None,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
+    spm = None if spm is None else dict(spm)
     if formula_metadata is not None:
         _assert_no_formula_owned_columns(base_frame, formula_metadata=formula_metadata)
-    from policyengine_us import CountryTaxBenefitSystem, Microsimulation
+    if microsimulation_cls is None or system_factory is None:
+        from policyengine_us import CountryTaxBenefitSystem, Microsimulation
+
+        if microsimulation_cls is None:
+            microsimulation_cls = Microsimulation
+        if system_factory is None:
+            system_factory = CountryTaxBenefitSystem
 
     if (
         target_materialization_cache_dir is not None
@@ -4676,9 +4756,10 @@ def _materialize_target_frame(
         base_frame,
         assert_no_formula_owned_columns=False,
         formula_metadata=formula_metadata,
+        dataset_cls=dataset_cls,
     )
-    simulation = Microsimulation(dataset=dataset)
-    system = CountryTaxBenefitSystem()
+    simulation = microsimulation_cls(dataset=dataset, **_spm_simulation_kwargs(spm))
+    system = system_factory(**_spm_simulation_kwargs(spm))
     household = base_frame.table("household")
     tax_unit_positions = _tax_unit_to_household_positions(base_frame)
     n_households = base_frame.n("household")
@@ -5052,10 +5133,12 @@ def _materialize_target_frame(
                 base_frame=base_frame,
                 reform_spec=reform_spec,
                 system=system,
-                microsimulation_cls=Microsimulation,
+                microsimulation_cls=microsimulation_cls,
                 n_households=n_households,
                 batch_size=maximum_microsim_batch_size,
                 formula_metadata=formula_metadata,
+                dataset_cls=dataset_cls,
+                spm=spm,
             )
             if (
                 target_materialization_cache_dir is not None
@@ -7449,11 +7532,25 @@ def _assert_export_matches_calibration(
     target_specs: tuple,
     *,
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
+    formula_metadata=None,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    system_factory=None,
+    spm: Mapping[str, object] | None = None,
 ) -> None:
+    spm = None if spm is None else dict(spm)
     target_frame, registry, compilation = _materialize_target_frame(
-        _load_frame(dataset_path),
+        _load_frame(
+            dataset_path,
+            **({"dataset_cls": dataset_cls} if dataset_cls is not None else {}),
+        ),
         target_specs,
         maximum_microsim_batch_size=maximum_microsim_batch_size,
+        formula_metadata=formula_metadata,
+        dataset_cls=dataset_cls,
+        microsimulation_cls=microsimulation_cls,
+        system_factory=system_factory,
+        spm=spm,
     )
     dropped = compilation.get("dropped_target_names") or []
     if dropped:
@@ -7539,6 +7636,9 @@ def _write_reform_validation(
     registry: TargetRegistry,
     release_id: str,
     simulate_out_of_sample: bool,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    spm: Mapping[str, object] | None = None,
 ) -> None:
     """Emit reform_validation.json: microcosm budget effects vs JCT scores.
 
@@ -7547,6 +7647,7 @@ def _write_reform_validation(
     release H5 (skipped if ``simulate_out_of_sample`` is False, e.g. for a fast
     diagnostics-only build).
     """
+    spm = None if spm is None else dict(spm)
     specs = load_default_reform_specs(period=PERIOD)
     if not simulate_out_of_sample:
         print(
@@ -7566,7 +7667,14 @@ def _write_reform_validation(
             file=sys.stderr,
         )
     simulate = (
-        default_simulate_factory(dataset_path) if simulate_out_of_sample else None
+        default_simulate_factory(
+            dataset_path,
+            dataset_cls=dataset_cls,
+            microsimulation_cls=microsimulation_cls,
+            spm=spm,
+        )
+        if simulate_out_of_sample
+        else None
     )
     payload = reform_validation_payload(
         specs,
@@ -7585,16 +7693,29 @@ def _write_demographics(
     release_dir: Path,
     dataset_path: Path,
     release_id: str,
+    dataset_cls=None,
+    microsimulation_cls=None,
+    spm: Mapping[str, object] | None = None,
 ) -> None:
     """Emit demographics.json: the dataset's weighted population by age band.
 
     The fiscal-refresh release calibrates source-backed Census PEP age targets;
     this file remains a compact summary diagnostic for release consumers.
     """
-    from policyengine_us import Microsimulation
-    from policyengine_us.data import USSingleYearDataset
+    spm = None if spm is None else dict(spm)
+    if microsimulation_cls is None:
+        from policyengine_us import Microsimulation
 
-    sim = Microsimulation(dataset=USSingleYearDataset(file_path=str(dataset_path)))
+        microsimulation_cls = Microsimulation
+    if dataset_cls is None:
+        from policyengine_us.data import USSingleYearDataset
+
+        dataset_cls = USSingleYearDataset
+
+    sim = microsimulation_cls(
+        dataset=dataset_cls(file_path=str(dataset_path)),
+        **_spm_simulation_kwargs(spm),
+    )
     ages, weights = population_by_age_from_sim(sim, PERIOD)
     payload = demographics_payload(ages, weights, period=PERIOD, release_id=release_id)
     # Household-record counts by state and congressional district: the

@@ -7860,6 +7860,7 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         system=None,
         assert_no_formula_owned_columns=True,
         formula_metadata=None,
+        dataset_cls=None,
     ):
         datasets.append(
             (
@@ -10496,6 +10497,7 @@ def _install_multi_reform_fakes(
         system=None,
         assert_no_formula_owned_columns=True,
         formula_metadata=None,
+        dataset_cls=None,
     ):
         return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
 
