@@ -1418,3 +1418,357 @@ def test_entity_hdf_scorer_engine_markers_follow_actual_collection_hook(
         skip = item.get_closest_marker("skip")
         if skip is not None:
             assert skip.kwargs["reason"] == "requires policyengine-us extra"
+
+
+# --------------------------------------------------------------------------
+# National / state / CD comparison view (national_and_cd_target_fit)
+#
+# The head-to-head previously emitted family, entity, value basis and period
+# per row and nothing geographic, so the required-release-evidence item
+# ``national_and_cd_target_fit``
+# (us_runtime/native_survey_handoff.py:42-54) had no producer. These tests
+# pin the view axis as a real partition of the canonical loss, pin its
+# refusal behaviour, and pin that it decides nothing.
+# --------------------------------------------------------------------------
+
+
+def _hierarchy(name: str, *, level: str, geography_id: str):
+    from microcosm.calibrate.hierarchy import (
+        CalibrationHierarchy,
+        HierarchyCategory,
+        HierarchyGeography,
+        HierarchyNode,
+    )
+
+    provider = HierarchyNode(id="fixture_provider", label="Fixture provider")
+    return CalibrationHierarchy(
+        provider=provider,
+        category=HierarchyCategory(
+            id="fixture_category",
+            label="Fixture category",
+            provider_id=provider.id,
+        ),
+        geography=HierarchyGeography(id=geography_id, label=geography_id, level=level),
+        dimensions=(),
+        target=HierarchyNode(id=name, label=name),
+    )
+
+
+def _geography_registry() -> TargetRegistry:
+    """Four rows, one per resolution route the view classifier declares."""
+
+    return TargetRegistry(
+        [
+            # Ledger spells national "country"; the compiler renames it.
+            TargetSpec(
+                name="national_income",
+                entity="household",
+                value=500.0,
+                measure="m_income",
+                period=2024,
+                source="fixture",
+                family="fixture_family",
+                metadata={
+                    "ledger_geography_level": "country",
+                    "ledger_geography_id": "0100000US",
+                },
+            ),
+            # The hierarchy geography tier outranks metadata.
+            TargetSpec(
+                name="state_income",
+                entity="household",
+                value=400.0,
+                measure="m_income",
+                period=2024,
+                source="fixture",
+                family="fixture_family",
+                hierarchy=_hierarchy(
+                    "state_income", level="state", geography_id="0400000US06"
+                ),
+            ),
+            # CD membership named only by the shared classifier's layout
+            # route, which this module reuses rather than restates.
+            TargetSpec(
+                name="cd_flagged",
+                entity="household",
+                value=12.0,
+                measure="n_flagged",
+                period=2024,
+                source="fixture",
+                family="fixture_family",
+                metadata={
+                    "measure_mode": "indicator_sum",
+                    "ledger_layout_groupby_dimension": (
+                        "irs_soi.congressional_district"
+                    ),
+                },
+            ),
+            # No declared geographic evidence at all.
+            TargetSpec(
+                name="unscoped_income",
+                entity="household",
+                value=300.0,
+                measure="m_income",
+                period=2024,
+                source="fixture",
+                family="fixture_family",
+            ),
+        ],
+        country="us",
+    )
+
+
+def _geography_head_to_head(module, monkeypatch) -> dict[str, object]:
+    _patch_release_seams(module, monkeypatch)
+    yardstick = _fixture_yardstick(module, _geography_registry())
+    incumbent = _fixture_artifact(
+        module, sha256="c" * 64, measure_values=(100.0, 300.0)
+    )
+    candidate = _fixture_artifact(
+        module, sha256="d" * 64, measure_values=(200.0, 290.0)
+    )
+    artifacts = {incumbent.h5_path: incumbent, candidate.h5_path: candidate}
+    monkeypatch.setattr(module, "compile_yardstick", lambda **kwargs: yardstick)
+    monkeypatch.setattr(module, "load_artifact", lambda path, **kwargs: artifacts[path])
+    return module.score_head_to_head(
+        incumbent=incumbent.h5_path,
+        candidate=candidate.h5_path,
+        ledger_facts=Path("/fixture/facts.jsonl"),
+        congressional_district_vintage_crosswalk=Path("/fixture/crosswalk.parquet"),
+        maximum_microsim_batch_size=1,
+    )
+
+
+def test_view_levels_match_the_native_measurement_kernel_scopes() -> None:
+    """One vocabulary for the measurement side and the comparison side.
+
+    ``graph_fiscal_measurement`` is a frozen graph kernel; its ``_LEVELS`` is
+    not edited to share a constant, so this test is what keeps the two from
+    drifting apart.
+    """
+
+    from microcosm.build.us_runtime import graph_fiscal_measurement
+    from microcosm.build.us_runtime.target_geography_view import (
+        UNRESOLVED_GEOGRAPHY_VIEW_LEVEL,
+        US_TARGET_GEOGRAPHY_VIEW_LEVELS,
+        US_TARGET_GEOGRAPHY_VIEW_ORDER,
+    )
+
+    assert set(US_TARGET_GEOGRAPHY_VIEW_LEVELS) == graph_fiscal_measurement._LEVELS
+    assert UNRESOLVED_GEOGRAPHY_VIEW_LEVEL not in US_TARGET_GEOGRAPHY_VIEW_LEVELS
+    assert US_TARGET_GEOGRAPHY_VIEW_ORDER == (
+        *US_TARGET_GEOGRAPHY_VIEW_LEVELS,
+        UNRESOLVED_GEOGRAPHY_VIEW_LEVEL,
+    )
+
+
+def test_view_resolution_routes_and_refusals() -> None:
+    from microcosm.build.us_runtime.target_geography_view import (
+        us_target_spec_geography_view,
+    )
+
+    views = {
+        spec.name: us_target_spec_geography_view(spec)
+        for spec in _geography_registry().specs
+    }
+
+    assert views["national_income"].level == "national"
+    assert views["national_income"].level_source == "ledger_geography_level"
+    assert views["national_income"].geography_id == "0100000US"
+
+    assert views["state_income"].level == "state"
+    assert views["state_income"].level_source == "hierarchy_geography"
+    assert views["state_income"].geography_id == "0400000US06"
+
+    assert views["cd_flagged"].level == "congressional_district"
+    assert views["cd_flagged"].level_source == "congressional_district_evidence"
+    assert views["cd_flagged"].congressional_district_evidence is True
+
+    # A row nothing identifies is refused, never absorbed into national.
+    assert views["unscoped_income"].level == "unresolved"
+    assert views["unscoped_income"].level_source == "none"
+    assert views["unscoped_income"].resolved is False
+
+
+def test_unknown_declared_level_is_refused_not_guessed() -> None:
+    from microcosm.build.us_runtime.target_geography_view import (
+        us_target_geography_view,
+    )
+
+    # "county" is a real ledger level with no advertised household scope. It
+    # must not fall through to national, and it must not be invented into a
+    # fourth view.
+    view = us_target_geography_view(
+        name="county_row",
+        metadata={"ledger_geography_level": "county", "ledger_geography_id": "x"},
+    )
+    assert view.level == "unresolved"
+    assert view.geography_id == ""
+
+
+def test_explicit_level_outranks_cd_evidence_and_reports_the_disagreement() -> None:
+    from microcosm.build.us_runtime.target_geography_view import (
+        us_target_geography_view,
+    )
+
+    view = us_target_geography_view(
+        name="irs_soi.ty2022.congressional_district_rollup.state_total",
+        metadata={"ledger_geography_level": "state", "ledger_geography_id": "06"},
+    )
+    assert view.level == "state"
+    assert view.congressional_district_evidence is True
+    assert view.disagrees_with_congressional_district_evidence is True
+
+
+def test_geography_view_rollup_partitions_the_canonical_loss(monkeypatch) -> None:
+    """A view's contributions are shares of the one aggregate, not a rerun."""
+
+    module = _load_head_to_head_module()
+    payload = _geography_head_to_head(module, monkeypatch)
+
+    for role in ("incumbent", "candidate"):
+        fiscal = payload["artifacts"][role]["fiscal"]
+        rollup = fiscal["by_geography_level"]
+        assert [group["geography_level"] for group in rollup] == [
+            "national",
+            "state",
+            "congressional_district",
+            "unresolved",
+        ]
+        assert sum(group["target_count"] for group in rollup) == fiscal["target_count"]
+        assert sum(group["loss_contribution"] for group in rollup) == pytest.approx(
+            fiscal["weighted_loss"]
+        )
+        assert sum(group["weight_share"] for group in rollup) == pytest.approx(1.0)
+        # The state row is the only one carrying a hierarchy geography id.
+        by_level = {group["geography_level"]: group for group in rollup}
+        assert by_level["state"]["distinct_geography_id_count"] == 1
+        assert by_level["unresolved"]["distinct_geography_id_count"] == 0
+
+    resolution = payload["artifacts"]["incumbent"]["fiscal"][
+        "geography_view_resolution"
+    ]
+    assert resolution["unresolved_target_count"] == 1
+    assert resolution["unresolved_target_examples"] == ["unscoped_income"]
+    assert resolution["congressional_district_evidence_disagreement_count"] == 0
+    assert resolution["level_source_counts"] == {
+        "congressional_district_evidence": 1,
+        "hierarchy_geography": 1,
+        "ledger_geography_level": 1,
+        "none": 1,
+    }
+
+
+def test_comparison_view_counts_and_deltas_reconcile(monkeypatch) -> None:
+    module = _load_head_to_head_module()
+    payload = _geography_head_to_head(module, monkeypatch)
+    comparison = payload["comparison"]
+    views = comparison["by_geography_level"]["views"]
+    counts = comparison["per_target_absolute_relative_error"]
+    loss = comparison["fiscal_weighted_loss"]
+
+    assert comparison["by_geography_level"]["required_release_evidence_item"] == (
+        "national_and_cd_target_fit"
+    )
+    # Still evidence, not a verdict: the view axis adds no threshold.
+    assert comparison["no_threshold_applied"] is True
+    assert comparison["decision"] == "owner_decides_flip"
+
+    assert (
+        sum(view["candidate_lower_count"] for view in views)
+        == (counts["candidate_lower_count"])
+    )
+    assert sum(view["equal_count"] for view in views) == counts["equal_count"]
+    assert (
+        sum(view["incumbent_lower_count"] for view in views)
+        == (counts["incumbent_lower_count"])
+    )
+    assert sum(view["incumbent_loss_contribution"] for view in views) == pytest.approx(
+        loss["incumbent"]
+    )
+    assert sum(view["candidate_loss_contribution"] for view in views) == pytest.approx(
+        loss["candidate"]
+    )
+    assert sum(
+        view["candidate_minus_incumbent_loss_contribution"] for view in views
+    ) == pytest.approx(loss["candidate_minus_incumbent"])
+    for view in views:
+        assert view["candidate_minus_incumbent_loss_contribution"] == pytest.approx(
+            view["candidate_loss_contribution"] - view["incumbent_loss_contribution"]
+        )
+
+    # n_flagged is the only count row and the only CD row; both artifacts
+    # share its inputs, so the CD view is exactly tied and never regresses.
+    cd = next(
+        view for view in views if view["geography_level"] == "congressional_district"
+    )
+    assert cd["target_count"] == 1
+    assert cd["equal_count"] == 1
+    assert cd["candidate_minus_incumbent_loss_contribution"] == pytest.approx(0.0)
+    assert cd["worst_candidate_regression_target"] is None
+
+    # m_income rows: incumbent 7000, candidate 7800, every target below both,
+    # so all three amount rows cap at 1.0 on each side and tie.
+    national = next(view for view in views if view["geography_level"] == "national")
+    assert national["target_count"] == 1
+    assert national["candidate_minus_incumbent_loss_contribution"] == pytest.approx(0.0)
+
+    # Every target appears once, tagged with the view it was scored in.
+    assert sorted(
+        (row["name"], row["geography_level"]) for row in counts["targets"]
+    ) == [
+        ("cd_flagged", "congressional_district"),
+        ("national_income", "national"),
+        ("state_income", "state"),
+        ("unscoped_income", "unresolved"),
+    ]
+
+
+def test_comparison_refuses_a_view_that_differs_between_artifacts() -> None:
+    module = _load_head_to_head_module()
+
+    def _side(level: str) -> dict[str, object]:
+        return {
+            "fiscal": {
+                "weighted_loss": 0.5,
+                "targets": [
+                    {
+                        "name": "row",
+                        "period": 2024,
+                        "geography_level": level,
+                        "geography_level_source": "ledger_geography_level",
+                        "congressional_district_evidence": False,
+                        "geography_id": "",
+                        "absolute_relative_error": 0.1,
+                        "target_loss_weight_share": 1.0,
+                        "weighted_loss_contribution": 0.5,
+                    }
+                ],
+            },
+            "terminal_battery": {"status": "inapplicable"},
+        }
+
+    with pytest.raises(ValueError, match="geography view differs"):
+        module._comparison_payload(_side("national"), _side("congressional_district"))
+
+
+def test_scorecard_markdown_renders_the_view_axis(monkeypatch, tmp_path) -> None:
+    module = _load_head_to_head_module()
+    payload = _geography_head_to_head(module, monkeypatch)
+    assert payload["schema_version"] == 4
+
+    markdown = module.render_markdown(payload)
+    assert "## incumbent: loss by national / state / CD view" in markdown
+    assert "## candidate: loss by national / state / CD view" in markdown
+    assert "### National / state / CD view" in markdown
+    assert "`national_and_cd_target_fit`" in markdown
+    assert "Unresolved-scope rows: **1**" in markdown
+    assert "never counted \nas national" in markdown or (
+        "never counted " in markdown and "as national" in markdown
+    )
+
+    # Rendering stays deterministic byte-for-byte through the writer.
+    first = module.write_scorecard(payload, tmp_path / "one" / "scorecard")
+    second = module.write_scorecard(payload, tmp_path / "two" / "scorecard")
+    for path_one, path_two in zip(first, second, strict=True):
+        assert path_one.read_bytes() == path_two.read_bytes()

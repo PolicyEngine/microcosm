@@ -396,6 +396,10 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "take_up.py",
         "take_up_contract.py",
         "target_aging.py",
+        # Pure classification of a compiled target row into the national/
+        # state/CD comparison view, from declared target metadata only. Reads
+        # no Frame, treats no population, and decides nothing.
+        "target_geography_view.py",
         # Data-only final-owner matrix; provenance owner above.
         "us_late_overlap_ownership.py",
         # Data-only late input/output registry; provenance owner above.
