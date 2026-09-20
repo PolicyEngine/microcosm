@@ -339,6 +339,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "org_wages.py",
         "parity_reference.py",
         "pregnancy.py",
+        # Shared prior-year output names; no source access or treatment.
+        "prior_year_income_constants.py",
         # Shared numeric property component names; no source access or treatment.
         "property_income_constants.py",
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
@@ -413,6 +415,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "_survey_population_witness.py",
         # Exact development checkpoint/readback and missing-input inventory.
         "native_survey_handoff.py",
+        # Logical H5 export/readback verification; no source or release authority.
+        "policyengine_h5_readback.py",
         # Qualified raw ACS INTP/RETP anchors, preserving literal knownness
         "current_acs_income_anchor_source.py",
         # Exact received/paid child-support source observations; no tax treatment
