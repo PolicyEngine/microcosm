@@ -8,6 +8,7 @@ clone transport, and the fences that refuse a mutated or foreign owner.
 
 import copy
 import hashlib
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -871,6 +872,73 @@ def test_the_public_qualifier_requires_the_live_preparation_owner():
     for foreign in (None, SimpleNamespace(), object()):
         with pytest.raises(ValueError, match="PREPARATION_TYPE"):
             od.qualify_current_asec_other_disability(foreign)
+
+
+def test_live_preparation_qualifies_other_disability_from_real_detail_owner(
+    tmp_path, monkeypatch
+):
+    from test_us_current_asec_retirement_detail_source import prepared
+
+    parent = prepared(detail, tmp_path, monkeypatch)
+    result = od.qualify_current_asec_other_disability(parent)
+    observed = result.person.set_index("native_person_id")
+    assert observed.loc[105, od.AMOUNT_COLUMN] == 200
+    assert bool(observed.loc[105, od.KNOWN_COLUMN])
+    assert observed.loc[107, od.AMOUNT_COLUMN] == 0
+    assert bool(observed.loc[107, od.KNOWN_COLUMN])
+    assert not bool(observed.loc[106, od.KNOWN_COLUMN])
+    assert pd.isna(observed.loc[106, od.AMOUNT_COLUMN])
+    assert result.evidence["source_admission_issued"] is False
+    assert result.evidence["release_eligible"] is False
+
+
+@pytest.mark.parametrize("mutation", ["semantic_constant", "bound_qualifier"])
+def test_live_preparation_refuses_implementation_changed_by_final_owner_return(
+    tmp_path, monkeypatch, mutation
+):
+    from test_us_current_asec_retirement_detail_source import prepared
+
+    parent = prepared(detail, tmp_path, monkeypatch)
+    checked = type(parent)._checked.__code__
+    composed = od.compose_other_disability.__code__
+    calls = []
+    armed = []
+
+    def after_return(code, offset, result):
+        if code is composed:
+            armed.append(True)
+        elif code is checked and armed:
+            calls.append(True)
+            if mutation == "semantic_constant":
+                monkeypatch.setattr(od, "REPORTING_AGE", 16)
+            else:
+                monkeypatch.setattr(
+                    detail,
+                    "qualify_current_asec_retirement_detail",
+                    lambda preparation: None,
+                )
+
+    # Observe actual callback returns without replacing the preparation,
+    # qualified detail operation, or the implementation seal under test. Local
+    # monitoring leaves the test runner's global no-fit guard intact.
+    monitor = sys.monitoring
+    tool_id = 4
+    assert monitor.get_tool(tool_id) is None
+    monitor.use_tool_id(tool_id, "other-disability-final-owner-test")
+    monitor.register_callback(tool_id, monitor.events.PY_RETURN, after_return)
+    monitor.set_local_events(tool_id, checked, monitor.events.PY_RETURN)
+    monitor.set_local_events(tool_id, composed, monitor.events.PY_RETURN)
+    try:
+        with pytest.raises(
+            ValueError, match="OTHER_DISABILITY_SOURCE_IMPLEMENTATION_CHANGED"
+        ):
+            od.qualify_current_asec_other_disability(parent)
+    finally:
+        monitor.set_local_events(tool_id, checked, 0)
+        monitor.set_local_events(tool_id, composed, 0)
+        monitor.register_callback(tool_id, monitor.events.PY_RETURN, None)
+        monitor.free_tool_id(tool_id)
+    assert len(armed) == len(calls) == 1
 
 
 @pytest.mark.parametrize(
