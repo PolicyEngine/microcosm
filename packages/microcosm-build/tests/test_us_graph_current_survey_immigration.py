@@ -192,6 +192,45 @@ def test_copied_descriptive_owner_cannot_declare_nodes():
         )
 
 
+@pytest.mark.parametrize("name", ["_pure", "_live", "_modules", "_require", "validate"])
+def test_rebound_owner_entrypoint_refuses_before_invocation(monkeypatch, name):
+    container = (
+        graph.owner.CurrentSurveyImmigrationTransfer
+        if name == "validate"
+        else graph.owner
+    )
+    before = host._live()
+    invoked = []
+
+    def replacement(*args, **kwargs):
+        invoked.append(True)
+        raise AssertionError("A replaced validation body must not run")
+
+    monkeypatch.setattr(container, name, replacement)
+    assert host._live() != before
+    with pytest.raises(ValueError, match="OWNER_IMPLEMENTATION_CHANGED"):
+        graph.retained_entry(object())
+    with pytest.raises(ValueError, match="OWNER_IMPLEMENTATION_CHANGED"):
+        host.run_us_survey_enrichment(object(), immigration_transfer=object())
+    assert not invoked
+
+
+@pytest.mark.parametrize("name", ["_pure", "_live", "validate"])
+def test_mutated_owner_entrypoint_code_refuses_before_invocation(monkeypatch, name):
+    container = (
+        graph.owner.CurrentSurveyImmigrationTransfer
+        if name == "validate"
+        else graph.owner
+    )
+
+    def replacement(*args, **kwargs):
+        raise AssertionError("An altered validation body must not run")
+
+    monkeypatch.setattr(getattr(container, name), "__code__", replacement.__code__)
+    with pytest.raises(ValueError, match="OWNER_IMPLEMENTATION_CHANGED"):
+        graph.retained_entry(object())
+
+
 @pytest.mark.parametrize("spm", [False, True])
 def test_attachment_follows_existing_optional_terminal(spm):
     edge = host._immigration_after_edge(spm)
