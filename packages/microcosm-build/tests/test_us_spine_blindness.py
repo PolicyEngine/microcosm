@@ -420,6 +420,9 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "native_survey_handoff.py",
         # Logical H5 export/readback verification; no source or release authority.
         "policyengine_h5_readback.py",
+        # Genuine current sex/allocation projections and visible original/clone binding.
+        "current_survey_sex_source.py",
+        "graph_current_survey_sex.py",
         # Qualified raw ACS INTP/RETP anchors, preserving literal knownness
         "current_acs_income_anchor_source.py",
         # Exact received/paid child-support source observations; no tax treatment
@@ -3608,6 +3611,9 @@ _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
         "current_survey_spm_source.py",
         # Fixed qualification fields and declared typed artifact names only.
         "graph_current_survey_spm.py",
+        # Fixed qualified sex/provenance column names and typed artifact maps;
+        # no direct source-channel access or population-treatment exemption.
+        "graph_current_survey_sex.py",
         # Schema-declared entities/columns and typed node/artifact/state maps;
         # Health completion indexes fixed model/feature families and typed
         # artifact histories; direct provenance reads remain guarded.
@@ -3698,6 +3704,7 @@ def _non_owner_source_spine_accesses(
         "current_survey_immigration_source.py",
         "current_survey_spm_source.py",
         "graph_current_survey_spm.py",
+        "graph_current_survey_sex.py",
         "graph_survey_completion.py",
         "graph_current_survey_health_completion.py",
         "current_survey_primary_family.py",
@@ -3761,6 +3768,16 @@ def test_native_spm_source_and_graph_keep_the_scoped_provenance_guard(module):
     assert module in _US_LAUNCH_GRAPH_RUNTIME_MODULES
     assert module not in _SOURCE_SPINE_PROVENANCE_OWNERS
     assert _source_spine_accesses(source)  # The dynamic selectors are scanned.
+    assert _non_owner_source_spine_accesses(module, source) == ()
+
+
+@pytest.mark.parametrize(
+    "module", ["current_survey_sex_source.py", "graph_current_survey_sex.py"]
+)
+def test_native_sex_source_and_graph_keep_the_scoped_provenance_guard(module):
+    source = (_US_RUNTIME / module).read_text()
+    assert module in _US_LAUNCH_GRAPH_RUNTIME_MODULES
+    assert module not in _SOURCE_SPINE_PROVENANCE_OWNERS
     assert _non_owner_source_spine_accesses(module, source) == ()
 
 

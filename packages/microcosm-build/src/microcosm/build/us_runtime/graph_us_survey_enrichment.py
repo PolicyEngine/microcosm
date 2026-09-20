@@ -55,6 +55,7 @@ from . import graph_current_survey_hours as hours_graph
 from . import graph_current_survey_housing as housing_graph
 from . import graph_current_survey_immigration as immigration_graph
 from . import graph_current_survey_predictors as predictor_graph
+from . import graph_current_survey_sex as sex_graph
 from . import graph_current_survey_spm as spm_graph
 
 parent = values.parent_host
@@ -91,6 +92,9 @@ def _live():
         spm_graph,
         immigration_graph,
         immigration_graph.owner,
+        sex_graph,
+        sex_graph.source,
+        sex_graph.comparison,
     ):
         for name, item in vars(module).items():
             if type(item) is FunctionType:
@@ -168,6 +172,7 @@ def _live():
     )
     result.append(("spm_configuration", spm_graph.PROTOCOL, spm_graph.source._live()))
     result.append(("immigration_configuration", immigration_graph.configuration()))
+    result.append(("sex_configuration", sex_graph.source._live()))
     result.append(
         (
             "housing_configuration",
@@ -224,6 +229,17 @@ def _immigration_after_edge(spm_enabled):
             spm_graph.ATTACHMENT_TYPE,
         )
     return _spm_after_edge()
+
+
+def _sex_after_edge(spm_enabled, immigration_enabled):
+    if immigration_enabled:
+        return ArtifactInput(
+            "previous_attachment",
+            immigration_graph.ATTACH_NODE,
+            "attachment",
+            immigration_graph.ATTACHMENT_TYPE,
+        )
+    return _immigration_after_edge(spm_enabled)
 
 
 def _spm_configuration(acs_profile, asec_scope_policy, outside_role_placeholder):
@@ -408,10 +424,13 @@ class Boundary:
         spm_outside_role_placeholder=None,
         immigration_transfer=None,
         health_completion=False,
+        demographic_inputs=False,
     ):
+        require(type(demographic_inputs) is bool, "DEMOGRAPHIC_OPTION")
         live = _live()
         require(type(health_completion) is bool, "HEALTH_COMPLETION_OPTION")
         self.health_completion_enabled = health_completion
+        self.demographic_inputs = demographic_inputs
         self.spm_options = (
             spm_acs_profile,
             spm_asec_scope_policy,
@@ -446,6 +465,15 @@ class Boundary:
         self.qualified_stamp = values.seal(self.qualified)
         self.parent_stamp = physical._population_stamp(run.population)
         self.preparation = run.financial_run.prefix.preparation
+        self.sex = (
+            sex_graph.source.qualify_current_survey_sex(self.preparation)
+            if demographic_inputs
+            else None
+        )
+        self.sex_stamp = (
+            sex_graph.source.seal(self.sex) if self.sex is not None else None
+        )
+        self.sex_nodes = ()
         self.health = health_graph.qualify_health_coverage(self.preparation)
         self.health_stamp = health_graph.health_coverage_seal(self.health)
         self.health_completion = (
@@ -536,6 +564,16 @@ class Boundary:
             *self.spm_nodes,
             *self.immigration_nodes,
         )
+        if self.sex is not None:
+            self.sex_nodes = sex_graph.sex_nodes(
+                self.sex,
+                run.population.frame,
+                receiving_version=parent.attach.FILTER_NODE,
+                after=_sex_after_edge(
+                    self.spm is not None, self.immigration_transfer is not None
+                ),
+            )
+            self.nodes = (*self.nodes, *self.sex_nodes)
         self.declaration = tuple(self.nodes)
         self.live = _live()
         require(self.live == live, "QUALIFIER_CALLBACK_CHANGED_IMPLEMENTATION")
@@ -573,6 +611,23 @@ class Boundary:
             observed
             if self.health_completion is None
             else (*observed[:-1], *self._health_completion_nodes())
+        )
+
+    def _sex_pure(self):
+        require(type(self.demographic_inputs) is bool, "DEMOGRAPHIC_OPTION")
+        require(
+            (
+                self.demographic_inputs
+                and self.sex is not None
+                and sex_graph.source.seal(self.sex) == self.sex_stamp
+            )
+            or (
+                not self.demographic_inputs
+                and self.sex is None
+                and self.sex_stamp is None
+                and self.sex_nodes == ()
+            ),
+            "DEMOGRAPHIC_STATE_CHANGED",
         )
 
     def _immigration_pure(self):
@@ -641,6 +696,7 @@ class Boundary:
         )
 
     def pure(self):
+        self._sex_pure()
         parent._pure_run(self.run, self.parent_entry)
         require(
             parent._run_entry(self.run) is self.parent_entry
@@ -732,6 +788,7 @@ class Boundary:
                 *self.hours_nodes,
                 *self.spm_nodes,
                 *self.immigration_nodes,
+                *self.sex_nodes,
             ),
             "BOUNDARY_DECLARATIONS",
         )
@@ -758,6 +815,22 @@ class Boundary:
             )
         self._spm_pure()
         self._immigration_pure()
+        require(
+            self.sex_nodes
+            == (
+                ()
+                if self.sex is None
+                else sex_graph.sex_nodes(
+                    self.sex,
+                    self.run.population.frame,
+                    receiving_version=parent.attach.FILTER_NODE,
+                    after=_sex_after_edge(
+                        self.spm is not None, self.immigration_transfer is not None
+                    ),
+                )
+            ),
+            "DEMOGRAPHIC_DECLARATIONS",
+        )
 
     def borrow(self):
         require(
@@ -783,6 +856,8 @@ class Boundary:
             self.spm.validate()
         if self.immigration_transfer is not None:
             self.immigration_transfer.validate()
+        if self.sex is not None:
+            self.sex.validate()
         self.pure()
 
     def context(self, context):
@@ -863,6 +938,8 @@ class Boundary:
             self.spm.validate()
         if self.immigration_transfer is not None:
             self.immigration_transfer.validate()
+        if self.sex is not None:
+            self.sex.validate()
         self.pure()
 
 
@@ -1063,6 +1140,7 @@ def _construct(
     spm_outside_role_placeholder=None,
     immigration_transfer=None,
     health_completion=False,
+    demographic_inputs=False,
 ):
     boundary = Boundary(
         run,
@@ -1073,6 +1151,7 @@ def _construct(
         spm_outside_role_placeholder=spm_outside_role_placeholder,
         immigration_transfer=immigration_transfer,
         health_completion=health_completion,
+        demographic_inputs=demographic_inputs,
     )
     compiled = compile_graph(
         replace(run.compiled.graph, nodes=(*run.compiled.graph.nodes, *boundary.nodes))
@@ -1126,6 +1205,19 @@ def _construct(
     for kernel in immigration_graph.immigration_kernels(boundary):
         require(kernel.ref not in kernels.refs(), "IMMIGRATION_KERNEL_COLLISION")
         kernels.register(kernel)
+    if boundary.sex is not None:
+        for kernel in sex_graph.sex_kernels(
+            boundary.sex,
+            run.population.frame,
+            receiving_version=parent.attach.FILTER_NODE,
+            after=_sex_after_edge(
+                boundary.spm is not None, boundary.immigration_transfer is not None
+            ),
+            require_current=boundary.pure,
+            require_context=boundary.context,
+        ):
+            require(kernel.ref not in kernels.refs(), "SEX_KERNEL_COLLISION")
+            kernels.register(kernel)
     registry = parent._registry(run.store.codecs, codecs.SourceCodecRegistry())
     store = ContentStore(run.store.root, codecs=registry)
     paths, source_keys = _source_paths_and_keys(compiled, dict(run.sources), store)
@@ -1314,6 +1406,7 @@ def run_us_survey_enrichment(
     spm_outside_role_placeholder=None,
     immigration_transfer=None,
     health_completion=False,
+    demographic_inputs=False,
 ):
     """Execute and verify enrichment with optional SPM and realized immigration.
 
@@ -1323,6 +1416,8 @@ def run_us_survey_enrichment(
     this host only fans its final pair to existing clones, without another draw.
     Health completion is an explicit development model from original ASEC 2025
     coverage onto original ACS 2024 people; scientific qualification is pending.
+    Demographic inputs bind source-qualified nullable sex on originals and copy
+    it to both clones; unknown values remain unknown.
     """
     require(resume in ("auto", "require"), "RESUME")
     boundary = _construct(
@@ -1334,6 +1429,7 @@ def run_us_survey_enrichment(
         spm_outside_role_placeholder=spm_outside_role_placeholder,
         immigration_transfer=immigration_transfer,
         health_completion=health_completion,
+        demographic_inputs=demographic_inputs,
     )
     observed, stamps = {}, {}
 
@@ -1419,6 +1515,7 @@ def run_us_survey_enrichment(
     hours_ids = {n.id for n in boundary.hours_nodes}
     spm_ids = {n.id for n in boundary.spm_nodes}
     immigration_ids = {n.id for n in boundary.immigration_nodes}
+    sex_ids = {n.id for n in boundary.sex_nodes}
     group_nodes = {_ids(g)[0]: g for g in boundary.qualified.groups}
     column_nodes = {_ids(g)[1]: g for g in boundary.qualified.groups}
     original = population_ops.Population.from_frame(
@@ -1430,7 +1527,26 @@ def run_us_survey_enrichment(
         if node_id in run.compiled.order:
             current[version] = observed[node_id]
             continue
-        if node_id in immigration_ids:
+        if node_id in sex_ids:
+            sex_result = sex_graph.sex_result(
+                boundary.sex,
+                node,
+                parent._loaded_values(boundary, manifest, loaded, node),
+                None if current.get(version) is None else current[version].frame.person,
+            )
+            require(
+                all(
+                    loaded[node_id, name] == payload
+                    for name, payload in sex_result.artifacts.items()
+                ),
+                "SEX_RESULT_ARTIFACT",
+            )
+            expected = (
+                population_ops.Population.from_frame(sex_result.frame, node.id)
+                if node.structural is StructuralDelta.CREATE
+                else population_ops.patch(current[version], node, sex_result)
+            )
+        elif node_id in immigration_ids:
             immigration_artifacts = parent._loaded_values(
                 boundary, manifest, loaded, node
             )
@@ -1663,13 +1779,29 @@ def run_us_survey_enrichment(
             "hours_under15_policy": boundary.hours.proposals.under15_policy,
             "spm": spm_receipt,
             **immigration_receipt,
+            **(
+                {
+                    "demographics": {
+                        "enabled": True,
+                        "fields": [sex_graph.source.OUTPUT],
+                        "source_evidence_sha256": codec.sha(boundary.sex.evidence),
+                        "attachment_sha256": codec.sha(
+                            loaded[sex_graph.ATTACH_NODE, "attachment"]
+                        ),
+                    }
+                }
+                if boundary.sex is not None
+                else {}
+            ),
             "release_eligible": False,
         }
     )
     output = SurveyEnrichmentRun(
         run,
         observed[
-            immigration_graph.ATTACH_NODE
+            sex_graph.ATTACH_NODE
+            if boundary.sex is not None
+            else immigration_graph.ATTACH_NODE
             if boundary.immigration_transfer is not None
             else spm_graph.ATTACH_NODE
             if boundary.spm is not None
