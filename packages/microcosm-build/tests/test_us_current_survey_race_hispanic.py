@@ -299,12 +299,13 @@ def test_host_options_preserve_false_defaults_and_disabled_state():
 @pytest.mark.parametrize("health", (False, True))
 @pytest.mark.parametrize("sex", (False, True))
 @pytest.mark.parametrize("race", (False, True))
+@pytest.mark.parametrize("full_donors", (False, True))
 @pytest.mark.parametrize(
     "entrypoint,callee",
     (("run_us_survey_enrichment", "_construct"), ("_construct", "Boundary")),
 )
 def test_integrated_host_preserves_independent_options_and_wc_group(
-    monkeypatch, health, sex, race, entrypoint, callee
+    monkeypatch, health, sex, race, full_donors, entrypoint, callee
 ):
     """Forwarding only: the deliberate stop precedes any source/owner work."""
     captured = []
@@ -324,12 +325,14 @@ def test_integrated_host_preserves_independent_options_and_wc_group(
             health_completion=health,
             demographic_inputs=sex,
             race_hispanic_inputs=race,
+            full_original_amount_donors=full_donors,
         )
     assert len(captured) == 1 and captured[0][0] is parent
     options = captured[0][1]
     assert options["health_completion"] is health
     assert options["demographic_inputs"] is sex
     assert options["race_hispanic_inputs"] is race
+    assert options["full_original_amount_donors"] is full_donors
     assert options["groups"] is groups
 
 
