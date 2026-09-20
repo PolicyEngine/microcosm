@@ -802,7 +802,11 @@ def _extend(boundary, *, resume):
     require(all(keys[n] == k for n, k in state.keys), "COMPLETION_BASE_KEYS_CHANGED")
     declaration = graph_to_json(compiled.graph)
     live = host._live(
-        state.property_income, True, state.person_status_boundary is not None, boundary
+        state.property_income,
+        True,
+        state.person_status_boundary is not None,
+        boundary,
+        state.development_boundary is not None,
     )
     observed, stamps = {}, {}
     witnessed = {} if state.retention_profile == "compact" else None
@@ -961,6 +965,7 @@ def _extend(boundary, *, resume):
             True,
             state.person_status_boundary is not None,
             boundary,
+            state.development_boundary is not None,
         )
         == live,
         "COMPLETION_FINAL_DECLARATION_CHANGED",
@@ -988,6 +993,7 @@ def _extend(boundary, *, resume):
         property_population=base.financial_population,
         person_status_boundary=state.person_status_boundary,
         completion_boundary=boundary,
+        development_boundary=state.development_boundary,
         node_populations=observed,
         node_states=states,
         retention_profile=state.retention_profile,

@@ -416,6 +416,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
 # listed separately in _SOURCE_SPINE_PROVENANCE_OWNERS with their reason.
 _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
     {
+        # Four declared source-qualified mappings and exact maintained clone fanout.
+        "graph_current_asec_development_inputs.py",
         # Compact immutable observations; only the retained issuer owns authority.
         "_survey_population_witness.py",
         # Exact development checkpoint/readback and missing-input inventory.
@@ -3602,6 +3604,8 @@ def _source_spine_accesses(source: str) -> tuple[str, ...]:
 # accepted, and only for the listed modules.
 _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
     {
+        # Four declared source-qualified mappings and exact maintained clone fanout.
+        "graph_current_asec_development_inputs.py",
         # Maintained input-roster fields for unknown counts and exact checkpoint
         # readback; no source attachment, donor draw or provenance-routing authority.
         "native_survey_handoff.py",
@@ -3745,6 +3749,7 @@ def _non_owner_source_spine_accesses(
         "graph_puf55_original_placement.py",
         "graph_puf55_original_host.py",
         "graph_puf55_survey_observed.py",
+        "graph_current_asec_development_inputs.py",
     ],
 )
 def test_reviewed_dynamic_selector_modules_still_fail_on_provenance_reads(
@@ -8451,3 +8456,13 @@ def test_source_spine_ast_guard_covers_every_entity_grain() -> None:
             column = f"{entity}_{suffix}"
             source = f'def op(df):\n    return df["{column}"]\n'
             assert _source_spine_accesses(source), column
+
+
+def test_development_mapping_graph_keeps_the_scoped_provenance_guard():
+    module = "graph_current_asec_development_inputs.py"
+    assert module in _US_LAUNCH_GRAPH_RUNTIME_MODULES
+    assert module not in _SOURCE_SPINE_PROVENANCE_OWNERS
+    assert (
+        _non_owner_source_spine_accesses(module, (_US_RUNTIME / module).read_text())
+        == ()
+    )
