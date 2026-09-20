@@ -1,6 +1,6 @@
 """Qualified current-money targets and source-keyed clone attachment values.
 
-The closed family has UC, opt-in workers compensation, and health-cost routes.
+The closed family has UC, health costs, and opt-in workers/child support routes.
 Values are derived from live retained owners; this module issues no authority.
 """
 
@@ -15,7 +15,9 @@ from microcosm.fit import _graph_legacy_qrf as codec
 from microcosm.fit import model_input
 from microcosm.frame import WeightKind
 
+from . import child_support as child_mapper
 from . import current_asec_amount_donor as full_donor
+from . import current_asec_child_support_source as child_source
 from . import current_asec_unemployment_source as unemployment
 from . import current_asec_workers_compensation_source as workers_compensation
 from . import current_survey_predictors as predictors
@@ -48,6 +50,7 @@ GROUPS = (
         ),
     ),
     AmountGroup("workers_compensation", (("WC_VAL", "workers_compensation"),)),
+    AmountGroup("child_support", (("CSP_VAL", "child_support_received"),)),
 )
 UC_REPORT_COLUMNS = (
     "source_amount",
@@ -188,12 +191,89 @@ def origin_digest(origins):
     )
 
 
+def _child_projection(preparation, ids, asec, native_ids):
+    """Join actual source-qualified observations; paid support is never a target."""
+    observed = child_source.qualify_current_asec_child_support(preparation)
+    basis = observed.person
+    require(
+        basis.index.equals(ids[asec])
+        and np.array_equal(basis.native_person_id.to_numpy(), native_ids.to_numpy()),
+        "CHILD_SOURCE_JOIN",
+    )
+    native = pd.DataFrame(index=ids)
+    reports = pd.DataFrame(index=ids)
+    for raw, output in zip(
+        child_source.AMOUNT_FIELDS,
+        child_mapper.US_CHILD_SUPPORT_OUTPUT_COLUMNS,
+        strict=True,
+    ):
+        known = basis[raw + "_amount_known"].to_numpy(dtype=bool)
+        # Invoke the maintained strict numeric mapper only on source-known cells.
+        canonical = basis[raw + "_amount"].to_numpy(dtype="float64", na_value=np.nan)
+        child_mapper._strict_nonnegative_source(
+            pd.DataFrame({raw: canonical[known]}), raw
+        )
+        require(np.isnan(canonical[~known]).all(), "CHILD_UNKNOWN_VALUE")
+        native[output] = np.nan
+        native.loc[ids[asec], output] = canonical
+        reports["survey_current_" + raw + "_origin"] = pd.Series(
+            "unresolved", index=ids, dtype="string"
+        )
+        reports.loc[ids[asec], "survey_current_" + raw + "_origin"] = basis[
+            raw + "_reporting_status"
+        ].to_numpy()
+    # Keep source knownness, literals, allocation and route status separate from
+    # the later ACS model label. A missing source answer never becomes false.
+    for name in basis:
+        if name == "native_person_id":
+            continue
+        column = "survey_child_" + name
+        dtype = basis[name].dtype
+        if pd.api.types.is_bool_dtype(dtype):
+            target_dtype, missing = "boolean", pd.NA
+        elif pd.api.types.is_integer_dtype(dtype):
+            target_dtype, missing = "Int64", pd.NA
+        elif pd.api.types.is_float_dtype(dtype):
+            target_dtype, missing = "float64", np.nan
+        else:
+            require(isinstance(dtype, pd.StringDtype), "CHILD_REPORT_DTYPE")
+            target_dtype, missing = "string", pd.NA
+        reports[column] = pd.Series(missing, index=ids, dtype=target_dtype)
+        reports.loc[ids[asec], column] = (
+            basis[name].to_numpy(dtype="float64", na_value=np.nan)
+            if target_dtype == "float64"
+            else basis[name].array
+        )
+    return observed, native, reports
+
+
+def attachment_dtype(qualified, receiving, name, default):
+    """Only explicit child-support outputs may replace carried canonical values."""
+    if name not in receiving.person:
+        return default
+    require(
+        any(g.spec.key == "child_support" for g in qualified.groups)
+        and name in child_mapper.US_CHILD_SUPPORT_OUTPUT_COLUMNS,
+        "ATTACH_OWNERSHIP_COLLISION",
+    )
+    dtype = receiving.person[name].dtype
+    require(
+        dtype in (np.dtype("float32"), np.dtype("float64")),
+        "CHILD_REWRITE_DTYPE:" + name,
+    )
+    return str(dtype)
+
+
 def qualify_current_survey_amounts(
     run, *, groups=("unemployment", "health_costs"), full_original_donors=False
 ):
     """Requalify actual source predictors and current amounts for a retained PUF run."""
     require(type(full_original_donors) is bool, "FULL_ORIGINAL_DONORS_OPTION")
     specs = selected_groups(groups)
+    require(
+        "child_support" not in groups or full_original_donors,
+        "CHILD_FULL_ORIGINAL_REQUIRED",
+    )
     # The owning country host performs the full parent checker at entry/final
     # I/O fences. This projection borrows its actual issued handle purely and
     # qualifies its own source owners; it does not reread unrelated PUF models.
@@ -252,6 +332,11 @@ def qualify_current_survey_amounts(
     reports = pd.DataFrame(index=ids)
     domains = {}
     receipts = _qualify_receipt_groups(preparation, groups)
+    child = None
+    child_seal = None
+    if "child_support" in groups:
+        child, native, reports = _child_projection(preparation, ids, asec, native_ids)
+        child_seal = child_source.child_support_values_seal(child)
     for _, raw, prefix, _ in receipt_sources():
         if raw not in receipts:
             continue
@@ -292,23 +377,30 @@ def qualify_current_survey_amounts(
     for spec in specs:
         for raw, output in spec.fields:
             require(
-                output not in run.population.frame.person,
+                spec.key == "child_support"
+                or output not in run.population.frame.person,
                 "OUTPUT_ALREADY_OWNED:" + output,
             )
             field = ready.field(raw)
             domain = next(d for d in parent.spec.fields if d.name == raw)
             require(
                 domain.entity == "person"
-                and (field.validity[take] == 1).all()
-                and np.isfinite(field.amounts[take]).all(),
+                and (
+                    spec.key == "child_support"
+                    or (
+                        (field.validity[take] == 1).all()
+                        and np.isfinite(field.amounts[take]).all()
+                    )
+                ),
                 "CURRENT_MONEY_UNKNOWN:" + raw,
             )
-            native[output] = np.nan
-            native.loc[ids[asec], output] = (
-                receipts[raw].person.canonical_amount.to_numpy()
-                if raw in receipts
-                else field.amounts[take]
-            )
+            if spec.key != "child_support":
+                native[output] = np.nan
+                native.loc[ids[asec], output] = (
+                    receipts[raw].person.canonical_amount.to_numpy()
+                    if raw in receipts
+                    else field.amounts[take]
+                )
             if raw in receipts:
                 require(
                     np.array_equal(
@@ -318,12 +410,13 @@ def qualify_current_survey_amounts(
                     ("UC" if raw == "UC_VAL" else "WC") + "_AMOUNT_IDENTITY",
                 )
             origin = "survey_current_" + raw + "_origin"
-            reports[origin] = pd.Series("unresolved", index=ids, dtype="string")
-            reports.loc[ids[asec], origin] = (
-                receipts[raw].person.reporting_status.to_numpy()
-                if raw in receipts
-                else "source_current_amount"
-            )
+            if spec.key != "child_support":
+                reports[origin] = pd.Series("unresolved", index=ids, dtype="string")
+                reports.loc[ids[asec], origin] = (
+                    receipts[raw].person.reporting_status.to_numpy()
+                    if raw in receipts
+                    else "source_current_amount"
+                )
             domains[raw] = {
                 "domain": {f.name: getattr(domain, f.name) for f in fields(domain)},
                 "amount_sha256": codec.sha(field.amounts[take].astype("<f8").tobytes()),
@@ -357,7 +450,9 @@ def qualify_current_survey_amounts(
             & np.isfinite(donor_features.to_numpy()).all(axis=1)
         )
         recipient = acs.copy()
-        if any(raw in receipts for raw, _ in spec.fields):
+        if spec.key == "child_support" or any(
+            raw in receipts for raw, _ in spec.fields
+        ):
             recipient &= features[predictors.FEATURES[0]].to_numpy() >= 15
         require(keep.any(), "NO_QUALIFIED_DONORS:" + spec.key)
         require(recipient.any(), "NO_QUALIFIED_RECIPIENTS:" + spec.key)
@@ -400,6 +495,22 @@ def qualify_current_survey_amounts(
         **(
             {"workers_compensation": receipts["WC_VAL"].evidence}
             if "WC_VAL" in receipts
+            else {}
+        ),
+        **(
+            {
+                "child_support": {
+                    "source": child.evidence,
+                    "source_values_sha256": codec.sha(
+                        child.person.to_json(orient="table").encode()
+                    ),
+                    "received_model": "zero_aware_full_original_known_ASEC_receipts_and_nonreceipts_to_ACS_age15plus",
+                    "expense": "observed_only_no_model_no_zero_fill",
+                    "development_transport": "ASEC2025_income2024_to_ACS2024",
+                    "expense_profile_complete": False,
+                }
+            }
+            if child is not None
             else {}
         ),
         "groups": [
@@ -454,6 +565,12 @@ def qualify_current_survey_amounts(
         feature_names,
         tuple(routes),
         None if complete is None else complete.frame,
+    )
+    for name in native:
+        attachment_dtype(result, run.population.frame, name, str(native[name].dtype))
+    require(
+        child is None or child_source.child_support_values_seal(child) == child_seal,
+        "CHILD_SOURCE_VALUES_CHANGED",
     )
     stamp = seal(result)
     parent_host._pure_run(run, run_entry)
@@ -526,11 +643,25 @@ def attach_columns(qualified, receiving, draws):
         ):
             completed.loc[draw.index, output] = draw[target].to_numpy()
     all_columns = pd.concat([completed, qualified.reports], axis=1)
-    require(not set(all_columns) & set(people), "ATTACH_OWNERSHIP_COLLISION")
     index = pd.Index(ids, name="person_id")
-    return {
-        ("person", name): pd.Series(
+    columns = {}
+    for name in all_columns:
+        dtype = attachment_dtype(
+            qualified, receiving, name, str(all_columns[name].dtype)
+        )
+        series = pd.Series(
             all_columns[name].reindex(original).array.copy(), index=index, name=name
         )
-        for name in all_columns
-    }
+        if name in people:
+            converted = series.astype(dtype)
+            require(
+                np.array_equal(
+                    series.to_numpy(dtype="float64"),
+                    converted.to_numpy(dtype="float64"),
+                    equal_nan=True,
+                ),
+                "CHILD_REWRITE_LOSS:" + name,
+            )
+            series = converted
+        columns["person", name] = series
+    return columns

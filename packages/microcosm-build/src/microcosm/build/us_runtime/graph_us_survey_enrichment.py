@@ -13,6 +13,7 @@ import weakref
 from dataclasses import asdict, dataclass, replace
 from types import FunctionType, SimpleNamespace
 
+import numpy as np
 import pandas as pd
 
 from microcosm.fit import _graph_legacy_qrf as codec
@@ -66,6 +67,8 @@ require = values.require
 PROJECTION_NODE = "survey_amounts.source_projection"
 FULL_DONOR_SOURCE_NODE = "survey_amounts.full_original_asec_source"
 ATTACH_NODE = "survey_amounts.attach"
+CHILD_VERSION_NODE = "survey_amounts.child_support.version"
+CHILD_ATTACH_NODE = "survey_amounts.child_support.attach"
 PROJECTION_TYPE = ArtifactType("microcosm.us.current_survey_amount_projection", 1)
 ATTACHMENT_TYPE = ArtifactType("microcosm.us.current_survey_amount_attachment", 1)
 _ISSUED = {}
@@ -79,6 +82,9 @@ def _live():
         values.unemployment,
         values.workers_compensation,
         values.workers_compensation.mapper,
+        values.child_source,
+        values.child_source.routing,
+        values.child_mapper,
         values.full_donor,
         values.full_donor.demographics,
         values.full_donor.demographics.demographic,
@@ -142,6 +148,35 @@ def _live():
             values.workers_compensation.PROTOCOL,
             values.workers_compensation.READ_COLUMNS,
             codec.encode_json(values.workers_compensation.DICTIONARY),
+            values.child_source.PROTOCOL,
+            values.child_source.READ_COLUMNS,
+            values.child_source.AMOUNT_FIELDS,
+            values.child_mapper.US_CHILD_SUPPORT_OUTPUT_COLUMNS,
+            tuple(
+                (
+                    name,
+                    type(getattr(values.child_source, name)),
+                    codec.encode_json(getattr(values.child_source, name)),
+                )
+                for name in (
+                    "RESPONSE_ENTRIES",
+                    "RESPONSE_MEANINGS",
+                    "ALLOCATION_ENTRIES",
+                    "TOPCODE_ENTRIES",
+                )
+            ),
+            values.child_source.routing.DOMAINS_RESOURCE,
+            values.child_source.routing.DOMAINS_SHA256,
+            values.child_source.routing.DICTIONARY_SHA256,
+            values.child_source.routing.KNOWN_AMOUNT_STATUSES,
+            values.child_source.routing.CURRENT_INCOME_YEAR,
+            values.child_source.routing.COORDINATE_COLUMNS,
+            values.child_source.routing.RECEIPT_CODE_DOMAIN,
+            values.child_source.routing.ALLOCATION_ANNVAL_CODES,
+            values.child_source._cached_amount_entries_json,
+            values.predictors.source._function_seal(
+                values.child_source._cached_amount_entries_json.__wrapped__
+            ),
             values.full_donor.PROTOCOL,
             type(values.full_donor.US_STATE_NUMERIC_FIPS_TO_POSTAL),
             tuple(sorted(values.full_donor.US_STATE_NUMERIC_FIPS_TO_POSTAL.items())),
@@ -384,6 +419,10 @@ def _full_donor_context(context, expected):
     )
 
 
+def _child_enabled(qualified):
+    return any(g.spec.key == "child_support" for g in qualified.groups)
+
+
 def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
     require(
         type(n_estimators) is int and n_estimators > 0 and codec._hash(parent_digest),
@@ -535,6 +574,13 @@ def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
                 )
             )
     columns = pd.concat([qualified.native, qualified.reports], axis=1)
+    child_columns = (
+        columns.loc[:, list(values.child_mapper.US_CHILD_SUPPORT_OUTPUT_COLUMNS)]
+        if _child_enabled(qualified)
+        else None
+    )
+    if child_columns is not None:
+        columns = columns.drop(columns=list(child_columns))
     nodes.append(
         Node(
             ATTACH_NODE,
@@ -542,12 +588,59 @@ def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
             population=parent.attach.FILTER_NODE,
             inputs=predictor_graph._inputs(receiving),
             params=params,
-            outputs=tuple(Owned("person", c, str(columns[c].dtype)) for c in columns),
+            outputs=tuple(
+                Owned(
+                    "person",
+                    c,
+                    values.attachment_dtype(
+                        qualified, receiving, c, str(columns[c].dtype)
+                    ),
+                    rewrite=(c in receiving.person),
+                )
+                for c in columns
+            ),
             artifact_inputs=tuple(attach_edges),
             artifact_outputs=(ArtifactOutput("attachment", ATTACHMENT_TYPE),),
             description="Join source observations and ACS conditional draws to both support clones; retain all PUF and source columns, geography, weights and ledger.",
         )
     )
+    if child_columns is not None:
+        nodes.extend(
+            (
+                Node(
+                    CHILD_VERSION_NODE,
+                    CurrentSurveyChildVersionKernel.ref,
+                    base=parent.attach.FILTER_NODE,
+                    structural=StructuralDelta.FILTER,
+                    inputs=predictor_graph._inputs(receiving),
+                    params=params,
+                    artifact_inputs=(_projection_edge(),),
+                    description="Keep every receiving row in a derived version after prior enrichment; preserve all memberships, weights and source cells before child-support canonical writes.",
+                ),
+                Node(
+                    CHILD_ATTACH_NODE,
+                    CurrentSurveyChildAttachKernel.ref,
+                    population=CHILD_VERSION_NODE,
+                    inputs=predictor_graph._inputs(receiving),
+                    params=params,
+                    outputs=tuple(
+                        Owned(
+                            "person",
+                            c,
+                            values.attachment_dtype(
+                                qualified, receiving, c, str(child_columns[c].dtype)
+                            ),
+                            rewrite=(c in receiving.person),
+                        )
+                        for c in child_columns
+                    ),
+                    artifact_inputs=tuple(attach_edges),
+                    artifact_outputs=(ArtifactOutput("attachment", ATTACHMENT_TYPE),),
+                    description="Attach received-support original draws and observed-only paid support to the existing clones in a new version; explicitly replace carried canonical child amounts.",
+                ),
+            )
+        )
+
     return tuple(nodes)
 
 
@@ -1178,6 +1271,9 @@ class _Kernel(KernelBase):
             values.unemployment,
             values.workers_compensation,
             values.workers_compensation.mapper,
+            values.child_source,
+            values.child_source.routing,
+            values.child_mapper,
             values.full_donor,
             values.full_donor.demographics,
             values.full_donor.demographics.demographic,
@@ -1336,13 +1432,24 @@ def read_draws(qualified, artifacts):
     return draws
 
 
-def _attachment_result(boundary, artifacts):
+def _attachment_result(boundary, artifacts, *, child_only=False):
     qualified = boundary.qualified
     require(
         artifacts["projection"].payload == qualified.projection, "ATTACHMENT_PROJECTION"
     )
     draws = read_draws(qualified, artifacts)
     columns = values.attach_columns(qualified, boundary.run.population.frame, draws)
+    require(
+        type(child_only) is bool and (not child_only or _child_enabled(qualified)),
+        "CHILD_ATTACHMENT_OPTION",
+    )
+    if _child_enabled(qualified):
+        columns = {
+            key: value
+            for key, value in columns.items()
+            if (key[1] in values.child_mapper.US_CHILD_SUPPORT_OUTPUT_COLUMNS)
+            == child_only
+        }
     receipt = {
         "protocol": values.PROTOCOL,
         "parent_sha256": boundary.parent_view.digest,
@@ -1350,6 +1457,26 @@ def _attachment_result(boundary, artifacts):
         "draw_sha256": {
             n: codec.sha(v.payload) for n, v in artifacts.items() if "_raw_" in n
         },
+        **(
+            {
+                "canonical_replacements": {
+                    name: str(columns["person", name].dtype)
+                    for name in values.child_mapper.US_CHILD_SUPPORT_OUTPUT_COLUMNS
+                    if name in boundary.run.population.frame.person
+                }
+            }
+            if child_only
+            else {}
+        ),
+        **(
+            {
+                "child_support_attachment": "canonical_final"
+                if child_only
+                else "deferred_to_derived_version"
+            }
+            if _child_enabled(qualified)
+            else {}
+        ),
         "source_unknowns_preserved": True,
         "weights_changed": False,
         "prior_wages_consumed": False,
@@ -1373,6 +1500,68 @@ class CurrentSurveyAmountAttachKernel(_Kernel):
         result = _attachment_result(self.boundary, context.artifacts)
         self.boundary.pure()
         return result
+
+
+class CurrentSurveyChildVersionKernel(_Kernel):
+    ref = "us.survey_amounts.child_version@1"
+    capabilities = replace(_Kernel.capabilities, structural=StructuralDelta.FILTER)
+
+    def run(self, context):
+        qualified = self.boundary.context(context)
+        require(_child_enabled(qualified), "CHILD_VERSION_DISABLED")
+        values.predictors.host._current_context_frame(
+            context, self.boundary.run.population.frame
+        )
+        return KernelResult(
+            keep=pd.Series(
+                True,
+                index=pd.Index(
+                    self.boundary.run.population.frame.person.person_id.to_numpy(),
+                    name="person_id",
+                ),
+                dtype=bool,
+            )
+        )
+
+
+class CurrentSurveyChildAttachKernel(_Kernel):
+    ref = "us.survey_amounts.child_attach@1"
+
+    def run(self, context):
+        self.boundary.context(context)
+        values.predictors.host._current_context_frame(
+            context, self.boundary.run.population.frame
+        )
+        result = _attachment_result(self.boundary, context.artifacts, child_only=True)
+        self.boundary.pure()
+        return result
+
+
+def _child_version_population(population, node):
+    """Independently reconstruct keep-all with the actual completed base Frame."""
+    require(
+        node.id == CHILD_VERSION_NODE
+        and node.structural is StructuralDelta.FILTER
+        and node.mass == "conserve",
+        "CHILD_VERSION_DECLARATION",
+    )
+    keep = np.ones(population.frame.n("person"), dtype=bool)
+    selected = population.frame.select(keep)
+    require(
+        all(
+            np.array_equal(
+                selected.table(entity)[
+                    selected.schema.entity_id_column(entity)
+                ].to_numpy(),
+                population.frame.table(entity)[
+                    population.frame.schema.entity_id_column(entity)
+                ].to_numpy(),
+            )
+            for entity in population.frame.entities
+        ),
+        "CHILD_VERSION_AXIS_CHANGED",
+    )
+    return population_ops.patch(population, node, KernelResult(frame=selected))
 
 
 def _construct(
@@ -1414,6 +1603,8 @@ def _construct(
         CurrentSurveyAmountDonorKernel,
         CurrentSurveyAmountColumnsKernel,
         CurrentSurveyAmountAttachKernel,
+        CurrentSurveyChildVersionKernel,
+        CurrentSurveyChildAttachKernel,
     ):
         require(cls.ref not in kernels.refs(), "KERNEL_COLLISION")
         kernels.register(cls(boundary))
@@ -1939,6 +2130,19 @@ def run_us_survey_enrichment(
                 ),
                 "HEALTH_RESULT_ARTIFACT",
             )
+        elif node_id == CHILD_VERSION_NODE:
+            expected = _child_version_population(current[node.base], node)
+        elif node_id == CHILD_ATTACH_NODE:
+            child_result = _attachment_result(
+                boundary,
+                parent._loaded_values(boundary, manifest, loaded, node),
+                child_only=True,
+            )
+            require(
+                loaded[node_id, "attachment"] == child_result.artifacts["attachment"],
+                "CHILD_ATTACHMENT_ARTIFACT",
+            )
+            expected = population_ops.patch(current[version], node, child_result)
         elif node_id == FULL_DONOR_SOURCE_NODE:
             expected = population_ops.Population.from_frame(
                 boundary.qualified.donor_source_frame, node_id
@@ -2109,13 +2313,24 @@ def run_us_survey_enrichment(
                 if boundary.race is not None
                 else {}
             ),
+            **(
+                {
+                    "child_support_attachment_sha256": codec.sha(
+                        loaded[CHILD_ATTACH_NODE, "attachment"]
+                    )
+                }
+                if _child_enabled(boundary.qualified)
+                else {}
+            ),
             "release_eligible": False,
         }
     )
     output = SurveyEnrichmentRun(
         run,
         observed[
-            race_graph.ATTACH_NODE
+            CHILD_ATTACH_NODE
+            if _child_enabled(boundary.qualified)
+            else race_graph.ATTACH_NODE
             if boundary.race is not None
             else sex_graph.ATTACH_NODE
             if boundary.sex is not None

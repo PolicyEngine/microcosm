@@ -1,0 +1,1 @@
+Add an opt-in native child-support amount group using full-original qualified ASEC receipt donors and one zero-aware ACS-original draw shared by clones. Keep paid support observed-only, retain unresolved source statuses, and explicitly replace only carried canonical child-support columns with lossless supported storage.

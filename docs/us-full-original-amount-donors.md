@@ -4,9 +4,11 @@
 selected amount groups using complete original current Annual Social and Economic
 Supplement (ASEC) support from the Current Population Survey, independently of
 which households were selected for the receiving survey spine. The default is
-`False`, preserving the existing selected-donor path. The supported groups remain
+`False`, preserving the existing selected-donor path. The supported groups include
 unemployment compensation (UC), health costs and the separately opt-in workers'
-compensation (WC) group; this option does not add a group or change an amount mapping.
+compensation (WC) group. The separately opt-in [child-support group](us-native-child-support.md)
+requires this option and fits received support only; paid support stays observed-only.
+Selecting full-original donors does not itself add an amount group.
 
 The retained authenticated preparation supplies the full original 2024-income,
 2025-survey ASEC roster and current-money source. A separate graph `CREATE` node

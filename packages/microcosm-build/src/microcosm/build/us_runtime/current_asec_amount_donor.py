@@ -17,6 +17,7 @@ from microcosm.calibrate.geography_constants import US_STATE_NUMERIC_FIPS_TO_POS
 from microcosm.fit import _graph_legacy_qrf as codec
 from microcosm.frame import Frame, WeightKind
 
+from . import current_asec_child_support_source as child_support
 from . import current_asec_demographics as demographics
 from . import current_asec_unemployment_source as receipts
 from . import current_survey_predictors as predictors
@@ -116,7 +117,8 @@ def qualify_full_original_amount_donor(
     fields = tuple(raw for spec in specs for raw, _ in spec.fields)
     require(fields and len(fields) == len(set(fields)), "FIELD_ROSTER")
     require(
-        set(fields) <= {"UC_VAL", "WC_VAL", "PHIP_VAL", "PMED_VAL", "POTC_VAL"},
+        set(fields)
+        <= {"UC_VAL", "WC_VAL", "PHIP_VAL", "PMED_VAL", "POTC_VAL", "CSP_VAL"},
         "FIELD_ROSTER",
     )
     entry = preparation._checked()
@@ -188,6 +190,31 @@ def qualify_full_original_amount_donor(
         )
         targets[raw] = basis.canonical_amount.to_numpy(copy=True)
         receipt_evidence[family] = evidence
+    if "CSP_VAL" in fields:
+        observed = child_support.qualify_current_asec_child_support(
+            preparation, full_original=True
+        )
+        basis = observed.person
+        require(basis.index.is_unique and set(basis.index) == set(ids), "CHILD_AXIS")
+        basis = basis.reindex(ids)
+        require(
+            np.array_equal(basis.native_person_id.to_numpy(), ids.to_numpy()),
+            "CHILD_NATIVE_AXIS",
+        )
+        require(
+            np.array_equal(
+                basis.CSP_VAL_published_amount.to_numpy(
+                    dtype="float64", na_value=np.nan
+                ),
+                values["CSP_VAL"],
+                equal_nan=True,
+            ),
+            "CHILD_MONEY",
+        )
+        targets["CSP_VAL"] = basis.CSP_VAL_amount.to_numpy(
+            dtype="float64", na_value=np.nan
+        )
+        receipt_evidence["child_support"] = observed.evidence
     features = pd.DataFrame(
         {
             predictors.FEATURES[0]: full.person.age.to_numpy(dtype="float64"),
