@@ -1,8 +1,11 @@
 # Original-arm PUF55 development placement
 
-The optional original-arm slice has pure placement helpers and typed graph
-fragments. It is not connected to the survey enrichment host. It does not issue
-source authority, execute a full PUF55 fit, or qualify a release.
+The survey enrichment host exposes optional original-arm application through
+`run_us_survey_enrichment(..., original_application_seed=...)`. Omission preserves
+the existing path. An explicit integer seed must differ from the retained
+clone-one seed. The original arm reuses the genuine route fits and runs every
+selected profile target with that application seed; it does not refit the donor.
+This development path does not qualify a release.
 
 The selected PUF55 profiles contain **52 person outputs and 3 tax-unit outputs**.
 The six SCF mortgage-detail fields in the full65 compatibility roster are not
@@ -51,22 +54,34 @@ fixed inputs and the exact original recipient matrix. Its result helper invokes
 the existing strict complete conditioning merger. There is no fabricated
 completed prefix or finalizer-only restoration of survey values.
 
-Host integration must still:
+The existing enrichment owner admits and rechecks the genuine financial and
+PUF owners and qualifies the original fixed inputs. Its private original-arm
+binding is not a new issuer. Declarations use predecessor metadata, while the
+executor observer supplies the actual completed receiving Population. The
+central terminal selector follows state, canonical child-support/veterans,
+race, sex, immigration, SPM, then hours according to the enabled fragments.
+The receiving version comes from that selected node, including later versions;
+it is not assumed to be the earlier PUF version.
 
-1. Capture and recheck the genuine financial and PUF owners, authenticate the
-   actual receiving population and its current terminal, and admit the genuine
-   original source qualification. The private `_capture_checked_puf_ancestors`
-   building block only checks the supplied PUF owner; it does not authenticate
-   a receiving enrichment host and is not a complete capture boundary.
-2. Bind every typed artifact's producer key to the actual compiled graph and
-   retained manifest/store, register host-bound implementations for the two
-   declared kernel references, and preserve existing live and final storage
-   checks. A caller-supplied digest or this receipt is not sufficient.
-3. Execute all 55 original-arm applications with an explicit application seed
-   distinct from the reused clone-one fit seed, reconstruct the keep-all and
-   attachment, and verify a required replay and whole-host preservation.
-4. Evaluate applicability, coverage and the development assumptions in the
-   eventual no-worse comparison before claiming release readiness.
+The binding compares declared kernel contexts with the executor's projection of
+that complete terminal, including typed weights and strata. The existing host
+checks every artifact against actual compiled producer keys. It reconstructs
+all preceding branches, compares the actual terminal, rebuilds the keep-all
+and placement, compares persisted attachment bytes and complete Populations,
+and retains its source requalification, live-code and final storage checks.
+A caller-supplied digest, a descriptive placement receipt, or the private
+`_capture_checked_puf_ancestors` helper alone cannot admit a receiving run.
+
+Whole-host qualification still requires all real route fits/applications and a
+required replay on admitted source owners. The bounded integration verification
+is staged: actual three-target training/application/replay, the complete 110
+application-node declarations for two profiles with explicitly synthetic
+metadata suppliers, and invented terminal/context/placement preservation tests.
+The declaration check is not evidence of 110 fitted or executed applications.
+The genuine full51 parent previously exceeded the bounded test's CPU budget by
+itself, so that parent and a whole-host run are reserved for a separately
+admitted integration run. Applicability, coverage, and the development
+assumptions also need the eventual no-worse comparison before release.
 
 The local tests use invented Frames for eligibility and patch arithmetic. A
 separate complete-envelope test uses synthetic 55-target payloads derived from

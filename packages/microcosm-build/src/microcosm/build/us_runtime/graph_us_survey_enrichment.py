@@ -65,6 +65,7 @@ from . import graph_current_survey_race_hispanic as race_graph
 from . import graph_current_survey_sex as sex_graph
 from . import graph_current_survey_spm as spm_graph
 from . import graph_current_survey_state as state_graph
+from . import graph_puf55_original_host as original_host
 
 parent = values.parent_host
 physical = values.physical
@@ -122,6 +123,7 @@ def _live():
         race_graph,
         race_graph.source,
         state_graph,
+        *original_host.modules(),
     ):
         for name, item in vars(module).items():
             if type(item) is FunctionType:
@@ -253,6 +255,7 @@ def _live():
     )
     result.append(("spm_configuration", spm_graph.PROTOCOL, spm_graph.source._live()))
     result.append(("immigration_configuration", immigration_graph.configuration()))
+    result.append(("original_puf_configuration", original_host.configuration()))
     result.append(("sex_configuration", sex_graph.source._live()))
     result.append(("race_hispanic_configuration", race_graph.source._live()))
     result.append(
@@ -800,8 +803,41 @@ def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
     return tuple(nodes)
 
 
+def _receiving_terminal(boundary):
+    """Select the complete current receiving terminal and its declared version."""
+    node_id = (
+        state_graph.NODE
+        if boundary.canonical_state_input
+        else _canonical_ids(boundary.qualified)[1]
+        if _canonical_enabled(boundary.qualified)
+        else race_graph.ATTACH_NODE
+        if boundary.race is not None
+        else sex_graph.ATTACH_NODE
+        if boundary.sex is not None
+        else immigration_graph.ATTACH_NODE
+        if boundary.immigration_transfer is not None
+        else spm_graph.ATTACH_NODE
+        if boundary.spm is not None
+        else hours_graph.ATTACH_NODE
+    )
+    candidates = [node for node in boundary.nodes if node.id == node_id]
+    require(
+        len(candidates) == 1 and candidates[0].population is not None,
+        "RECEIVING_TERMINAL",
+    )
+    return candidates[0]
+
+
+def _original_after(terminal):
+    require(len(terminal.artifact_outputs) == 1, "TERMINAL_ARTIFACT")
+    output = terminal.artifact_outputs[0]
+    return ArtifactInput("terminal", terminal.id, output.name, output.type)
+
+
 class Boundary:
     """Internal retained-value seam; a detached projection cannot construct it."""
+
+    _original_after = staticmethod(_original_after)
 
     def __init__(
         self,
@@ -818,7 +854,14 @@ class Boundary:
         race_hispanic_inputs=False,
         full_original_amount_donors=False,
         canonical_state_input=False,
+        original_application_seed=None,
     ):
+        require(
+            original_application_seed is None or type(original_application_seed) is int,
+            "ORIGINAL_APPLICATION_SEED",
+        )
+        self.original_application_seed = original_application_seed
+        self.original = None
         require(type(canonical_state_input) is bool, "CANONICAL_STATE_OPTION")
         self.canonical_state_input = canonical_state_input
         require(
@@ -1003,6 +1046,14 @@ class Boundary:
             self.nodes = (*self.nodes, *self.race_nodes)
         self.state_nodes = self._state_nodes()
         self.nodes = (*self.nodes, *self.state_nodes)
+        self.receiving_terminal = _receiving_terminal(self)
+        if original_application_seed is not None:
+            self.original = original_host.Binding(
+                self,
+                terminal=self.receiving_terminal,
+                application_seed=original_application_seed,
+            )
+            self.nodes = (*self.nodes, *self.original.nodes)
         self.declaration = tuple(self.nodes)
         self.live = _live()
         require(self.live == live, "QUALIFIER_CALLBACK_CHANGED_IMPLEMENTATION")
@@ -1169,6 +1220,21 @@ class Boundary:
         )
 
     def pure(self):
+        require(
+            self.receiving_terminal == _receiving_terminal(self),
+            "RECEIVING_TERMINAL_CHANGED",
+        )
+        if self.original_application_seed is None:
+            require(self.original is None, "ORIGINAL_DISABLED_STATE")
+        else:
+            require(
+                type(self.original) is original_host.Binding
+                and self.original.host is self
+                and self.original.seeds["original_application_seed"]
+                == self.original_application_seed,
+                "ORIGINAL_BINDING",
+            )
+            self.original.pure()
         self._sex_pure()
         self._race_pure()
         require(self.state_nodes == self._state_nodes(), "STATE_DECLARATIONS")
@@ -1269,6 +1335,7 @@ class Boundary:
                 *self.sex_nodes,
                 *self.race_nodes,
                 *self.state_nodes,
+                *(self.original.nodes if self.original is not None else ()),
             ),
             "BOUNDARY_DECLARATIONS",
         )
@@ -1406,6 +1473,8 @@ class Boundary:
 
     def requalify(self):
         """Reconstruct owned source transformations at the host's final I/O fence."""
+        if self.original is not None:
+            self.original.requalify()
         fresh = values.qualify_current_survey_amounts(
             self.run,
             groups=tuple(g.spec.key for g in self.qualified.groups),
@@ -1827,6 +1896,7 @@ def _construct(
     race_hispanic_inputs=False,
     full_original_amount_donors=False,
     canonical_state_input=False,
+    original_application_seed=None,
 ):
     boundary = Boundary(
         run,
@@ -1841,6 +1911,7 @@ def _construct(
         race_hispanic_inputs=race_hispanic_inputs,
         full_original_amount_donors=full_original_amount_donors,
         canonical_state_input=canonical_state_input,
+        original_application_seed=original_application_seed,
     )
     compiled = compile_graph(
         replace(run.compiled.graph, nodes=(*run.compiled.graph.nodes, *boundary.nodes))
@@ -1929,6 +2000,22 @@ def _construct(
         for cls in (CurrentSurveyStateVersionKernel, CurrentSurveyCanonicalStateKernel):
             require(cls.ref not in kernels.refs(), "STATE_KERNEL_COLLISION")
             kernels.register(cls(boundary))
+    if boundary.original is not None:
+        for kernel in original_host.kernels(boundary.original):
+            require(kernel.ref not in kernels.refs(), "ORIGINAL_KERNEL_COLLISION")
+            kernels.register(kernel)
+        # Existing retained recipient kernels intentionally serve both arms;
+        # never replace their actual parent implementations or producer keys.
+        for cls in (
+            original_host.recipient_graph.Puf55SurveyRecipientProjectionKernel,
+            original_host.recipient_graph.Puf55SurveyRecipientMatrixKernel,
+        ):
+            incumbent = kernels.as_mapping()[cls.ref]
+            require(
+                type(incumbent) is cls
+                and incumbent._financial_run is run.financial_run,
+                "ORIGINAL_RECIPIENT_KERNEL",
+            )
     registry = parent._registry(run.store.codecs, codecs.SourceCodecRegistry())
     store = ContentStore(run.store.root, codecs=registry)
     paths, source_keys = _source_paths_and_keys(compiled, dict(run.sources), store)
@@ -2121,6 +2208,7 @@ def run_us_survey_enrichment(
     race_hispanic_inputs=False,
     full_original_amount_donors=False,
     canonical_state_input=False,
+    original_application_seed=None,
 ):
     """Execute and verify enrichment with optional SPM and realized immigration.
 
@@ -2137,6 +2225,9 @@ def run_us_survey_enrichment(
     support, while receiving source observations and clone identity stay fixed.
     Canonical state is a separate opt-in after all existing fragments. Its visible
     keep-all version prevents earlier readers from consuming a later rewrite.
+    An explicit distinct original_application_seed additionally applies all PUF55
+    models to the original arm and performs the conservative development placement
+    after the completed enrichment terminal; omission preserves existing behavior.
     """
     require(resume in ("auto", "require"), "RESUME")
     boundary = _construct(
@@ -2152,6 +2243,7 @@ def run_us_survey_enrichment(
         race_hispanic_inputs=race_hispanic_inputs,
         full_original_amount_donors=full_original_amount_donors,
         canonical_state_input=canonical_state_input,
+        original_application_seed=original_application_seed,
     )
     observed, stamps = {}, {}
 
@@ -2159,6 +2251,8 @@ def run_us_survey_enrichment(
         require(node_id not in observed, "OBSERVER_DUPLICATE")
         observed[node_id] = population
         stamps[node_id] = physical._population_stamp(population)
+        if boundary.original is not None:
+            boundary.original.observe_terminal(node_id, population)
 
     manifest = run_graph(
         boundary.compiled,
@@ -2240,6 +2334,13 @@ def run_us_survey_enrichment(
     sex_ids = {n.id for n in boundary.sex_nodes}
     race_ids = {n.id for n in boundary.race_nodes}
     state_ids = {n.id for n in boundary.state_nodes}
+    original_placement_ids = (
+        set()
+        if boundary.original is None
+        else {n.id for n in boundary.original.placement_nodes}
+    )
+    if boundary.original is not None:
+        boundary.original.verify_sources(manifest, loaded)
     group_nodes = {_ids(g)[0]: g for g in boundary.qualified.groups}
     column_nodes = {_ids(g)[1]: g for g in boundary.qualified.groups}
     original = population_ops.Population.from_frame(
@@ -2251,7 +2352,17 @@ def run_us_survey_enrichment(
         if node_id in run.compiled.order:
             current[version] = observed[node_id]
             continue
-        if node_id in state_ids:
+        if node_id in original_placement_ids:
+            incoming = current[
+                node.base if node.structural is StructuralDelta.FILTER else version
+            ]
+            expected = boundary.original.reconstruct(
+                node,
+                incoming,
+                parent._loaded_values(boundary, manifest, loaded, node),
+                {a.name: loaded[node_id, a.name] for a in node.artifact_outputs},
+            )
+        elif node_id in state_ids:
             incoming = current[
                 node.base if node.structural is StructuralDelta.FILTER else version
             ]
@@ -2619,25 +2730,33 @@ def run_us_survey_enrichment(
                 if boundary.canonical_state_input
                 else {}
             ),
+            **(
+                {
+                    "original_puf_development": {
+                        "fit_seed": boundary.original.seeds["clone_one_seed"],
+                        "application_seed": boundary.original.seeds[
+                            "original_application_seed"
+                        ],
+                        "receiving_terminal": boundary.receiving_terminal.id,
+                        "receiving_version": boundary.receiving_terminal.population,
+                        "placement_sha256": codec.sha(
+                            loaded[original_host.fragment.ATTACH_NODE, "placement"]
+                        ),
+                        "scientific_qualification": "pending",
+                    }
+                }
+                if boundary.original is not None
+                else {}
+            ),
             "release_eligible": False,
         }
     )
     output = SurveyEnrichmentRun(
         run,
         observed[
-            state_graph.NODE
-            if boundary.canonical_state_input
-            else _canonical_ids(boundary.qualified)[1]
-            if _canonical_enabled(boundary.qualified)
-            else race_graph.ATTACH_NODE
-            if boundary.race is not None
-            else sex_graph.ATTACH_NODE
-            if boundary.sex is not None
-            else immigration_graph.ATTACH_NODE
-            if boundary.immigration_transfer is not None
-            else spm_graph.ATTACH_NODE
-            if boundary.spm is not None
-            else hours_graph.ATTACH_NODE
+            original_host.fragment.ATTACH_NODE
+            if boundary.original is not None
+            else boundary.receiving_terminal.id
         ],
         manifest,
         boundary.compiled,
