@@ -38,6 +38,7 @@ from microcosm.graph import (
     Node,
     Numeric,
     Owned,
+    Slice,
     StructuralDelta,
     codecs,
     compile_graph,
@@ -62,6 +63,7 @@ parent = values.parent_host
 physical = values.physical
 require = values.require
 PROJECTION_NODE = "survey_amounts.source_projection"
+FULL_DONOR_SOURCE_NODE = "survey_amounts.full_original_asec_source"
 ATTACH_NODE = "survey_amounts.attach"
 PROJECTION_TYPE = ArtifactType("microcosm.us.current_survey_amount_projection", 1)
 ATTACHMENT_TYPE = ArtifactType("microcosm.us.current_survey_amount_attachment", 1)
@@ -76,6 +78,10 @@ def _live():
         values.unemployment,
         values.workers_compensation,
         values.workers_compensation.mapper,
+        values.full_donor,
+        values.full_donor.demographics,
+        values.full_donor.demographics.demographic,
+        values.full_donor.demographics.household,
         health_graph,
         health_graph.health,
         health_graph.source,
@@ -133,6 +139,21 @@ def _live():
             values.workers_compensation.PROTOCOL,
             values.workers_compensation.READ_COLUMNS,
             codec.encode_json(values.workers_compensation.DICTIONARY),
+            values.full_donor.PROTOCOL,
+            type(values.full_donor.US_STATE_NUMERIC_FIPS_TO_POSTAL),
+            tuple(sorted(values.full_donor.US_STATE_NUMERIC_FIPS_TO_POSTAL.items())),
+            tuple(
+                (
+                    name,
+                    type(getattr(values.full_donor.demographics.demographic, name)),
+                    tuple(
+                        vars(
+                            getattr(values.full_donor.demographics.demographic, name)
+                        ).items()
+                    ),
+                )
+                for name in ("A_SEX", "AXSEX")
+            ),
         )
     )
     result.append(
@@ -284,6 +305,70 @@ def _ids(group):
     return base + ".donor", base + ".columns", base + ".fit", base + ".apply"
 
 
+def _full_donor_inputs(frame):
+    """Declare actual source data; structural-only groups need no Slice."""
+    result = []
+    for entity in frame.schema.entities:
+        id_column = frame.schema.entity_id_column(entity)
+        structural = {id_column}
+        if entity == frame.schema.person_entity:
+            structural.update(
+                frame.schema.membership_column(e) for e in frame.schema.group_entities
+            )
+        columns = tuple(c for c in frame.table(entity) if c not in structural)
+        if columns:
+            result.append(Slice(entity, columns))
+    return tuple(result)
+
+
+def _full_donor_context(context, expected):
+    """Check the declared all-row donor Slice, weights and strata exactly.
+
+    Structural-only group tables remain sealed on the host's full Frame and
+    checked by complete materialized reconstruction; they are not fake inputs.
+    """
+    inputs = _full_donor_inputs(expected)
+    require(context.node.inputs == inputs, "FULL_DONOR_INPUTS")
+    require(set(context.tables) == {s.entity for s in inputs}, "FULL_DONOR_TABLES")
+    weights = {}
+    for selection in inputs:
+        entity = selection.entity
+        columns = [expected.schema.entity_id_column(entity)]
+        if entity == expected.schema.person_entity:
+            columns.extend(
+                expected.schema.membership_column(e)
+                for e in expected.schema.group_entities
+            )
+        columns.extend(selection.columns)
+        table = expected.table(entity).loc[[True] * expected.n(entity), columns]
+        require(
+            physical._table_stamp(context.tables[entity])
+            == physical._table_stamp(table),
+            "FULL_DONOR_TABLE",
+        )
+        try:
+            weights[entity] = expected.resolve_weights(entity)
+        except ValueError:
+            if entity in expected.weighted_entities:
+                raise
+    require(set(context.weights) == set(weights), "FULL_DONOR_WEIGHTS")
+    for entity, weight in weights.items():
+        actual = context.weights[entity]
+        require(
+            actual.kind is weight.kind
+            and actual.values.dtype == weight.values.dtype
+            and actual.values.shape == weight.values.shape
+            and actual.values.tobytes() == weight.values.tobytes(),
+            "FULL_DONOR_WEIGHT_VALUES",
+        )
+    expected_strata = expected.strata.loc[[True] * len(expected.strata)]
+    require(
+        physical._table_stamp(context.strata.to_frame())
+        == physical._table_stamp(expected_strata.to_frame()),
+        "FULL_DONOR_STRATA",
+    )
+
+
 def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
     require(
         type(n_estimators) is int and n_estimators > 0 and codec._hash(parent_digest),
@@ -316,6 +401,35 @@ def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
             description="Qualify original current survey amount and reporting-universe evidence; preserve source unknowns.",
         )
     ]
+    if qualified.full_donor_source_frame is not None:
+        nodes.append(
+            Node(
+                FULL_DONOR_SOURCE_NODE,
+                CurrentSurveyFullAmountSourceKernel.ref,
+                structural=StructuralDelta.CREATE,
+                sources=(health_graph.SOURCE_NAME,),
+                params=params,
+                outputs=tuple(
+                    Owned(
+                        selection.entity,
+                        c,
+                        population_ops.token_for_dtype(
+                            qualified.donor_source_frame.table(selection.entity)[
+                                c
+                            ].dtype
+                        ),
+                    )
+                    for selection in _full_donor_inputs(qualified.donor_source_frame)
+                    for c in selection.columns
+                    if c
+                    != qualified.donor_source_frame.schema.entity_id_column(
+                        selection.entity
+                    )
+                ),
+                artifact_inputs=(_projection_edge(),),
+                description="Borrow complete original current ASEC DESIGN support independently of selected receiving households.",
+            )
+        )
     attach_edges = [_projection_edge(), _upstream_edge()]
     for group in qualified.groups:
         donor, columns, fit_prefix, apply_prefix = _ids(group)
@@ -331,10 +445,18 @@ def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
                 Node(
                     donor,
                     CurrentSurveyAmountDonorKernel.ref,
-                    base=values.predictors.host.survey_graph.CREATE_NODE,
+                    base=(
+                        values.predictors.host.survey_graph.CREATE_NODE
+                        if qualified.full_donor_source_frame is None
+                        else FULL_DONOR_SOURCE_NODE
+                    ),
                     structural=StructuralDelta.FILTER,
                     mass="free",
-                    inputs=predictor_graph._inputs(qualified.source_frame),
+                    inputs=(
+                        predictor_graph._inputs(qualified.donor_source_frame)
+                        if qualified.full_donor_source_frame is None
+                        else _full_donor_inputs(qualified.donor_source_frame)
+                    ),
                     params=group_params,
                     artifact_inputs=(_projection_edge(),),
                     description="Select source ASEC persons with jointly known targets; retain original design weights before allocation and clones.",
@@ -343,7 +465,11 @@ def amount_nodes(qualified, receiving, *, parent_digest, n_estimators):
                     columns,
                     CurrentSurveyAmountColumnsKernel.ref,
                     population=donor,
-                    inputs=predictor_graph._inputs(group.donor_frame),
+                    inputs=(
+                        predictor_graph._inputs(group.donor_frame)
+                        if qualified.full_donor_source_frame is None
+                        else _full_donor_inputs(group.donor_frame)
+                    ),
                     params=group_params,
                     outputs=tuple(
                         Owned("person", c, "float64")
@@ -425,7 +551,12 @@ class Boundary:
         immigration_transfer=None,
         health_completion=False,
         demographic_inputs=False,
+        full_original_amount_donors=False,
     ):
+        require(
+            type(full_original_amount_donors) is bool, "FULL_ORIGINAL_DONORS_OPTION"
+        )
+        self.full_original_amount_donors = full_original_amount_donors
         require(type(demographic_inputs) is bool, "DEMOGRAPHIC_OPTION")
         live = _live()
         require(type(health_completion) is bool, "HEALTH_COMPLETION_OPTION")
@@ -461,7 +592,9 @@ class Boundary:
             self._immigration_pure()
             immigration_transfer.validate()
             self._immigration_pure()
-        self.qualified = values.qualify_current_survey_amounts(run, groups=groups)
+        self.qualified = values.qualify_current_survey_amounts(
+            run, groups=groups, full_original_donors=full_original_amount_donors
+        )
         self.qualified_stamp = values.seal(self.qualified)
         self.parent_stamp = physical._population_stamp(run.population)
         self.preparation = run.financial_run.prefix.preparation
@@ -717,6 +850,9 @@ class Boundary:
             )
             and physical._population_stamp(self.run.population) == self.parent_stamp
             and values.seal(self.qualified) == self.qualified_stamp
+            and type(self.full_original_amount_donors) is bool
+            and self.full_original_amount_donors
+            == (self.qualified.full_donor_source_frame is not None)
             and self.run.financial_run.prefix.preparation is self.preparation
             and health_graph.health_coverage_seal(self.health) == self.health_stamp
             and type(self.health_completion_enabled) is bool
@@ -907,7 +1043,9 @@ class Boundary:
     def requalify(self):
         """Reconstruct owned source transformations at the host's final I/O fence."""
         fresh = values.qualify_current_survey_amounts(
-            self.run, groups=tuple(g.spec.key for g in self.qualified.groups)
+            self.run,
+            groups=tuple(g.spec.key for g in self.qualified.groups),
+            full_original_donors=self.full_original_amount_donors,
         )
         require(
             values.seal(fresh) == self.qualified_stamp, "SOURCE_REQUALIFICATION_CHANGED"
@@ -960,6 +1098,10 @@ class _Kernel(KernelBase):
             values.unemployment,
             values.workers_compensation,
             values.workers_compensation.mapper,
+            values.full_donor,
+            values.full_donor.demographics,
+            values.full_donor.demographics.demographic,
+            values.full_donor.demographics.household,
             health_graph,
             health_completion_graph,
             health_completion_graph.values,
@@ -1000,13 +1142,32 @@ class CurrentSurveyAmountProjectionKernel(_Kernel):
         )
 
 
+class CurrentSurveyFullAmountSourceKernel(_Kernel):
+    ref = "us.survey_amounts.full_original_source@1"
+    capabilities = replace(_Kernel.capabilities, structural=StructuralDelta.CREATE)
+
+    def run(self, context):
+        qualified = self.boundary.context(context)
+        require(
+            qualified.full_donor_source_frame is not None, "FULL_DONOR_SOURCE_DISABLED"
+        )
+        return KernelResult(
+            frame=values.predictors.source._copy_source(qualified.donor_source_frame)
+        )
+
+
 class CurrentSurveyAmountDonorKernel(_Kernel):
     ref = "us.survey_amounts.source_donor@1"
     capabilities = replace(_Kernel.capabilities, structural=StructuralDelta.FILTER)
 
     def run(self, context):
         qualified = self.boundary.context(context)
-        values.predictors.host._current_context_frame(context, qualified.source_frame)
+        if qualified.full_donor_source_frame is None:
+            values.predictors.host._current_context_frame(
+                context, qualified.donor_source_frame
+            )
+        else:
+            _full_donor_context(context, qualified.donor_source_frame)
         group = next(
             g for g in qualified.groups if g.spec.key == context.params["group"]
         )
@@ -1014,7 +1175,8 @@ class CurrentSurveyAmountDonorKernel(_Kernel):
             keep=pd.Series(
                 group.keep.copy(),
                 index=pd.Index(
-                    qualified.source_frame.person.person_id.to_numpy(), name="person_id"
+                    qualified.donor_source_frame.person.person_id.to_numpy(),
+                    name="person_id",
                 ),
             ),
             receipt={
@@ -1034,7 +1196,10 @@ class CurrentSurveyAmountColumnsKernel(_Kernel):
         group = next(
             g for g in qualified.groups if g.spec.key == context.params["group"]
         )
-        values.predictors.host._current_context_frame(context, group.donor_frame)
+        if qualified.full_donor_source_frame is None:
+            values.predictors.host._current_context_frame(context, group.donor_frame)
+        else:
+            _full_donor_context(context, group.donor_frame)
         return KernelResult(
             columns={
                 ("person", c): group.donor_columns[c] for c in group.donor_columns
@@ -1141,6 +1306,7 @@ def _construct(
     immigration_transfer=None,
     health_completion=False,
     demographic_inputs=False,
+    full_original_amount_donors=False,
 ):
     boundary = Boundary(
         run,
@@ -1152,6 +1318,7 @@ def _construct(
         immigration_transfer=immigration_transfer,
         health_completion=health_completion,
         demographic_inputs=demographic_inputs,
+        full_original_amount_donors=full_original_amount_donors,
     )
     compiled = compile_graph(
         replace(run.compiled.graph, nodes=(*run.compiled.graph.nodes, *boundary.nodes))
@@ -1161,6 +1328,7 @@ def _construct(
         kernels.register(kernel)
     for cls in (
         CurrentSurveyAmountProjectionKernel,
+        CurrentSurveyFullAmountSourceKernel,
         CurrentSurveyAmountDonorKernel,
         CurrentSurveyAmountColumnsKernel,
         CurrentSurveyAmountAttachKernel,
@@ -1407,6 +1575,7 @@ def run_us_survey_enrichment(
     immigration_transfer=None,
     health_completion=False,
     demographic_inputs=False,
+    full_original_amount_donors=False,
 ):
     """Execute and verify enrichment with optional SPM and realized immigration.
 
@@ -1418,6 +1587,8 @@ def run_us_survey_enrichment(
     coverage onto original ACS 2024 people; scientific qualification is pending.
     Demographic inputs bind source-qualified nullable sex on originals and copy
     it to both clones; unknown values remain unknown.
+    Full-original amount donors are an explicit opt-in; they change only fitting
+    support, while receiving source observations and clone identity stay fixed.
     """
     require(resume in ("auto", "require"), "RESUME")
     boundary = _construct(
@@ -1430,6 +1601,7 @@ def run_us_survey_enrichment(
         immigration_transfer=immigration_transfer,
         health_completion=health_completion,
         demographic_inputs=demographic_inputs,
+        full_original_amount_donors=full_original_amount_donors,
     )
     observed, stamps = {}, {}
 
@@ -1647,9 +1819,18 @@ def run_us_survey_enrichment(
                 ),
                 "HEALTH_RESULT_ARTIFACT",
             )
+        elif node_id == FULL_DONOR_SOURCE_NODE:
+            expected = population_ops.Population.from_frame(
+                boundary.qualified.donor_source_frame, node_id
+            )
         elif node_id in group_nodes:
+            donor_base = (
+                original
+                if boundary.qualified.full_donor_source_frame is None
+                else current[FULL_DONOR_SOURCE_NODE]
+            )
             expected = population_ops.patch(
-                original, node, KernelResult(frame=group_nodes[node_id].donor_frame)
+                donor_base, node, KernelResult(frame=group_nodes[node_id].donor_frame)
             )
         elif node_id in column_nodes:
             group = column_nodes[node_id]
