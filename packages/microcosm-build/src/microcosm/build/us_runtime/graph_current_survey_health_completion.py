@@ -292,6 +292,35 @@ def result(qualified, observations, node, artifacts, people=None):
     )
 
 
+def expected_population(incoming, node, value):
+    """Reconstruct the host's independently checked population transition."""
+    if node.structural is StructuralDelta.FILTER:
+        require(incoming is not None, "RECONSTRUCTION_BASE")
+        frame = incoming.frame
+        id_column = frame.schema.person_id_column
+        ids = pd.Index(frame.person[id_column].to_numpy(), name=id_column)
+        keep = value.keep
+        require(
+            isinstance(keep, pd.Series)
+            and keep.index.is_unique
+            and len(keep) == len(ids)
+            and set(keep.index) == set(ids)
+            and pd.api.types.is_bool_dtype(keep.dtype)
+            and not keep.isna().any(),
+            "RECONSTRUCTION_FILTER_MASK",
+        )
+        value = replace(
+            value,
+            frame=frame.select(keep.reindex(ids).to_numpy(dtype=bool, copy=True)),
+            keep=None,
+        )
+    return (
+        population_ops.Population.from_frame(value.frame, node.id)
+        if node.structural is StructuralDelta.CREATE
+        else population_ops.patch(incoming, node, value)
+    )
+
+
 def result_stamp(value):
     return (
         None if value.frame is None else values.source._frame_identity(value.frame),
