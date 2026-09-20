@@ -36,6 +36,7 @@ from microcosm.build.us_runtime.capital_gain_distributions import (
     capital_gain_distribution_shares_asset_identity,
 )
 from microcosm.build.us_runtime.immigration import (
+    ImmigrationControls,
     _observation_years,
     reconcile_us_immigration_humanitarian_transfer,
     us_immigration_evidence_feature_contract,
@@ -1398,6 +1399,7 @@ def transfer_acs_inputs(
     execution_contract: Mapping[str, object] | None = None,
     regime_evidence_targets: Iterable[tuple[str, str]] = (),
     observation_year_column: str | None = None,
+    immigration_controls: ImmigrationControls | None = None,
 ) -> AcsTransferResult:
     """Impute requested missing leaves from ``donor`` onto ``recipient``.
 
@@ -1435,6 +1437,12 @@ def transfer_acs_inputs(
     Row years and typed person identities bind immigration checkpoint patterns,
     without entering the QRF predictors or changing its seeds. The caller owns
     source qualification; omission retains the legacy scalar-2024 convention.
+
+    ``immigration_controls`` optionally supplies the exact captured controls to
+    the common humanitarian post-step, including after target-bank replay.
+    Omission preserves the packaged-manifest default. The caller owns control
+    qualification and identity binding; this argument neither authenticates a
+    source owner nor changes the raw-draw checkpoint or execution contract.
     """
 
     _validate_frames(recipient, donor)
@@ -1758,6 +1766,7 @@ def transfer_acs_inputs(
         execution_contract=resolved_execution_contract,
         seed=seed,
         observation_year_column=observation_year_column,
+        immigration_controls=immigration_controls,
     )
 
     tables: dict[str, pd.DataFrame] = dict(output_tables)
@@ -1798,6 +1807,7 @@ def _apply_post_transfer_structure(
     execution_contract: Mapping[str, object],
     seed: int,
     observation_year_column: str | None = None,
+    immigration_controls: ImmigrationControls | None = None,
 ) -> None:
     """Apply the deterministic post-fit steps the base's construction implies.
 
@@ -1847,6 +1857,7 @@ def _apply_post_transfer_structure(
                 mutable_rows=mutable_immigration,
                 seed=seed,
                 time_period=ACS_2024_1YR_VINTAGE,
+                controls=immigration_controls,
                 observation_year_column=observation_year_column,
             )
             for target in _IMMIGRATION_STATUS_TARGETS:

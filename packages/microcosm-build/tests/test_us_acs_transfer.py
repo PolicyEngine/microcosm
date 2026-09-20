@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import stat
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -38,7 +39,8 @@ from microcosm.build.us_runtime.immigration import (
 )
 from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.spine_assembly import assemble_spines
-from microcosm.fit import Regime
+from microcosm.fit import QRF, Regime
+from microcosm.fit.qrf import _index_identity
 from microcosm.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSVariableMetadataIndex,
@@ -583,6 +585,33 @@ class _MeanFitted:
                 for target, value in self.means.items()
             },
             index=frame.index,
+        )
+
+
+class _MeanChainQRF(_MeanQRF):
+    """Constant invented draws with genuine checkpoint state, without fitting."""
+
+    def start_chain(self, frame, predictors, targets, *, weights):
+        # The maintained initializer only binds identity and RNG state; no fit.
+        return QRF(n_estimators=self.n_estimators, seed=self.seed).start_chain(
+            frame, predictors, targets, weights=weights
+        )
+
+    def fit_draw_next(self, frame, recipient, priors, *, state, weights):
+        assert weights == state.weight_kind
+        assert tuple(priors.columns) == state.completed_targets
+        target = state.next_target
+        assert target is not None
+        mean = float(frame.table(state.entity)[target].mean())
+        return SimpleNamespace(
+            target=target,
+            raw_draw=np.full(len(recipient), mean, dtype=np.float64),
+            state=replace(
+                state,
+                completed_targets=(*state.completed_targets, target),
+                recipient_index=_index_identity(recipient.index),
+            ),
+            weight_kind=state.weight_kind,
         )
 
 
@@ -1143,6 +1172,213 @@ def test_transfer_rederives_entrant_and_daca_only_on_compatible_acs_cohorts(
     )
     assert receipt is not None
     assert receipt["special_status_assignments"] == 2
+
+
+def _captured_controls_transfer_inputs():
+    donor = _with_columns(
+        _donor_frame(),
+        "person",
+        {
+            "ssn_card_type": ["OTHER_NON_CITIZEN"] * 8,
+            "immigration_status_str": ["LEGAL_PERMANENT_RESIDENT"] * 8,
+            "fixture_observation_year": [2025] * 8,
+        },
+    )
+    recipient = _with_metadata(
+        _with_columns(
+            _mixed_immigration_recipient(),
+            "person",
+            {"fixture_observation_year": [2025] + [2024] * 5},
+        ),
+        {"fixture_context": {"retained": "original recipient"}},
+    )
+    options = {
+        "target_families": {
+            "person": {
+                "source_operator_immigration": (
+                    "ssn_card_type",
+                    "immigration_status_str",
+                )
+            }
+        },
+        "donor_channel": None,
+        "seed": 19,
+        "n_estimators": 1,
+        "observation_year_column": "fixture_observation_year",
+    }
+    return donor, recipient, options
+
+
+def test_captured_controls_match_default_and_survive_bank_recovery(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    """The real common reconciler consumes the captured object on every route."""
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanChainQRF)
+    donor, recipient, options = _captured_controls_transfer_inputs()
+    controls = _small_immigration_controls()
+    loader_calls = []
+
+    def load():
+        loader_calls.append(controls)
+        return controls
+
+    monkeypatch.setattr(immigration_module, "us_immigration_controls", load)
+    default = transfer_acs_inputs(recipient, donor, **options)
+    assert loader_calls == [controls]
+
+    def forbid_reload():
+        raise AssertionError("captured controls must not reload")
+
+    monkeypatch.setattr(immigration_module, "us_immigration_controls", forbid_reload)
+    consumed = []
+    real_reconcile = acs_transfer_module.reconcile_us_immigration_humanitarian_transfer
+
+    def observe(person, **kwargs):
+        assert kwargs["controls"] is controls
+        consumed.append(kwargs["controls"])
+        return real_reconcile(person, **kwargs)
+
+    monkeypatch.setattr(
+        acs_transfer_module, "reconcile_us_immigration_humanitarian_transfer", observe
+    )
+
+    def run(bank=None):
+        return transfer_acs_inputs(
+            recipient, donor, **options, target_bank=bank, immigration_controls=controls
+        )
+
+    ordinary = run()
+    cold = run(_bank_store(tmp_path / "cold"))
+    warm_bank = _bank_store(tmp_path / "cold")
+    warm = run(warm_bank)
+    assert warm_bank.receipt()["targets"]["0"]["source"] == "checkpoint"
+    assert len(consumed) == 3
+
+    interrupted = _bank_store(tmp_path / "interrupted")
+    write = interrupted.write_target
+
+    def interrupt_after_write(checkpoint):
+        write(checkpoint)
+        raise RuntimeError("invented interruption after durable paired target")
+
+    monkeypatch.setattr(interrupted, "write_target", interrupt_after_write)
+    with pytest.raises(RuntimeError, match="invented interruption"):
+        run(interrupted)
+    assert len(consumed) == 3  # no post-step after an incomplete transfer
+    recovered_bank = _bank_store(tmp_path / "interrupted")
+    recovered = run(recovered_bank)
+    assert recovered_bank.receipt()["targets"]["0"]["source"] == "checkpoint"
+    assert len(consumed) == 4
+
+    for result in (ordinary, cold, warm, recovered):
+        _assert_transfer_results_exact(result, default)
+        assert result.frame.metadata == recipient.metadata
+        assert result.frame.mass_log == recipient.mass_log
+        for entity in recipient.weighted_entities:
+            expected = recipient.weights_for(entity)
+            actual = result.frame.weights_for(entity)
+            assert actual.kind is expected.kind
+            np.testing.assert_array_equal(actual.values, expected.values)
+        for entity in recipient.entities:
+            columns = recipient.table(entity).columns.difference(
+                ["ssn_card_type", "immigration_status_str"]
+            )
+            pd.testing.assert_frame_equal(
+                result.frame.table(entity)[columns], recipient.table(entity)[columns]
+            )
+        records = [r for r in result.imputed_inputs if r.reconciliation is not None]
+        assert len(records) == 2
+        assert records[0].reconciliation is records[1].reconciliation
+        assert records[0].reconciliation["observation_years"]["row_counts"] == {
+            "2024": 5,
+            "2025": 1,
+        }
+        assert (
+            result.frame.person.iloc[0]["immigration_status_str"] == "PAROLED_ONE_YEAR"
+        )
+
+
+def test_captured_controls_retain_candidate_shortfall(monkeypatch):
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    donor, recipient, options = _captured_controls_transfer_inputs()
+    with pytest.raises(
+        ValueError, match="candidate shortfall.*paroled_one_year:ukraine"
+    ):
+        transfer_acs_inputs(
+            recipient,
+            donor,
+            **options,
+            immigration_controls=_small_immigration_controls(ukraine_target=61.0),
+        )
+
+
+@pytest.mark.parametrize(
+    "case", ["empty", "complete", "complete_with_other_target", "custom_family"]
+)
+@pytest.mark.parametrize("explicit", [False, True])
+def test_captured_controls_do_not_activate_inactive_reconciliation(
+    monkeypatch, case, explicit
+):
+    donor, recipient, options = _captured_controls_transfer_inputs()
+    options.pop("observation_year_column")
+    if case == "empty":
+        options["target_families"] = {}
+    elif case in {"complete", "complete_with_other_target"}:
+        recipient = _with_columns(
+            recipient,
+            "person",
+            {
+                "ssn_card_type": ["OTHER_NON_CITIZEN"] * 6,
+                "immigration_status_str": ["LEGAL_PERMANENT_RESIDENT"] * 6,
+            },
+        )
+        if case == "complete_with_other_target":
+            options["target_families"]["person"]["fixture_tax_detail"] = (
+                "qualified_dividend_income",
+            )
+    else:
+        options["target_families"] = {
+            "person": {"fixture_custom": ("ssn_card_type", "immigration_status_str")}
+        }
+    if explicit:
+        options["immigration_controls"] = _small_immigration_controls()
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("inactive immigration must not consume controls")
+
+    monkeypatch.setattr(immigration_module, "us_immigration_controls", refuse)
+    monkeypatch.setattr(
+        acs_transfer_module, "reconcile_us_immigration_humanitarian_transfer", refuse
+    )
+    result = transfer_acs_inputs(recipient, donor, **options)
+    assert all(record.reconciliation is None for record in result.imputed_inputs)
+    if case == "complete_with_other_target":
+        assert [record.column for record in result.imputed_inputs] == [
+            "qualified_dividend_income"
+        ]
+
+
+@pytest.mark.parametrize("case", ["incomplete_pair", "unequal_masks"])
+def test_captured_controls_preserve_paired_target_refusals(monkeypatch, case):
+    monkeypatch.setattr(acs_transfer_module, "QRF", _MeanQRF)
+    donor, recipient, options = _captured_controls_transfer_inputs()
+    options.pop("observation_year_column")
+    if case == "incomplete_pair":
+        options["target_families"] = {
+            "person": {"source_operator_immigration": ("ssn_card_type",)}
+        }
+        message = "missing paired target"
+    else:
+        recipient.person.loc[recipient.person.index[1], "ssn_card_type"] = "CITIZEN"
+        message = "exactly the same recipient rows"
+    with pytest.raises(ValueError, match=message):
+        transfer_acs_inputs(
+            recipient,
+            donor,
+            **options,
+            immigration_controls=_small_immigration_controls(),
+        )
 
 
 def test_humanitarian_reconciliation_uses_residual_targets_and_records_receipt(
