@@ -154,7 +154,9 @@ _EXPLICIT_LEVEL_METADATA_KEYS = ("ledger_geography_level", "geography_scope")
 
 #: The two sources that carry the Chronicle fact's ``geography.id`` verbatim,
 #: in binding order. Same field, read twice, so they are comparable to each
-#: other and a difference between them is a real conflict.
+#: other; the compiler already refuses to let them diverge
+#: (``ledger_targets.py:934-952``), which is what makes a difference between
+#: them an invariant violation rather than an encoding difference.
 _CANONICAL_GEOGRAPHY_ID_SOURCES = ("hierarchy_geography", "ledger_geography_id")
 
 #: The bare, prefix-stripped restatement of that same identifier, one key per
