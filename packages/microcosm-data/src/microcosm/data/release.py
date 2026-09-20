@@ -1,4 +1,4 @@
-"""Publish a release and point ``latest.json`` at it.
+"""Publish a release and move its approved repository pointer.
 
 The Hub repo publishes builds under ``releases/<build_id>/``, but nothing
 identified which release is *current*: a consumer had to list the tree and
@@ -19,6 +19,10 @@ Two sides of the pointer live here:
   returns the typed pointer, the one-call answer to "which release is
   current?" for dashboards and scorers.
 
+Approved UK lines coexist through ``latest-<line>.json``. Those schema-1
+pointers add ``line`` and ``revision`` so a line can name an immutable cut tag
+without changing the frozen repository-global ``latest.json``.
+
 The EVIDENCE tier (microcosm#506) publishes through the same producer with
 ``evidence=True``: identical immutable-tag mechanics, but the pointer that
 moves is ``latest-evidence.json`` — structurally never ``latest.json`` —
@@ -34,6 +38,7 @@ from __future__ import annotations
 import hashlib
 import json
 import posixpath
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -43,6 +48,8 @@ from typing import Any
 from microcosm.data.contract import (
     EVIDENCE_RELEASE_ID_SEGMENT,
     NATIONAL_DEFAULT_DATASET_ROLE,
+    _uk_line_cut_tag_re,
+    line_for_release_id,
     release_dataset_role,
     required_release_files,
     validate_evidence_release_dir,
@@ -54,13 +61,17 @@ __all__ = [
     "LATEST_EVIDENCE_POINTER_PATH",
     "LATEST_POINTER_PATH",
     "LATEST_POINTER_SCHEMA_VERSION",
+    "LINE_POINTER_PATH_TEMPLATE",
     "RELEASE_TIER_CERTIFIED",
     "RELEASE_TIER_EVIDENCE",
     "LatestPointer",
     "PreparedRelease",
     "prepare_release",
     "latest_evidence_pointer_payload",
+    "latest_line_release",
     "latest_pointer_payload",
+    "line_pointer_path",
+    "line_pointer_payload",
     "publish_release",
     "latest_release",
     "latest_evidence_release",
@@ -69,6 +80,12 @@ __all__ = [
 #: Where the pointer lives in the dataset repo. The root, not a release
 #: directory: the pointer is repo state, not release state.
 LATEST_POINTER_PATH = "latest.json"
+
+#: Per-line pointers coexist with the frozen repository-global pointer.
+LINE_POINTER_PATH_TEMPLATE = "latest-{line}.json"
+
+_LINE_RE = re.compile(r"^[a-z]+(-k[1-9][0-9]*)?$")
+_RESERVED_POINTER_PATH_RE = re.compile(r"^latest(-[a-z0-9-]+)?\.json$")
 
 #: The evidence-tier pointer (microcosm#506): which evidence release is the
 #: best *current* one. A separate file at the repo root, so certified
@@ -102,12 +119,21 @@ class LatestPointer:
             :data:`RELEASE_TIER_CERTIFIED` for ``latest.json`` (whose payload
             predates tiers and carries no field), or
             :data:`RELEASE_TIER_EVIDENCE` for ``latest-evidence.json``.
+        revision: Immutable tag to fetch. Repository-global and evidence
+            pointers default to ``release_id``; a line pointer may name a cut tag.
+        line: Publication line for ``latest-<line>.json``; otherwise ``None``.
     """
 
     release_id: str
     updated_at: str
     paths: dict[str, str]
     tier: str = RELEASE_TIER_CERTIFIED
+    revision: str | None = None
+    line: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.revision is None:
+            object.__setattr__(self, "revision", self.release_id)
 
 
 def latest_pointer_payload(release_id: str, *, updated_at: str | None = None) -> dict:
@@ -131,6 +157,49 @@ def latest_pointer_payload(release_id: str, *, updated_at: str | None = None) ->
             filename.removesuffix(".json"): f"releases/{release_id}/{filename}"
             for filename in required_release_files(release_id)
         },
+    }
+
+
+def line_pointer_path(line: str) -> str:
+    """Return the reserved root pointer path for a publication line."""
+    if _LINE_RE.fullmatch(line) is None:
+        raise ValueError(
+            f"invalid release line {line!r}; expected ^[a-z]+(-k[1-9][0-9]*)?$"
+        )
+    return LINE_POINTER_PATH_TEMPLATE.format(line=line)
+
+
+def line_pointer_payload(
+    release_id: str,
+    *,
+    line: str,
+    revision: str,
+    updated_at: str | None = None,
+) -> dict:
+    """Build a schema-1 per-line pointer naming an immutable revision."""
+    line_pointer_path(line)
+    expected_line = line_for_release_id(release_id)
+    if line != expected_line:
+        raise ValueError(
+            f"release {release_id!r} belongs to line {expected_line!r}, not {line!r}."
+        )
+    cut_tag_re = _uk_line_cut_tag_re(release_id)
+    if (
+        not isinstance(revision, str)
+        or not revision
+        or not (
+            revision == release_id
+            or (cut_tag_re is not None and cut_tag_re.fullmatch(revision) is not None)
+        )
+    ):
+        raise ValueError(
+            f"revision {revision!r} is not the release id {release_id!r} or "
+            "a per-cut tag in that release's line family."
+        )
+    return {
+        **latest_pointer_payload(release_id, updated_at=updated_at),
+        "line": line,
+        "revision": revision,
     }
 
 
@@ -170,6 +239,8 @@ class PreparedRelease:
     tag: str
     filenames: list[str]
     root_artifacts: dict[str, str]
+    line: str | None
+    pointer_path: str
 
 
 def prepare_release(
@@ -184,6 +255,7 @@ def prepare_release(
     update_latest: bool = True,
     tag_only: bool = False,
     evidence: bool = False,
+    line: str | None = None,
 ) -> PreparedRelease:
     """Run every local publisher guard and collect the files to upload.
 
@@ -221,7 +293,23 @@ def prepare_release(
         validate_release_dir(release_dir, artifact_root=artifact_root)
     release_id = release_dir.name
     role = release_dataset_role(release_dir)
-    if role != NATIONAL_DEFAULT_DATASET_ROLE and update_latest:
+    if line is not None:
+        pointer_path = line_pointer_path(line)
+        if evidence:
+            raise ValueError("line promotion cannot publish at the evidence tier.")
+        if not update_latest:
+            raise ValueError("line promotion requires update_latest=True.")
+        if tag_only:
+            raise ValueError("line promotion cannot use tag_only=True.")
+        expected_line = line_for_release_id(release_id)
+        if line != expected_line:
+            raise ValueError(
+                f"release {release_id!r} belongs to line {expected_line!r}, "
+                f"not {line!r}."
+            )
+    else:
+        pointer_path = LATEST_EVIDENCE_POINTER_PATH if evidence else LATEST_POINTER_PATH
+    if role != NATIONAL_DEFAULT_DATASET_ROLE and update_latest and line is None:
         # microcosm#398 defense in depth beyond --no-latest: a non-default
         # release can never move the global default pointer, even if a
         # caller asks.
@@ -302,14 +390,15 @@ def prepare_release(
                 "is not a clean relative POSIX path; refusing to upload it."
             )
     pointer_collisions = sorted(
-        {LATEST_POINTER_PATH, LATEST_EVIDENCE_POINTER_PATH} & set(root_artifacts)
+        path
+        for path in root_artifacts
+        if _RESERVED_POINTER_PATH_RE.fullmatch(path) is not None
     )
     if pointer_collisions:
         raise ValueError(
             "release_manifest.json declares root artifact(s) at reserved "
-            f"pointer path(s) {pointer_collisions}; latest.json and "
-            "latest-evidence.json are written only by the publisher itself, "
-            "never as release artifacts."
+            f"pointer path(s) {pointer_collisions}; latest*.json pointers are "
+            "written only by the publisher itself, never as release artifacts."
         )
     artifact_revisions, unreadable_revisions = _release_manifest_artifact_revisions(
         release_dir
@@ -341,15 +430,14 @@ def prepare_release(
             "release_manifest.json pins artifacts to revisions; tag_name must "
             "match the release id or uniform per-cut artifact revision."
         )
-    # A pointer may only ever name a release whose immutable tag IS the
-    # release id: per-cut tags are the inspect lane, and the pointer/loader
-    # contract cannot follow them. Refusing here makes that a publisher
-    # invariant rather than a runbook convention.
-    if update_latest and tag != release_id:
+    # The repository-global pointer may only name a release whose immutable tag
+    # IS the release id. Approved line pointers have their own reader contract
+    # and may follow a per-cut tag; latest.json still may not.
+    if update_latest and tag != release_id and line is None:
         raise ValueError(
-            "per-cut tags publish inspect-only: the release pointer cannot "
-            f"name tag {tag!r} for release {release_id!r}. Pass "
-            "update_latest=False (--no-latest)."
+            f"latest.json may not name per-cut tag {tag!r} for release "
+            f"{release_id!r}; without an approved line pointer, per-cut tags "
+            "publish inspect-only. Pass update_latest=False (--no-latest)."
         )
     if root_artifacts and artifact_root is None:
         raise ValueError(
@@ -378,6 +466,8 @@ def prepare_release(
         tag=tag,
         filenames=filenames,
         root_artifacts=root_artifacts,
+        line=line,
+        pointer_path=pointer_path,
     )
 
 
@@ -397,6 +487,7 @@ def publish_release(
     tag_only: bool = False,
     notify: bool = True,
     evidence: bool = False,
+    line: str | None = None,
 ) -> dict:
     """Publish a release directory and optionally point ``latest.json`` at it.
 
@@ -460,11 +551,14 @@ def publish_release(
             the certified default or feed pe.py certification. Tag and upload
             mechanics are otherwise identical. ``update_latest`` then governs
             the evidence pointer.
+        line: Promote an approved release line through ``latest-<line>.json``.
+            Line promotion requires ``update_latest=True``, a matching line
+            release id, and artifact revisions pinned to the selected tag.
 
     Returns:
-        The release's pointer payload (``latest.json`` shape, plus a ``tier``
-        field at the evidence tier). It is uploaded only when
-        ``update_latest=True``.
+        The release's pointer payload (``latest.json`` shape, plus ``tier`` at
+        the evidence tier or ``line`` and ``revision`` for a line promotion).
+        It is uploaded only when ``update_latest=True``.
 
     Raises:
         ReleaseContractError: If the release directory violates its tier's
@@ -482,6 +576,7 @@ def publish_release(
         update_latest=update_latest,
         tag_only=tag_only,
         evidence=evidence,
+        line=line,
     )
     release_id = prepared.release_id
 
@@ -489,8 +584,18 @@ def publish_release(
         api = _hf_api()
     if evidence:
         payload = latest_evidence_pointer_payload(release_id, updated_at=updated_at)
+        pointer_label = "evidence release"
+    elif prepared.line is not None:
+        payload = line_pointer_payload(
+            release_id,
+            line=prepared.line,
+            revision=prepared.tag,
+            updated_at=updated_at,
+        )
+        pointer_label = f"{prepared.line} line"
     else:
         payload = latest_pointer_payload(release_id, updated_at=updated_at)
+        pointer_label = "release"
     if create_tag and not callable(getattr(api, "create_tag", None)):
         raise TypeError(
             "publish_release requires a Hub backend with create_tag support; "
@@ -515,7 +620,8 @@ def publish_release(
         create_tag=create_tag,
         update_latest=update_latest,
         tag_only=tag_only,
-        evidence=evidence,
+        pointer_path=prepared.pointer_path,
+        pointer_label=pointer_label,
     )
     # The pointer is live: announce it. Best-effort and coupled to the promotion
     # so every publish path alerts; warn (don't fail) if the webhook is unset.
@@ -525,6 +631,9 @@ def publish_release(
         if evidence:
             # The alert must never read as a certified release announcement.
             notify_kwargs["tier"] = RELEASE_TIER_EVIDENCE
+        if prepared.line is not None:
+            notify_kwargs["line"] = prepared.line
+            notify_kwargs["revision"] = prepared.tag
         notify_release(repo_id, release_id, payload.get("updated_at"), **notify_kwargs)
     return payload
 
@@ -605,7 +714,8 @@ def _publish_atomic(
     create_tag: bool,
     update_latest: bool = True,
     tag_only: bool = False,
-    evidence: bool = False,
+    pointer_path: str,
+    pointer_label: str,
 ) -> None:
     staging_branch = f"release-staging/{release_id}"
     main_revision = _repo_revision(api, repo_id=repo_id)
@@ -632,7 +742,7 @@ def _publish_atomic(
     if immutable_revision is None:
         raise RuntimeError(
             "Hub create_commit returned no revision for immutable release "
-            f"{release_id!r}; refusing to update main or latest.json."
+            f"{release_id!r}; refusing to update main or {pointer_path}."
         )
     if create_tag:
         _create_release_tag(
@@ -652,16 +762,11 @@ def _publish_atomic(
         # candidates deliberately stop here: neither canonical root artifacts
         # nor release-directory copies are written to main.
         return
-    # The evidence tier writes ONLY its own pointer file: the certified
-    # ``latest.json`` path never appears in an evidence commit, so no bug in
-    # flag-plumbing can promote an evidence artifact to certified default.
-    tier_label = "evidence release" if evidence else "release"
-    pointer_path = LATEST_EVIDENCE_POINTER_PATH if evidence else LATEST_POINTER_PATH
     if update_latest:
-        message = f"Update latest {tier_label} to {release_id}"
+        message = f"Update latest {pointer_label} to {release_id}"
         pointer = json.dumps(payload, indent=1).encode()
     else:
-        message = f"Publish non-default {tier_label} {release_id}"
+        message = f"Publish non-default {pointer_label} {release_id}"
         pointer = None
     api.create_commit(
         repo_id=repo_id,
@@ -887,10 +992,9 @@ def latest_release(repo_id: str, *, api=None) -> LatestPointer:
 
     Raises:
         ValueError: If the pointer is malformed, its schema version is newer
-            than this library understands, or it carries a ``tier`` field at
-            all — the certified payload predates tiers and no certified
-            producer writes one, so any tier field (even ``"certified"``) is
-            foreign and must never be consumed as the certified default.
+            than this library understands, or it carries a ``tier``, ``line``,
+            or ``revision`` field. Those fields belong to other pointer
+            families and must never be consumed as the certified default.
     """
     payload = _read_pointer(repo_id, api, pointer_path=LATEST_POINTER_PATH)
     if "tier" in payload:
@@ -899,11 +1003,64 @@ def latest_release(repo_id: str, *, api=None) -> LatestPointer:
             f"({payload.get('tier')!r}); the certified pointer never does — "
             f"evidence releases live at {LATEST_EVIDENCE_POINTER_PATH}."
         )
+    for field in ("line", "revision"):
+        if field in payload:
+            raise ValueError(
+                f"{LATEST_POINTER_PATH} in {repo_id} carries a {field!r} field; "
+                "the repository-global certified pointer never does."
+            )
     return LatestPointer(
         release_id=str(payload["release_id"]),
         updated_at=str(payload.get("updated_at", "")),
         paths={str(k): str(v) for k, v in payload["paths"].items()},
         tier=RELEASE_TIER_CERTIFIED,
+        revision=str(payload["release_id"]),
+    )
+
+
+def latest_line_release(repo_id: str, *, line: str, api=None) -> LatestPointer:
+    """Read and validate the schema-1 pointer for ``line``."""
+    pointer_path = line_pointer_path(line)
+    payload = _read_pointer(repo_id, api, pointer_path=pointer_path)
+    if "tier" in payload:
+        raise ValueError(
+            f"{pointer_path} in {repo_id} carries a 'tier' field; line pointers "
+            "are certified pointers, not evidence pointers."
+        )
+    pointer_line = payload.get("line")
+    if pointer_line != line:
+        raise ValueError(
+            f"{pointer_path} in {repo_id} declares line {pointer_line!r}, "
+            f"expected {line!r}."
+        )
+    release_id = str(payload["release_id"])
+    revision = payload.get("revision")
+    expected_line = line_for_release_id(release_id)
+    if line != expected_line:
+        raise ValueError(
+            f"{pointer_path} in {repo_id} names release {release_id!r}, which "
+            f"belongs to line {expected_line!r}, not {line!r}."
+        )
+    cut_tag_re = _uk_line_cut_tag_re(release_id)
+    if (
+        not isinstance(revision, str)
+        or not revision
+        or not (
+            revision == release_id
+            or (cut_tag_re is not None and cut_tag_re.fullmatch(revision) is not None)
+        )
+    ):
+        raise ValueError(
+            f"{pointer_path} in {repo_id} has revision {revision!r}, which is "
+            f"outside release {release_id!r}'s line family."
+        )
+    return LatestPointer(
+        release_id=release_id,
+        updated_at=str(payload.get("updated_at", "")),
+        paths={str(k): str(v) for k, v in payload["paths"].items()},
+        tier=RELEASE_TIER_CERTIFIED,
+        revision=revision,
+        line=line,
     )
 
 
