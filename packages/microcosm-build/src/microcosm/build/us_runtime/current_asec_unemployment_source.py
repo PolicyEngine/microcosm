@@ -116,8 +116,13 @@ def reporting_basis(amount, age, receipt_tokens):
     return result
 
 
-def _read_capture(path, *, rows):
+def _read_capture(path, *, rows, amount_field="UC_VAL", receipt_field="UC_YN"):
     """Bounded literal reader; its path and row count do not establish authority."""
+    require(
+        (amount_field, receipt_field) in (("UC_VAL", "UC_YN"), ("WC_VAL", "WC_YN")),
+        "RECEIPT_FIELD_PAIR",
+    )
+    columns = (*READ_COLUMNS[:4], amount_field, receipt_field)
     reader = source_csv_builtin.capture_csv_reader(csv)
     require(reader is not None, "CSV_READER_CHANGED")
     records, keys, coordinates = [], set(), set()
@@ -128,13 +133,13 @@ def _read_capture(path, *, rows):
             bool(header)
             and all(header)
             and len(header) == len(set(header))
-            and set(READ_COLUMNS) <= set(header),
+            and set(columns) <= set(header),
             "HEADER",
         )
-        positions = [header.index(c) for c in READ_COLUMNS]
+        positions = [header.index(c) for c in columns]
         for row in stream:
             require(len(row) == len(header) and len(records) < rows, "ROW_SHAPE")
-            record = dict(zip(READ_COLUMNS, (row[i] for i in positions), strict=True))
+            record = dict(zip(columns, (row[i] for i in positions), strict=True))
             key = record["PERIDNUM"]
             require(re.fullmatch(r"[0-9]{22}", key, re.ASCII) is not None, "PERSON_KEY")
             for name, width in (("PH_SEQ", 5), ("A_LINENO", 2), ("A_AGE", 2)):
@@ -149,11 +154,12 @@ def _read_capture(path, *, rows):
                 "DUPLICATE_OR_INVALID_COORDINATE",
             )
             require(
-                record["UC_VAL"] == ""
-                or re.fullmatch(r"[0-9]{1,5}", record["UC_VAL"], re.ASCII) is not None,
+                record[amount_field] == ""
+                or re.fullmatch(r"[0-9]{1,5}", record[amount_field], re.ASCII)
+                is not None,
                 "AMOUNT_TOKEN",
             )
-            require(len(record["UC_YN"]) <= 64, "RECEIPT_TOKEN_BOUND")
+            require(len(record[receipt_field]) <= 64, "RECEIPT_TOKEN_BOUND")
             records.append(record)
             keys.add(key)
             coordinates.add(pair)
@@ -211,8 +217,26 @@ class CurrentAsecUnemploymentValues:
     evidence: dict
 
 
-def qualify_current_asec_unemployment(preparation):
-    """Capture the exact current source member retained by the original owner."""
+def _qualify_receipt_amount(preparation, *, family):
+    """Share the two closed 15+ receipt captures without issuing source authority."""
+    if family == "unemployment":
+        protocol, columns, dictionary = PROTOCOL, READ_COLUMNS, DICTIONARY
+        reader, classify = _read_capture, reporting_basis
+        prefix = "microcosm-current-uc-"
+    elif family == "workers_compensation":
+        from . import current_asec_workers_compensation_source as workers
+
+        protocol, columns, dictionary = (
+            workers.PROTOCOL,
+            workers.READ_COLUMNS,
+            workers.DICTIONARY,
+        )
+        reader, classify = workers.read_capture, workers.reporting_basis
+        prefix = "microcosm-current-wc-"
+    else:
+        require(False, "RECEIPT_FAMILY")
+    amount_field, receipt_field = columns[-2:]
+
     require(
         type(preparation) is source.AuthenticatedSurveyPopulationPreparation,
         "PREPARATION_TYPE",
@@ -253,7 +277,7 @@ def qualify_current_asec_unemployment(preparation):
         and retained[0]["member_bytes"] == size,
         "NATIVE_MEMBER_BINDING",
     )
-    with tempfile.TemporaryDirectory(prefix="microcosm-current-uc-") as tmp:
+    with tempfile.TemporaryDirectory(prefix=prefix) as tmp:
         captured = Path(tmp) / member
         identity = coverage._capture(
             state.root / "asec" / member,
@@ -262,7 +286,7 @@ def qualify_current_asec_unemployment(preparation):
             digest=digest,
             budget=[coverage._BODY_MAX],
         )
-        raw = _read_capture(captured, rows=rows)
+        raw = reader(captured, rows=rows)
         require(
             coverage._identity(captured.stat(follow_symlinks=False)) == identity
             and _file_sha(captured) == digest,
@@ -288,10 +312,10 @@ def qualify_current_asec_unemployment(preparation):
             ),
             "PARENT_COORDINATE_IDENTITY",
         )
-    field = ready.field("UC_VAL")
-    amounts = _amount_observations(field, positions, ordered.UC_VAL)
-    basis = reporting_basis(
-        amounts, ordered.A_AGE.to_numpy(dtype="float64"), ordered.UC_YN
+    field = ready.field(amount_field)
+    amounts = _amount_observations(field, positions, ordered[amount_field])
+    basis = classify(
+        amounts, ordered.A_AGE.to_numpy(dtype="float64"), ordered[receipt_field]
     )
     basis.index = pd.Index(
         np.asarray(parent.scope.person_ids)[positions], name="native_person_id"
@@ -310,13 +334,13 @@ def qualify_current_asec_unemployment(preparation):
     out["native_person_id"] = native_ids
     out.index = pd.Index(selected.person_id.to_numpy(), name="person_id")
     evidence = {
-        "protocol": PROTOCOL,
-        "dictionary": json.loads(json.dumps(DICTIONARY)),
+        "protocol": protocol,
+        "dictionary": json.loads(json.dumps(dictionary)),
         "preparation_sha256": hashlib.sha256(entry[1]).hexdigest(),
         "asec_native_sha256": hashlib.sha256(issued[1]).hexdigest(),
         "money_header_sha256": hashlib.sha256(ready.header).hexdigest(),
         "source_member_sha256": digest,
-        "read_columns": list(READ_COLUMNS),
+        "read_columns": list(columns),
         "complete_current_source_rows": rows,
         "selected_rows": len(out),
         "projection_sha256": hashlib.sha256(
@@ -344,4 +368,11 @@ def qualify_current_asec_unemployment(preparation):
         == evidence["projection_sha256"],
         "FINAL_PROJECTION_CHANGED",
     )
-    return CurrentAsecUnemploymentValues(out, evidence)
+    return out, evidence
+
+
+def qualify_current_asec_unemployment(preparation):
+    """Capture the exact current source member retained by the original owner."""
+    return CurrentAsecUnemploymentValues(
+        *_qualify_receipt_amount(preparation, family="unemployment")
+    )

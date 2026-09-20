@@ -72,6 +72,8 @@ def _live():
         sys.modules[__name__],
         values,
         values.unemployment,
+        values.workers_compensation,
+        values.workers_compensation.mapper,
         health_graph,
         health_graph.health,
         health_graph.source,
@@ -120,6 +122,9 @@ def _live():
             values.unemployment.PROTOCOL,
             values.unemployment.READ_COLUMNS,
             codec.encode_json(values.unemployment.DICTIONARY),
+            values.workers_compensation.PROTOCOL,
+            values.workers_compensation.READ_COLUMNS,
+            codec.encode_json(values.workers_compensation.DICTIONARY),
         )
     )
     result.append(
@@ -807,6 +812,8 @@ class _Kernel(KernelBase):
             sys.modules[__name__],
             values,
             values.unemployment,
+            values.workers_compensation,
+            values.workers_compensation.mapper,
             health_graph,
             hours_graph,
             hours_graph.source,

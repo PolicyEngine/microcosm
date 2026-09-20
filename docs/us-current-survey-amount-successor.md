@@ -1,5 +1,45 @@
 # Current survey amount successor
 
+## Optional workers compensation, 20 September 2026
+
+`run_us_survey_enrichment(..., groups=("unemployment", "health_costs",
+"workers_compensation"))` adds the person input `workers_compensation`. The
+default remains the first two groups. The new route borrows the genuine
+preparation and captures the same authenticated current ASEC member, joining
+`WC_VAL`, `WC_YN`, age, and native person/household/line coordinates to the
+existing current-money owner. It uses the maintained strict direct amount
+mapper on qualified values. A carried column or detached projection cannot
+establish source authority.
+
+The [2025 ASEC dictionary](https://www2.census.gov/programs-surveys/cps/datasets/2025/march/asec2025_ddl_pub_full.pdf),
+PDF page 51 (printed 6C-30), asks the WC receipt question of people aged 15+.
+`WC_YN` is 0 for NIU, 1 for yes, and 2 for no. `WC_VAL` is asked of recipients;
+its zero code means none or NIU. The question includes workers compensation
+and other job-related injury or illness payments. This route preserves that
+published concept, without selecting a subset by `WC_TYPE`.
+
+In-universe yes/positive and no/zero pairs retain their canonical amounts.
+NIU, under-15 observations, yes/zero pairs, contradictions and missing or
+unrecognized responses retain their raw values and unresolved canonical
+amounts. No child-income zero convention is introduced. Published known
+amounts are not claimed to be unallocated responses.
+
+The existing amount graph extends its source projection and declares WC-specific
+original ASEC design-weight donor selection, fit and ACS recipient draw before
+the shared clone attachment.
+Only eligible ACS originals aged 15+ receive a draw; each original draw is
+shared by both support clones. Both ASEC clones retain the same source amount
+and reporting knownness. All prior columns, typed weights, identifiers and
+memberships remain under the existing parent checks. The current source
+predictors and 2025 ASEC / 2024 ACS transport choice are unchanged.
+
+Bounded invented verification exercises genuine source capture and refusal
+after source mutation, then the actual declared QRF fit/apply nodes, required
+cache replay and source-keyed clone attachment. The numerical component test
+uses explicit invented producers; it does not issue a native enrichment owner.
+Combined host acceptance with the other new fragments, actual-source coverage,
+held-out fit quality, calibration and release qualification remain separate.
+
 Implementation plan and source inventory, 12 September 2026. This is a local
 successor to the retained survey PUF55 run, not an amendment to the frozen d35
 native pilot. The branch starts at reviewed integration 99543c3.
