@@ -299,6 +299,7 @@ def test_head_to_head_signature_has_no_target_membership_switches() -> None:
         "maximum_microsim_batch_size",
         "candidate_manifest_sha256",
         "candidate_worker_identity_attestation",
+        "population_weight_mode",
     }
 
 
@@ -835,6 +836,133 @@ def test_fixture_end_to_end_is_deterministic_and_shares_one_path(
     markdown = first[1].read_text()
     assert "US release replacement scorecard" in markdown
     assert "empty ACS side" in markdown
+
+
+@pytest.mark.parametrize("mode", ["rescaled", "shipped"])
+def test_population_weight_mode_is_shared_and_reported(monkeypatch, mode):
+    from microcosm.frame import MassChange
+
+    module = _load_head_to_head_module()
+    _patch_release_seams(module, monkeypatch)
+    yardstick = _fixture_yardstick(module)
+    artifacts = {
+        Path("/fixture/incumbent.h5"): _fixture_artifact(
+            module, sha256="a" * 64, measure_values=(100.0, 300.0)
+        ),
+        Path("/fixture/candidate.h5"): _fixture_artifact(
+            module, sha256="b" * 64, measure_values=(200.0, 290.0)
+        ),
+    }
+    repaired = []
+    gates = []
+
+    def repair(frame):
+        assert mode == "rescaled", "Shipped scoring must not repair weights"
+        repaired.append(frame)
+        weight = frame.weights_for("household")
+        return frame.with_weights(
+            "household",
+            weight.with_values(weight.values * 2, weight.kind),
+            mass=MassChange(factor=2, reason="invented test adjustment"),
+        ), {"method": "fixture_double", "applied": True}
+
+    def population_gate(frame, *, mass_repair):
+        gates.append((frame.weights_for("household").values.copy(), mass_repair))
+        return SimpleNamespace(
+            passed=False, failures=("invented population mismatch",), details={}
+        )
+
+    monkeypatch.setattr(module.release, "_with_base_population_mass_repair", repair)
+    monkeypatch.setattr(module.release, "_base_population_scale_gate", population_gate)
+    monkeypatch.setattr(module, "compile_yardstick", lambda **_: yardstick)
+    monkeypatch.setattr(module, "load_artifact", lambda path, **_: artifacts[path])
+    payload = module.score_head_to_head(
+        incumbent=Path("/fixture/incumbent.h5"),
+        candidate=Path("/fixture/candidate.h5"),
+        ledger_facts=Path("/fixture/facts.jsonl"),
+        congressional_district_vintage_crosswalk=Path("/fixture/crosswalk.parquet"),
+        maximum_microsim_batch_size=1,
+        population_weight_mode=mode,
+    )
+    assert payload["yardstick"]["population_weight_mode"] == mode
+    factor = 2 if mode == "rescaled" else 1
+    assert len(repaired) == (2 if mode == "rescaled" else 0)
+    assert len(gates) == 2
+    for (role, expected), (weights, repair_receipt) in zip(
+        (("incumbent", 7000.0), ("candidate", 7800.0)), gates, strict=True
+    ):
+        result = payload["artifacts"][role]
+        assert result["fiscal"]["targets"][0]["actual"] == expected * factor
+        receipt = result["normalization_receipts"]
+        assert receipt["population_weight_mode"] == mode
+        assert receipt["base_population_scale_gate"]["passed"] is False
+        assert receipt["base_population_mass_repair"]["applied"] is (mode == "rescaled")
+        np.testing.assert_array_equal(weights, np.array([10.0, 20.0]) * factor)
+        assert (repair_receipt is None) is (mode == "shipped")
+    for artifact in artifacts.values():
+        np.testing.assert_array_equal(
+            artifact.frame.weights_for("household").values, [10.0, 20.0]
+        )
+        assert artifact.frame.mass_log == ()
+    markdown = module.render_markdown(payload)
+    assert (
+        "shipped weights unchanged on both sides."
+        if mode == "shipped"
+        else "rescaled to the Census population on both sides."
+    ) in markdown
+
+
+@pytest.mark.parametrize("entry", ["score_loaded_artifact", "score_head_to_head"])
+def test_invalid_population_weight_mode_refuses_before_any_io(monkeypatch, entry):
+    module = _load_head_to_head_module()
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Invalid mode reached artifact or target I/O")
+
+    monkeypatch.setattr(module, "compile_yardstick", forbidden)
+    monkeypatch.setattr(module, "_validate_cd_provenance", forbidden)
+    kwargs = (
+        dict(
+            artifact=None,
+            artifact_name="test",
+            yardstick=None,
+            maximum_microsim_batch_size=1,
+        )
+        if entry == "score_loaded_artifact"
+        else dict(incumbent=None, candidate=None, ledger_facts=None)
+    )
+    with pytest.raises(ValueError, match="Unknown population weight mode"):
+        getattr(module, entry)(**kwargs, population_weight_mode="repair_if_needed")
+
+
+def test_cli_population_mode_reaches_comparison(monkeypatch, tmp_path):
+    module = _load_head_to_head_module()
+    args = [
+        "--incumbent",
+        "invented.h5",
+        "--ledger-facts",
+        "facts.jsonl",
+        "--out-prefix",
+        str(tmp_path / "scorecard"),
+    ]
+    assert module._parse_args(args).population_weight_mode == "rescaled"
+    captured = []
+
+    def score(**kwargs):
+        captured.append(kwargs["population_weight_mode"])
+        return {
+            "artifacts": {
+                "incumbent": {"identity": {"sha256": "a" * 64}},
+                "candidate": None,
+            }
+        }
+
+    monkeypatch.setattr(module, "score_head_to_head", score)
+    monkeypatch.setattr(
+        module, "write_scorecard", lambda *_: ("invented.json", "invented.md")
+    )
+    assert module.main(args + ["--population-weight-mode", "shipped"]) == 0
+    assert captured == ["shipped"]
 
 
 def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
