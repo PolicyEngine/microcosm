@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+from dataclasses import replace
 from importlib import metadata
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,7 +17,17 @@ from huggingface_hub.errors import GatedRepoError, RepositoryNotFoundError
 
 import microcosm.data.loader as loader
 from microcosm.data import DEFAULT_VARIANT, download, latest_year, load, resolve
-from microcosm.data.release import LATEST_POINTER_PATH, latest_pointer_payload
+from microcosm.data.contract import (
+    NATIONAL_DEFAULT_DATASET_ROLE,
+    NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
+)
+from microcosm.data.registry import DatasetSpec
+from microcosm.data.release import (
+    LATEST_POINTER_PATH,
+    latest_pointer_payload,
+    line_pointer_path,
+    line_pointer_payload,
+)
 
 #: Release id served by the hub fixture. Any well-formed id works: nothing in
 #: this suite may assert which release the live Hub currently points at,
@@ -24,6 +35,14 @@ from microcosm.data.release import LATEST_POINTER_PATH, latest_pointer_payload
 RELEASE_ID = "populace-us-2024-buildi-sparse-rmloss100-6e8e929-20260709T034135Z"
 TAGGED_ARTIFACT = b"certified release artifact"
 MUTABLE_ROOT_ARTIFACT = b"uncertified in-flight root artifact"
+UK_REPO_ID = "policyengine/populace-uk-private"
+UK_2023_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
+UK_NATIONAL_RELEASE_ID = "microcosm-uk-2024-25-national"
+UK_NATIONAL_CUT_TAG = f"{UK_NATIONAL_RELEASE_ID}-20260920T120000Z-deadbeef"
+UK_LOCAL_LINE = "local-k15"
+UK_LOCAL_RELEASE_ID = "microcosm-uk-2024-25-local-k15"
+UK_LOCAL_CUT_TAG = f"{UK_LOCAL_RELEASE_ID}-20260920T120000Z-cafebabe"
+UK_TAGGED_ARTIFACT = b"certified UK line artifact"
 
 
 def test_resolve_defaults_to_the_latest_year() -> None:
@@ -103,6 +122,79 @@ def _release_manifest(
     }
 
 
+def _uk_release_manifest(
+    *,
+    release_id: str = UK_NATIONAL_RELEASE_ID,
+    revision: str = UK_NATIONAL_CUT_TAG,
+    filename: str = "microcosm_uk_2024_25.h5",
+    artifact_key: str = "microcosm_uk_2024_25",
+    dataset_role: str | None = NATIONAL_DEFAULT_DATASET_ROLE,
+    default_datasets: dict[str, str] | None = None,
+    artifact_content: bytes = UK_TAGGED_ARTIFACT,
+) -> dict:
+    if default_datasets is None:
+        default_datasets = {"national": artifact_key}
+    manifest = {
+        "schema_version": 1,
+        "data_package": {"name": "microcosm-data", "version": "0.1.0"},
+        "default_datasets": default_datasets,
+        "build": {
+            "build_id": release_id,
+            "built_with_core_package": {
+                "name": "policyengine-core",
+                "version": "3.27.1",
+            },
+            "built_with_model_package": {
+                "name": "policyengine-uk",
+                "version": "2.89.2",
+            },
+        },
+        "compatible_core_packages": [
+            {"name": "policyengine-core", "specifier": "==3.27.1"}
+        ],
+        "compatible_model_packages": [
+            {"name": "policyengine-uk", "specifier": "==2.89.2"}
+        ],
+        "artifacts": {
+            artifact_key: {
+                "kind": "microdata",
+                "path": filename,
+                "repo_id": UK_REPO_ID,
+                "revision": revision,
+                "sha256": hashlib.sha256(artifact_content).hexdigest(),
+            }
+        },
+    }
+    if dataset_role is not None:
+        manifest["dataset_role"] = dataset_role
+    return manifest
+
+
+def _uk_local_spec(*, pointer_path: str | None = None) -> DatasetSpec:
+    return DatasetSpec(
+        country="uk",
+        year=2025,
+        variant="local",
+        hf_repo=UK_REPO_ID,
+        filename="microcosm_uk_2024_25_local_k15.h5",
+        engine_module="policyengine_uk.data",
+        engine_class="UKSingleYearDataset",
+        engine_package="policyengine-uk",
+        pointer_path=pointer_path or line_pointer_path(UK_LOCAL_LINE),
+    )
+
+
+def _uk_local_manifest() -> dict:
+    return _uk_release_manifest(
+        release_id=UK_LOCAL_RELEASE_ID,
+        revision=UK_LOCAL_CUT_TAG,
+        filename="microcosm_uk_2024_25_local_k15.h5",
+        artifact_key="microcosm_uk_2024_25_local_k15",
+        dataset_role=NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
+        default_datasets={},
+    )
+
+
 class FakeHubDownload:
     """Serve mutable and release-tagged files while recording every request."""
 
@@ -175,6 +267,58 @@ class FakeHubDownload:
             ) from exc
 
 
+def _hub_with_pointer(
+    tmp_path: Path,
+    *,
+    repo_id: str,
+    pointer_path: str,
+    pointer: dict,
+    manifest: dict,
+) -> FakeHubDownload:
+    hub = FakeHubDownload(tmp_path)
+    hub.calls.clear()
+    hub.files.clear()
+    revision = str(pointer.get("revision", pointer["release_id"]))
+    hub._add(
+        tmp_path,
+        repo_id,
+        pointer_path,
+        None,
+        json.dumps(pointer).encode(),
+    )
+    hub._add(
+        tmp_path,
+        repo_id,
+        pointer["paths"]["release_manifest"],
+        revision,
+        json.dumps(manifest).encode(),
+    )
+    return hub
+
+
+def _line_pointer_hub(
+    tmp_path: Path,
+    *,
+    line: str,
+    release_id: str,
+    revision: str,
+    manifest: dict,
+) -> FakeHubDownload:
+    pointer = line_pointer_payload(
+        release_id,
+        line=line,
+        revision=revision,
+        updated_at="2026-09-20T12:00:00+00:00",
+    )
+    return _hub_with_pointer(
+        tmp_path,
+        repo_id=UK_REPO_ID,
+        pointer_path=line_pointer_path(line),
+        pointer=pointer,
+        manifest=manifest,
+    )
+
+
 def _patch_engine(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -199,6 +343,217 @@ def _patch_engine(
     }
     monkeypatch.setattr(metadata, "version", versions.__getitem__)
     return constructed
+
+
+def test_resolve_uk_defaults_to_2025_through_national_line_pointer(
+    tmp_path: Path,
+) -> None:
+    spec = resolve("uk")
+    manifest = _uk_release_manifest()
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=manifest,
+    )
+
+    certified = loader._resolve_certified_release(spec, hub_download=hub)
+
+    manifest_path = f"releases/{UK_NATIONAL_RELEASE_ID}/release_manifest.json"
+    assert spec.key == ("uk", 2025, DEFAULT_VARIANT)
+    assert spec.pointer_path == "latest-national.json"
+    assert certified.release_id == UK_NATIONAL_RELEASE_ID
+    assert certified.artifact_revision == UK_NATIONAL_CUT_TAG
+    assert hub.calls == [
+        (UK_REPO_ID, "latest-national.json", None),
+        (UK_REPO_ID, manifest_path, UK_NATIONAL_CUT_TAG),
+    ]
+
+
+def test_resolve_uk_2023_still_uses_latest_json(tmp_path: Path) -> None:
+    spec = resolve("uk", 2023)
+    manifest = _uk_release_manifest(
+        release_id=UK_2023_RELEASE_ID,
+        revision=UK_2023_RELEASE_ID,
+        filename="populace_uk_2023.h5",
+        artifact_key="populace_uk_2023",
+        dataset_role=None,
+    )
+    pointer = latest_pointer_payload(
+        UK_2023_RELEASE_ID,
+        updated_at="2026-06-19T03:00:00+00:00",
+    )
+    hub = _hub_with_pointer(
+        tmp_path,
+        repo_id=UK_REPO_ID,
+        pointer_path=LATEST_POINTER_PATH,
+        pointer=pointer,
+        manifest=manifest,
+    )
+
+    certified = loader._resolve_certified_release(spec, hub_download=hub)
+
+    manifest_path = f"releases/{UK_2023_RELEASE_ID}/release_manifest.json"
+    assert spec.pointer_path == LATEST_POINTER_PATH
+    assert certified.release_id == UK_2023_RELEASE_ID
+    assert certified.artifact_revision == UK_2023_RELEASE_ID
+    assert hub.calls == [
+        (UK_REPO_ID, LATEST_POINTER_PATH, None),
+        (UK_REPO_ID, manifest_path, UK_2023_RELEASE_ID),
+    ]
+
+
+@pytest.mark.parametrize("pointer_path", ["current.json", "latest-local-k0.json"])
+def test_resolve_refuses_an_unsupported_pointer_path(pointer_path: str) -> None:
+    spec = replace(resolve("us", 2024), pointer_path=pointer_path)
+
+    def unexpected_download(**_kwargs) -> str:
+        pytest.fail("an unsupported pointer path must fail before a Hub request")
+
+    with pytest.raises(ValueError, match="Unsupported release pointer path"):
+        loader._resolve_certified_release(spec, hub_download=unexpected_download)
+
+
+def test_line_pointer_refuses_any_artifact_revision_mismatch(tmp_path: Path) -> None:
+    manifest = _uk_release_manifest()
+    manifest["artifacts"]["calibration_report"] = {
+        "kind": "diagnostics",
+        "path": "calibration_diagnostics.json",
+        "repo_id": UK_REPO_ID,
+        "revision": UK_NATIONAL_RELEASE_ID,
+        "sha256": "0" * 64,
+    }
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=manifest,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"artifacts not pinned to expected revision.*calibration_report",
+    ):
+        loader._resolve_certified_release(resolve("uk"), hub_download=hub)
+
+
+def test_local_area_line_selects_its_only_microdata_artifact(tmp_path: Path) -> None:
+    manifest = _uk_local_manifest()
+    manifest["artifacts"]["calibration_report"] = {
+        "kind": "diagnostics",
+        "path": "calibration_diagnostics.json",
+        "repo_id": UK_REPO_ID,
+        "revision": UK_LOCAL_CUT_TAG,
+        "sha256": "0" * 64,
+    }
+    hub = _line_pointer_hub(
+        tmp_path,
+        line=UK_LOCAL_LINE,
+        release_id=UK_LOCAL_RELEASE_ID,
+        revision=UK_LOCAL_CUT_TAG,
+        manifest=manifest,
+    )
+
+    certified = loader._resolve_certified_release(
+        _uk_local_spec(),
+        hub_download=hub,
+    )
+
+    manifest_path = f"releases/{UK_LOCAL_RELEASE_ID}/release_manifest.json"
+    assert certified.release_id == UK_LOCAL_RELEASE_ID
+    assert certified.artifact_path == "microcosm_uk_2024_25_local_k15.h5"
+    assert certified.artifact_revision == UK_LOCAL_CUT_TAG
+    assert hub.calls == [
+        (UK_REPO_ID, "latest-local-k15.json", None),
+        (UK_REPO_ID, manifest_path, UK_LOCAL_CUT_TAG),
+    ]
+
+
+def test_latest_json_refuses_a_local_area_manifest(tmp_path: Path) -> None:
+    manifest = _uk_local_manifest()
+    local_artifact = manifest["artifacts"]["microcosm_uk_2024_25_local_k15"]
+    local_artifact["revision"] = UK_LOCAL_RELEASE_ID
+    pointer = latest_pointer_payload(
+        UK_LOCAL_RELEASE_ID,
+        updated_at="2026-09-20T12:00:00+00:00",
+    )
+    hub = _hub_with_pointer(
+        tmp_path,
+        repo_id=UK_REPO_ID,
+        pointer_path=LATEST_POINTER_PATH,
+        pointer=pointer,
+        manifest=manifest,
+    )
+    spec = replace(_uk_local_spec(), pointer_path=LATEST_POINTER_PATH)
+
+    with pytest.raises(
+        ValueError,
+        match=r"non_default_local_area.*line pointer.*latest\.json",
+    ):
+        loader._resolve_certified_release(spec, hub_download=hub)
+
+
+def test_local_area_line_refuses_nonempty_default_datasets(tmp_path: Path) -> None:
+    manifest = _uk_local_manifest()
+    manifest["default_datasets"] = {"national": "microcosm_uk_2024_25_local_k15"}
+    hub = _line_pointer_hub(
+        tmp_path,
+        line=UK_LOCAL_LINE,
+        release_id=UK_LOCAL_RELEASE_ID,
+        revision=UK_LOCAL_CUT_TAG,
+        manifest=manifest,
+    )
+
+    with pytest.raises(ValueError, match=r"default_datasets is not empty"):
+        loader._resolve_certified_release(_uk_local_spec(), hub_download=hub)
+
+
+@pytest.mark.parametrize("microdata_count", [0, 2])
+def test_local_area_line_requires_exactly_one_microdata_artifact(
+    tmp_path: Path,
+    microdata_count: int,
+) -> None:
+    manifest = _uk_local_manifest()
+    artifact = manifest["artifacts"]["microcosm_uk_2024_25_local_k15"]
+    if microdata_count == 0:
+        artifact["kind"] = "diagnostics"
+    else:
+        manifest["artifacts"]["second_microdata"] = {
+            "kind": "microdata",
+            "path": "second.h5",
+            "repo_id": UK_REPO_ID,
+            "revision": UK_LOCAL_CUT_TAG,
+            "sha256": "1" * 64,
+        }
+    hub = _line_pointer_hub(
+        tmp_path,
+        line=UK_LOCAL_LINE,
+        release_id=UK_LOCAL_RELEASE_ID,
+        revision=UK_LOCAL_CUT_TAG,
+        manifest=manifest,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=rf"{microdata_count} microdata artifacts; expected exactly one",
+    ):
+        loader._resolve_certified_release(_uk_local_spec(), hub_download=hub)
+
+
+def test_loader_refuses_an_unknown_dataset_role(tmp_path: Path) -> None:
+    manifest = _uk_release_manifest(dataset_role="research_preview")
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=manifest,
+    )
+
+    with pytest.raises(ValueError, match="unknown dataset_role 'research_preview'"):
+        loader._resolve_certified_release(resolve("uk"), hub_download=hub)
 
 
 def test_download_uses_pointer_manifest_and_release_revision(
@@ -445,9 +800,10 @@ def _is_offline_error(exc: Exception) -> bool:
 
 
 @pytest.mark.skipif(_hf_offline(), reason="Hugging Face offline mode is enabled")
-@pytest.mark.parametrize("country", ["us", "uk"])
+@pytest.mark.parametrize(("country", "year"), [("us", 2024), ("uk", 2023)])
 def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
     country: str,
+    year: int,
 ) -> None:
     """The real pointer and pinned manifest resolve without downloading large H5s.
 
@@ -459,7 +815,7 @@ def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
     release *identity* belongs to policyengine.py's certification fixtures,
     which are updated atomically with each certification PR.
     """
-    spec = resolve(country)
+    spec = resolve(country, year)
     try:
         certified = loader._resolve_certified_release(spec)
     except Exception as exc:

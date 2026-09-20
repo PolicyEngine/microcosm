@@ -1,0 +1,1 @@
+Changed the UK 2025 registry default to the 2024–25 national dataset and taught the certified loader to follow per-line pointers at immutable revisions. Non-default local-area manifests now load only through their line pointers.

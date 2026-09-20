@@ -1,11 +1,12 @@
 """Resolve, verify, download, and load a certified microcosm release.
 
-The normal path follows the repository's release certificate: resolve
-``latest.json``, read that release's manifest at its immutable release tag,
-download the manifest-selected dataset at the same tag, verify its SHA-256,
-and enforce the certified model/Core versions before constructing the engine
-dataset. Mutable root artifacts are available only through the explicitly
-unsafe ``load(..., unverified_root=True)`` escape hatch.
+The normal path follows the repository's release certificate: resolve the
+registry-selected pointer, read that release's manifest at the pointer's
+immutable revision, download the manifest-selected dataset at the same
+revision, verify its SHA-256, and enforce the certified model/Core versions
+before constructing the engine dataset. Mutable root artifacts are available
+only through the explicitly unsafe ``load(..., unverified_root=True)`` escape
+hatch.
 """
 
 from __future__ import annotations
@@ -25,9 +26,20 @@ from typing import Any
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
-from microcosm.data.contract import RELEASE_MANIFEST_SCHEMA_VERSION
+from microcosm.data.contract import (
+    NATIONAL_DEFAULT_DATASET_ROLE,
+    NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
+    RELEASE_MANIFEST_SCHEMA_VERSION,
+)
 from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY, DatasetSpec
-from microcosm.data.release import latest_release
+from microcosm.data.release import (
+    LATEST_POINTER_PATH,
+    LINE_POINTER_PATH_TEMPLATE,
+    LatestPointer,
+    latest_line_release,
+    latest_release,
+    line_pointer_path,
+)
 
 __all__ = [
     "available",
@@ -39,7 +51,23 @@ __all__ = [
 ]
 
 _SHA256_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
+_LINE_POINTER_PATH_PATTERN = re.compile(
+    re.escape(LINE_POINTER_PATH_TEMPLATE).replace(re.escape("{line}"), r"(?P<line>.+)")
+)
 _HubDownload = Callable[..., str]
+
+
+def _line_from_pointer_path(pointer_path: str) -> str | None:
+    """Invert the shared line-pointer template and validate its line."""
+    match = _LINE_POINTER_PATH_PATTERN.fullmatch(pointer_path)
+    if match is None:
+        return None
+    line = match.group("line")
+    try:
+        rendered_path = line_pointer_path(line)
+    except ValueError:
+        return None
+    return line if rendered_path == pointer_path else None
 
 
 @dataclass(frozen=True)
@@ -65,8 +93,14 @@ class _CertifiedPackageCompatibilityError(ValueError):
 
 
 def available() -> list[tuple[str, int]]:
-    """Every published ``(country, year)``, sorted without variant duplicates."""
-    return sorted({(country, year) for country, year, _ in REGISTRY})
+    """Every default-variant ``(country, year)``, sorted."""
+    return sorted(
+        {
+            (country, year)
+            for country, year, variant in REGISTRY
+            if variant == DEFAULT_VARIANT
+        }
+    )
 
 
 def available_variants() -> list[tuple[str, int, str]]:
@@ -229,6 +263,8 @@ def _certified_release_from_manifest(
     spec: DatasetSpec,
     release_id: str,
     manifest: Mapping[str, Any],
+    *,
+    expected_revision: str,
 ) -> _CertifiedRelease:
     """Validate and select ``spec`` from one release manifest."""
     schema_version = manifest.get("schema_version")
@@ -241,28 +277,79 @@ def _certified_release_from_manifest(
     build = _required_mapping(manifest, "build", release_id=release_id)
     if build.get("build_id") != release_id:
         raise ValueError(
-            f"latest.json points to release {release_id!r}, but its release manifest "
-            f"declares build_id {build.get('build_id')!r}."
+            f"{spec.pointer_path} points to release {release_id!r}, but its release "
+            f"manifest declares build_id {build.get('build_id')!r}."
         )
 
+    dataset_role = manifest.get("dataset_role", NATIONAL_DEFAULT_DATASET_ROLE)
+    if dataset_role not in {
+        NATIONAL_DEFAULT_DATASET_ROLE,
+        NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
+    }:
+        raise ValueError(
+            f"Release {release_id!r} has unknown dataset_role {dataset_role!r}."
+        )
     default_datasets = _required_mapping(
         manifest, "default_datasets", release_id=release_id
     )
-    artifact_key = default_datasets.get("national")
-    if not isinstance(artifact_key, str) or not artifact_key:
-        raise ValueError(
-            f"Release {release_id!r} has no default_datasets.national artifact."
-        )
+    if dataset_role == NATIONAL_DEFAULT_DATASET_ROLE:
+        artifact_key = default_datasets.get("national")
+        if not isinstance(artifact_key, str) or not artifact_key:
+            raise ValueError(
+                f"Release {release_id!r} has no default_datasets.national artifact."
+            )
+        artifact_label = "default"
+    else:
+        if _line_from_pointer_path(spec.pointer_path) is None:
+            raise ValueError(
+                f"Release {release_id!r} declares dataset_role "
+                f"{NON_DEFAULT_LOCAL_AREA_DATASET_ROLE!r}; it may be selected only "
+                f"through a {LINE_POINTER_PATH_TEMPLATE!r} line pointer, not "
+                f"{spec.pointer_path!r}."
+            )
+        if default_datasets != {}:
+            raise ValueError(
+                f"Release {release_id!r} declares dataset_role "
+                f"{NON_DEFAULT_LOCAL_AREA_DATASET_ROLE!r} but default_datasets "
+                "is not empty."
+            )
+        artifact_label = "local-area"
+
     artifacts = _required_mapping(manifest, "artifacts", release_id=release_id)
+    mismatched_revisions = {
+        str(key): candidate.get("revision") if isinstance(candidate, Mapping) else None
+        for key, candidate in artifacts.items()
+        if not isinstance(candidate, Mapping)
+        or candidate.get("revision") != expected_revision
+    }
+    if mismatched_revisions:
+        raise ValueError(
+            f"Release {release_id!r} has artifacts not pinned to expected revision "
+            f"{expected_revision!r}: {mismatched_revisions}."
+        )
+    if dataset_role == NON_DEFAULT_LOCAL_AREA_DATASET_ROLE:
+        microdata_keys = [
+            key
+            for key, candidate in artifacts.items()
+            if isinstance(candidate, Mapping) and candidate.get("kind") == "microdata"
+        ]
+        if len(microdata_keys) != 1:
+            raise ValueError(
+                f"Release {release_id!r} declares dataset_role "
+                f"{NON_DEFAULT_LOCAL_AREA_DATASET_ROLE!r} but has "
+                f"{len(microdata_keys)} microdata artifacts; expected exactly one."
+            )
+        artifact_key = microdata_keys[0]
+
     artifact = artifacts.get(artifact_key)
     if not isinstance(artifact, Mapping):
         raise ValueError(
-            f"Release {release_id!r} default dataset {artifact_key!r} is missing "
+            f"Release {release_id!r} {artifact_label} dataset {artifact_key!r} is missing "
             "from release_manifest.json artifacts."
         )
     if artifact.get("kind") != "microdata":
         raise ValueError(
-            f"Release {release_id!r} default artifact {artifact_key!r} has kind "
+            f"Release {release_id!r} {artifact_label} artifact {artifact_key!r} has kind "
             f"{artifact.get('kind')!r}, not 'microdata'."
         )
 
@@ -272,24 +359,20 @@ def _certified_release_from_manifest(
     artifact_sha256 = artifact.get("sha256")
     if artifact_repo_id != spec.hf_repo:
         raise ValueError(
-            f"Release {release_id!r} default artifact repo {artifact_repo_id!r} "
+            f"Release {release_id!r} {artifact_label} artifact repo "
+            f"{artifact_repo_id!r} "
             f"does not match registry repo {spec.hf_repo!r}."
         )
     if artifact_path != spec.filename:
         raise ValueError(
-            f"Release {release_id!r} default artifact path {artifact_path!r} "
+            f"Release {release_id!r} {artifact_label} artifact path {artifact_path!r} "
             f"does not match registry filename {spec.filename!r}."
-        )
-    if artifact_revision != release_id:
-        raise ValueError(
-            f"Release {release_id!r} default artifact revision "
-            f"{artifact_revision!r} is not pinned to the release id."
         )
     if not isinstance(artifact_sha256, str) or not _SHA256_PATTERN.fullmatch(
         artifact_sha256
     ):
         raise ValueError(
-            f"Release {release_id!r} default artifact has no valid sha256."
+            f"Release {release_id!r} {artifact_label} artifact has no valid sha256."
         )
 
     model = _package_certification(
@@ -325,22 +408,42 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _pointer_for(
+    spec: DatasetSpec, *, hub_download: _HubDownload | None = None
+) -> LatestPointer:
+    """Read the release pointer configured for ``spec``."""
+    if hub_download is None:
+        hub_download = _hub_download()
+    api = SimpleNamespace(hf_hub_download=hub_download)
+    if spec.pointer_path == LATEST_POINTER_PATH:
+        return latest_release(spec.hf_repo, api=api)
+    line = _line_from_pointer_path(spec.pointer_path)
+    if line is not None:
+        return latest_line_release(
+            spec.hf_repo,
+            line=line,
+            api=api,
+        )
+    raise ValueError(
+        f"Unsupported release pointer path {spec.pointer_path!r} for {spec.key}; "
+        f"expected {LATEST_POINTER_PATH!r} or the "
+        f"{LINE_POINTER_PATH_TEMPLATE!r} line-pointer form."
+    )
+
+
 def _resolve_certified_release(
     spec: DatasetSpec, *, hub_download: _HubDownload | None = None
 ) -> _CertifiedRelease:
     """Resolve and validate the release pointer and its pinned manifest."""
     if hub_download is None:
         hub_download = _hub_download()
-    pointer = latest_release(
-        spec.hf_repo,
-        api=SimpleNamespace(hf_hub_download=hub_download),
-    )
+    pointer = _pointer_for(spec, hub_download=hub_download)
     manifest_path = Path(
         hub_download(
             repo_id=spec.hf_repo,
             filename=pointer.paths["release_manifest"],
             repo_type="dataset",
-            revision=pointer.release_id,
+            revision=pointer.revision,
         )
     )
     manifest = _load_manifest(
@@ -348,7 +451,12 @@ def _resolve_certified_release(
         repo_id=spec.hf_repo,
         release_id=pointer.release_id,
     )
-    return _certified_release_from_manifest(spec, pointer.release_id, manifest)
+    return _certified_release_from_manifest(
+        spec,
+        pointer.release_id,
+        manifest,
+        expected_revision=pointer.revision,
+    )
 
 
 def _verified_download(spec: DatasetSpec) -> tuple[Path, _CertifiedRelease]:
@@ -390,9 +498,9 @@ def download(
 ) -> Path:
     """Download and SHA-verify the latest certified release artifact.
 
-    The mutable ``latest.json`` pointer selects a release; both its manifest
-    and dataset artifact are then fetched at ``revision=<release_id>``. Uses
-    the Hugging Face cache, so repeated calls do not re-download unchanged
+    The registry-selected mutable pointer selects a release; both its manifest
+    and dataset artifact are then fetched at the pointer's immutable revision.
+    Uses the Hugging Face cache, so repeated calls do not re-download unchanged
     files.
 
     Raises:
