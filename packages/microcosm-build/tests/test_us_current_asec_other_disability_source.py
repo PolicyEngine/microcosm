@@ -424,11 +424,23 @@ def test_a_contradictory_out_of_universe_row_keeps_a_positive_archived_reading()
     assert pd.isna(value.other_disability_archived_arithmetic_agrees)
 
 
-def test_unreadable_literals_leave_the_archived_arithmetic_unevaluable():
-    value = one(DIS_VAL1="abc")
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"DIS_VAL1": "abc"},
+        {"DIS_VAL1": ""},
+        # Outside the published code table. The archived function accepted any
+        # finite number, so this replay is narrower than the retired pipeline.
+        {"DIS_SC1": "11"},
+        {"DIS_YN": "1", "DIS_SC1": "99"},
+    ],
+)
+def test_the_replay_is_evaluable_only_on_the_owners_parsed_fields(changes):
+    value = one(**changes)
     assert not value.other_disability_archived_arithmetic_evaluable
     assert pd.isna(value.other_disability_archived_arithmetic_amount)
     assert pd.isna(value.other_disability_archived_arithmetic_agrees)
+    assert not value[od.KNOWN_COLUMN]
 
 
 def test_archived_parameter_drift_refuses(monkeypatch):
@@ -1100,6 +1112,53 @@ def test_attachment_refuses_an_implementation_changed_by_the_receiver(monkeypatc
 
     with pytest.raises(ValueError, match="IMPLEMENTATION_CHANGED"):
         od.attach_other_disability_columns(result, HostileReceiver())
+
+
+def test_attachment_refuses_a_result_constructor_that_swaps_its_payload(monkeypatch):
+    """The receiver's own table() can reach the constructor called after it."""
+    result = values(row())
+    people = receiving(result).person
+    original = od.OtherDisabilityAttachment.__init__
+
+    def hijacked(self, columns, receipt):
+        original(self, dict(columns), dict(receipt))
+
+    class HostileReceiver:
+        def table(self, name):
+            monkeypatch.setattr(od.OtherDisabilityAttachment, "__init__", hijacked)
+            return people
+
+    with pytest.raises(ValueError, match="ATTACHMENT_PAYLOAD_CHANGED"):
+        od.attach_other_disability_columns(result, HostileReceiver())
+
+
+def test_a_replaced_result_constructor_is_refused_before_it_is_called(monkeypatch):
+    result = values(row())
+    frame = receiving(result)
+    original = od.OtherDisabilityAttachment.__init__
+    monkeypatch.setattr(
+        od.OtherDisabilityAttachment,
+        "__init__",
+        lambda self, columns, receipt: original(self, columns, receipt),
+    )
+    with pytest.raises(ValueError, match="IMPLEMENTATION_CHANGED"):
+        od.attach_other_disability_columns(result, frame)
+
+
+def test_a_replaced_values_constructor_is_refused(monkeypatch):
+    literals, frame = basis(row())
+    literals.index = frame.index.copy()
+    owner = detail.CurrentAsecRetirementDetailValues(
+        frame, literals, dict(DETAIL_EVIDENCE)
+    )
+    original = od.CurrentAsecOtherDisabilityValues.__init__
+    monkeypatch.setattr(
+        od.CurrentAsecOtherDisabilityValues,
+        "__init__",
+        lambda self, person, evidence: original(self, person, evidence),
+    )
+    with pytest.raises(ValueError, match="IMPLEMENTATION_CHANGED"):
+        od.compose_other_disability(owner)
 
 
 def test_a_copied_values_object_attaches_identically():

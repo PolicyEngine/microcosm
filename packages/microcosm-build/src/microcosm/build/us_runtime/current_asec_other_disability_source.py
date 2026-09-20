@@ -328,7 +328,14 @@ def _topcoded(kinds, codes, statuses):
 
 
 def _legacy_arithmetic(basis):
-    """Run the retired implementation itself wherever all four literals read."""
+    """Run the retired implementation itself on the owner's parsed fields.
+
+    This replays the archived function over the four fields as the owner parsed
+    them, so it is evaluable only where each one read inside its own printed
+    domain. The archived function itself accepted any finite number, including
+    a source code outside the published table, so this is a replay of the
+    admitted literals rather than of every byte the retired pipeline consumed.
+    """
     evaluable = np.ones(len(basis), dtype=bool)
     columns = {}
     for name in (*AMOUNT_FIELDS, *SOURCE_CODE_FIELDS):
@@ -595,6 +602,21 @@ def _module_constants():
     }
 
 
+def _class_methods(*classes):
+    """Seal each returned type's own methods.
+
+    A class object's identity survives a replaced ``__init__``, so binding the
+    class alone leaves the constructor this module calls after its final checks
+    swappable by whoever supplied the receiver.
+    """
+    return tuple(
+        (cls.__module__, cls.__qualname__, name, routing.source._function_seal(value))
+        for cls in classes
+        for name, value in sorted(vars(cls).items())
+        if isinstance(value, FunctionType)
+    )
+
+
 def _live():
     return (
         {
@@ -605,6 +627,11 @@ def _live():
         _module_constants(),
         CurrentAsecOtherDisabilityValues,
         OtherDisabilityAttachment,
+        _class_methods(
+            CurrentAsecOtherDisabilityValues,
+            OtherDisabilityAttachment,
+            detail.CurrentAsecRetirementDetailValues,
+        ),
         # The retired arithmetic and its archived parameters stay bound: this
         # leaf may not be reinterpreted by editing either owner in place.
         legacy,
@@ -796,6 +823,7 @@ def compose_other_disability(detail_values):
     result = CurrentAsecOtherDisabilityValues(
         person, _evidence(person, detail_values, seal)
     )
+    _require(result.person is person, "VALUES_PAYLOAD_CHANGED")
     stamp = other_disability_values_seal(result)
     _require(
         detail.retirement_detail_values_seal(detail_values) == seal,
@@ -970,10 +998,17 @@ def attach_other_disability_columns(values, receiving):
         )
     )
     # The receiver supplies its table through its own callable, which runs
-    # after the entry check, so the implementation is rechecked before return.
+    # after the entry check, so the result is constructed and then the
+    # implementation is rechecked before return; nothing this module calls
+    # runs after the last check.
+    attachment = OtherDisabilityAttachment(columns, receipt)
+    _require(
+        attachment.columns is columns and attachment.receipt is receipt,
+        "ATTACHMENT_PAYLOAD_CHANGED",
+    )
     _require(_implementation_unchanged(), "IMPLEMENTATION_CHANGED")
     _require(other_disability_values_seal(values) == seal, "FINAL_VALUES_CHANGED")
-    return OtherDisabilityAttachment(columns, receipt)
+    return attachment
 
 
 _IMPLEMENTATION_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
