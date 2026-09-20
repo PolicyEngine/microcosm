@@ -47,7 +47,11 @@ from microcosm.graph import (
     source_hash,
 )
 from microcosm.graph import population as population_ops
-from microcosm.graph.executor import _all_node_keys, _source_paths_and_keys
+from microcosm.graph.executor import (
+    _all_node_keys,
+    _source_paths_and_keys,
+    _structural_columns,
+)
 from microcosm.graph.serialize import graph_to_json
 
 from . import current_survey_amounts as values
@@ -60,6 +64,7 @@ from . import graph_current_survey_predictors as predictor_graph
 from . import graph_current_survey_race_hispanic as race_graph
 from . import graph_current_survey_sex as sex_graph
 from . import graph_current_survey_spm as spm_graph
+from . import graph_current_survey_state as state_graph
 
 parent = values.parent_host
 physical = values.physical
@@ -71,6 +76,8 @@ CHILD_VERSION_NODE = "survey_amounts.child_support.version"
 CHILD_ATTACH_NODE = "survey_amounts.child_support.attach"
 PROJECTION_TYPE = ArtifactType("microcosm.us.current_survey_amount_projection", 1)
 ATTACHMENT_TYPE = ArtifactType("microcosm.us.current_survey_amount_attachment", 1)
+STATE_VERSION_NODE = "survey_geography.canonical_state_version"
+STATE_VERSION_TYPE = ArtifactType("microcosm.us.current_survey_state_version", 1)
 _ISSUED = {}
 
 
@@ -110,6 +117,7 @@ def _live():
         sex_graph.comparison,
         race_graph,
         race_graph.source,
+        state_graph,
     ):
         for name, item in vars(module).items():
             if type(item) is FunctionType:
@@ -235,6 +243,22 @@ def _live():
     result.append(("race_hispanic_configuration", race_graph.source._live()))
     result.append(
         (
+            "state_configuration",
+            state_graph.PROTOCOL,
+            state_graph.NODE,
+            state_graph.REF,
+            state_graph.INPUTS,
+            state_graph.OUTPUT,
+            state_graph.BINDING_TYPE,
+            state_graph.ATOMIC_GEOGRAPHY_VALIDATION_TYPE,
+            type(state_graph.US_STATE_FIPS_TO_POSTAL),
+            tuple(sorted(state_graph.US_STATE_FIPS_TO_POSTAL.items())),
+            STATE_VERSION_NODE,
+            STATE_VERSION_TYPE,
+        )
+    )
+    result.append(
+        (
             "housing_configuration",
             housing_graph.housing.PROTOCOL,
             housing_graph.housing.TARGET,
@@ -311,6 +335,97 @@ def _race_after_edge(spm_enabled, immigration_enabled, sex_enabled):
             sex_graph.ATTACHMENT_TYPE,
         )
     return _sex_after_edge(spm_enabled, immigration_enabled)
+
+
+def _state_after_edge(spm_enabled, immigration_enabled, sex_enabled, race_enabled):
+    if race_enabled:
+        return ArtifactInput(
+            "previous_attachment",
+            race_graph.ATTACH_NODE,
+            "attachment",
+            race_graph.ATTACHMENT_TYPE,
+        )
+    return _race_after_edge(spm_enabled, immigration_enabled, sex_enabled)
+
+
+def _state_version_node(*, receiving_version, after):
+    return Node(
+        STATE_VERSION_NODE,
+        CurrentSurveyStateVersionKernel.ref,
+        structural=StructuralDelta.FILTER,
+        base=receiving_version,
+        inputs=(Slice("person", ("person_support_clone_index",)),),
+        params={"protocol": state_graph.PROTOCOL},
+        artifact_inputs=(after,),
+        artifact_outputs=(ArtifactOutput("version", STATE_VERSION_TYPE),),
+        description="Keep every existing support clone and weight in an explicit population version before replacing the canonical state input; no geography assignment.",
+    )
+
+
+def _state_nodes(receiving, *, receiving_version, after):
+    version = _state_version_node(receiving_version=receiving_version, after=after)
+    binding = state_graph.state_binding_node(
+        receiving,
+        population=version.id,
+        after=ArtifactInput("state_version", version.id, "version", STATE_VERSION_TYPE),
+    )
+    return version, binding
+
+
+def _state_version_result(node, person, artifacts):
+    require(
+        len(node.artifact_inputs) == 1
+        and node
+        == _state_version_node(
+            receiving_version=node.base, after=node.artifact_inputs[0]
+        )
+        and tuple(person.columns) == ("person_id", "person_support_clone_index")
+        and person.person_id.is_unique
+        and person.person_id.dtype == population_ops.dtype_for_token("int64")
+        and set(artifacts) == {node.artifact_inputs[0].name},
+        "STATE_VERSION_CONTEXT",
+    )
+    edge = node.artifact_inputs[0]
+    value = artifacts[edge.name]
+    require(
+        type(value) is state_graph.ArtifactValue
+        and value.type == edge.type
+        and type(value.payload) is bytes,
+        "STATE_VERSION_ARTIFACT",
+    )
+    receipt = {
+        "protocol": state_graph.PROTOCOL,
+        "scope": "canonical_state_population_boundary",
+        "persons": len(person),
+        "selection": "keep_all",
+        "new_geography_assignment": False,
+        "source_admission_issued": False,
+        "release_eligible": False,
+    }
+    return KernelResult(
+        keep=pd.Series(
+            True, index=pd.Index(person.person_id, name="person_id"), dtype="bool"
+        ),
+        artifacts={"version": codec.encode_json(receipt)},
+        receipt=receipt,
+    )
+
+
+def _state_expected_population(incoming, node, artifacts, persisted):
+    """Independently reconstruct the complete keep-all or canonical transition."""
+    if node.id == STATE_VERSION_NODE:
+        result = _state_version_result(
+            node,
+            incoming.frame.person[["person_id", "person_support_clone_index"]],
+            artifacts,
+        )
+    else:
+        require(node.id == state_graph.NODE, "STATE_RECONSTRUCTION_NODE")
+        result = state_graph.state_binding_result(
+            node, incoming.frame.table("household"), artifacts
+        )
+    require(persisted == result.artifacts, "STATE_RESULT_ARTIFACT")
+    return health_completion_graph.expected_population(incoming, node, result)
 
 
 def _spm_configuration(acs_profile, asec_scope_policy, outside_role_placeholder):
@@ -661,7 +776,10 @@ class Boundary:
         demographic_inputs=False,
         race_hispanic_inputs=False,
         full_original_amount_donors=False,
+        canonical_state_input=False,
     ):
+        require(type(canonical_state_input) is bool, "CANONICAL_STATE_OPTION")
+        self.canonical_state_input = canonical_state_input
         require(
             type(full_original_amount_donors) is bool, "FULL_ORIGINAL_DONORS_OPTION"
         )
@@ -687,6 +805,9 @@ class Boundary:
         )
         self.parent_view = parent.check_survey_puf55_run(run)
         self.parent_entry = parent._run_entry(run)
+        if canonical_state_input:
+            # Refuse unsupported incumbent storage before any new model fitting.
+            state_graph.bind_state_fips(run.population.frame.table("household"))
         self.immigration_transfer = immigration_transfer
         self.immigration_entry = self.immigration_origins = (
             self.immigration_pairs_bytes
@@ -839,6 +960,8 @@ class Boundary:
                 ),
             )
             self.nodes = (*self.nodes, *self.race_nodes)
+        self.state_nodes = self._state_nodes()
+        self.nodes = (*self.nodes, *self.state_nodes)
         self.declaration = tuple(self.nodes)
         self.live = _live()
         require(self.live == live, "QUALIFIER_CALLBACK_CHANGED_IMPLEMENTATION")
@@ -854,6 +977,33 @@ class Boundary:
         )
         self._spm_pure()
         self._immigration_pure()
+
+    def _state_nodes(self):
+        require(type(self.canonical_state_input) is bool, "CANONICAL_STATE_OPTION")
+        if not self.canonical_state_input:
+            return ()
+        child = _child_enabled(self.qualified)
+        return _state_nodes(
+            self.run.population.frame,
+            receiving_version=CHILD_VERSION_NODE
+            if child
+            else parent.attach.FILTER_NODE,
+            after=(
+                ArtifactInput(
+                    "child_support_attachment",
+                    CHILD_ATTACH_NODE,
+                    "attachment",
+                    ATTACHMENT_TYPE,
+                )
+                if child
+                else _state_after_edge(
+                    self.spm is not None,
+                    self.immigration_transfer is not None,
+                    self.sex is not None,
+                    self.race is not None,
+                )
+            ),
+        )
 
     def _health_completion_nodes(self):
         if self.health_completion is None:
@@ -980,6 +1130,7 @@ class Boundary:
     def pure(self):
         self._sex_pure()
         self._race_pure()
+        require(self.state_nodes == self._state_nodes(), "STATE_DECLARATIONS")
         parent._pure_run(self.run, self.parent_entry)
         require(
             parent._run_entry(self.run) is self.parent_entry
@@ -1076,6 +1227,7 @@ class Boundary:
                 *self.immigration_nodes,
                 *self.sex_nodes,
                 *self.race_nodes,
+                *self.state_nodes,
             ),
             "BOUNDARY_DECLARATIONS",
         )
@@ -1279,6 +1431,8 @@ class _Kernel(KernelBase):
             values.full_donor.demographics.demographic,
             values.full_donor.demographics.household,
             health_graph,
+            state_graph,
+            state_graph.geography_constants,
             health_completion_graph,
             health_completion_graph.values,
             hours_graph,
@@ -1294,11 +1448,55 @@ class _Kernel(KernelBase):
             values.unemployment.coverage,
             values.unemployment.source_csv_builtin,
             population_ops,
+            _structural_columns,
             model_input,
             qrf,
             qrf_target,
             dependencies=self.capabilities.dependencies,
         )
+
+
+class CurrentSurveyStateVersionKernel(_Kernel):
+    ref = "us.survey_geography.canonical_state_version@1"
+    capabilities = replace(_Kernel.capabilities, structural=StructuralDelta.FILTER)
+
+    def run(self, context):
+        self.boundary.context(context)
+        require(
+            set(context.tables) == {"person"} and not context.sources,
+            "STATE_VERSION_TABLES",
+        )
+        person = context.tables["person"]
+        frame = self.boundary.run.population.frame
+        columns = [*_structural_columns(frame, "person"), "person_support_clone_index"]
+        require(person.equals(frame.person[columns]), "STATE_VERSION_PERSONS")
+        result = _state_version_result(
+            context.node,
+            person[["person_id", "person_support_clone_index"]],
+            context.artifacts,
+        )
+        self.boundary.pure()
+        return result
+
+
+class CurrentSurveyCanonicalStateKernel(_Kernel):
+    ref = state_graph.REF
+
+    def run(self, context):
+        self.boundary.context(context)
+        columns = ["household_id", *state_graph.INPUTS]
+        if context.node.outputs[0].rewrite:
+            columns.append(state_graph.OUTPUT)
+        require(
+            set(context.tables) == {"household"}
+            and context.tables["household"].equals(
+                self.boundary.run.population.frame.table("household")[columns]
+            ),
+            "STATE_RECEIVING_HOUSEHOLDS",
+        )
+        result = state_graph.CurrentSurveyStateKernel().run(context)
+        self.boundary.pure()
+        return result
 
 
 class CurrentSurveyAmountProjectionKernel(_Kernel):
@@ -1577,6 +1775,7 @@ def _construct(
     demographic_inputs=False,
     race_hispanic_inputs=False,
     full_original_amount_donors=False,
+    canonical_state_input=False,
 ):
     boundary = Boundary(
         run,
@@ -1590,6 +1789,7 @@ def _construct(
         demographic_inputs=demographic_inputs,
         race_hispanic_inputs=race_hispanic_inputs,
         full_original_amount_donors=full_original_amount_donors,
+        canonical_state_input=canonical_state_input,
     )
     compiled = compile_graph(
         replace(run.compiled.graph, nodes=(*run.compiled.graph.nodes, *boundary.nodes))
@@ -1674,6 +1874,10 @@ def _construct(
         ):
             require(kernel.ref not in kernels.refs(), "RACE_HISPANIC_KERNEL_COLLISION")
             kernels.register(kernel)
+    if boundary.canonical_state_input:
+        for cls in (CurrentSurveyStateVersionKernel, CurrentSurveyCanonicalStateKernel):
+            require(cls.ref not in kernels.refs(), "STATE_KERNEL_COLLISION")
+            kernels.register(cls(boundary))
     registry = parent._registry(run.store.codecs, codecs.SourceCodecRegistry())
     store = ContentStore(run.store.root, codecs=registry)
     paths, source_keys = _source_paths_and_keys(compiled, dict(run.sources), store)
@@ -1865,6 +2069,7 @@ def run_us_survey_enrichment(
     demographic_inputs=False,
     race_hispanic_inputs=False,
     full_original_amount_donors=False,
+    canonical_state_input=False,
 ):
     """Execute and verify enrichment with optional SPM and realized immigration.
 
@@ -1879,6 +2084,8 @@ def run_us_survey_enrichment(
     a separate opt-in and preserve unsupported ACS categories as unknown.
     Full-original amount donors are an explicit opt-in; they change only fitting
     support, while receiving source observations and clone identity stay fixed.
+    Canonical state is a separate opt-in after all existing fragments. Its visible
+    keep-all version prevents earlier readers from consuming a later rewrite.
     """
     require(resume in ("auto", "require"), "RESUME")
     boundary = _construct(
@@ -1893,6 +2100,7 @@ def run_us_survey_enrichment(
         demographic_inputs=demographic_inputs,
         race_hispanic_inputs=race_hispanic_inputs,
         full_original_amount_donors=full_original_amount_donors,
+        canonical_state_input=canonical_state_input,
     )
     observed, stamps = {}, {}
 
@@ -1980,6 +2188,7 @@ def run_us_survey_enrichment(
     immigration_ids = {n.id for n in boundary.immigration_nodes}
     sex_ids = {n.id for n in boundary.sex_nodes}
     race_ids = {n.id for n in boundary.race_nodes}
+    state_ids = {n.id for n in boundary.state_nodes}
     group_nodes = {_ids(g)[0]: g for g in boundary.qualified.groups}
     column_nodes = {_ids(g)[1]: g for g in boundary.qualified.groups}
     original = population_ops.Population.from_frame(
@@ -1991,7 +2200,17 @@ def run_us_survey_enrichment(
         if node_id in run.compiled.order:
             current[version] = observed[node_id]
             continue
-        if node_id in race_ids:
+        if node_id in state_ids:
+            incoming = current[
+                node.base if node.structural is StructuralDelta.FILTER else version
+            ]
+            expected = _state_expected_population(
+                incoming,
+                node,
+                parent._loaded_values(boundary, manifest, loaded, node),
+                {a.name: loaded[node_id, a.name] for a in node.artifact_outputs},
+            )
+        elif node_id in race_ids:
             race_result = race_graph.race_hispanic_result(
                 boundary.race,
                 node,
@@ -2322,13 +2541,31 @@ def run_us_survey_enrichment(
                 if _child_enabled(boundary.qualified)
                 else {}
             ),
+            **(
+                {
+                    "canonical_state": {
+                        "enabled": True,
+                        "binding_sha256": codec.sha(
+                            loaded[state_graph.NODE, "binding"]
+                        ),
+                        "version_sha256": codec.sha(
+                            loaded[STATE_VERSION_NODE, "version"]
+                        ),
+                        "new_geography_assignment": False,
+                    }
+                }
+                if boundary.canonical_state_input
+                else {}
+            ),
             "release_eligible": False,
         }
     )
     output = SurveyEnrichmentRun(
         run,
         observed[
-            CHILD_ATTACH_NODE
+            state_graph.NODE
+            if boundary.canonical_state_input
+            else CHILD_ATTACH_NODE
             if _child_enabled(boundary.qualified)
             else race_graph.ATTACH_NODE
             if boundary.race is not None
