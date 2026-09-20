@@ -4,9 +4,8 @@ The owner's publish bar for the next US artifact is a head-to-head: the live
 artifact versus the candidate on the SAME yardstick, flipped on evidence.
 This tool is that yardstick. It has two parts:
 
-* every row of one compiled fiscal target registry, evaluated under each
-  artifact's own shipped weights with production's concept-budgeted
-  amount/count loss; and
+* every row of one compiled fiscal target registry, evaluated with production's
+  concept-budgeted amount/count loss and an explicit population-weight mode; and
 * the terminal by-origin battery: reported from an authenticated pool
   manifest receipt when the artifact is a pool, computed on an ephemeral
   terminal gate view for a finished H5 carrying both origins, and reported as
@@ -16,7 +15,11 @@ This tool is that yardstick. It has two parts:
 Artifacts differ only at the loading boundary. Both normalized frames pass
 through the same population repair, target materialization, constraint
 matrix, scoring, loss attribution, contract checks, and rendering path.
-Scoring is sequential and refuses a process peak at or above 20 GiB RSS.
+The historical default rescales household weights to the Census population.
+Use ``--population-weight-mode shipped`` to compare the weights actually in the
+files, without that adjustment. Both sides always use the same mode; the
+population-scale diagnostic is reported in either case. Scoring is sequential
+and refuses a process peak at or above 20 GiB RSS.
 
 Memory design, from measurements on the live incumbent (57,240 households,
 166,321 persons): the unbatched full-frame base microsimulation alone peaks
@@ -61,6 +64,7 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 import build_us_fiscal_refresh_release as release
 import h5py
@@ -108,6 +112,7 @@ MARKDOWN_WORST_TARGET_ROWS = 50
 # deterministic.
 MATERIALIZE_SCORE_CHUNK_SPECS = 8_192
 _STREAMING_TARGET_COLUMN_COPIES = 3
+_POPULATION_WEIGHT_MODES = ("rescaled", "shipped")
 
 # The package resolver authority for the live US incumbent, read from
 # policyengine.py 5.0.3 (PyPI latest, tagged 2026-08-21) this lane session:
@@ -324,6 +329,15 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "--congressional-district-vintage-crosswalk",
         type=Path,
         default=None,
+    )
+    parser.add_argument(
+        "--population-weight-mode",
+        choices=_POPULATION_WEIGHT_MODES,
+        default="rescaled",
+        help=(
+            "Use shipped household weights unchanged, or retain the historical "
+            "Census population rescaling. Applies identically to both files."
+        ),
     )
     parser.add_argument(
         "--maximum-microsim-batch-size",
@@ -1515,15 +1529,24 @@ def score_loaded_artifact(
     artifact_name: str,
     yardstick: FiscalYardstick,
     maximum_microsim_batch_size: int | None,
+    population_weight_mode: Literal["rescaled", "shipped"] = "rescaled",
 ) -> tuple[dict[str, object], tuple[tuple[str, str, str], ...]]:
     """Run the common scoring path for one already-normalized artifact."""
 
+    if population_weight_mode not in _POPULATION_WEIGHT_MODES:
+        raise ValueError("Unknown population weight mode.")
     cd_provenance = _validate_cd_provenance(artifact, yardstick)
     terminal_battery = _terminal_battery_payload(artifact)
-    base_frame, mass_repair = release._with_base_population_mass_repair(artifact.frame)
+    if population_weight_mode == "rescaled":
+        base_frame, mass_repair = release._with_base_population_mass_repair(
+            artifact.frame
+        )
+    else:
+        base_frame = artifact.frame
+        mass_repair = {"method": "none", "applied": False, "reason": "shipped_weights"}
     population_gate = release._base_population_scale_gate(
         base_frame,
-        mass_repair=mass_repair,
+        mass_repair=mass_repair if population_weight_mode == "rescaled" else None,
     )
     health_gate = release._health_input_signal_gate(base_frame)
     specs = yardstick.registry.specs
@@ -1606,6 +1629,7 @@ def score_loaded_artifact(
         },
         "terminal_battery": terminal_battery,
         "normalization_receipts": {
+            "population_weight_mode": population_weight_mode,
             "historical_formula_owned_columns": dict(
                 artifact.historical_formula_owned_columns
             ),
@@ -1797,9 +1821,12 @@ def score_head_to_head(
     ),
     candidate_manifest_sha256: str | None = None,
     candidate_worker_identity_attestation: Path | None = None,
+    population_weight_mode: Literal["rescaled", "shipped"] = "rescaled",
 ) -> dict[str, object]:
     """Compile once, then score incumbent and optional candidate sequentially."""
 
+    if population_weight_mode not in _POPULATION_WEIGHT_MODES:
+        raise ValueError("Unknown population weight mode.")
     crosswalk = congressional_district_vintage_crosswalk or (
         release.default_congressional_district_vintage_crosswalk_path()
     )
@@ -1841,6 +1868,7 @@ def score_head_to_head(
             artifact_name=name,
             yardstick=yardstick,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            population_weight_mode=population_weight_mode,
         )
         artifacts[name] = artifact_payload
         contracts[name] = contract
@@ -1858,6 +1886,7 @@ def score_head_to_head(
     return {
         "schema_version": SCHEMA_VERSION,
         "yardstick": {
+            "population_weight_mode": population_weight_mode,
             "fiscal_registry": dict(yardstick.identity),
             "fiscal_aggregate": {
                 "name": release.US_FISCAL_TARGET_LOSS_WEIGHTING,
@@ -2102,6 +2131,12 @@ def render_markdown(payload: Mapping[str, object]) -> str:
         f"- Fiscal registry: `{registry['version']}` with "
         f"{registry['target_count']:,} targets from Ledger facts "
         f"`{registry['ledger_facts']['sha256']}`.",
+        "- Population weights: "
+        + (
+            "shipped weights unchanged on both sides."
+            if yardstick.get("population_weight_mode", "rescaled") == "shipped"
+            else "rescaled to the Census population on both sides."
+        ),
         f"- Weighted aggregate: `{aggregate['name']}` with cap "
         f"`{aggregate['target_loss_cap']}` and no family multipliers.",
         f"- Weighting rule: {aggregate['weighting_rule']}.",
@@ -2317,6 +2352,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         candidate_worker_identity_attestation=(
             args.candidate_worker_identity_attestation
         ),
+        population_weight_mode=args.population_weight_mode,
     )
     json_path, markdown_path = write_scorecard(payload, args.out_prefix)
     print(
