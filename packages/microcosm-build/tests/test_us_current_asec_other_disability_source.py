@@ -7,6 +7,8 @@ clone transport, and the fences that refuse a mutated or foreign owner.
 """
 
 import copy
+import hashlib
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -517,6 +519,35 @@ def test_topcodes_describe_only_the_dollars_this_leaf_admits(changes, censored):
         assert bool(value.other_disability_topcoded) is censored
 
 
+@pytest.mark.parametrize(
+    "first_flag,second_flag,censored",
+    [
+        ("1", "", True),
+        ("", "1", True),
+        ("0", "", None),
+        ("", "", None),
+        ("0", "0", False),
+        ("1", "0", True),
+    ],
+)
+def test_one_readable_topcode_settles_two_admitted_slots(
+    first_flag, second_flag, censored
+):
+    value = one(
+        DIS_SC1="2",
+        DIS_VAL1="300",
+        DIS_SC2="7",
+        DIS_VAL2="400",
+        TDISVAL1=first_flag,
+        TDISVAL2=second_flag,
+    )
+    assert value[od.AMOUNT_COLUMN] == 700.0
+    if censored is None:
+        assert pd.isna(value.other_disability_topcoded)
+    else:
+        assert bool(value.other_disability_topcoded) is censored
+
+
 def test_an_unknown_person_has_no_topcode_reading():
     assert pd.isna(one(DIS_VAL1="", TDISVAL1="1").other_disability_topcoded)
 
@@ -575,10 +606,14 @@ def test_money_owner_axes_are_optional_and_declared():
         "owner_qualifier",
         "owner_literal_projection",
         "owner_slot_status",
+        "owner_capture",
+        "owner_amount_comparison",
         "owner_source_codes",
         "owner_known_statuses",
         "routing_receipt_status",
+        "routing_read_capture",
         "archived_arithmetic",
+        "archived_input_guard",
         "archived_parameters",
     ],
 )
@@ -599,13 +634,23 @@ def test_composition_refuses_a_mutated_owner(monkeypatch, mutation):
         "owner_qualifier",
         "owner_literal_projection",
         "owner_slot_status",
+        "owner_capture",
+        "owner_amount_comparison",
         "routing_receipt_status",
+        "routing_read_capture",
+        "archived_input_guard",
     ):
         owner_module, name = {
             "owner_qualifier": (detail, "qualify_current_asec_retirement_detail"),
             "owner_literal_projection": (detail, "project_retirement_detail_literals"),
             "owner_slot_status": (detail, "_slot_status"),
+            # The owner cross-checks retained amounts against the money owner,
+            # but the source codes this leaf reads come only from the capture.
+            "owner_capture": (detail, "_capture_member"),
+            "owner_amount_comparison": (detail, "_compare_amount"),
             "routing_receipt_status": (routing, "receipt_status"),
+            "routing_read_capture": (routing, "_read_capture"),
+            "archived_input_guard": (legacy, "_strict_numeric_source"),
         }[mutation]
         original = getattr(owner_module, name)
         monkeypatch.setattr(owner_module, name, lambda *a, **k: original(*a, **k))
@@ -675,6 +720,38 @@ def test_the_archived_function_itself_is_called_with_its_own_parameters(monkeypa
         }
     ]
     assert result.person.other_disability_archived_arithmetic_amount.iloc[0] == 300.0
+
+
+def test_a_shared_constant_mapping_cannot_be_retuned_in_place(monkeypatch):
+    """The archived parameters are another module's live dict, not a copy."""
+    monkeypatch.setattr(
+        legacy, "_EXPECTED_DIRECT_PARAMETERS", dict(legacy._EXPECTED_DIRECT_PARAMETERS)
+    )
+    original = dict(od._ARCHIVED)
+    od._ARCHIVED["first_amount_source"] = "DIS_VAL2"
+    try:
+        with pytest.raises(ValueError, match="IMPLEMENTATION_CHANGED"):
+            values(row())
+    finally:
+        od._ARCHIVED.clear()
+        od._ARCHIVED.update(original)
+    # Restoring the constant reopens the fence, so the refusal was the mutation.
+    assert values(row()).person[od.AMOUNT_COLUMN].iloc[0] == 200.0
+
+
+def test_the_recorded_implementation_digest_is_the_imported_bytes():
+    digest = hashlib.sha256(Path(od.__file__).read_bytes()).hexdigest()
+    assert od._IMPLEMENTATION_SHA256 == digest
+    evidence = values(row()).evidence
+    assert evidence["implementation_sha256"] == digest
+    assert "as imported" in evidence["implementation_sha256_scope"]
+
+
+def test_a_file_that_changed_after_import_refuses(monkeypatch):
+    monkeypatch.setattr(od, "_IMPLEMENTATION_SHA256", "0" * 64)
+    monkeypatch.setattr(od, "_LIVE", od._live())
+    with pytest.raises(ValueError, match="IMPLEMENTATION_CHANGED"):
+        values(row())
 
 
 def test_the_public_qualifier_requires_the_live_preparation_owner():
@@ -747,11 +824,12 @@ def test_evidence_claims_nothing_beyond_the_observed_slots():
         "allocation_flags_qualify_receipt",
         "model_fitted",
         "clone_redraw_issued",
-        "raw_member_read",
         "source_admission_issued",
         "release_eligible",
     ):
         assert evidence[claim] is False
+    assert evidence["adds_raw_member_reader"] is False
+    assert evidence["member_capture_owner"] == detail.PROTOCOL
     assert evidence["canonical_leaf"] == legacy.US_DISABILITY_BENEFITS_OUTPUT_COLUMNS[0]
     assert evidence["retirement_detail_protocol"] == detail.PROTOCOL
     assert evidence["workers_compensation_label"] == "worker's compensation"
