@@ -423,6 +423,8 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
 # listed separately in _SOURCE_SPINE_PROVENANCE_OWNERS with their reason.
 _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
     {
+        "current_survey_ss_completion.py",
+        "graph_current_survey_ss_completion.py",
         # Four declared source-qualified mappings and exact maintained clone fanout.
         "graph_current_asec_development_inputs.py",
         # Compact immutable observations; only the retained issuer owns authority.
@@ -3614,6 +3616,9 @@ def _source_spine_accesses(source: str) -> tuple[str, ...]:
 # accepted, and only for the listed modules.
 _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
     {
+        # Qualified native source axes, fixed report families and typed artifacts.
+        "current_survey_ss_completion.py",
+        "graph_current_survey_ss_completion.py",
         # Four declared source-qualified mappings and exact maintained clone fanout.
         "graph_current_asec_development_inputs.py",
         # Maintained input-roster fields for unknown counts and exact checkpoint
@@ -8475,4 +8480,20 @@ def test_development_mapping_graph_keeps_the_scoped_provenance_guard():
     assert (
         _non_owner_source_spine_accesses(module, (_US_RUNTIME / module).read_text())
         == ()
+    )
+
+
+@pytest.mark.parametrize(
+    "module",
+    ["current_survey_ss_completion.py", "graph_current_survey_ss_completion.py"],
+)
+def test_ss_report_completion_retains_scoped_source_guards(module):
+    assert module in _US_LAUNCH_GRAPH_RUNTIME_MODULES
+    assert module not in _SOURCE_SPINE_PROVENANCE_OWNERS
+    assert (
+        _non_owner_source_spine_accesses(module, (_US_RUNTIME / module).read_text())
+        == ()
+    )
+    assert _non_owner_source_spine_accesses(
+        module, 'def forbidden(df):\n    return df["person_support_channel"]\n'
     )
