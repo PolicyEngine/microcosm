@@ -294,7 +294,13 @@ def test_validation_factory_forwards_provider_to_maintained_dataset_helper(
         def calculate(self, measure, period):
             return np.asarray([1.0])
 
-    def dataset(frame_arg, *, assert_no_formula_owned_columns, formula_metadata):
+    def dataset(
+        frame_arg,
+        *,
+        assert_no_formula_owned_columns,
+        formula_metadata,
+        dataset_cls=None,
+    ):
         seen.append((frame_arg.n("household"), formula_metadata))
         assert (
             not assert_no_formula_owned_columns
@@ -321,7 +327,13 @@ def test_aca_forwards_provider_after_whole_frame_check(builder, monkeypatch):
     class ReachedDatasetError(Exception):
         pass
 
-    def dataset(frame_arg, *, assert_no_formula_owned_columns, formula_metadata):
+    def dataset(
+        frame_arg,
+        *,
+        assert_no_formula_owned_columns,
+        formula_metadata,
+        dataset_cls=None,
+    ):
         seen.append((frame_arg.n("household"), formula_metadata))
         assert not assert_no_formula_owned_columns
         raise ReachedDatasetError
