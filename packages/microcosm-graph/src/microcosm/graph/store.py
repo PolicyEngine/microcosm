@@ -225,7 +225,12 @@ def _load_json_file(path: Path, *, label: str) -> Any:
         raise StoreCorrupt(f"Stored {label} is not readable canonical JSON.") from error
 
 
-def _verified_meta(path: Path, *, expected_kind: str | None = None) -> dict[str, Any]:
+def _verified_meta(
+    path: Path,
+    *,
+    expected_kind: str | None = None,
+    _captured_bytes: dict[str, bytes] | None = None,
+) -> dict[str, Any]:
     if not path.exists():
         raise StoreMiss(f"No stored object at {path}.")
     if path.is_symlink() or not path.is_dir():
@@ -252,6 +257,7 @@ def _verified_meta(path: Path, *, expected_kind: str | None = None) -> dict[str,
         raise StoreCorrupt(f"Stored object {path.name} has no payload table.")
 
     expected_names: set[str] = set()
+    captured_payload: bytes | None = None
     for raw_name, raw_record in raw_payloads.items():
         name = _safe_payload_name(raw_name)
         if not isinstance(raw_record, dict):
@@ -269,10 +275,24 @@ def _verified_meta(path: Path, *, expected_kind: str | None = None) -> dict[str,
             )
         try:
             actual_size = payload_path.stat().st_size
-            actual_hash = _sha256_file(payload_path)
+            if _captured_bytes is not None and name == "payload.bin":
+                # Return the same bytes whose identity was checked. A second
+                # read after verification could observe a replaced payload.
+                captured_payload = payload_path.read_bytes()
+                actual_hash = hashlib.sha256(captured_payload).hexdigest()
+            else:
+                actual_hash = _sha256_file(payload_path)
         except OSError as error:
             raise StoreCorrupt(f"Stored payload {name!r} cannot be read.") from error
-        if actual_size != expected_size or actual_hash != expected_hash:
+        if (
+            actual_size != expected_size
+            or actual_hash != expected_hash
+            or (
+                name == "payload.bin"
+                and captured_payload is not None
+                and len(captured_payload) != expected_size
+            )
+        ):
             raise StoreCorrupt(
                 f"Stored object {path.name}: payload {name!r} failed its "
                 "size/SHA-256 check."
@@ -289,6 +309,8 @@ def _verified_meta(path: Path, *, expected_kind: str | None = None) -> dict[str,
         raise StoreCorrupt(
             f"Stored object {path.name} payload table differs from files on disk."
         )
+    if _captured_bytes is not None and captured_payload is not None:
+        _captured_bytes["payload.bin"] = captured_payload
     return metadata
 
 
@@ -1077,10 +1099,11 @@ class ContentStore:
         """Load one opaque byte artifact."""
 
         path = self.object_path(key)
-        _verified_meta(path, expected_kind="bytes")
+        captured: dict[str, bytes] = {}
+        _verified_meta(path, expected_kind="bytes", _captured_bytes=captured)
         try:
-            return (path / "payload.bin").read_bytes()
-        except OSError as error:  # verified above; protects a concurrent removal
+            return captured["payload.bin"]
+        except KeyError as error:
             raise StoreCorrupt(f"Stored byte payload {key} disappeared.") from error
 
     def put_json(
