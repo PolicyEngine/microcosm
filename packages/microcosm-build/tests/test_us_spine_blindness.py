@@ -448,6 +448,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_asec_immigration_donor.py",  # Checked original donor projection; no status draw.
         # One full original ASEC draw with retained design-weight/source authority.
         "current_asec_immigration_assignment.py",
+        # Retained paired transfer on the genuine parent's original allocation.
+        "current_survey_immigration_transfer.py",
         "current_survey_immigration_source.py",
         # Retained original SPM literals, complete clone projection and graph
         # attachment; no country model or source-routed population treatment.
