@@ -97,7 +97,14 @@ def _edges(qualified, layout):
 
 
 def original_placement_nodes(
-    qualified, inputs, routes, *, after, clone_one_seed, original_application_seed
+    qualified,
+    inputs,
+    routes,
+    *,
+    after,
+    clone_one_seed,
+    original_application_seed,
+    receiving_version=None,
 ):
     """Declare keep-all after the actual terminal and eight-or-fewer rewrites.
 
@@ -106,6 +113,12 @@ def original_placement_nodes(
     """
     require(type(after) is ArtifactInput, "AFTER")
     require(after.producer not in (KEEP_NODE, ATTACH_NODE), "AFTER")
+    # The host can declare the terminal version before execution. Runtime result
+    # validation uses the actual completed Population with this exact version.
+    version = (
+        inputs.receiving.version if receiving_version is None else receiving_version
+    )
+    require(type(version) is str and bool(version), "RECEIVING_VERSION")
     values._axes(inputs, qualified)
     seeds = dict(
         clone_one_seed=clone_one_seed,
@@ -113,9 +126,7 @@ def original_placement_nodes(
     )
     # Application reads the already-qualified original matrix; it must use the
     # pre-placement receiving version, not depend on its own output version.
-    layout = _application_layout(
-        qualified, routes, population=inputs.receiving.version, seeds=seeds
-    )
+    layout = _application_layout(qualified, routes, population=version, seeds=seeds)
     require(bool(layout), "ROUTES")
     profiles = tuple(route.profile for route, _ in layout)
     require(
@@ -144,7 +155,7 @@ def original_placement_nodes(
     keep = Node(
         KEEP_NODE,
         KEEP_REF,
-        base=inputs.receiving.version,
+        base=version,
         structural=StructuralDelta.FILTER,
         mass="conserve",
         inputs=tuple(slices),
