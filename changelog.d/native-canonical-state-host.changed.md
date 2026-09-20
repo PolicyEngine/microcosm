@@ -1,0 +1,1 @@
+Add an explicit default-off canonical state binding to native US enrichment, with a keep-all population boundary, typed geography/terminal dependencies, and complete reconstruction on cold and required replay.
