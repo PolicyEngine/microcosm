@@ -689,6 +689,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "graph_puf55_canonical_donor.py",
         # Typed PUF55 route artifacts after current financial leaves
         "graph_puf55_survey_recipients.py",
+        "graph_puf55_survey_observed.py",
+        "puf55_survey_observed.py",
         # A fixture-only price → donor → matrix → raw draw → masked placement graph
         "graph_puf_detail_transfer.py",
         # Source-qualified development diagnostic, preserving the fixture-only path
@@ -3592,6 +3594,9 @@ _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
         # Maintained input-roster fields for unknown counts and exact checkpoint
         # readback; no source attachment, donor draw or provenance-routing authority.
         "native_survey_handoff.py",
+        # Fixed source-qualified amount/mask tables and typed artifact maps.
+        "puf55_survey_observed.py",
+        "graph_puf55_survey_observed.py",
         # Supplied literal-source dictionaries selected by fixed ACS/ASEC field
         # families in _literals; no Frame or source-provenance access allowance.
         "current_survey_hours.py",
@@ -3719,6 +3724,8 @@ def _non_owner_source_spine_accesses(
         "current_survey_primary_family.py",
         "graph_survey_completion_host.py",
         "native_survey_handoff.py",
+        "puf55_survey_observed.py",
+        "graph_puf55_survey_observed.py",
     ],
 )
 def test_reviewed_dynamic_selector_modules_still_fail_on_provenance_reads(

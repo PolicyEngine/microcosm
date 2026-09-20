@@ -1,0 +1,1 @@
+Add explicit original-arm PUF55 recipient projections and opt-in, source-qualified fixed-input graph artifacts. Preserve current clone-one defaults and expose provisional ASEC mapping assumptions without claiming observed taxability or release eligibility.

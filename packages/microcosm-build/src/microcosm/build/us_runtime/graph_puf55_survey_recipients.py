@@ -36,10 +36,28 @@ codec, model_input = financial.codec, values.model_input
 PROJECTION_NODE = "survey_puf55.recipient_projection"
 MATRIX_NODE = "survey_puf55.recipient_matrices"
 PROJECTION_TYPE = ArtifactType("microcosm.us.puf55_survey_recipient_projection", 1)
+ORIGINAL_PROJECTION_TYPE = ArtifactType(
+    "microcosm.us.puf55_survey_original_recipient_projection", 1
+)
 _NAMES = {
     values.PROFILES[0].value: "matrix_nine",
     values.PROFILES[1].value: "matrix_eight",
 }
+
+
+def recipient_node_ids(arm=1):
+    values.recipient_protocol(arm)
+    if arm == 1:
+        return PROJECTION_NODE, MATRIX_NODE
+    return (
+        "survey_puf55.original_recipient_projection",
+        "survey_puf55.original_recipient_matrices",
+    )
+
+
+def projection_type(arm=1):
+    values.recipient_protocol(arm)
+    return PROJECTION_TYPE if arm == 1 else ORIGINAL_PROJECTION_TYPE
 
 
 def _edges(run):
@@ -90,7 +108,8 @@ def _check_values(qualified):
     financial._pure_run(run, entry)
     document = codec.decode_json(qualified.receipt)
     values._require(
-        document["protocol"] == values.PROTOCOL
+        document["protocol"] == values.recipient_protocol(qualified.arm)
+        and (qualified.arm == 1 or document.get("recipient_arm") == 0)
         and document["financial_run_sha256"] == codec.sha(entry[1])
         and document["preparation_sha256"] == codec.sha(entry[2].preparation_entry[1])
         and document["person_projection_sha256"]
@@ -114,8 +133,11 @@ def _check_values(qualified):
 def puf55_survey_recipient_nodes(qualified):
     """Bind expected projections; executing kernels retain/requalify the live run."""
     entry, _ = _check_values(qualified)
+    projection_id, matrix_id = recipient_node_ids(qualified.arm)
+    artifact_type = projection_type(qualified.arm)
     params = {
-        "protocol": values.PROTOCOL,
+        "protocol": values.recipient_protocol(qualified.arm),
+        **({"recipient_arm": qualified.arm} if qualified.arm == 0 else {}),
         "financial_run_sha256": codec.sha(entry[1]),
         "preparation_sha256": codec.sha(entry[2].preparation_entry[1]),
         "projection_sha256": codec.sha(qualified.receipt),
@@ -136,19 +158,19 @@ def puf55_survey_recipient_nodes(qualified):
         "params": params,
     }
     projection = Node(
-        PROJECTION_NODE,
+        projection_id,
         Puf55SurveyRecipientProjectionKernel.ref,
         **common,
         artifact_inputs=_edges(qualified.financial_run),
-        artifact_outputs=(ArtifactOutput("projection", PROJECTION_TYPE),),
+        artifact_outputs=(ArtifactOutput("projection", artifact_type),),
     )
     matrix = Node(
-        MATRIX_NODE,
+        matrix_id,
         Puf55SurveyRecipientMatrixKernel.ref,
         **common,
         artifact_inputs=(
             *_edges(qualified.financial_run),
-            ArtifactInput("projection", PROJECTION_NODE, "projection", PROJECTION_TYPE),
+            ArtifactInput("projection", projection_id, "projection", artifact_type),
         ),
         artifact_outputs=tuple(
             ArtifactOutput(_NAMES[name], model_input.RECIPIENT_MATRIX_TYPE)
@@ -196,7 +218,7 @@ class _Kernel(KernelBase):
             )
         )
 
-    def _context(self, context, qualified):
+    def _context(self, context, qualified, *, expected_nodes=None):
         bound = financial._run_entry(self._financial_run)
         # Resolve the retained literal paths before the existing value/owner
         # checks. The executor supplies canonical paths; support recipes retain
@@ -206,7 +228,14 @@ class _Kernel(KernelBase):
             for name, path in bound[2].source_items
         )
         entry, _ = _check_values(qualified)
-        expected = {node.id: node for node in puf55_survey_recipient_nodes(qualified)}
+        expected = {
+            node.id: node
+            for node in (
+                puf55_survey_recipient_nodes(qualified)
+                if expected_nodes is None
+                else expected_nodes
+            )
+        }
         values._require(
             context.node.id in expected
             and context.node == expected[context.node.id]
@@ -245,25 +274,30 @@ class _Kernel(KernelBase):
                 and artifact.payload == payloads[edge.name],
                 "GRAPH_HOST_ARTIFACT",
             )
-        if context.node.id == MATRIX_NODE:
-            artifact = host.shared.artifact(context, "projection", PROJECTION_TYPE)
+        if "projection" in context.artifacts:
+            artifact = host.shared.artifact(
+                context, "projection", projection_type(qualified.arm)
+            )
             values._require(
                 artifact.payload == qualified.receipt, "GRAPH_PROJECTION_ARTIFACT"
             )
 
     def run(self, context):
         run = self._financial_run
-        qualified = values.qualify_puf55_survey_recipients(run)
+        # One retained kernel can serve both disjoint arm declarations. The
+        # actual node ID selects the arm; the full declaration is checked next.
+        arm = 0 if context.node.id in recipient_node_ids(0) else 1
+        qualified = values.qualify_puf55_survey_recipients(run, arm=arm)
         entry = financial._run_entry(run)
         self._context(context, qualified)
         outputs = (
             {"projection": qualified.receipt}
-            if context.node.id == PROJECTION_NODE
+            if context.node.id == recipient_node_ids(arm)[0]
             else {_NAMES[name]: payload for name, payload in qualified.matrices}
         )
         output_seal = tuple(sorted(outputs.items()))
         receipt = {
-            "protocol": values.PROTOCOL,
+            "protocol": values.recipient_protocol(arm),
             "projection_sha256": codec.sha(qualified.receipt),
             "artifact_sha256": {n: codec.sha(p) for n, p in outputs.items()},
             "population_changed": False,
@@ -301,13 +335,15 @@ class Puf55SurveyRecipientMatrixKernel(_Kernel):
     ref = "us.survey_puf55.recipient_matrices@1"
 
 
-def verify_materialized_puf55_survey_recipients(financial_run, *, projection, matrices):
+def verify_materialized_puf55_survey_recipients(
+    financial_run, *, projection, matrices, arm=1
+):
     """Check host-pinned artifact bytes on replay; this is not an artifact issuer.
 
     The caller must first verify actual producer keys/types/implementation hashes
     against its complete compiled graph and retained receiving Population.
     """
-    expected = values.qualify_puf55_survey_recipients(financial_run)
+    expected = values.qualify_puf55_survey_recipients(financial_run, arm=arm)
     values._require(
         type(projection) is bytes
         and projection == expected.receipt
