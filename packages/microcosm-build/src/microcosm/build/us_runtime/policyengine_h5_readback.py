@@ -5,9 +5,12 @@ not authenticate their source, run a calibration, or qualify a release. The
 caller still owns graph ancestry, target and scope interpretation, SPM settings,
 and the lifetime of those inputs. Existing adapter defaults remain unchanged.
 
-The admitted codec change is complete pandas BooleanDtype to NumPy bool. Numeric
-dtypes and complete Python StringDtype must otherwise match exactly. Missing
-roles, nullable integers, object columns and missing strings are unsupported.
+The admitted codec changes are complete pandas BooleanDtype to NumPy bool and
+Python to Arrow storage for complete StringDtype with pd.NA semantics. String
+storage changes are reported and normalized only in the detached comparison
+Frame; they do not attest preservation of the file's physical storage backend.
+Numeric dtypes must match exactly. Missing roles, nullable integers, object
+columns and missing strings are unsupported.
 Masked NumPy float NaN payloads may change, but masks and known bytes may not.
 """
 
@@ -77,7 +80,7 @@ def _require(condition, reason):
         raise PolicyEngineH5ReadbackError("H5_" + reason)
 
 
-def _dtype_profile(series):
+def _dtype_profile(series, *, readback=False):
     dtype = series.dtype
     if isinstance(dtype, np.dtype):
         _require(dtype.kind in "biuf", "UNSUPPORTED_DTYPE")
@@ -87,7 +90,7 @@ def _dtype_profile(series):
         return ("complete_boolean",)
     _require(
         isinstance(dtype, pd.StringDtype)
-        and dtype.storage == "python"
+        and dtype.storage in (("python", "pyarrow") if readback else ("python",))
         and dtype.na_value is pd.NA,
         "UNSUPPORTED_DTYPE",
     )
@@ -95,7 +98,7 @@ def _dtype_profile(series):
         not series.isna().any() and all(type(value) is str for value in series),
         "MISSING_OR_NONSTRING_VALUE",
     )
-    return ("complete_python_string", "pd.NA")
+    return ("complete_string", "pd.NA")
 
 
 def _string_policy(dtype):
@@ -197,6 +200,10 @@ def verify_policyengine_h5_readback(
     Frame carries actual read-back values and household weights.
     Its strata, schema, metadata, weight kind and mass log are supplied context.
     Incidental pandas row indices may reset; entity-ID order must not change.
+    Complete strings retain exact values, order and pd.NA semantics, while an
+    Arrow readback backend is normalized to the admitted Python source backend
+    in the returned copy and recorded in normalizations. The input tables and
+    global pandas options are unchanged.
     This pure helper alone does not attest that a file was written or read.
     """
     _frame_profile(candidate, calibrated=True)
@@ -230,8 +237,27 @@ def verify_policyengine_h5_readback(
                 normalizations.append(label + ":bool->boolean")
             else:
                 _require(
-                    _dtype_profile(left) == _dtype_profile(right), "DTYPE:" + label
+                    _dtype_profile(left) == _dtype_profile(right, readback=True),
+                    "DTYPE:" + label,
                 )
+                if isinstance(left.dtype, pd.StringDtype):
+                    # Compare logical content before any storage conversion.
+                    # Neither object nor categorical values reach this branch.
+                    _require(
+                        np.array_equal(left.isna().to_numpy(), right.isna().to_numpy())
+                        and left.tolist() == right.tolist(),
+                        "VALUE:" + label,
+                    )
+                    if left.dtype.storage != right.dtype.storage:
+                        result[column] = right.astype(left.dtype)
+                        normalizations.append(
+                            label
+                            + ":string["
+                            + right.dtype.storage
+                            + "]->string["
+                            + left.dtype.storage
+                            + "]"
+                        )
             _require(
                 _same_series(left, result[column], readback=True), "VALUE:" + label
             )

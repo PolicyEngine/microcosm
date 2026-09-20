@@ -9,6 +9,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 from microcosm.build.spm_input_contract import ROLE_INPUT, UNIVERSE_INPUT
@@ -266,6 +267,107 @@ def test_only_nan_payload_under_unchanged_null_mask_may_normalize():
     known = ~np.isnan(expected_values)
     assert np.array_equal(np.isnan(actual_values), ~known)
     assert actual_values[known].tobytes() == expected_values[known].tobytes()
+
+
+@pytest.mark.parametrize("view", ["full", "pruned", "local"])
+def test_arrow_string_readback_compares_content_and_reports_storage(view):
+    _, candidate, _ = _case(view)
+    tables = _logical_tables(candidate)
+    storage_changes = []
+    option_before = pd.options.mode.string_storage
+    for entity, column in (("household", "county_fips"), ("spm_unit", UNIVERSE_INPUT)):
+        tables[entity][column] = tables[entity][column].astype(
+            pd.StringDtype(storage="pyarrow", na_value=pd.NA)
+        )
+        storage_changes.append(f"{entity}.{column}:string[pyarrow]->string[python]")
+    snapshots = {entity: table.copy(deep=True) for entity, table in tables.items()}
+    actual, normalizations = readback.verify_policyengine_h5_readback(
+        candidate, tables, _period(), period=2024
+    )
+    assert normalizations == (
+        f"person.{ROLE_INPUT}:bool->boolean",
+        *storage_changes,
+    )
+    assert pd.options.mode.string_storage == option_before
+    for entity in candidate.entities:
+        pd.testing.assert_frame_equal(actual.table(entity), candidate.table(entity))
+        pd.testing.assert_frame_equal(tables[entity], snapshots[entity])
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "value",
+        "mask",
+        "order",
+        "object",
+        "category",
+        "numeric",
+        "nan_policy",
+        "arrow_dtype",
+    ],
+)
+def test_arrow_storage_does_not_hide_changed_strings_or_wrong_dtype(change):
+    _, candidate, _ = _case()
+    tables = _logical_tables(candidate)
+    column = tables["spm_unit"][UNIVERSE_INPUT].astype(
+        pd.StringDtype(storage="pyarrow", na_value=pd.NA)
+    )
+    if change == "value":
+        column.iloc[0] = "OUTSIDE"
+    elif change == "mask":
+        column.iloc[0] = pd.NA
+    elif change == "order":
+        column = column.iloc[::-1].reset_index(drop=True)
+    elif change in ("object", "category"):
+        column = column.astype(change)
+    elif change == "numeric":
+        column = pd.Series([0, 1, 2, 3], dtype=np.int64)
+    elif change == "arrow_dtype":
+        column = column.astype(pd.ArrowDtype(pa.string()))
+    else:
+        column = column.astype(pd.StringDtype(storage="pyarrow", na_value=np.nan))
+    tables["spm_unit"][UNIVERSE_INPUT] = column
+    with pytest.raises(readback.PolicyEngineH5ReadbackError):
+        readback.verify_policyengine_h5_readback(
+            candidate, tables, _period(), period=2024
+        )
+
+
+def test_arrow_source_is_still_refused_before_writer(tmp_path):
+    parent, candidate, arguments = _case()
+    for frame in (parent, candidate):
+        frame.table("spm_unit")[UNIVERSE_INPUT] = frame.table("spm_unit")[
+            UNIVERSE_INPUT
+        ].astype(pd.StringDtype(storage="pyarrow", na_value=pd.NA))
+    writer = _InventedWriter()
+    with pytest.raises(
+        readback.PolicyEngineH5ReadbackError, match="H5_UNSUPPORTED_DTYPE"
+    ):
+        readback.write_verified_policyengine_h5_export(
+            parent, candidate, writer, tmp_path / "export.h5", **arguments
+        )
+    assert writer.calls == []
+
+
+@pytest.mark.parametrize("view", ["full", "pruned", "local"])
+def test_mocked_arrow_readback_retains_parent_comparison(tmp_path, monkeypatch, view):
+    parent, candidate, arguments = _case(view)
+    tables = _mock_reader(monkeypatch, candidate)
+    tables["spm_unit"][UNIVERSE_INPUT] = tables["spm_unit"][UNIVERSE_INPUT].astype(
+        pd.StringDtype(storage="pyarrow", na_value=pd.NA)
+    )
+    receipt = readback.write_verified_policyengine_h5_export(
+        parent, candidate, _InventedWriter(), tmp_path / "export.h5", **arguments
+    )
+    assert receipt.normalizations == (
+        f"person.{ROLE_INPUT}:bool->boolean",
+        f"spm_unit.{UNIVERSE_INPUT}:string[pyarrow]->string[python]",
+    )
+    assert tables["spm_unit"][UNIVERSE_INPUT].dtype.storage == "pyarrow"
+    assert (
+        receipt.source_ancestry_verified is False and receipt.release_eligible is False
+    )
 
 
 @pytest.mark.parametrize(
