@@ -339,8 +339,9 @@ def _compare_amount(ready, positions, name, literals):
     return field
 
 
-def qualify_current_asec_child_support(preparation):
+def qualify_current_asec_child_support(preparation, *, full_original=False):
     """Borrow the original preparation, capture once, and requalify before return."""
+    require(type(full_original) is bool, "FULL_ORIGINAL_OPTION")
     source = routing.source
     require(
         type(preparation) is source.AuthenticatedSurveyPopulationPreparation,
@@ -432,6 +433,10 @@ def qualify_current_asec_child_support(preparation):
     out = basis.loc[native_ids].copy()
     out["native_person_id"] = native_ids
     out.index = pd.Index(selected.person_id.to_numpy(), name="person_id")
+    if full_original:
+        out = basis.copy(deep=True)
+        out["native_person_id"] = basis.index.to_numpy(copy=True)
+        out.index = pd.Index(basis.index, name="person_id")
     literals = ordered.copy()
     literals.index = basis.index.copy()
     evidence = {
@@ -465,6 +470,10 @@ def qualify_current_asec_child_support(preparation):
         "source_admission_issued": False,
         "release_eligible": False,
     }
+    if full_original:
+        evidence["selected_rows"] = len(selected)
+        evidence["returned_rows"] = len(out)
+        evidence["person_axis"] = "full_original_current_asec_native_person_id"
     # Freeze detached JSON-compatible metadata before its seal; do not retain the
     # module's mutable constant dictionaries inside a returned descriptive view.
     result = CurrentAsecChildSupportValues(
