@@ -647,6 +647,94 @@ def artifact_root(tmp_path: Path) -> Path:
     return directory
 
 
+@pytest.fixture
+def annual_release(release_dir, artifact_root):
+    from .test_annual_projections import _h5, add_annual_extension
+
+    dataset = artifact_root / "populace_us_2024.h5"
+    _h5(dataset, 2024)
+    sha = _sha256(dataset)
+    path = release_dir / "build_manifest.json"
+    build = json.loads(path.read_text())
+    build["dataset"]["sha256"] = sha
+    path.write_text(json.dumps(build))
+    path = release_dir / "release_manifest.json"
+    manifest = json.loads(path.read_text())
+    manifest["artifacts"]["populace_us_2024"]["sha256"] = sha
+    path.write_text(json.dumps(manifest))
+    return add_annual_extension(release_dir, artifact_root)
+
+
+def test_annual_cut_passes_real_release_contract(
+    release_dir, artifact_root, annual_release
+):
+    prepared = release_module.prepare_release(
+        release_dir,
+        artifact_root=artifact_root,
+        tag_name=annual_release,
+        update_latest=False,
+    )
+    assert prepared.tag == annual_release
+    assert {"annual_manifest.json", "annual_acceptance.json"}.issubset(
+        prepared.filenames
+    )
+    assert {"annual_2025.h5", "populace_us_2024.h5"}.issubset(prepared.root_artifacts)
+
+
+def test_annual_cut_uploads_exact_artifacts_without_latest(
+    hub, release_dir, artifact_root, annual_release
+):
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        tag_name=annual_release,
+        update_latest=False,
+    )
+    uploads = dict(hub.uploads)
+    assert uploads["annual_2025.h5"] == (artifact_root / "annual_2025.h5").read_bytes()
+    assert (
+        uploads["populace_us_2024.h5"]
+        == (artifact_root / "populace_us_2024.h5").read_bytes()
+    )
+    for name in (
+        "annual_manifest.json",
+        "annual_acceptance.json",
+        "projection_2025.json",
+        "release_manifest.json",
+    ):
+        assert (
+            uploads[f"releases/{release_dir.name}/{name}"]
+            == (release_dir / name).read_bytes()
+        )
+    assert hub.tags == [{"tag": annual_release, "revision": "commit-1"}]
+    assert LATEST_POINTER_PATH not in uploads
+    assert LATEST_EVIDENCE_POINTER_PATH not in uploads
+
+
+@pytest.mark.parametrize(
+    "option", ["latest", "wrong_tag", "absent_annual", "invalid_base"]
+)
+def test_annual_cut_preserves_publisher_and_base_guards(
+    release_dir, artifact_root, annual_release, option
+):
+    path = release_dir / "release_manifest.json"
+    manifest = json.loads(path.read_text())
+    if option == "absent_annual":
+        del manifest["metadata"]
+        path.write_text(json.dumps(manifest))
+    elif option == "invalid_base":
+        (release_dir / "calibration_diagnostics.json").write_text("{}")
+    with pytest.raises((ReleaseContractError, ValueError)):
+        release_module.prepare_release(
+            release_dir,
+            artifact_root=artifact_root,
+            tag_name=release_dir.name if option == "wrong_tag" else annual_release,
+            update_latest=option == "latest",
+        )
+
+
 def test_pointer_payload_names_every_contract_file() -> None:
     payload = latest_pointer_payload(RELEASE_ID, updated_at="2026-06-11T13:53:15+00:00")
     assert payload["schema_version"] == LATEST_POINTER_SCHEMA_VERSION
@@ -1118,7 +1206,9 @@ def test_per_cut_artifact_revision_publishes_matching_tag_without_latest(
     for artifact in manifest["artifacts"].values():
         artifact["revision"] = cut_tag
     manifest_path.write_text(json.dumps(manifest))
-    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+    )
 
     publish_release(
         release_dir,
@@ -1145,7 +1235,9 @@ def test_per_cut_artifact_revision_refuses_dangling_default_tag(
     for artifact in manifest["artifacts"].values():
         artifact["revision"] = cut_tag
     manifest_path.write_text(json.dumps(manifest))
-    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+    )
 
     with pytest.raises(ValueError, match="uniform per-cut artifact revision"):
         publish_release(
@@ -1172,7 +1264,9 @@ def test_unreadable_artifact_revisions_refuse_instead_of_vanishing(
     for artifact in manifest["artifacts"].values():
         artifact["revision"] = 123
     manifest_path.write_text(json.dumps(manifest))
-    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+    )
 
     with pytest.raises(ValueError, match="missing or non-string revisions"):
         publish_release(
@@ -1195,7 +1289,9 @@ def test_empty_artifact_revisions_refuse_publication(
     manifest = json.loads(manifest_path.read_text())
     manifest["artifacts"] = {}
     manifest_path.write_text(json.dumps(manifest))
-    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+    )
 
     with pytest.raises(ValueError, match="declares no artifact revisions"):
         publish_release(
@@ -1223,7 +1319,9 @@ def test_per_cut_tag_refuses_latest_promotion(
     for artifact in manifest["artifacts"].values():
         artifact["revision"] = cut_tag
     manifest_path.write_text(json.dumps(manifest))
-    monkeypatch.setattr(release_module, "validate_release_dir", lambda _path: None)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+    )
 
     with pytest.raises(ValueError, match="inspect-only"):
         publish_release(

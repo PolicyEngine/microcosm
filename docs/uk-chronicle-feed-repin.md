@@ -68,3 +68,6 @@ moved the rows to `chronicle.consumer_fact.v3`, which adds the publisher's
 `geography.name` to every fact (the label the hierarchy needs for constituencies
 and local authorities, microcosm#920) and brought the council taxbase packages
 for England, Wales and Scotland (266,390 rows); the `ec20085` re-pin (#890 PR-S, chronicle #269/#270 via PR #271) brought the domestic energy facts the energy stage levels and prices against (DESNZ Energy Trends domestic consumption, subnational consumption and meter counts, QEP average prices paid, NEED 2024, ONS 04.5 sub-classes) and the census central-heating tables (275,698 rows).
+The `c5e5bf8` re-pin (microcosm#725, chronicle #273, on top of `ec20085`) then brought the HMRC CGT
+Tables 7, 8 and 9 (asset type, residential property, carried interest), 276,205 rows, with no
+compiled value moving on either surface.

@@ -100,7 +100,14 @@ see README "Releasing & alerts". Publication also refuses a release whose
 build recorded staging telemetry that never reached its repo
 (`--allow-missing-staging` overrides); a build that declared `--no-staging`
 publishes without the flag. Never publish or promote artifacts as a side
-effect of another task.
+effect of another task. A UK rowwise run's **staged** bundle
+(`staged/<run_id>/` in the private repository, written by the build itself)
+is inspection evidence, not a release: it never moves `releases/` or
+`latest.json` and is not loadable through the certified loader. The build's
+default is to upload that bundle (hundreds of megabytes of licensed microdata)
+to the private repository; when you run `tools/build_uk_rowwise_candidate.py`
+yourself, pass `--staging-local-only` unless the operator asked for a staged
+upload.
 
 US fiscal builds require the NSECE childcare-attendance stage
 (`--childcare-attendance-household-tsv`, `--childcare-attendance-calendar-tsv`,
@@ -136,6 +143,17 @@ not weaken the exact-k manifest arm or authorize publication by itself.
 A sealed deny-list in `microcosm.build.us_runtime.h5_io` overrides this opt-in
 for known-excluded publications while preserving their scoring-only diagnostic
 path.
+
+The independent US annual static-aging candidate builder lives in
+`microcosm.build.us_annual_static_aging`; it consumes a pinned published parent
+and writes local annual H5 files without running the base graph or publishing.
+See [the annual candidate guide](docs/us-annual-static-aging.md). Its completion
+manifest is build evidence, not release certification.
+Optional annual release metadata invokes additional artifact, identity, and
+acceptance checks within the normal release gates. Annual cuts use one pinned
+`<base_release>-annual-<YYYYMMDDTHHMMSSZ>-<hex8>` tag and cannot update latest
+pointers. Qualify source-enrichment bases before adding annual metadata; use
+the candidate guide's qualification order and tag-only publication route.
 
 ## Root journals are history, not state
 

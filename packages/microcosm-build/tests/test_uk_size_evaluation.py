@@ -571,6 +571,57 @@ def test_area_support_and_gate_tables(tmp_path: Path) -> None:
     assert gate_table(run)[-1]["status"] == "absent"
 
 
+def test_run_acceptance_ignores_staging_evidence_and_sidecars(tmp_path: Path) -> None:
+    """The staging lane appends manifest blocks and two sidecars; acceptance is unmoved."""
+
+    path = _write_run_dir(tmp_path, "candidate", size_run=True)
+    before = run_acceptance(
+        load_run(path, label="candidate"),
+        expected_households=6,
+        expected_pool=30,
+        expected_epochs=10,
+    )
+    manifest_path = path / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["staging_delivery"] = {
+        "contract_version": 2,
+        "enabled": True,
+        "mode": "local_only",
+        "run_id": "uk-local-candidate-f100-s7-20260917T180000Z-0badcafe",
+        "configured_repository": None,
+        "upload_attempts": 0,
+        "upload_successes": 0,
+        "read_back": "not_requested",
+        "last_error_code": None,
+        "opt_out_reason": None,
+    }
+    manifest["staged_dataset"] = {
+        "contract_version": 1,
+        "mode": "local_only",
+        "repository": None,
+        "prefix": "staged/uk-local-candidate-f100-s7-20260917T180000Z-0badcafe",
+        "run_id": "uk-local-candidate-f100-s7-20260917T180000Z-0badcafe",
+        "revision": None,
+        "status": "skipped",
+        "error_code": None,
+        "opt_out_reason": None,
+        "files": {"microcosm_uk_2025_local.h5": {"sha256": "0" * 64, "bytes": 1}},
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (path / "sha256sums.txt").write_text(f"{'0' * 64}  microcosm_uk_2025_local.h5\n")
+    (path / "staged_manifest.json").write_text("{}")
+    after = run_acceptance(
+        load_run(path, label="candidate"),
+        expected_households=6,
+        expected_pool=30,
+        expected_epochs=10,
+    )
+    assert after["passed"] == before["passed"]
+    assert [(row["id"], row["status"]) for row in after["checks"]] == [
+        (row["id"], row["status"]) for row in before["checks"]
+    ]
+
+
 def test_run_acceptance_statuses_and_bad_digest(tmp_path: Path) -> None:
     path = _write_run_dir(tmp_path, "candidate", size_run=True)
     run = load_run(path, label="candidate")

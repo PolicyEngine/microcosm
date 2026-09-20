@@ -30,6 +30,11 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 
+from microcosm.build.staging_v2 import (
+    StagingContractError,
+    disabled_staging_delivery,
+    validate_staging_delivery,
+)
 from microcosm.build.uk_runtime.release_identity import UK_DENSE_RELEASE_ID
 from microcosm.data.contract import (
     _check_uk_incumbent_surface_evaluation,
@@ -192,6 +197,33 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     )
     outputs = _mapping(manifest.get("outputs"), "manifest.outputs")
     identity = _mapping(manifest.get("identity"), "manifest.identity")
+    # The national assembler's rule: a release carries the staging telemetry
+    # receipt of the run it came from, and publication refuses a release
+    # whose run intended to stage and delivered nothing.
+    raw_staging_delivery = manifest.get("staging_delivery")
+    if not isinstance(raw_staging_delivery, Mapping):
+        if not args.allow_missing_staging:
+            raise SystemExit(
+                "error: build record is missing valid staging-delivery evidence "
+                "(a run built before the staging lane needs --allow-missing-staging)"
+            )
+        # An explicit, recorded opt-out mirrors publication's override: the
+        # build manifest then says why no telemetry exists, instead of
+        # nothing at all. Invalid evidence is still refused.
+        manifest = {
+            **manifest,
+            "staging_delivery": disabled_staging_delivery(
+                "assembled with --allow-missing-staging: the run predates "
+                "staging telemetry"
+            ),
+        }
+        raw_staging_delivery = manifest["staging_delivery"]
+    try:
+        validate_staging_delivery(raw_staging_delivery)
+    except StagingContractError as error:
+        raise SystemExit(
+            f"error: invalid staging-delivery evidence: {error}"
+        ) from error
 
     def output_path(key: str) -> Path:
         entry = _mapping(outputs.get(key), f"manifest.outputs.{key}")
@@ -412,6 +444,11 @@ def _stage_and_finalize(
         shutil.copyfile(source, release_dir / name)
     identity = _mapping(manifest.get("identity"), "identity")
     parameters = _mapping(manifest.get("parameters"), "parameters")
+    # Validated once more here so the copy into build_manifest.json is the
+    # normalized version 2 object, whatever the caller handed over.
+    staging_delivery = validate_staging_delivery(
+        _mapping(manifest.get("staging_delivery"), "staging_delivery")
+    )
     solve = _mapping(manifest.get("solve"), "solve")
     fit = _mapping(manifest.get("fit"), "fit")
     weights = _mapping(manifest.get("weights"), "weights")
@@ -589,6 +626,7 @@ def _stage_and_finalize(
         "attempt_id": attempt_id,
         "cut_tag": cut_tag,
         "created_at": created_at,
+        "staging": dict(staging_delivery),
     }
     _write_json(release_dir / "build_manifest.json", build_manifest)
 
@@ -728,6 +766,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="where the published H5 is cloned (default: beside the candidate)",
     )
     parser.add_argument("--cut-tag")
+    parser.add_argument(
+        "--allow-missing-staging",
+        action="store_true",
+        help=(
+            "assemble a run built before staging telemetry existed, recording a "
+            "disabled-staging opt-out with this reason in build_manifest.json"
+        ),
+    )
     return parser.parse_args(argv)
 
 

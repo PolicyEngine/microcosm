@@ -15,6 +15,7 @@ from microcosm.build.ledger_targets import (
     hierarchy_seed_from_catalog,
     ledger_target_registry_parity_report,
     period_values_semantically_equal,
+    reference_fact_selectors,
     select_ledger_targets,
     select_ledger_targets_from_jsonl,
     target_spec_from_ledger_reference,
@@ -4394,3 +4395,295 @@ def test__given_an_aliased_row__then_hierarchy_keeps_the_roster_code_and_the_nam
     assert spec.hierarchy.geography.id == "E08000016"
     assert spec.hierarchy.geography.label == "Barnsley"
     assert spec.metadata["ledger_geography_id"] == "E08000038"
+
+
+def test__given_numeric_universe_constraints__then_band_edges_are_stamped_as_filters() -> (
+    None
+):
+    # HMRC's CGT size-of-gain and age tables publish a band as a categorical
+    # dimension plus explicit numeric constraints; the edges must reach the
+    # ``ledger_filter_*_lower_bound`` vocabulary the band materialization reads.
+    fact = _consumer_fact_row_for_period(2024, value=73_000)
+    fact["dimensions"] = {"cgt_gain_band": "gain_3000_to_5999"}
+    fact["universe_constraints"] = {
+        "domain": "capital_gains_tax",
+        "constraints": [
+            {"operator": "<", "role": "filter", "value": 6000, "variable": "cgt_gain"},
+            {
+                "operator": "==",
+                "role": "filter",
+                "value": "gain_3000_to_5999",
+                "variable": "cgt_gain_band",
+            },
+            {"operator": ">=", "role": "filter", "value": 3000, "variable": "cgt_gain"},
+        ],
+    }
+    reference = LedgerTargetReference(
+        name="cgt gains band 3000",
+        ledger_selector={"source_name": "irs_soi"},
+        entity="person",
+        measure="person_count",
+        period=2024,
+    )
+
+    registry = compile_ledger_target_references([fact], [reference], country="uk")
+
+    metadata = registry.specs[0].metadata
+    assert metadata["ledger_filter_cgt_gain_band"] == "gain_3000_to_5999"
+    assert metadata["ledger_filter_cgt_gain_lower_bound"] == "3000"
+    assert metadata["ledger_filter_cgt_gain_upper_bound"] == "6000"
+    assert "ledger_filter_cgt_gain_band_lower_bound" not in metadata
+
+
+def test__given_bound_already_a_dimension__then_constraint_does_not_restamp_it() -> (
+    None
+):
+    fact = _consumer_fact_row_for_period(2024, value=10.0)
+    fact["dimensions"] = {"total_income_lower_bound": 12570}
+    fact["universe_constraints"] = {
+        "domain": "personal_incomes",
+        "constraints": [
+            {
+                "operator": "==",
+                "role": "filter",
+                "value": 12570,
+                "variable": "total_income_lower_bound",
+            },
+            {
+                "operator": ">=",
+                "role": "filter",
+                "value": 12570,
+                "variable": "total_income",
+            },
+            {"operator": ">", "role": "filter", "value": "n/a", "variable": "ignored"},
+        ],
+    }
+    reference = LedgerTargetReference(
+        name="spi band",
+        ledger_selector={"source_name": "irs_soi"},
+        entity="person",
+        measure="person_count",
+        period=2024,
+    )
+
+    registry = compile_ledger_target_references([fact], [reference], country="uk")
+
+    metadata = registry.specs[0].metadata
+    assert metadata["ledger_filter_total_income_lower_bound"] == "12570"
+    # A constraint on a different variable adds its own edge; a non-numeric
+    # constraint adds nothing.
+    assert metadata["ledger_filter_total_income_lower_bound"] == "12570"
+    assert "ledger_filter_ignored_lower_bound_exclusive" not in metadata
+
+
+def _ratio_fact(
+    *,
+    key: str,
+    measure_id: str,
+    value: float,
+    level: str,
+    geography_id: str,
+    period: int = 2024,
+) -> dict:
+    fact = _consumer_fact_row_for_period(period, value=value)
+    fact["aggregate_fact_key"] = f"ledger.aggregate_fact.v2:{key}"
+    fact["semantic_fact_key"] = f"ledger.semantic_fact.v2:{key}"
+    fact["layout"]["measure_id"] = measure_id
+    fact["geography"] = {
+        "level": level,
+        "id": geography_id,
+        "name": geography_id,
+        "vintage": "current",
+    }
+    return fact
+
+
+def _ratio_facts(
+    *, base: float = 113_000, numerator: float = 551_000, denominator: float = 584_000
+) -> list[dict]:
+    return [
+        _ratio_fact(
+            key="london-total",
+            measure_id="taxpayers_total",
+            value=base,
+            level="region",
+            geography_id="E12000007",
+        ),
+        _ratio_fact(
+            key="uk-individuals",
+            measure_id="individuals_count",
+            value=numerator,
+            level="country",
+            geography_id="K02000001",
+        ),
+        _ratio_fact(
+            key="uk-total",
+            measure_id="total_taxpayers",
+            value=denominator,
+            level="country",
+            geography_id="K02000001",
+        ),
+    ]
+
+
+def _ratio_reference(**overrides) -> LedgerTargetReference:
+    values = {
+        "name": "cgt taxpayers by region, London",
+        "ledger_selector": {
+            "source_name": "irs_soi",
+            "source_measure_id": "taxpayers_total",
+            "geography_level": "region",
+            "geography_id": "E12000007",
+            "period_type": "tax_year",
+            "period_value": 2024,
+        },
+        "value_operation": "scaled_by_ratio",
+        "value_operands": (
+            {"role": "base"},
+            {
+                "role": "numerator",
+                "source_measure_id": "individuals_count",
+                "geography_level": "country",
+                "geography_id": "K02000001",
+            },
+            {
+                "role": "denominator",
+                "source_measure_id": "total_taxpayers",
+                "geography_level": "country",
+                "geography_id": "K02000001",
+            },
+        ),
+        "entity": "person",
+        "measure": "hmrc/cgt_taxpayers_by_region@E12000007",
+        "period": 2025,
+    }
+    values.update(overrides)
+    return LedgerTargetReference(**values)
+
+
+def test__given_scaled_by_ratio_reference__then_cell_is_translated_by_the_quotient() -> (
+    None
+):
+    # HMRC Table 5 publishes CGT taxpayers by region including trusts while
+    # the national target is individuals; the cell is restated on the
+    # individuals basis by the Table 1 individuals/total share, and every
+    # input is recorded rather than folded into a hand-typed factor.
+    facts = _ratio_facts()
+    reference = _ratio_reference()
+
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(113_000 * 551_000 / 584_000)
+    metadata = spec.metadata
+    assert metadata["ledger_value_formula"] == "base * numerator / denominator"
+    assert metadata["ledger_value_base"] == "113000.0"
+    assert metadata["ledger_value_numerator"] == "551000.0"
+    assert metadata["ledger_value_denominator"] == "584000.0"
+    assert metadata["ledger_value_ratio"] == repr(551_000 / 584_000)
+    # The cell keeps its own identity: the national operands translate it,
+    # they do not relocate it.
+    assert metadata["ledger_geography_level"] == "region"
+    assert metadata["ledger_geography_id"] == "E12000007"
+    assert metadata["ledger_aggregate_fact_key"] == (
+        "ledger.aggregate_fact.v2:london-total"
+    )
+    assert json.loads(metadata["ledger_member_fact_keys"]) == [
+        "ledger.aggregate_fact.v2:london-total",
+        "ledger.aggregate_fact.v2:uk-individuals",
+        "ledger.aggregate_fact.v2:uk-total",
+    ]
+
+
+def test__given_scaled_by_ratio_reference__then_operand_selectors_inherit_pins() -> (
+    None
+):
+    selectors = reference_fact_selectors(_ratio_reference())
+
+    assert len(selectors) == 3
+    assert selectors[0] == _ratio_reference().ledger_selector
+    assert selectors[1] == {
+        "source_name": "irs_soi",
+        "period_type": "tax_year",
+        "period_value": 2024,
+        "source_measure_id": "individuals_count",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+    }
+    assert selectors[2]["source_measure_id"] == "total_taxpayers"
+    # A plain reference exposes only its own selector.
+    assert len(reference_fact_selectors(_exact_agi_reference())) == 1
+
+
+@pytest.mark.parametrize(
+    ("numerator", "denominator", "message"),
+    [
+        (584_000, 551_000, r"must lie in \(0, 1\]"),
+        (0, 584_000, r"must lie in \(0, 1\]"),
+        (551_000, 0, "finite positive"),
+    ],
+)
+def test__given_ratio_outside_a_subset_share__then_scaled_by_ratio_refuses(
+    numerator: float, denominator: float, message: str
+) -> None:
+    facts = _ratio_facts(numerator=numerator, denominator=denominator)
+    with pytest.raises(ValueError, match=message):
+        compile_ledger_target_references(facts, [_ratio_reference()], country="uk")
+
+
+def test__given_operand_without_a_fact__then_scaled_by_ratio_refuses() -> None:
+    facts = _ratio_facts()[:2]
+    with pytest.raises(ValueError, match="'denominator' did not resolve exactly once"):
+        compile_ledger_target_references(facts, [_ratio_reference()], country="uk")
+
+
+def test__given_operands_at_another_period__then_scaled_by_ratio_refuses() -> None:
+    facts = _ratio_facts()
+    facts[2] = _ratio_fact(
+        key="uk-total-2023",
+        measure_id="total_taxpayers",
+        value=560_000,
+        level="country",
+        geography_id="K02000001",
+        period=2023,
+    )
+    selector = {
+        key: value
+        for key, value in _ratio_reference().ledger_selector.items()
+        if key not in {"period_type", "period_value"}
+    }
+    reference = _ratio_reference(ledger_selector=selector)
+    with pytest.raises(ValueError, match="same period as the base cell"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
+@pytest.mark.parametrize(
+    ("operands", "message"),
+    [
+        (
+            ({"role": "numerator"}, {"role": "denominator"}),
+            "exactly ordered base/numerator/denominator",
+        ),
+        (
+            (
+                {"role": "base", "geography_id": "E12000001"},
+                {"role": "numerator", "source_measure_id": "a"},
+                {"role": "denominator", "source_measure_id": "b"},
+            ),
+            "takes no overrides",
+        ),
+        (
+            (
+                {"role": "base"},
+                {"role": "numerator"},
+                {"role": "denominator", "source_measure_id": "b"},
+            ),
+            "needs at least one selector field",
+        ),
+    ],
+)
+def test__given_malformed_scaled_by_ratio_operands__then_reference_refuses(
+    operands: tuple, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _ratio_reference(value_operands=operands)

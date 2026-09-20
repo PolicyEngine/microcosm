@@ -105,8 +105,11 @@ uv run --no-sync python tools/assemble_uk_dense_release_dir.py \
 ```
 
 Assembly verifies the hash join (every manifest output against its bytes, the
-spine against its pin, the gate report against the Logbook build id), re-runs
-the candidate pre-flight, mints the cut tag
+spine against its pin, the gate report against the Logbook build id), requires
+the manifest's `staging_delivery` receipt (the run's version 2 staging
+telemetry evidence, copied into `build_manifest.json` as `staging` so
+publication can apply its undelivered-staging refusal, as on the national
+lane), re-runs the candidate pre-flight, mints the cut tag
 `microcosm-uk-2024-25-dense-<YYYYMMDDTHHMMSSZ>-<uuid8>` from the run's attempt
 id, clones the H5 beside itself as `microcosm_uk_2025_dense.h5`, stages
 `build_manifest.json`, `release_manifest.json`, `calibration_diagnostics.json`,

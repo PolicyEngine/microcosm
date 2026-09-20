@@ -69,6 +69,7 @@ def _dtype_family_table(
     missing_values = {
         "mixed": [True, pd.NA, False],
         "all_missing": [pd.NA, pd.NA, pd.NA],
+        "complete": [True, False, True],
     }[nullable_case]
     return pd.DataFrame(
         {
@@ -372,6 +373,29 @@ def _round_trip_childcare_candidate(
     return _semantic_observation(source, before, loaded)
 
 
+def _round_trip_us_annual_static_aging(
+    tmp_path: Path, nullable_case: str
+) -> BooleanRoundTrip:
+    pytest.importorskip("policyengine_us")
+    from microcosm.build.us_annual_static_aging import _write_year
+
+    source = _dtype_family_table(nullable_case)
+    before = source.copy(deep=True)
+    frame = _us_frame(source)
+    path = tmp_path / "annual.h5"
+    try:
+        _write_year(
+            path, {entity: frame.table(entity) for entity in frame.entities}, 2025
+        )
+    finally:
+        pd.testing.assert_frame_equal(
+            source, before, check_exact=True, check_dtype=True
+        )
+    with pd.HDFStore(path, "r") as store:
+        loaded = read_frame_table(store, "person")
+    return _semantic_observation(source, before, loaded)
+
+
 ROUND_TRIP_ADAPTERS: dict[str, RoundTripAdapter] = {
     "nsece_childcare_native_candidate": _round_trip_childcare_candidate,
     "frame_checkpoint": _round_trip_frame_checkpoint,
@@ -379,6 +403,7 @@ ROUND_TRIP_ADAPTERS: dict[str, RoundTripAdapter] = {
     "uk_single_year_h5": _round_trip_uk_single_year,
     "axiom_entity_tables": _round_trip_axiom,
     "policyengine_us_single_year": _round_trip_policyengine_us,
+    "us_annual_static_aging": _round_trip_us_annual_static_aging,
     "legacy_us_two_spine": _round_trip_legacy_us,
     "acs_local_lean_checkpoint": _round_trip_acs_lean,
     "fiscal_target_frame_checkpoint": _round_trip_fiscal_checkpoint,
@@ -451,10 +476,10 @@ def test_registry_classifies_every_writable_production_hdf_site() -> None:
     assert _discover_writable_hdf_sites() == classified
 
 
-def test_registry_has_exactly_nine_unique_frame_table_serializers() -> None:
-    assert len(FRAME_TABLE_SERIALIZERS) == 9
-    assert len({spec.serializer_id for spec in FRAME_TABLE_SERIALIZERS}) == 9
-    assert len({spec.writer.key for spec in FRAME_TABLE_SERIALIZERS}) == 9
+def test_registry_has_exactly_ten_unique_frame_table_serializers() -> None:
+    assert len(FRAME_TABLE_SERIALIZERS) == 10
+    assert len({spec.serializer_id for spec in FRAME_TABLE_SERIALIZERS}) == 10
+    assert len({spec.writer.key for spec in FRAME_TABLE_SERIALIZERS}) == 10
 
 
 def test_round_trip_adapter_registry_exactly_matches_serializer_registry() -> None:
@@ -474,6 +499,13 @@ def test_registered_serializer_round_trips_nullable_boolean_dtype_family(
     nullable_case: str,
     tmp_path: Path,
 ) -> None:
+    if serializer.nullable_boolean_storage == "numpy_bool_missing_rejected_v1":
+        with pytest.raises(
+            ValueError, match="Annual native layout requires table-format"
+        ):
+            ROUND_TRIP_ADAPTERS[serializer.serializer_id](tmp_path, nullable_case)
+        assert not (tmp_path / "annual.h5").exists()
+        return
     observation = ROUND_TRIP_ADAPTERS[serializer.serializer_id](tmp_path, nullable_case)
 
     # Serializers may materialize a boundary copy, never rewrite the source.
@@ -524,6 +556,16 @@ def test_registered_serializer_round_trips_nullable_boolean_dtype_family(
         assert loaded[MISSING_COLUMN].dtype == np.dtype(object)
         missing_scalars = loaded.loc[loaded[MISSING_COLUMN].isna(), MISSING_COLUMN]
         assert all(value is pd.NA for value in missing_scalars)
+
+
+def test_annual_serializer_preserves_supported_complete_boolean_columns(tmp_path):
+    observation = _round_trip_us_annual_static_aging(tmp_path, "complete")
+    for column in (NATIVE_COLUMN, COMPLETE_COLUMN, MISSING_COLUMN):
+        assert observation.loaded[column].dtype == np.dtype(np.bool_)
+        np.testing.assert_array_equal(
+            observation.loaded[column],
+            observation.source[column].to_numpy(dtype=np.bool_),
+        )
 
 
 def test_policyengine_us_adapter_owns_its_registered_hdf_boundary() -> None:

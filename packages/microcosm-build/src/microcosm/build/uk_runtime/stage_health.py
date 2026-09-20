@@ -53,6 +53,8 @@ def uk_stage_health_gate(
         return _cgt_band_donor_support_gate(stage, evidence, parameters)
     if check == "cgt_imputation_summary":
         return _cgt_imputation_summary_gate(stage, evidence, parameters)
+    if check == "cgt_asset_type_summary":
+        return _cgt_asset_type_summary_gate(stage, evidence, parameters)
     if check == "latent_attribute_realization":
         return _latent_attribute_realization_gate(stage, evidence)
     if check == "household_composition":
@@ -786,6 +788,129 @@ def _cgt_imputation_summary_gate(
         if value < 0.0:
             failures.append(f"{stage}: {key} is negative.")
     details = {"band_rows": len(rows), "taxpayer_mass": evidence.get("taxpayer_mass")}
+    # The conditioned redraw (microcosm#725) reports its rake and fallback;
+    # a receipt that carries them must carry them finite and non-negative.
+    # No threshold is held yet: the first measured builds set it.
+    allocation = evidence.get("allocation")
+    if allocation is not None:
+        if not isinstance(allocation, Mapping):
+            raise ValueError(f"{stage}.allocation must be a mapping.")
+        rake = allocation.get("rake")
+        if not isinstance(rake, Mapping):
+            raise ValueError(f"{stage}.allocation.rake must be a mapping.")
+        for key in (
+            "ipf_max_abs_margin_error",
+            "gains_margin_max_abs_error",
+            "ipf_zero_seed_cells",
+        ):
+            value = _finite_number(
+                rake.get(key), label=f"{stage}.allocation.rake.{key}"
+            )
+            if value < 0.0:
+                failures.append(f"{stage}: allocation.rake.{key} is negative.")
+        released = _finite_number(
+            allocation.get("fallback_released_mass"),
+            label=f"{stage}.allocation.fallback_released_mass",
+        )
+        if released < 0.0:
+            failures.append(f"{stage}: allocation.fallback_released_mass is negative.")
+        details["ipf_max_abs_margin_error"] = rake.get("ipf_max_abs_margin_error")
+        details["gains_margin_max_abs_error"] = rake.get("gains_margin_max_abs_error")
+        details["fallback_released_mass"] = released
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _cgt_asset_type_summary_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The residential flag realised the Table 8a totals it was solved to.
+
+    The stage solves the logistic exactly in expectation and realises it by
+    systematic sampling. This gate holds the solve to its targets, the
+    realised weighted count to within one carrier row's weight of the
+    expectation (``max_liable_weight``, the weighted systematic walk's
+    deterministic bound; about 3,300 people at full scale), and the realised
+    gains to the wider of the reviewed relative band and a multiple of the
+    Bernoulli sigma the stage reports, which overstates a systematic draw's
+    noise and so is a conservative envelope, so a tiny frame is judged by its
+    noise floor and a production frame by the band. Every liable gainer must
+    carry an asset type and the composition receipt must be finite
+    (microcosm#725).
+    """
+
+    check = "cgt_asset_type_summary"
+    failures: list[str] = []
+    residential = _mapping(evidence.get("residential"), label=f"{stage}.residential")
+    max_relative = _finite_number(
+        parameters["maximum_relative_deviation"],
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    max_sigma = _finite_number(
+        parameters["maximum_gains_sigma"], label=f"{stage}.maximum_gains_sigma"
+    )
+    max_solve_error = _finite_number(
+        parameters["maximum_solve_relative_error"],
+        label=f"{stage}.maximum_solve_relative_error",
+    )
+    details: dict[str, object] = {}
+
+    def number(key: str) -> float:
+        return _finite_number(residential.get(key), label=f"{stage}.residential.{key}")
+
+    for measure in ("count", "gains"):
+        target = number(f"{measure}_target_individuals_basis")
+        expected = number(f"expected_{measure}")
+        if target <= 0.0:
+            failures.append(f"{stage}: residential {measure} target is not positive.")
+            continue
+        solve_error = abs(expected - target) / target
+        details[f"residential_{measure}_solve_relative_error"] = solve_error
+        if solve_error > max_solve_error:
+            failures.append(
+                f"{stage}: residential {measure} solve error {solve_error} "
+                f"exceeds {max_solve_error}."
+            )
+    count_gap = abs(number("achieved_count") - number("expected_count"))
+    count_bound = number("max_liable_weight") * (1.0 + 1e-9)
+    details["residential_count_gap"] = count_gap
+    if count_gap > count_bound:
+        failures.append(
+            f"{stage}: residential count gap {count_gap} exceeds one person "
+            f"({count_bound})."
+        )
+    gains_target = number("gains_target_individuals_basis")
+    gains_gap = abs(number("achieved_gains") - number("expected_gains"))
+    gains_bound = max(
+        max_relative * gains_target, max_sigma * number("gains_bernoulli_sigma")
+    )
+    details["residential_gains_gap"] = gains_gap
+    details["residential_gains_bound"] = gains_bound
+    if gains_target > 0.0 and gains_gap > gains_bound:
+        failures.append(
+            f"{stage}: residential gains gap {gains_gap} exceeds {gains_bound} "
+            f"(the wider of {max_relative} relative and {max_sigma} sigma)."
+        )
+    counts = _mapping(evidence.get("value_counts"), label=f"{stage}.value_counts")
+    for value, rows in counts.items():
+        if not isinstance(rows, int) or isinstance(rows, bool) or rows < 0:
+            failures.append(f"{stage}: value_counts[{value!r}] is not a row count.")
+    asset_type = _mapping(evidence.get("asset_type"), label=f"{stage}.asset_type")
+    shares = _mapping(
+        asset_type.get("achieved_gains_share"),
+        label=f"{stage}.asset_type.achieved_gains_share",
+    )
+    for name, share in shares.items():
+        value = _finite_number(share, label=f"{stage}.asset_type.{name}")
+        if value < 0.0 or value > 1.0:
+            failures.append(f"{stage}: {name} gains share {value} is not a share.")
+    details["residential_rows"] = residential.get("achieved_rows")
+    details["classified_values"] = sorted(counts)
     return (
         _fail(stage, check, failures, details)
         if failures

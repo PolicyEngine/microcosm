@@ -443,6 +443,23 @@ class RunManifest:
     timestamps, and attached ``Frame`` instances are also outside the
     content-addressed body. Computational reuse continues to use node keys,
     not this run-manifest identity.
+
+    :attr:`source_identities` is attached in the same way: the executor's
+    run-end re-derivation of every declared source's content key, recorded so a
+    reader can see which bytes the run actually finished against. Like
+    ``populations`` and ``mass_ledgers`` it is outside :attr:`key`, outside
+    ``to_json``, and outside every node receipt and cache record.
+
+    :attr:`verification_epoch` is attached the same way again: counts a caller
+    that scoped its own source verification around this run hands in, so a
+    reader can see how many validations the run actually performed rather than
+    inferring it. It is the caller's own mapping and is kept as a live view of
+    it, not a copy, because such a record is finalised when that scope closes --
+    after ``run_graph`` returns and before the caller receives this manifest.
+    That holds for any mapping, not only a ``dict``: the caller's object is
+    wrapped in a read-only proxy over itself, and a mapping type that cannot be
+    wrapped is refused rather than copied into a snapshot that would look live
+    and not be. It holds counts and labels only: no key, digest or path.
     """
 
     country: str
@@ -455,6 +472,12 @@ class RunManifest:
         default_factory=dict, repr=False, compare=False
     )
     mass_ledgers: Mapping[str, tuple[MassRecord, ...]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    source_identities: Mapping[str, str] = field(
+        default_factory=dict, repr=False, compare=False
+    )
+    verification_epoch: Mapping[str, object] = field(
         default_factory=dict, repr=False, compare=False
     )
 
@@ -507,6 +530,50 @@ class RunManifest:
                 )
             mass_ledgers[version_id] = frozen_records
         object.__setattr__(self, "mass_ledgers", MappingProxyType(mass_ledgers))
+        source_identities: dict[str, str] = {}
+        for name, identity in self.source_identities.items():
+            if not isinstance(name, str):
+                raise TypeError("RunManifest.source_identities keys must be strings")
+            if not isinstance(identity, str):
+                raise TypeError("RunManifest.source_identities values must be strings")
+            source_identities[name] = identity
+        object.__setattr__(
+            self, "source_identities", MappingProxyType(source_identities)
+        )
+        verification_epoch = self.verification_epoch
+        if not isinstance(verification_epoch, Mapping):
+            raise TypeError("RunManifest.verification_epoch must be a mapping")
+        for name, value in verification_epoch.items():
+            if not isinstance(name, str):
+                raise TypeError("RunManifest.verification_epoch keys must be strings")
+            if not isinstance(value, (int, str)):
+                raise TypeError(
+                    "RunManifest.verification_epoch values must be integers or strings"
+                )
+        # A live view of the caller's record, deliberately not a copy: see the
+        # class docstring. Values are checked once, here.
+        #
+        # Every mapping is wrapped, not only a dict. `MappingProxyType` takes
+        # any object with the mapping protocol, so wrapping a caller's own
+        # `Mapping` subclass keeps the reference the contract promises, where
+        # `dict(...)` would have taken a snapshot and dropped exactly the
+        # counts the scope finalises after `run_graph` returns. An already
+        # read-only proxy is kept as it is rather than wrapped again.
+        if isinstance(verification_epoch, MappingProxyType):
+            record: Mapping[str, object] = verification_epoch
+        else:
+            try:
+                record = MappingProxyType(verification_epoch)
+            except TypeError as error:
+                # A type registered as a Mapping without implementing the
+                # protocol cannot be held live, and a copy would be a silent
+                # snapshot, so it is refused rather than accepted as one.
+                raise TypeError(
+                    "RunManifest.verification_epoch must be a mapping that "
+                    "supports MappingProxyType, so the manifest can hold it "
+                    "as a live view rather than a copy"
+                ) from error
+        object.__setattr__(self, "verification_epoch", record)
 
     @property
     def content_addressed(self) -> Mapping[str, object]:

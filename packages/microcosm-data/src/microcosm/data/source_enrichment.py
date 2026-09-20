@@ -249,11 +249,20 @@ def validate_source_enrichment_candidate(
     as measurements of the enriched model. Both actual H5 files are mandatory:
     a hand-written preservation receipt is not sufficient evidence.
     """
+    from microcosm.data.annual_projections import validate_annual_projection_extension
     from microcosm.data.h5_enrichment import compare_h5_enrichment
 
     release_dir = Path(release_dir)
     failures: list[str] = []
     manifest = _json(release_dir / "release_manifest.json", failures)
+    try:
+        annual_extension = validate_annual_projection_extension(
+            release_dir, manifest, artifact_root=artifact_root
+        )
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ReleaseContractError(
+            release_dir, [f"annual projection extension: {exc}"]
+        ) from exc
     build = _json(release_dir / "build_manifest.json", failures)
     report = _json(release_dir / SOURCE_ENRICHMENT_FILE, failures)
     if manifest.get("release_type") != SOURCE_ENRICHMENT_RELEASE_TYPE:
@@ -421,11 +430,15 @@ def validate_source_enrichment_candidate(
         SOURCE_PROVENANCE_FILE,
     }
     artifacts = _mapping(manifest.get("artifacts"))
+    annual_artifacts = annual_extension.additional_artifacts if annual_extension else {}
+    revision = annual_extension.revision if annual_extension else release_dir.name
     by_path = {}
     for key, raw in artifacts.items():
         entry = _mapping(raw)
         path = entry.get("path")
-        if not isinstance(path, str) or Path(path).name != path:
+        if not isinstance(path, str) or (
+            key not in annual_artifacts and Path(path).name != path
+        ):
             failures.append(
                 f"source enrichment artifact {key} must use a bare filename"
             )
@@ -435,12 +448,18 @@ def validate_source_enrichment_candidate(
         by_path[path] = entry
         if (
             entry.get("repo_id") != "policyengine/populace-us"
-            or entry.get("revision") != release_dir.name
+            or entry.get("revision") != revision
         ):
             failures.append(
                 f"source enrichment artifact {key} must pin the new repo/tag"
             )
-        local = candidate if path == filename else release_dir / path
+        local = (
+            annual_artifacts[key]
+            if key in annual_artifacts
+            else candidate
+            if path == filename
+            else release_dir / path
+        )
         if (
             local is None
             or not local.is_file()
@@ -461,7 +480,17 @@ def validate_source_enrichment_candidate(
     ):
         failures.append("default_datasets.national must select the enriched native H5")
     if (
-        len([entry for entry in by_path.values() if entry.get("kind") == "microdata"])
+        len(
+            [
+                entry
+                for key, entry in artifacts.items()
+                if _mapping(entry).get("kind") == "microdata"
+                and (
+                    annual_extension is None
+                    or key not in annual_extension.projected_artifacts
+                )
+            ]
+        )
         != 1
     ):
         failures.append(
@@ -505,6 +534,7 @@ def validate_source_enrichment_candidate(
             require_compatibility,
             compatibility_wheels,
             failures,
+            annual_revision=annual_extension.revision if annual_extension else None,
         )
     else:
         failures.append(
@@ -908,6 +938,8 @@ def _check_compatibility(
     require_wheel_proof,
     wheels,
     failures,
+    *,
+    annual_revision: str | None = None,
 ):
     receipt_path = release_dir / COMPATIBILITY_FILE
     receipt = _json(receipt_path, failures)
@@ -931,7 +963,9 @@ def _check_compatibility(
             )
         from microcosm.data.contract import _check_release_manifest
 
-        _check_release_manifest(manifest, release_dir.name, failures)
+        _check_release_manifest(
+            manifest, release_dir.name, failures, annual_revision=annual_revision
+        )
         raw_claims = compatibility.get("publisher_claims")
         claims = _mapping(raw_claims)
         malformed_claims = raw_claims is not None and (

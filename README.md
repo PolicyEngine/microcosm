@@ -70,6 +70,18 @@ and `--childcare-attendance-inherit-outside-domain-baseline`); without them the
 build is refused before calibration. See
 [docs/us-childcare-attendance.md](docs/us-childcare-attendance.md).
 
+The UK commands (`tools/build_uk_frs_spine.py`,
+`tools/calibrate_uk_national_dataset.py`, `tools/build_uk_rowwise_candidate.py`)
+stage version 2 telemetry to `policyengine/populace-uk-staging` under the same
+switch. The rowwise candidate command also **stages the finished dataset
+bundle** it built, dense or exact-count, under `staged/<run_id>/` in the
+private `policyengine/populace-uk-private` repository so the team can inspect
+it without publishing it: `releases/` and `latest.json` are untouched, the
+release contract is not consulted, and a `releasable: false` size run stages
+like any other. Fetch a bundle with `tools/fetch_uk_staged_dataset.py`;
+re-stage a finished run directory with `tools/stage_uk_rowwise_candidate.py`.
+See [docs/uk-staging-operations.md](docs/uk-staging-operations.md).
+
 See [SYSTEM_REQUIREMENTS.md](SYSTEM_REQUIREMENTS.md) for the measured memory,
 disk, and CPU footprint of developing and building locally (and what to budget
 on a build machine — RAM is the binding constraint).

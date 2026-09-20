@@ -383,6 +383,21 @@
       "notes": "Stage-time CGT redraw summary gate wired through the existing UKCGTImputationSummary receipt rather than fabricating a terminal support verdict."
     },
     {
+      "id": "uk_stage_hmrc_cgt_asset_type_spine_summary",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "hmrc_cgt_asset_type_spine",
+        "check": "cgt_asset_type_summary",
+        "maximum_relative_deviation": 0.05,
+        "maximum_gains_sigma": 3.0,
+        "maximum_solve_relative_error": 1e-06
+      },
+      "notes": "Stage-time gate over the CGT asset-type receipt (microcosm#725): the logistic solve reproduces the Table 8a 2024-25 totals on the individuals basis in expectation, the realised residential taxpayer count sits within one carrier row's weight of the expectation (the weighted systematic walk's own bound, max_liable_weight, about 3,300 people at full scale), and the realised residential gains sit within the wider of the reviewed relative band and three Bernoulli sigmas of the draw (an envelope that overstates a systematic draw's noise, so conservative), so a small frame is judged by its noise floor and a production frame by the band. Every liable gainer carries an asset type and the Table 7 composition receipt is finite; the calibration binds the same two totals."
+    },
+    {
       "id": "uk_stage_salary_sacrifice_realization",
       "gate": "stage_health",
       "phase": "transferred",
@@ -626,6 +641,8 @@
           "person.admitted_patient_visits",
           "person.age_started_or_accepted_current_education_or_training",
           "person.attends_private_school_random_draw",
+          "person.capital_gains_asset_type",
+          "person.capital_gains_residential_property",
           "person.care_hours",
           "person.charitable_investment_gifts",
           "person.dla_m_category",
@@ -697,6 +714,18 @@
         ]
       },
       "notes": "The household ONS household-type value must be one of the ten Chronicle ons.household_type value ids the frs_relationships stage declares (the build supplies the declared domain as evidence; the column is a frame input, not a PolicyEngine-UK enum). Evaluated at the assembled boundary like the BRMA enum: membership is a property of the values themselves."
+    },
+    {
+      "id": "uk_capital_gains_asset_type_enum_domain",
+      "gate": "enum_domain",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "parameters": {
+        "columns": [
+          "capital_gains_asset_type"
+        ]
+      },
+      "notes": "The person capital_gains_asset_type value must be one of the eight values the hmrc_cgt_asset_type_spine stage declares (none, sub_aea, the Chronicle Table 7 asset-type value ids); the build supplies the declared domain as evidence because the column is a frame input, not a PolicyEngine-UK enum (microcosm#725). Evaluated at the transferred boundary, after the stage that writes the column has run."
     },
     {
       "id": "uk_uc_deduction_combination_enum_domain",
