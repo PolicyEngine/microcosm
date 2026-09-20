@@ -156,6 +156,9 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "current_asec_unemployment_source.py",  # UC literal -> original ASEC ids.
         "current_survey_amounts.py",  # Validate origin join; fan out to both clones.
         "current_survey_health_source.py",  # Qualify exact ACS/ASEC source rosters.
+        # Full source donor qualification and ACS semantic-gap recipient axis;
+        # no PUF-detail routing, tax treatment or independent source issuance.
+        "current_survey_health_completion.py",
         "current_survey_health_coverage.py",  # Validate the same two-clone join.
         "graph_current_survey_health.py",  # Declare the attachment's identity inputs.
         # Original hours literals and complete native-keyed donor qualification;
@@ -441,6 +444,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "current_survey_health_coverage.py",
         # Authenticated original ACS/ASEC health-coverage observations
         "current_survey_health_source.py",
+        # Optional original-ASEC donor/ACS matrix qualification and modeled gaps.
+        "current_survey_health_completion.py",
         # Pure hours observations/completion and retained original-source owner.
         "current_asec_usual_hours.py",
         "current_survey_hours.py",
@@ -478,6 +483,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "fiscal_leaf_policy.py",
         # Typed source, recode and attachment health graph fragment
         "graph_current_survey_health.py",
+        # Seven real donor fits, original draws and one existing-clone attachment.
+        "graph_current_survey_health_completion.py",
         # Actual source hours recoding and exact two-clone graph attachment.
         "graph_current_survey_hours.py",
         # Retained original pair fanout through the existing exact clone mapping.
@@ -3596,6 +3603,10 @@ _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
         # Fixed qualification fields and declared typed artifact names only.
         "graph_current_survey_spm.py",
         # Schema-declared entities/columns and typed node/artifact/state maps;
+        # Health completion indexes fixed model/feature families and typed
+        # artifact histories; direct provenance reads remain guarded.
+        "graph_current_survey_health_completion.py",
+        # Schema-declared entities/columns and typed node/artifact/state maps;
         # source-specific joins remain in the separately reviewed owners.
         "graph_survey_completion.py",
         "graph_survey_completion_host.py",
@@ -3682,6 +3693,7 @@ def _non_owner_source_spine_accesses(
         "current_survey_spm_source.py",
         "graph_current_survey_spm.py",
         "graph_survey_completion.py",
+        "graph_current_survey_health_completion.py",
         "current_survey_primary_family.py",
         "graph_survey_completion_host.py",
         "native_survey_handoff.py",
