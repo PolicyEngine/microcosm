@@ -118,7 +118,15 @@ def qualify_full_original_amount_donor(
     require(fields and len(fields) == len(set(fields)), "FIELD_ROSTER")
     require(
         set(fields)
-        <= {"UC_VAL", "WC_VAL", "PHIP_VAL", "PMED_VAL", "POTC_VAL", "CSP_VAL"},
+        <= {
+            "UC_VAL",
+            "WC_VAL",
+            "PHIP_VAL",
+            "PMED_VAL",
+            "POTC_VAL",
+            "CSP_VAL",
+            "VET_VAL",
+        },
         "FIELD_ROSTER",
     )
     entry = preparation._checked()
@@ -172,7 +180,11 @@ def qualify_full_original_amount_donor(
         }
     targets = pd.DataFrame({name: values[name] for name in fields}, index=ids)
     receipt_evidence = {}
-    for raw, family in (("UC_VAL", "unemployment"), ("WC_VAL", "workers_compensation")):
+    for raw, family in (
+        ("UC_VAL", "unemployment"),
+        ("WC_VAL", "workers_compensation"),
+        ("VET_VAL", "veterans_benefits"),
+    ):
         if raw not in fields:
             continue
         basis, evidence = receipts._qualify_receipt_amount(
