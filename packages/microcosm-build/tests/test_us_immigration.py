@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -126,6 +128,71 @@ def _stage_spec(
             "outputs": list(US_IMMIGRATION_OUTPUT_COLUMNS),
         }
     )
+
+
+def test_captured_control_stage_uses_existing_parser_without_reloading(monkeypatch):
+    stage = _stage_spec(
+        workers=3.0,
+        students=2.0,
+        anchor=7.0,
+        humanitarian=_humanitarian_block(
+            paroled_one_year={"ukraine": 4.0}, tps={"venezuela": 5.0}
+        ),
+    )
+    calls = []
+
+    def load():
+        calls.append(stage)
+        return stage
+
+    monkeypatch.setattr(immigration_module, "us_immigration_stage_spec", load)
+    expected = us_immigration_controls()
+    assert calls == [stage]
+
+    def refuse_reload():
+        raise AssertionError("captured stage must not reload packaged controls")
+
+    monkeypatch.setattr(immigration_module, "us_immigration_stage_spec", refuse_reload)
+    captured = us_immigration_controls(stage=stage)
+    assert captured == expected
+    assert captured.undocumented.workers == 3.0
+    assert captured.undocumented.sources["undocumented_workers"] == (
+        "https://example.com/workers"
+    )
+    assert [(d.label, d.target, d.source) for d in captured.humanitarian] == [
+        (d.label, d.target, d.source) for d in expected.humanitarian
+    ]
+    assert captured.humanitarian_target("paroled_one_year") == 4.0
+    assert captured.humanitarian_target("tps") == 5.0
+
+
+@pytest.mark.parametrize("derive_count", [0, 2])
+def test_captured_control_stage_requires_one_derive_operation(derive_count):
+    stage = _stage_spec(workers=3.0, students=2.0, anchor=7.0)
+    stage = replace(
+        stage, operations=(stage.operations[0],) + (stage.operations[1],) * derive_count
+    )
+    with pytest.raises(ValueError, match="exactly one"):
+        us_immigration_controls(stage=stage)
+
+
+@pytest.mark.parametrize("field,value", [("target", -1.0), ("source", "")])
+@pytest.mark.parametrize("humanitarian", [False, True])
+def test_captured_control_stage_preserves_target_and_citation_refusals(
+    field, value, humanitarian
+):
+    stage = _stage_spec(workers=3.0, students=2.0, anchor=7.0)
+    params = stage.operations[1].parameters
+    block = (
+        params["humanitarian_status_stocks"]["refugee"]
+        if humanitarian
+        else params["undocumented_workers"]
+    )
+    block[field] = value
+    with pytest.raises(
+        SourceRuntimeError, match="positive|non-negative|source citation"
+    ):
+        us_immigration_controls(stage=stage)
 
 
 def _person_table(rows: list[dict]) -> pd.DataFrame:

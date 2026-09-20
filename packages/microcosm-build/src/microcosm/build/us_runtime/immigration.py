@@ -833,12 +833,20 @@ def _controls_from_parameters(params: Mapping[str, object]) -> ImmigrationContro
     )
 
 
-def us_immigration_controls() -> ImmigrationControls:
-    """Return the controls bound to the packaged immigration manifest stage."""
+def us_immigration_controls(
+    *, stage: SourceStageSpec | None = None
+) -> ImmigrationControls:
+    """Parse controls from a captured stage or the packaged default.
 
+    An explicit stage avoids another manifest read. Its caller owns source
+    qualification and must bind the consumed stage/control values; accepting
+    a typed stage here does not establish native source authority.
+    """
+
+    stage = us_immigration_stage_spec() if stage is None else stage
     derive = [
         operation
-        for operation in us_immigration_stage_spec().operations
+        for operation in stage.operations
         if operation.kind == "derive_immigration_status"
     ]
     if len(derive) != 1:
