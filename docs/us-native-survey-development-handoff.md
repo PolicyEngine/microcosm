@@ -46,6 +46,26 @@ they do not issue source authority. The Frame checkpoint is not a
 consumers after those consumers' own input checks, while the source run is kept
 alive whenever source qualification is required.
 
+The separate `prepare_native_survey_engine_input(run, declaration=..., consumer=...)`
+entry selects an exact, closed projection from a live owner. Its optional
+`PolicyEngineUSEngine` consumer calls `validate_input_representation(frame,
+period=...)` against that adapter's selected live registry and country source
+declarations. This checks owning entities, selected-year formula ownership,
+annual/eternity periods, actual enum names, knownness and physical dtype
+compatibility, including lossless integer IDs and memberships. It copies the
+entity tables and materializes the typed household weight for inspection; it
+does not apply defaults, rewrite inputs, construct a dataset or calculate.
+
+Success adds only `consumer_representation_compatible: true` to the projection
+report. Runtime admission, source applicability, SPM universe qualification,
+scientific gates, simulation readiness and release eligibility remain separate.
+Ordinary float32 rounding and representable infinities are not scientific
+certification; unsupported nulls, integer overflow, finite-to-infinite conversion
+and string truncation refuse without filling or remapping. `UNRESOLVED` can be
+a valid enum representation while still preventing SPM measurement. Omitting
+the consumer preserves the previous import-free, unqualified projection path.
+Both paths retain the final live-owner and exact-storage comparisons.
+
 The report preserves the owner's receipt and source content identities, the
 native population version and graph manifest identity, and the amount model's
 source/draw flags. It merges the maintained pool input roster, release-source

@@ -1,0 +1,1 @@
+Add an optional live-consumer representation check for exact native survey projections, using actual variable dtypes, enum domains, periods and source ownership without filling inputs or claiming release qualification.
