@@ -1,6 +1,6 @@
 """Qualified current-money targets and source-keyed clone attachment values.
 
-The closed family has one UC route and one conditional health-cost route.
+The closed family has UC, opt-in workers compensation, and health-cost routes.
 Values are derived from live retained owners; this module issues no authority.
 """
 
@@ -16,6 +16,7 @@ from microcosm.fit import model_input
 from microcosm.frame import WeightKind
 
 from . import current_asec_unemployment_source as unemployment
+from . import current_asec_workers_compensation_source as workers_compensation
 from . import current_survey_predictors as predictors
 from . import graph_full_puf_enrichment as physical
 from . import graph_survey_puf55 as parent_host
@@ -45,6 +46,7 @@ GROUPS = (
             ("POTC_VAL", "over_the_counter_health_expenses"),
         ),
     ),
+    AmountGroup("workers_compensation", (("WC_VAL", "workers_compensation"),)),
 )
 UC_REPORT_COLUMNS = (
     "source_amount",
@@ -75,6 +77,30 @@ def selected_groups(names):
     )
     result = tuple(g for g in GROUPS if g.key in names)
     require(tuple(g.key for g in result) == names, "GROUP_ROSTER_OR_ORDER")
+    return result
+
+
+def receipt_sources():
+    """Closed source modules for the two printed age-15+ receipt universes."""
+    return (
+        ("unemployment", "UC_VAL", "survey_uc_", unemployment),
+        (
+            "workers_compensation",
+            "WC_VAL",
+            "survey_wc_",
+            workers_compensation,
+        ),
+    )
+
+
+def _qualify_receipt_groups(preparation, groups):
+    result = {}
+    if "unemployment" in groups:
+        result["UC_VAL"] = unemployment.qualify_current_asec_unemployment(preparation)
+    if "workers_compensation" in groups:
+        result["WC_VAL"] = (
+            workers_compensation.qualify_current_asec_workers_compensation(preparation)
+        )
     return result
 
 
@@ -209,26 +235,26 @@ def qualify_current_survey_amounts(run, *, groups=("unemployment", "health_costs
     native = pd.DataFrame(index=ids)
     reports = pd.DataFrame(index=ids)
     domains = {}
-    uc = (
-        unemployment.qualify_current_asec_unemployment(preparation)
-        if "unemployment" in groups
-        else None
-    )
-    if uc is not None:
+    receipts = _qualify_receipt_groups(preparation, groups)
+    for _, raw, prefix, _ in receipt_sources():
+        if raw not in receipts:
+            continue
+        receipt = receipts[raw]
+        label = "UC" if raw == "UC_VAL" else "WC"
         require(
-            codec.sha(uc.person.to_json(orient="table").encode())
-            == uc.evidence["projection_sha256"],
-            "UC_PROJECTION_CHANGED",
+            codec.sha(receipt.person.to_json(orient="table").encode())
+            == receipt.evidence["projection_sha256"],
+            label + "_PROJECTION_CHANGED",
         )
         require(
-            uc.person.index.equals(ids[asec])
+            receipt.person.index.equals(ids[asec])
             and np.array_equal(
-                uc.person.native_person_id.to_numpy(), native_ids.to_numpy()
+                receipt.person.native_person_id.to_numpy(), native_ids.to_numpy()
             ),
-            "UC_SOURCE_JOIN",
+            label + "_SOURCE_JOIN",
         )
         for name in UC_REPORT_COLUMNS:
-            column = "survey_uc_" + name
+            column = prefix + name
             if name in (
                 "source_reporting_universe",
                 "receipt_code_known",
@@ -246,7 +272,7 @@ def qualify_current_survey_amounts(run, *, groups=("unemployment", "health_costs
                 reports[column] = pd.Series(np.nan, index=ids, dtype="float64")
             else:
                 reports[column] = pd.Series(pd.NA, index=ids, dtype="string")
-            reports.loc[ids[asec], column] = uc.person[name].to_numpy()
+            reports.loc[ids[asec], column] = receipt.person[name].to_numpy()
     for spec in specs:
         for raw, output in spec.fields:
             require(
@@ -263,22 +289,23 @@ def qualify_current_survey_amounts(run, *, groups=("unemployment", "health_costs
             )
             native[output] = np.nan
             native.loc[ids[asec], output] = (
-                uc.person.canonical_amount.to_numpy()
-                if raw == "UC_VAL"
+                receipts[raw].person.canonical_amount.to_numpy()
+                if raw in receipts
                 else field.amounts[take]
             )
-            if raw == "UC_VAL":
+            if raw in receipts:
                 require(
                     np.array_equal(
-                        uc.person.source_amount.to_numpy(), field.amounts[take]
+                        receipts[raw].person.source_amount.to_numpy(),
+                        field.amounts[take],
                     ),
-                    "UC_AMOUNT_IDENTITY",
+                    ("UC" if raw == "UC_VAL" else "WC") + "_AMOUNT_IDENTITY",
                 )
             origin = "survey_current_" + raw + "_origin"
             reports[origin] = pd.Series("unresolved", index=ids, dtype="string")
             reports.loc[ids[asec], origin] = (
-                uc.person.reporting_status.to_numpy()
-                if raw == "UC_VAL"
+                receipts[raw].person.reporting_status.to_numpy()
+                if raw in receipts
                 else "source_current_amount"
             )
             domains[raw] = {
@@ -293,7 +320,7 @@ def qualify_current_survey_amounts(run, *, groups=("unemployment", "health_costs
         outputs = [output for _, output in spec.fields]
         keep = asec & np.isfinite(native.loc[:, outputs].to_numpy()).all(axis=1)
         recipient = acs.copy()
-        if spec.key == "unemployment":
+        if any(raw in receipts for raw, _ in spec.fields):
             recipient &= features[predictors.FEATURES[0]].to_numpy() >= 15
         require(keep.any(), "NO_QUALIFIED_DONORS:" + spec.key)
         require(recipient.any(), "NO_QUALIFIED_RECIPIENTS:" + spec.key)
@@ -330,7 +357,12 @@ def qualify_current_survey_amounts(run, *, groups=("unemployment", "health_costs
         "predictor_projection_sha256": codec.sha(base.projection),
         "money_header_sha256": codec.sha(ready.header),
         "current_money_fields": domains,
-        "unemployment": None if uc is None else uc.evidence,
+        "unemployment": (receipts["UC_VAL"].evidence if "UC_VAL" in receipts else None),
+        **(
+            {"workers_compensation": receipts["WC_VAL"].evidence}
+            if "WC_VAL" in receipts
+            else {}
+        ),
         "groups": [
             {
                 "name": r.spec.key,
