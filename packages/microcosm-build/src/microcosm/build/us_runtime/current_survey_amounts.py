@@ -15,6 +15,7 @@ from microcosm.fit import _graph_legacy_qrf as codec
 from microcosm.fit import model_input
 from microcosm.frame import WeightKind
 
+from . import current_asec_amount_donor as full_donor
 from . import current_asec_unemployment_source as unemployment
 from . import current_asec_workers_compensation_source as workers_compensation
 from . import current_survey_predictors as predictors
@@ -123,6 +124,15 @@ class QualifiedSurveyAmounts:
     reports: pd.DataFrame
     features: tuple[str, ...]
     groups: tuple[GroupValues, ...]
+    full_donor_source_frame: object = None
+
+    @property
+    def donor_source_frame(self):
+        return (
+            self.source_frame
+            if self.full_donor_source_frame is None
+            else self.full_donor_source_frame
+        )
 
 
 def seal(value):
@@ -131,6 +141,9 @@ def seal(value):
         value.projection,
         codec.encode_json(value.evidence),
         value.features,
+        None
+        if value.full_donor_source_frame is None
+        else predictors.source._frame_identity(value.full_donor_source_frame),
         physical._population_stamp(
             parent_host.population_ops.Population.from_frame(
                 value.source_frame, "survey_amounts.source"
@@ -175,8 +188,11 @@ def origin_digest(origins):
     )
 
 
-def qualify_current_survey_amounts(run, *, groups=("unemployment", "health_costs")):
+def qualify_current_survey_amounts(
+    run, *, groups=("unemployment", "health_costs"), full_original_donors=False
+):
     """Requalify actual source predictors and current amounts for a retained PUF run."""
+    require(type(full_original_donors) is bool, "FULL_ORIGINAL_DONORS_OPTION")
     specs = selected_groups(groups)
     # The owning country host performs the full parent checker at entry/final
     # I/O fences. This projection borrows its actual issued handle purely and
@@ -315,26 +331,49 @@ def qualify_current_survey_amounts(run, *, groups=("unemployment", "health_costs
                 "validity_hex": field.validity[take].tobytes().hex(),
                 "zero_origin_hex": field.zero_origin[take].tobytes().hex(),
             }
+    complete = (
+        full_donor.qualify_full_original_amount_donor(
+            preparation,
+            specs,
+            demographic_conditioning=financial_state.demographic_conditioning,
+        )
+        if full_original_donors
+        else None
+    )
+    donor_source = base.source_frame if complete is None else complete.frame
+    donor_features = features if complete is None else complete.features
+    donor_ids = ids if complete is None else complete.features.index
     routes = []
     for spec in specs:
         outputs = [output for _, output in spec.fields]
-        keep = asec & np.isfinite(native.loc[:, outputs].to_numpy()).all(axis=1)
+        donor_targets = (
+            native.loc[:, outputs]
+            if complete is None
+            else complete.amounts.loc[:, [raw for raw, _ in spec.fields]]
+        )
+        keep = (
+            (asec if complete is None else np.ones(len(donor_ids), dtype=bool))
+            & np.isfinite(donor_targets.to_numpy()).all(axis=1)
+            & np.isfinite(donor_features.to_numpy()).all(axis=1)
+        )
         recipient = acs.copy()
         if any(raw in receipts for raw, _ in spec.fields):
             recipient &= features[predictors.FEATURES[0]].to_numpy() >= 15
         require(keep.any(), "NO_QUALIFIED_DONORS:" + spec.key)
         require(recipient.any(), "NO_QUALIFIED_RECIPIENTS:" + spec.key)
-        donor_frame = base.source_frame.select(keep)
+        donor_frame = donor_source.select(keep)
         require(
             donor_frame.resolve_weights("person").kind is WeightKind.DESIGN,
             "DONOR_DESIGN_WEIGHTS",
         )
-        donor_columns = features.loc[ids[keep]].copy()
+        donor_columns = donor_features.loc[donor_ids[keep]].copy()
         for target, output in zip(spec.targets, outputs, strict=True):
-            donor_columns[target] = native.loc[ids[keep], output].to_numpy()
+            donor_columns[target] = donor_targets.iloc[
+                np.flatnonzero(keep), outputs.index(output)
+            ].to_numpy()
         require(
             np.array_equal(
-                donor_frame.person.person_id.to_numpy(), ids[keep].to_numpy()
+                donor_frame.person.person_id.to_numpy(), donor_ids[keep].to_numpy()
             ),
             "DONOR_AXIS",
         )
@@ -380,7 +419,12 @@ def qualify_current_survey_amounts(run, *, groups=("unemployment", "health_costs
             for r in routes
         ],
         "predictors": list(feature_names),
-        "donor_weights": "original_household_design_weights_mapped_to_selected_persons_before_allocation",
+        "donor_weights": (
+            "original_household_design_weights_mapped_to_selected_persons_before_allocation"
+            if complete is None
+            else "full_original_current_asec_household_design_weights"
+        ),
+        **({"full_original_donors": complete.evidence} if complete is not None else {}),
         "health_chain": "PHIP_then_PMED_given_PHIP_then_POTC_given_PHIP_PMED",
         "health_premium_source": "PHIP_VAL; not the differently imputed PHIP_VAL2 zero-premium series",
         "household_or_insurance_unit_correlation_verified": False,
@@ -409,6 +453,7 @@ def qualify_current_survey_amounts(run, *, groups=("unemployment", "health_costs
         reports,
         feature_names,
         tuple(routes),
+        None if complete is None else complete.frame,
     )
     stamp = seal(result)
     parent_host._pure_run(run, run_entry)

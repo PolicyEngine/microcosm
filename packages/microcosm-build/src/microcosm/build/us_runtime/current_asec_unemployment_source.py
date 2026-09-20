@@ -217,8 +217,9 @@ class CurrentAsecUnemploymentValues:
     evidence: dict
 
 
-def _qualify_receipt_amount(preparation, *, family):
+def _qualify_receipt_amount(preparation, *, family, full_original=False):
     """Share the two closed 15+ receipt captures without issuing source authority."""
+    require(type(full_original) is bool, "FULL_ORIGINAL_OPTION")
     if family == "unemployment":
         protocol, columns, dictionary = PROTOCOL, READ_COLUMNS, DICTIONARY
         reader, classify = _read_capture, reporting_basis
@@ -323,16 +324,23 @@ def _qualify_receipt_amount(preparation, *, family):
     basis["amount_status"] = field.statuses[positions]
     basis["amount_validity"] = field.validity[positions]
     basis["zero_origin"] = field.zero_origin[positions]
-    people = state.frame.person
-    selected = people.loc[people[support_channel_column("person")].eq("asec")]
-    native_ids = selected[spine_source_id_column("person")].to_numpy()
-    require(
-        len(set(native_ids)) == len(native_ids) and set(native_ids) <= set(basis.index),
-        "SELECTED_NATIVE_JOIN",
-    )
-    out = basis.loc[native_ids].copy()
-    out["native_person_id"] = native_ids
-    out.index = pd.Index(selected.person_id.to_numpy(), name="person_id")
+    if full_original:
+        native_ids = basis.index.to_numpy(copy=True)
+        out = basis.copy(deep=True)
+        out["native_person_id"] = native_ids
+        out.index = pd.Index(native_ids, name="person_id")
+    else:
+        people = state.frame.person
+        selected = people.loc[people[support_channel_column("person")].eq("asec")]
+        native_ids = selected[spine_source_id_column("person")].to_numpy()
+        require(
+            len(set(native_ids)) == len(native_ids)
+            and set(native_ids) <= set(basis.index),
+            "SELECTED_NATIVE_JOIN",
+        )
+        out = basis.loc[native_ids].copy()
+        out["native_person_id"] = native_ids
+        out.index = pd.Index(selected.person_id.to_numpy(), name="person_id")
     evidence = {
         "protocol": protocol,
         "dictionary": json.loads(json.dumps(dictionary)),
@@ -343,6 +351,11 @@ def _qualify_receipt_amount(preparation, *, family):
         "read_columns": list(columns),
         "complete_current_source_rows": rows,
         "selected_rows": len(out),
+        **(
+            {"donor_scope": "full_original_current_asec", "axis": "native_person_id"}
+            if full_original
+            else {}
+        ),
         "projection_sha256": hashlib.sha256(
             out.to_json(orient="table").encode()
         ).hexdigest(),
