@@ -10,6 +10,7 @@ import pandas as pd
 import pytest
 from test_us_current_asec_demographics import _demographic_arguments
 from test_us_graph_atomic_survey_population import _support_payload
+from test_us_native_verify_once_epoch import _Counter
 
 from microcosm.build.us_runtime import graph_atomic_survey_financial as runner
 from microcosm.build.us_runtime import survey_population_preparation as preparation
@@ -47,6 +48,26 @@ def known_financial_run(tmp_path_factory):
         yield SimpleNamespace(call=call, cold=cold, warm=warm)
         for run in (cold, warm):
             values.source.verify_survey_population_preparation(run.prefix.preparation)
+
+
+def test_post_run_check_fully_validates_once_and_at_close(known_financial_run):
+    run = known_financial_run.cold
+    with _Counter(preparation._source_files) as counter:
+        checked = run.checked_view()
+    assert counter.counts["_source_files"] == 2
+    assert preparation.epoch_record() is None
+    assert preparation._MEMO == {}
+    with preparation.verification_epoch() as record:
+        run.prefix.preparation.checked_view()
+        with _Counter(preparation._source_files) as counter:
+            joined = run.checked_view()
+        assert joined.payload == checked.payload
+        assert joined.digest == checked.digest
+        assert joined.population is checked.population
+        assert counter.counts["_source_files"] == 0
+        assert record["final_validations"] == 0
+    assert record["final_validations"] == 1
+    assert preparation._MEMO == {}
 
 
 def test_nineteen_node_financial_cold_and_required_replay(known_financial_run):
