@@ -1,13 +1,17 @@
 # Native ASEC other-disability source
 
 `qualify_current_asec_other_disability(preparation)` reduces the two published
-CPS ASEC disability income slots to one non-workers-compensation leaf. It reads
-no raw member: it borrows
+CPS ASEC disability income slots to one non-workers-compensation leaf. It adds
+no raw reader of its own: it borrows
 [`current_asec_retirement_detail_source`](../packages/microcosm-build/src/microcosm/build/us_runtime/current_asec_retirement_detail_source.py),
 which already qualifies `DIS_VAL1/2`, `DIS_SC1/2`, `DIS_YN` and their allocation
-and topcode literals against the retained money owner. It issues no source
-capability, fits nothing, and attaches no canonical consumer input. Callers
-retain the genuine owners and requalify after their relevant I/O.
+and topcode literals against the retained money owner. The public entry point
+calls that owner's qualifier, so the single member capture and its
+requalification happen there and are not repeated or replaced here; the pure
+`compose_other_disability` and `project_other_disability` entry points read no
+member at all. This module issues no source capability, fits nothing, and
+attaches no canonical consumer input. Callers retain the genuine owners and
+requalify after their relevant I/O.
 
 ## What the leaf is
 
@@ -27,20 +31,25 @@ outside this family's provenance.
 
 ## What stays unknown
 
-The archived arithmetic silently produced a zero for every row it could read.
-This adapter does not. Each slot is classified into one closed vocabulary
+The archived arithmetic returned a number for every row whose four literals
+it could read, and never an unknown; a row that was never asked the question
+simply read as zero. This adapter does not. Each slot is classified into one closed vocabulary
 (`SLOT_KINDS`); only the first four resolve, and the rest leave the person
 unknown:
 
 | slot kind | contributes | when |
 | --- | --- | --- |
 | `reported_source_slot` | the published amount | yes receipt, readable non-workers-compensation code, nonzero amount |
-| `excluded_workers_compensation` | 0 | yes receipt and a readable code 1, whatever the slot paid |
+| `excluded_workers_compensation` | 0 | yes receipt, a readable code 1, and a readable amount, whatever that amount was |
 | `unused_source_slot` | 0 | yes receipt, code 0, zero literal: no source in this slot |
 | `nonreceipt_slot` | 0 | an observed "no" to `DIS_YN` |
 | `niu_not_observed_zero` | unknown | `DIS_YN = 0` |
 | `outside_age_universe` | unknown | under the printed 15+ reporting universe |
 | `unresolved_slot_reporting` | unknown | missing, malformed, out-of-range or contradictory literals |
+
+A workers' compensation slot whose amount cell is missing or unreadable is
+`unresolved_slot_reporting`, not a known zero: a record that cannot be read
+here is not evidence that its source code was read correctly.
 
 A person's leaf is known only when both slots resolve. A "yes" answer with no
 populated source in either slot is `affirmed_receipt_without_reported_source`
@@ -56,7 +65,15 @@ Every published allocation flag for this family (`I_DISYN`, `I_DISSC1`,
 `I_DISSC2`, `I_DISVL1`, `I_DISVL2`) is evaluated against its own printed
 conditional universe, read from the detail owner's entries rather than
 restated. A flag outside its universe, unpopulated, or unreadable is labeled as
-exactly that. A publisher allocation never qualifies or disqualifies a receipt:
+exactly that.
+
+Two family-level answers are reported, under names that say which is which.
+`other_disability_published_flag_origin` is the routing owner's reading, which
+is universe-blind by that owner's charter: a nonzero flag read outside its own
+printed universe still counts as a publisher allocation there.
+`other_disability_allocation_status` is this module's own reading, built from
+the per-flag labels above, so a flag outside its universe does not allocate
+this family. Neither qualifies or disqualifies a receipt:
 `other_disability_allocation_qualifies_receipt` is `False` on every row.
 Topcode flags describe only the dollars this leaf admits, and
 `topcode_corrected` stays `False`.
@@ -81,8 +98,12 @@ columns to the host and mutates no receiving cell.
 The pure `project_other_disability` function accepts a supplied detail basis so
 its semantics can be inspected and tested; neither it nor
 `other_disability_values_seal` confers authority. `compose_other_disability`
-seals the borrowed detail owner before and after projection and rechecks its own
-active implementation dependencies, and
+seals the borrowed detail owner before and after projection and rechecks its
+own active implementation dependencies. That fence binds every module-level
+constant of this file, every function in it, and the borrowed callables it
+actually depends on — the detail owner's qualifier, literal projection, slot
+status and seal, the routing owner's receipt, literal, code-frame and
+allocation helpers, and the archived arithmetic with its parameter dictionary.
 `qualify_current_asec_other_disability` additionally rechecks the retained
 preparation and native issuance.
 

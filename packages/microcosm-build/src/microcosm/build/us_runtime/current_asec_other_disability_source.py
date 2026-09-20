@@ -1,10 +1,11 @@
 """Qualified ASEC other-disability income from the two published source slots.
 
 This borrows the retirement-detail owner's already-qualified DIS literals and
-the retired eCPS two-slot, non-workers-compensation arithmetic. No raw member
-is read and no source authority is issued. Nothing is completed: NIU, missing,
-under-15 and contradictory slots stay unknown rather than becoming an observed
-zero, and a non-ASEC arm carries no observation at all. Social Security
+the retired eCPS two-slot, non-workers-compensation arithmetic. It adds no raw
+reader: the member capture and its requalification stay with that owner, which
+the public entry point calls. No source authority is issued and nothing is
+completed: NIU, missing, under-15 and contradictory slots stay unknown rather
+than becoming an observed zero, and a non-ASEC arm carries no observation. Social Security
 disability and workers' compensation are other leaves, not this one. A host
 retains and requalifies the actual preparation and owns every completion,
 model, tax treatment and release decision.
@@ -17,7 +18,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from types import FunctionType, MappingProxyType
+from types import FunctionType, MappingProxyType, ModuleType
 
 import numpy as np
 import pandas as pd
@@ -94,13 +95,12 @@ _ADMITTED_SLOT_STATUSES = MappingProxyType(
     }
 )
 # A published workers' compensation code removes the slot from this leaf
-# whatever it paid, but only where the slot's own reporting is otherwise
-# coherent: a yes receipt, a readable code, and a parseable amount cell.
-_WORKERS_COMPENSATION_STATUSES = (
-    "known_receipt",
-    "ambiguous_recipient_zero",
-    "missing_amount",
-)
+# whatever it paid, but only from the two statuses a coherent slot can carry:
+# a yes receipt, a readable code and a readable amount, whether that amount is
+# positive or the printed none/niu zero. An unreadable or absent amount cell
+# leaves the slot unresolved rather than a known zero, because a record that
+# cannot be read here is not evidence that this code was read correctly.
+_WORKERS_COMPENSATION_STATUSES = ("known_receipt", "ambiguous_recipient_zero")
 _UNDER_AGE_STATUSES = (
     "outside_reporting_universe",
     "contradictory_outside_reporting_universe",
@@ -119,6 +119,27 @@ _ALLOCATION_STATUSES = (
     "unresolved_allocation_literal",
     "publisher_allocated",
     "not_allocated_in_flag_universe",
+)
+# The owner's family reading is universe-blind by charter. This module does
+# evaluate each printed universe, so it reports the two scopes separately
+# rather than letting a flag read outside its own universe stand as the
+# family's allocation answer.
+ALLOCATION_FAMILY_STATUSES = (
+    "publisher_allocated_in_flag_universe",
+    "unresolved_allocation_provenance",
+    "allocation_flag_not_populated",
+    "not_allocated_in_flag_universe",
+    "no_flag_in_its_universe",
+)
+_FLAG_LABEL_FAMILY_STATUS = MappingProxyType(
+    {
+        "publisher_allocated": "publisher_allocated_in_flag_universe",
+        "unresolved_flag_universe": "unresolved_allocation_provenance",
+        "unresolved_allocation_literal": "unresolved_allocation_provenance",
+        "allocation_flag_not_populated": "allocation_flag_not_populated",
+        "not_allocated_in_flag_universe": "not_allocated_in_flag_universe",
+        "outside_flag_universe": "no_flag_in_its_universe",
+    }
 )
 
 
@@ -238,7 +259,7 @@ def _flag_universe(basis, universe):
 
 def _allocation_columns(basis, out):
     """Preserve conditional provenance; a flag never qualifies a receipt."""
-    flags = {}
+    flags, flag_labels = {}, {}
     for name, entry in _allocation_entries().items():
         codes = [_int_or_none(value) for value in basis[name + "_code"]]
         statuses = list(basis[name + "_literal_status"])
@@ -260,13 +281,27 @@ def _allocation_columns(basis, out):
                 )
             labels.append(label)
         _require(set(labels) <= set(_ALLOCATION_STATUSES), "ALLOCATION_STATUS")
+        flag_labels[name] = labels
         out[name + "_literal"] = basis[name + "_literal"].astype("string")
         out[name + "_code"] = basis[name + "_code"].astype("Int16")
         out[name + "_flag_universe"] = pd.array(universe, dtype="boolean")
         out[name + "_allocation_status"] = pd.array(labels, dtype="string")
-    out["other_disability_allocation_origin"] = routing._allocation_origin(
+    # The owner's reading, kept under a name that says what it is: it does not
+    # evaluate the printed universes, so a nonzero flag outside its own
+    # universe still reads as a publisher allocation here.
+    out["other_disability_published_flag_origin"] = routing._allocation_origin(
         flags, unflagged=False
     )
+    family = []
+    for position in range(len(out)):
+        seen = {
+            _FLAG_LABEL_FAMILY_STATUS[flag_labels[name][position]]
+            for name in flag_labels
+        }
+        family.append(
+            next(status for status in ALLOCATION_FAMILY_STATUSES if status in seen)
+        )
+    out["other_disability_allocation_status"] = pd.array(family, dtype="string")
     out["other_disability_allocation_qualifies_receipt"] = pd.array(
         [False] * len(out), dtype="boolean"
     )
@@ -533,6 +568,21 @@ def other_disability_values_seal(values):
     return digest.hexdigest()
 
 
+def _module_constants():
+    """Every module-level constant, so none can be retuned after import.
+
+    Collected rather than listed, so a constant added later is bound without
+    anyone remembering to extend this seal.
+    """
+    return {
+        name: dict(value) if isinstance(value, MappingProxyType) else value
+        for name, value in vars(sys.modules[__name__]).items()
+        if name != "_LIVE"
+        and name.isupper()
+        and not isinstance(value, (FunctionType, ModuleType, type))
+    }
+
+
 def _live():
     return (
         {
@@ -540,21 +590,7 @@ def _live():
             for name, value in vars(sys.modules[__name__]).items()
             if isinstance(value, FunctionType)
         },
-        PROTOCOL,
-        OUTPUT,
-        SLOTS,
-        WORKERS_COMPENSATION_CODE,
-        WORKERS_COMPENSATION_LABEL,
-        RECEIPT_FIELD,
-        ALLOCATION_FIELDS,
-        TOPCODE_FIELDS,
-        SLOT_KINDS,
-        REASONS,
-        dict(_ADMITTED_SLOT_STATUSES),
-        _WORKERS_COMPENSATION_STATUSES,
-        _UNDER_AGE_STATUSES,
-        _ZERO_CONTRIBUTION_KINDS,
-        _POPULATED_KINDS,
+        _module_constants(),
         CurrentAsecOtherDisabilityValues,
         OtherDisabilityAttachment,
         # The retired arithmetic and its archived parameters stay bound: this
@@ -576,7 +612,20 @@ def _live():
         detail.TOPCODE_ENTRIES,
         detail.RETAINED_MONEY_FIELDS,
         detail.CurrentAsecRetirementDetailValues,
-        routing.source._function_seal(detail.retirement_detail_values_seal),
+        # The owner's qualifier supplies the basis this module interprets, and
+        # its projection decides the status vocabulary the slot kinds map from.
+        # Both are bound: swapping either could hand over doctored amounts or
+        # relabel an unknown slot as an observation.
+        tuple(
+            routing.source._function_seal(function)
+            for function in (
+                detail.qualify_current_asec_retirement_detail,
+                detail.project_retirement_detail_literals,
+                detail.retirement_detail_values_seal,
+                detail._slot_status,
+                detail._amount_pair,
+            )
+        ),
         routing,
         routing.CURRENT_INCOME_YEAR,
         routing.DICTIONARY_URL,
@@ -586,6 +635,9 @@ def _live():
             routing.source._function_seal(function)
             for function in (
                 routing._allocation_origin,
+                routing.receipt_status,
+                routing.literal_code,
+                routing._codes_frame,
                 routing.source._function_seal,
                 routing.source._pure_final,
                 physical._series_digest,
@@ -629,6 +681,12 @@ def _evidence(person, detail_values, seal, implementation):
                     name: entry[1:] for name, entry in allocation.items()
                 },
                 "allocation_excluded_work_limitation_flags": ["I_DISCS", "I_DISHP"],
+                "allocation_family_statuses": ALLOCATION_FAMILY_STATUSES,
+                "published_flag_origin_scope": (
+                    "the owner's universe-blind reading of the published flags; "
+                    "other_disability_allocation_status evaluates each printed "
+                    "conditional universe instead"
+                ),
                 "topcode_entries": [
                     entry
                     for entry in detail.TOPCODE_ENTRIES

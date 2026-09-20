@@ -47,6 +47,18 @@ UNRELATED_CELLS = {
 }
 
 
+# Module level, with no closure and no default: the implementation fence hashes
+# a function's closure cells, so a recorder that captured a growing list would
+# read as a second mutation rather than as the call it is trying to observe.
+_REAL_ARCHIVED = legacy.derive_us_disability_benefits_from_asec
+_ARCHIVED_CALLS: list[dict] = []
+
+
+def _recording_archived(frame, **keywords):
+    _ARCHIVED_CALLS.append(dict(keywords))
+    return _REAL_ARCHIVED(frame, **keywords)
+
+
 def row(**changes):
     """One invented ASEC person; a single non-workers-compensation slot."""
     return {
@@ -183,7 +195,7 @@ def test_workers_compensation_exclusion_is_bound_to_its_printed_meaning(monkeypa
     [
         ("500", "known_receipt", "excluded_workers_compensation"),
         ("0", "ambiguous_recipient_zero", "excluded_workers_compensation"),
-        ("", "missing_amount", "excluded_workers_compensation"),
+        ("", "missing_amount", "unresolved_slot_reporting"),
         ("abc", "invalid_amount_literal", "unresolved_slot_reporting"),
         ("1000000", "invalid_amount_literal", "unresolved_slot_reporting"),
     ],
@@ -378,14 +390,33 @@ def test_source_code_universe_drift_refuses(monkeypatch, name, replacement):
 
 
 @pytest.mark.parametrize(
-    "flag,changes,status,origin",
+    "flag,changes,status,published,family",
     [
-        ("I_DISVL1", {}, "not_allocated_in_flag_universe", "published_flags_all_zero"),
-        ("I_DISVL2", {}, "outside_flag_universe", "published_flags_all_zero"),
-        ("I_DISVL1", {"I_DISVL1": "5"}, "publisher_allocated", "publisher_allocated"),
+        (
+            "I_DISVL1",
+            {},
+            "not_allocated_in_flag_universe",
+            "published_flags_all_zero",
+            "not_allocated_in_flag_universe",
+        ),
+        (
+            "I_DISVL2",
+            {},
+            "outside_flag_universe",
+            "published_flags_all_zero",
+            "not_allocated_in_flag_universe",
+        ),
+        (
+            "I_DISVL1",
+            {"I_DISVL1": "5"},
+            "publisher_allocated",
+            "publisher_allocated",
+            "publisher_allocated_in_flag_universe",
+        ),
         (
             "I_DISVL1",
             {"I_DISVL1": ""},
+            "allocation_flag_not_populated",
             "allocation_flag_not_populated",
             "allocation_flag_not_populated",
         ),
@@ -394,20 +425,55 @@ def test_source_code_universe_drift_refuses(monkeypatch, name, replacement):
             {"I_DISSC1": "3"},
             "unresolved_allocation_literal",
             "unresolved_allocation_provenance",
+            "unresolved_allocation_provenance",
         ),
-        ("I_DISYN", {"I_DISYN": "7"}, "publisher_allocated", "publisher_allocated"),
+        (
+            "I_DISYN",
+            {"I_DISYN": "7"},
+            "publisher_allocated",
+            "publisher_allocated",
+            "publisher_allocated_in_flag_universe",
+        ),
     ],
 )
 def test_allocation_flags_keep_their_conditional_universes(
-    flag, changes, status, origin
+    flag, changes, status, published, family
 ):
     value = one(**changes)
     assert value[flag + "_allocation_status"] == status
-    assert value.other_disability_allocation_origin == origin
+    assert value.other_disability_published_flag_origin == published
+    assert value.other_disability_allocation_status == family
     # Provenance never becomes knownness in either direction.
     assert bool(value[od.KNOWN_COLUMN]) is True
     assert value[od.AMOUNT_COLUMN] == 200.0
     assert not value.other_disability_allocation_qualifies_receipt
+
+
+def test_a_flag_outside_its_universe_does_not_allocate_this_family():
+    """The owner's family reading is universe-blind; ours is not, and says so."""
+    value = one(I_DISVL2="5")
+    assert value.I_DISVL2_flag_universe is not pd.NA
+    assert not value.I_DISVL2_flag_universe
+    assert value.I_DISVL2_allocation_status == "outside_flag_universe"
+    assert value.other_disability_published_flag_origin == "publisher_allocated"
+    assert value.other_disability_allocation_status == "not_allocated_in_flag_universe"
+    assert value[od.AMOUNT_COLUMN] == 200.0
+
+
+def test_no_flag_in_its_own_universe_is_reported_as_such():
+    """Every printed universe here is ``X > 0``, so an all-zero row has none."""
+    value = one(DIS_YN="0", DIS_SC1="0", DIS_VAL1="0")
+    assert value.other_disability_allocation_status == "no_flag_in_its_universe"
+    assert value.other_disability_published_flag_origin == "published_flags_all_zero"
+    assert value[od.REASON_COLUMN] == "niu_not_observed_zero"
+
+
+def test_a_nonreceipt_answer_is_still_inside_the_receipt_flag_universe():
+    value = one(DIS_YN="2", DIS_SC1="0", DIS_VAL1="0")
+    assert value.I_DISYN_flag_universe is not pd.NA
+    assert value.I_DISYN_allocation_status == "not_allocated_in_flag_universe"
+    assert value.other_disability_allocation_status == "not_allocated_in_flag_universe"
+    assert value[od.REASON_COLUMN] == "known_zero_nonreceipt"
 
 
 def test_an_unreadable_amount_leaves_its_flag_universe_unresolved():
@@ -423,8 +489,12 @@ def test_work_limitation_flags_are_not_income_allocation_provenance():
     plain = one()
     limited = one(DIS_CS="1", DIS_HP="1", I_DISCS="4", I_DISHP="4")
     assert (
-        plain.other_disability_allocation_origin
-        == limited.other_disability_allocation_origin
+        plain.other_disability_published_flag_origin
+        == limited.other_disability_published_flag_origin
+    )
+    assert (
+        plain.other_disability_allocation_status
+        == limited.other_disability_allocation_status
     )
     assert limited[od.AMOUNT_COLUMN] == plain[od.AMOUNT_COLUMN]
 
@@ -500,8 +570,14 @@ def test_money_owner_axes_are_optional_and_declared():
     "mutation",
     [
         "own_projection",
+        "own_reporting_age",
+        "own_report_prefix",
+        "owner_qualifier",
+        "owner_literal_projection",
+        "owner_slot_status",
         "owner_source_codes",
         "owner_known_statuses",
+        "routing_receipt_status",
         "archived_arithmetic",
         "archived_parameters",
     ],
@@ -515,6 +591,24 @@ def test_composition_refuses_a_mutated_owner(monkeypatch, mutation):
     if mutation == "own_projection":
         original = od._slot_kind
         monkeypatch.setattr(od, "_slot_kind", lambda *a, **k: original(*a, **k))
+    elif mutation == "own_reporting_age":
+        monkeypatch.setattr(od, "REPORTING_AGE", 65)
+    elif mutation == "own_report_prefix":
+        monkeypatch.setattr(od, "REPORT_PREFIX", "invented_")
+    elif mutation in (
+        "owner_qualifier",
+        "owner_literal_projection",
+        "owner_slot_status",
+        "routing_receipt_status",
+    ):
+        owner_module, name = {
+            "owner_qualifier": (detail, "qualify_current_asec_retirement_detail"),
+            "owner_literal_projection": (detail, "project_retirement_detail_literals"),
+            "owner_slot_status": (detail, "_slot_status"),
+            "routing_receipt_status": (routing, "receipt_status"),
+        }[mutation]
+        original = getattr(owner_module, name)
+        monkeypatch.setattr(owner_module, name, lambda *a, **k: original(*a, **k))
     elif mutation == "owner_source_codes":
         codes = dict(detail.DISABILITY_CODES)
         codes[10] = "edited in place"
@@ -539,22 +633,54 @@ def test_composition_refuses_a_mutated_owner(monkeypatch, mutation):
 
 
 def test_composition_refuses_an_owner_that_changes_under_it(monkeypatch):
+    """Mutate the borrowed table for real, between the two seals."""
     literals, frame = basis(row())
     literals.index = frame.index.copy()
     owner = detail.CurrentAsecRetirementDetailValues(
         frame, literals, dict(DETAIL_EVIDENCE)
     )
     real = detail.retirement_detail_values_seal
-    seen = []
+    mutated = []
 
-    def drifting(value):
-        seen.append(value)
-        return real(value) + ":" + str(len(seen))
+    def seal_then_mutate(value):
+        stamp = real(value)
+        if not mutated:
+            mutated.append(True)
+            value.person.loc[10, "DIS_VAL1_published_amount"] = 999.0
+        return stamp
 
-    monkeypatch.setattr(detail, "retirement_detail_values_seal", drifting)
+    monkeypatch.setattr(detail, "retirement_detail_values_seal", seal_then_mutate)
     monkeypatch.setattr(od, "_LIVE", od._live())
     with pytest.raises(ValueError, match="DETAIL_VALUES_CHANGED"):
         od.compose_other_disability(owner)
+    assert owner.person.loc[10, "DIS_VAL1_published_amount"] == 999.0
+
+
+def test_the_archived_function_itself_is_called_with_its_own_parameters(monkeypatch):
+    """Equivalent arithmetic is not reuse; record the actual call."""
+    _ARCHIVED_CALLS.clear()
+    monkeypatch.setattr(
+        legacy, "derive_us_disability_benefits_from_asec", _recording_archived
+    )
+    monkeypatch.setattr(od, "_LIVE", od._live())
+    result = values(row(DIS_SC1="2", DIS_VAL1="300"))
+    assert _ARCHIVED_CALLS == [
+        {
+            "first_amount_source": "DIS_VAL1",
+            "first_code_source": "DIS_SC1",
+            "second_amount_source": "DIS_VAL2",
+            "second_code_source": "DIS_SC2",
+            "workers_compensation_code": 1,
+            "output_column": legacy.US_DISABILITY_BENEFITS_OUTPUT_COLUMNS[0],
+        }
+    ]
+    assert result.person.other_disability_archived_arithmetic_amount.iloc[0] == 300.0
+
+
+def test_the_public_qualifier_requires_the_live_preparation_owner():
+    for foreign in (None, SimpleNamespace(), object()):
+        with pytest.raises(ValueError, match="PREPARATION_TYPE"):
+            od.qualify_current_asec_other_disability(foreign)
 
 
 @pytest.mark.parametrize(
@@ -743,6 +869,26 @@ def test_attachment_preserves_unrelated_receiving_cells():
     assert all(entity == "person" for entity, _ in attachment.columns)
     assert "native_person_id" not in attached
     assert od.REPORT_PREFIX + "native_person_id" not in attached
+
+
+def test_attached_values_are_the_qualified_rows_themselves():
+    """No redraw: every attached cell is the source person's own qualified cell."""
+    result = values(row(), row(DIS_SC1="2", DIS_VAL1="450"))
+    frame = receiving(result, clones=2)
+    attachment = od.attach_other_disability_columns(result, frame)
+    sources = pd.Index(
+        frame.person[provenance.support_source_id_column("person")].to_numpy()
+    )
+    for name in result.person.columns:
+        if name == "native_person_id":
+            continue
+        attached = attachment.columns["person", od.attached_name(name)]
+        expected = result.person[name].reindex(sources)
+        pd.testing.assert_series_equal(
+            attached.reset_index(drop=True),
+            expected.reset_index(drop=True),
+            check_names=False,
+        )
 
 
 def test_a_copied_values_object_attaches_identically():
