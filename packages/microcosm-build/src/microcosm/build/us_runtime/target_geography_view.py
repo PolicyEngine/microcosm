@@ -350,8 +350,8 @@ def us_target_geography_view(
         hierarchy_level=hierarchy_level,
         hierarchy_id=hierarchy_id,
     )
-    geography_id, geography_id_source = (
-        declared[0] if declared else ("", UNBOUND_GEOGRAPHY_ID_SOURCE)
+    geography_id_source, geography_id = (
+        declared[0] if declared else (UNBOUND_GEOGRAPHY_ID_SOURCE, "")
     )
     return TargetGeographyView(
         level=level,
