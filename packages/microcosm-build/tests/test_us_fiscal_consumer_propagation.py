@@ -89,6 +89,100 @@ def test_materializer_uses_explicit_constructors_and_spm(builder, monkeypatch):
     assert len(provider.calls) == 1
 
 
+def test_explicit_jct_factory_materializes_without_default_country_import(
+    builder, monkeypatch
+):
+    from test_us_fiscal_refresh_builder import _install_multi_reform_fakes
+
+    frame = _multi_reform_frame(builder)
+    calls = []
+    _, targets = _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=(("jct_test_credit", "test_credit"),),
+        reform_income_tax_by_id={"test_credit": {10: 90.0, 20: 25.0, 30: 40.0}},
+        reform_sim_calls=[],
+    )
+    constructors = sys.modules["policyengine_us"]
+    monkeypatch.delitem(sys.modules, "policyengine_us")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Default reform factory must not be used")
+
+    monkeypatch.setattr(builder, "_make_zero_variable_reform", forbidden)
+
+    def make_reform(system, variable):
+        assert type(system) is constructors.CountryTaxBenefitSystem
+        calls.append(variable)
+        return variable
+
+    result, registry, compilation = builder._materialize_target_frame(
+        frame,
+        targets,
+        maximum_microsim_batch_size=1,
+        formula_metadata=Metadata(),
+        dataset_cls=Constructors().dataset,
+        microsimulation_cls=constructors.Microsimulation,
+        system_factory=constructors.CountryTaxBenefitSystem,
+        zero_variable_reform_factory=make_reform,
+    )
+    assert calls == ["test_credit"]
+    assert compilation["dropped_target_names"] == []
+    assert len(registry.specs) == 1
+    # Invented array routing through three tax units and two household batches;
+    # these are not policy results from a substitute engine.
+    np.testing.assert_array_equal(
+        result.table("household").jct_test_credit, [-15.0, -30.0]
+    )
+
+
+def test_zero_variable_reform_uses_explicit_base_classes(builder):
+    class Variable:
+        pass
+
+    class Reform:
+        def replace_variable(self, value):
+            self.replaced = value
+
+    original = SimpleNamespace(
+        value_type=float, entity=object(), definition_period="year", unit="currency"
+    )
+    reform = builder._make_zero_variable_reform(
+        SimpleNamespace(variables={"invented_credit": original}),
+        "invented_credit",
+        reform_cls=Reform,
+        variable_cls=Variable,
+    )
+    assert issubclass(reform, Reform)
+    instance = reform()
+    instance.apply()
+    variable = instance.replaced
+    assert issubclass(variable, Variable)
+    assert variable.__name__ == "invented_credit"
+    assert variable.entity is original.entity
+    assert variable.value_type is float
+    assert variable.definition_period == "year"
+    assert variable.formula(None, None, None) == 0
+    assert variable.adds is variable.subtracts is variable.uprating is None
+
+
+@pytest.mark.parametrize(
+    "entry,options",
+    [
+        ("_materialize_target_frame", {"target_materialization_cache_dir": "/unused"}),
+        (
+            "_load_or_materialize_target_frame",
+            {"target_frame_checkpoint_path": "/unused"},
+        ),
+    ],
+)
+def test_explicit_reform_factory_refuses_unbound_disk_caches(builder, entry, options):
+    with pytest.raises(ValueError, match="target caches disabled"):
+        getattr(builder, entry)(
+            None, (), zero_variable_reform_factory=lambda *_: None, **options
+        )
+
+
 def test_materializer_refuses_before_consumer_constructors(builder):
     frame = _multi_reform_frame(builder)
     constructors = Constructors()
