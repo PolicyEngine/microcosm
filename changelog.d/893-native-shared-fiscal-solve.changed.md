@@ -1,0 +1,1 @@
+Extract the US release builder's existing dense and L0 calibration calls into a shared helper for prepared support. The legacy entry uses the same helper; exact-k selection, solve settings, loss reporting, and release gates retain their existing behavior.

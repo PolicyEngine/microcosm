@@ -5118,6 +5118,95 @@ def _target_spec_is_materialized(spec, household_table: pd.DataFrame) -> bool:
     return measure_ready and filter_ready
 
 
+def _calibrate_fiscal_support(
+    target_frame: Frame,
+    registry: TargetRegistry,
+    *,
+    args: argparse.Namespace,
+    target_loss_weights: np.ndarray,
+    warm_start_weights: np.ndarray | None,
+    progress_callback=None,
+):
+    """Run the maintained dense or L0 solve for an already prepared support.
+
+    Source preparation and release qualification remain the caller's job. The
+    exact-k ladder keeps its separate selection contract in the legacy entry.
+    """
+    if args.exact_k is not None:
+        raise ValueError("Exact-k selection must use the maintained ladder path")
+    candidate_households = int(target_frame.n("household"))
+    l0_refit_lambda = (
+        None
+        if args.dense_default_dataset
+        else args.l0_refit_lambda_share / float(candidate_households)
+    )
+    if args.dense_default_dataset:
+        result = calibrate(
+            target_frame,
+            registry.to_target_set(),
+            epochs=args.epochs,
+            learning_rate=args.learning_rate,
+            max_weight_ratio=args.max_weight_ratio,
+            seed=args.seed,
+            mass="conserve",
+            l2_lambda=args.l2_lambda,
+            target_loss_weights=target_loss_weights,
+            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+            warm_start_weights=warm_start_weights,
+            progress_callback=progress_callback,
+        )
+        default_dataset = {
+            "method": "dense_no_l0",
+            "sparse": False,
+            "n_candidate_households": candidate_households,
+            "n_exported_households": int(target_frame.n("household")),
+            "epochs": int(args.epochs),
+            "l2_lambda": float(args.l2_lambda),
+            "final_loss": float(result.final_loss),
+        }
+    else:
+        result = calibrate_l0_refit(
+            target_frame,
+            registry.to_target_set(),
+            epochs=args.epochs,
+            refit_epochs=args.epochs,
+            learning_rate=args.learning_rate,
+            max_weight_ratio=args.max_weight_ratio,
+            seed=args.seed,
+            mass="conserve",
+            l0_lambda=float(l0_refit_lambda),
+            l2_lambda=args.l2_lambda,
+            refit_l2_lambda=args.refit_l2_lambda,
+            target_loss_weights=target_loss_weights,
+            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
+            warm_start_weights=warm_start_weights,
+            progress_callback=progress_callback,
+        )
+        default_dataset = {
+            "method": "l0_refit",
+            "sparse": True,
+            "n_candidate_households": candidate_households,
+            "n_selected_households": int(result.selection.n_nonzero),
+            "n_exported_households": int(result.frame.n("household")),
+            "l0_lambda_share": float(args.l0_refit_lambda_share),
+            "l0_lambda": float(result.l0_lambda),
+            "selection_epochs": int(args.epochs),
+            "refit_epochs": int(args.epochs),
+            "selection_l2_lambda": float(args.l2_lambda),
+            "refit_l2_lambda": float(
+                args.l2_lambda if args.refit_l2_lambda is None else args.refit_l2_lambda
+            ),
+            # Same scrub as default_dataset["final_loss"] below: these losses
+            # ride the diagnostics build payload, which serializes strict JSON
+            # (allow_nan=False), and a non-finite loss is a BATCHED gate
+            # failure the artifact must survive to report (microcosm#547).
+            "selection_final_loss": _finite_or_none(result.selection.final_loss),
+            "refit_initial_loss": _finite_or_none(result.initial_loss),
+            "refit_final_loss": _finite_or_none(result.final_loss),
+        }
+    return result, default_dataset
+
+
 def _with_calibrated_weights(
     base_frame: Frame, calibrated_weights: np.ndarray, *, formula_metadata=None
 ) -> Frame:
@@ -10879,74 +10968,17 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 "details": dict(exact_k_puf_tail_gate.details),
             },
         }
-    elif args.dense_default_dataset:
-        result = calibrate(
-            target_frame,
-            registry.to_target_set(),
-            epochs=args.epochs,
-            learning_rate=args.learning_rate,
-            max_weight_ratio=args.max_weight_ratio,
-            seed=args.seed,
-            mass="conserve",
-            l2_lambda=args.l2_lambda,
-            target_loss_weights=target_loss_weights,
-            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
-            warm_start_weights=warm_start_weights,
-            progress_callback=(
-                telemetry.calibration_progress if telemetry is not None else None
-            ),
-        )
-        default_dataset = {
-            "method": "dense_no_l0",
-            "sparse": False,
-            "n_candidate_households": candidate_households,
-            "n_exported_households": int(target_frame.n("household")),
-            "epochs": int(args.epochs),
-            "l2_lambda": float(args.l2_lambda),
-            "final_loss": float(result.final_loss),
-        }
     else:
-        result = calibrate_l0_refit(
+        result, default_dataset = _calibrate_fiscal_support(
             target_frame,
-            registry.to_target_set(),
-            epochs=args.epochs,
-            refit_epochs=args.epochs,
-            learning_rate=args.learning_rate,
-            max_weight_ratio=args.max_weight_ratio,
-            seed=args.seed,
-            mass="conserve",
-            l0_lambda=float(l0_refit_lambda),
-            l2_lambda=args.l2_lambda,
-            refit_l2_lambda=args.refit_l2_lambda,
+            registry,
+            args=args,
             target_loss_weights=target_loss_weights,
-            target_loss_cap=US_FISCAL_TARGET_LOSS_CAP,
             warm_start_weights=warm_start_weights,
             progress_callback=(
                 telemetry.calibration_progress if telemetry is not None else None
             ),
         )
-        default_dataset = {
-            "method": "l0_refit",
-            "sparse": True,
-            "n_candidate_households": candidate_households,
-            "n_selected_households": int(result.selection.n_nonzero),
-            "n_exported_households": int(result.frame.n("household")),
-            "l0_lambda_share": float(args.l0_refit_lambda_share),
-            "l0_lambda": float(result.l0_lambda),
-            "selection_epochs": int(args.epochs),
-            "refit_epochs": int(args.epochs),
-            "selection_l2_lambda": float(args.l2_lambda),
-            "refit_l2_lambda": float(
-                args.l2_lambda if args.refit_l2_lambda is None else args.refit_l2_lambda
-            ),
-            # Same scrub as default_dataset["final_loss"] below: these losses
-            # ride the diagnostics build payload, which serializes strict JSON
-            # (allow_nan=False), and a non-finite loss is a BATCHED gate
-            # failure the artifact must survive to report (microcosm#547).
-            "selection_final_loss": _finite_or_none(result.selection.final_loss),
-            "refit_initial_loss": _finite_or_none(result.initial_loss),
-            "refit_final_loss": _finite_or_none(result.final_loss),
-        }
     if telemetry is not None:
         telemetry.stage(
             "take_up_final_diagnostics",
