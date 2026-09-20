@@ -300,6 +300,7 @@ def test_head_to_head_signature_has_no_target_membership_switches() -> None:
         "candidate_manifest_sha256",
         "candidate_worker_identity_attestation",
         "population_weight_mode",
+        "consumer",
     }
 
 
@@ -434,6 +435,222 @@ def test_pool_scorecard_preserves_worker_authentication_receipts(
     }
     assert loaded.identity["worker_execution_authentication"] == authentication
     assert loaded.loader["worker_execution_authentication"] == authentication
+
+
+def _explicit_consumer(module, *, spm=None, formula_columns=(), system_factory=None):
+    engine = SimpleNamespace(
+        _engine_computed_columns=lambda tables, **_: set(formula_columns),
+        variable_dependency_closure=lambda name: SimpleNamespace(
+            input_leaves=("n_flagged",)
+        ),
+        variable_metadata=lambda name: SimpleNamespace(entity="household"),
+        materialize=lambda *args, **kwargs: None,
+    )
+    return module.HeadToHeadConsumer(
+        engine=engine,
+        dataset_cls=lambda **kwargs: None,
+        microsimulation_cls=lambda **kwargs: None,
+        system_factory=system_factory
+        or (lambda **kwargs: SimpleNamespace(variables={})),
+        zero_variable_reform_factory=lambda system, variable: None,
+        spm=spm,
+    )
+
+
+def test_explicit_consumer_reaches_both_artifacts_and_every_slice(monkeypatch):
+    module = _load_head_to_head_module()
+    _patch_release_seams(module, monkeypatch)
+    selection = {"geography_kind": "national"}
+    consumer = _explicit_consumer(module, spm=selection)
+    selection["geography_kind"] = "county"
+    yardstick = _fixture_yardstick(module)
+    load_calls = []
+    materialize_calls = []
+    materialize = module.release._materialize_target_frame
+
+    def load(path, **kwargs):
+        load_calls.append(kwargs["consumer"])
+        return _fixture_artifact(module, sha256="a" * 64, measure_values=(1.0, 2.0))
+
+    def record_materialize(frame, specs, **kwargs):
+        assert kwargs["spm"] == {"geography_kind": "national"}
+        materialize_calls.append((frame.n("household"), dict(kwargs)))
+        kwargs["spm"]["geography_kind"] = "mutated_by_constructor"
+        return materialize(frame, specs, **kwargs)
+
+    monkeypatch.setattr(module, "load_artifact", load)
+    monkeypatch.setattr(module, "compile_yardstick", lambda **_: yardstick)
+    monkeypatch.setattr(module.release, "_materialize_target_frame", record_materialize)
+    module.score_head_to_head(
+        incumbent=Path("/fixture/a.h5"),
+        candidate=Path("/fixture/b.h5"),
+        ledger_facts=Path("/fixture/ledger"),
+        congressional_district_vintage_crosswalk=Path("/fixture/crosswalk"),
+        maximum_microsim_batch_size=1,
+        population_weight_mode="shipped",
+        consumer=consumer,
+    )
+    assert load_calls == [consumer, consumer]
+    assert len(materialize_calls) == 4
+    for size, kwargs in materialize_calls:
+        assert size == 1
+        assert kwargs["formula_metadata"] is consumer.engine
+        assert kwargs["dataset_cls"] is consumer.dataset_cls
+        assert kwargs["microsimulation_cls"] is consumer.microsimulation_cls
+        assert kwargs["system_factory"] is consumer.system_factory
+        assert (
+            kwargs["zero_variable_reform_factory"]
+            is consumer.zero_variable_reform_factory
+        )
+        assert kwargs["target_materialization_cache_dir"] is None
+    assert dict(consumer.spm) == {"geography_kind": "national"}
+    assert len({id(kwargs["spm"]) for _, kwargs in materialize_calls}) == 4
+
+
+def test_explicit_consumer_owns_formula_normalization(monkeypatch):
+    module = _load_head_to_head_module()
+    consumer = _explicit_consumer(module, formula_columns=("m_income",))
+
+    def forbidden():
+        raise AssertionError("Default country metadata must not be used")
+
+    monkeypatch.setattr(module.release, "_formula_owned_gate_adapter", forbidden)
+    original = _tiny_frame(measure_values=(3.0, 4.0))
+    cleaned, receipt = module._drop_historical_formula_owned_columns(
+        original, consumer=consumer
+    )
+    assert receipt == {"count": 1, "columns_by_entity": {"household": ["m_income"]}}
+    assert "m_income" not in cleaned.table("household")
+    assert "m_income" in original.table("household")
+    consumer.engine.variable_dependency_closure = lambda _: SimpleNamespace(
+        input_leaves=("absent_input",)
+    )
+    with pytest.raises(ValueError, match="required input leaves are absent"):
+        module._drop_historical_formula_owned_columns(original, consumer=consumer)
+
+
+@pytest.mark.parametrize("selection", [None, {}, {"geography_kind": "national"}])
+def test_explicit_consumer_flat_loader_uses_selected_system(
+    monkeypatch, tmp_path, selection
+):
+    module = _load_head_to_head_module()
+    calls = []
+
+    def system(**kwargs):
+        calls.append(kwargs)
+        return SimpleNamespace(
+            variables={"age": SimpleNamespace(entity=SimpleNamespace(key="person"))}
+        )
+
+    consumer = _explicit_consumer(module, spm=selection, system_factory=system)
+    frame = _tiny_frame(measure_values=(1.0, 2.0))
+    path = tmp_path / "fake.h5"
+    path.write_bytes(b"invented loader seam")
+    monkeypatch.setattr(module, "_h5_layout", lambda _: "legacy_flat")
+
+    def flat(path, *, variable_entity_by_name):
+        assert variable_entity_by_name == {"age": "person"}
+        return frame, {}
+
+    monkeypatch.setattr(module.fiscal_scorer, "_load_legacy_pe_flat_frame", flat)
+    assert module.load_artifact(path, consumer=consumer).frame is frame
+    assert calls == ([{}] if selection is None else [{"spm": selection}])
+
+
+def test_explicit_empty_entity_map_never_resolves_default(monkeypatch, tmp_path):
+    module = _load_head_to_head_module()
+
+    def forbidden():
+        raise AssertionError(
+            "Explicit empty mapping was replaced with default metadata"
+        )
+
+    monkeypatch.setattr(
+        module.fiscal_scorer, "_policyengine_variable_entity_map", forbidden
+    )
+    # The missing file proves map selection completes before the ordinary reader
+    # fails. No fallback to a country import is permitted for an empty mapping.
+    with pytest.raises(FileNotFoundError):
+        module.fiscal_scorer._load_legacy_pe_flat_frame(
+            tmp_path / "does-not-exist.h5", variable_entity_by_name={}
+        )
+
+
+def test_explicit_consumer_entity_loader_uses_selected_dataset(monkeypatch, tmp_path):
+    module = _load_head_to_head_module()
+    consumer = _explicit_consumer(module)
+    frame = _tiny_frame(measure_values=(1.0, 2.0))
+    path = tmp_path / "fake.h5"
+    path.write_bytes(b"invented entity loader seam")
+    monkeypatch.setattr(module, "_h5_layout", lambda _: "entity_tables")
+    monkeypatch.setattr(module, "read_nullable_us_h5_metadata", lambda _: {})
+
+    def load(path, *, dataset_cls):
+        assert dataset_cls is consumer.dataset_cls
+        return frame
+
+    monkeypatch.setattr(module.release, "_load_frame", load)
+    assert module.load_artifact(path, consumer=consumer).frame is frame
+
+
+def test_explicit_consumer_reaches_observed_origin_battery(monkeypatch):
+    module = _load_head_to_head_module()
+    consumer = _explicit_consumer(module)
+    calls = []
+
+    def materialize(frame, *, engine):
+        calls.append(engine)
+        return SimpleNamespace(frame=frame, receipt={"persisted_to_artifact": False})
+
+    monkeypatch.setattr(module, "materialize_multispine_agreement_outputs", materialize)
+    monkeypatch.setattr(
+        module,
+        "by_origin_battery_artifact_evidence",
+        lambda _: SimpleNamespace(
+            passed=True,
+            failures=(),
+            details={"comparisons": _complete_battery_comparisons(module)},
+        ),
+    )
+    payload = module._battery_payload_from_observed_origins(
+        _tiny_frame(measure_values=(1.0, 2.0), channels=("asec", "acs")),
+        consumer=consumer,
+    )
+    assert calls == [consumer.engine]
+    assert payload["status"] == "computed_finished_h5"
+    assert payload["production_receipt_authenticated"] is False
+
+
+def test_explicit_consumer_requires_complete_dependencies():
+    from dataclasses import replace
+
+    module = _load_head_to_head_module()
+    consumer = _explicit_consumer(module)
+    with pytest.raises(TypeError, match="dataset_cls"):
+        replace(consumer, dataset_cls=None)
+    with pytest.raises(TypeError, match="_engine_computed_columns"):
+        replace(consumer, engine=object())
+
+
+def test_explicit_consumer_does_not_reuse_historical_pool_battery(monkeypatch):
+    from dataclasses import replace
+
+    module = _load_head_to_head_module()
+    consumer = _explicit_consumer(module)
+    artifact = replace(
+        _fixture_artifact(module, sha256="a" * 64, measure_values=(1.0, 2.0)),
+        terminal_gates={"historical": "not evidence for the selected consumer"},
+    )
+
+    def forbidden(_):
+        raise AssertionError("Historical model battery reused as current evidence")
+
+    monkeypatch.setattr(module, "_battery_payload_from_pool_receipt", forbidden)
+    payload = module._terminal_battery_payload(artifact, consumer=consumer)
+    assert payload["status"] == "inapplicable"
+    assert artifact.terminal_gates == {
+        "historical": "not evidence for the selected consumer"
+    }
 
 
 def test_dense_candidate_streaming_plan_is_independent_of_total_pool_size() -> None:

@@ -64,6 +64,7 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Literal
 
 import build_us_fiscal_refresh_release as release
@@ -239,6 +240,62 @@ def _empty_historical_formula_owned_columns_receipt() -> dict[str, object]:
         "count": 0,
         "columns_by_entity": {},
     }
+
+
+@dataclass(frozen=True)
+class HeadToHeadConsumer:
+    """Explicit execution dependencies shared by both comparison artifacts.
+
+    This is configuration, not runtime qualification. The caller must bind the
+    engine and constructors to its reviewed runtime and the same SPM selection.
+    No dependency is resolved from the default country package in this mode.
+    Historical normalization and the ephemeral battery projection still apply;
+    their receipts are diagnostics, not native-source or publication authority.
+    """
+
+    engine: object
+    dataset_cls: object
+    microsimulation_cls: object
+    system_factory: object
+    zero_variable_reform_factory: object
+    spm: Mapping[str, object] | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "dataset_cls",
+            "microsimulation_cls",
+            "system_factory",
+            "zero_variable_reform_factory",
+        ):
+            if not callable(getattr(self, name)):
+                raise TypeError(f"Explicit comparison consumer requires {name}.")
+        for name in (
+            "_engine_computed_columns",
+            "variable_dependency_closure",
+            "variable_metadata",
+            "materialize",
+        ):
+            if not callable(getattr(self.engine, name, None)):
+                raise TypeError(f"Explicit comparison engine requires {name}.")
+        if self.spm is not None:
+            object.__setattr__(self, "spm", MappingProxyType(dict(self.spm)))
+
+    def materialization_kwargs(self) -> dict[str, object]:
+        return {
+            "formula_metadata": self.engine,
+            "dataset_cls": self.dataset_cls,
+            "microsimulation_cls": self.microsimulation_cls,
+            "system_factory": self.system_factory,
+            "zero_variable_reform_factory": self.zero_variable_reform_factory,
+            "spm": None if self.spm is None else dict(self.spm),
+        }
+
+    def variable_entity_map(self) -> dict[str, str]:
+        kwargs = {} if self.spm is None else {"spm": dict(self.spm)}
+        system = self.system_factory(**kwargs)
+        return {
+            name: variable.entity.key for name, variable in system.variables.items()
+        }
 
 
 @dataclass(frozen=True)
@@ -445,6 +502,8 @@ def _live_incumbent_identity_if_matched(sha256: str) -> dict[str, object] | None
 
 def _drop_historical_formula_owned_columns(
     frame: Frame,
+    *,
+    consumer: HeadToHeadConsumer | None = None,
 ) -> tuple[Frame, dict[str, object]]:
     """Normalize one loaded artifact to current-engine input leaves.
 
@@ -456,7 +515,9 @@ def _drop_historical_formula_owned_columns(
     the one comparison engine recompute them.
     """
 
-    metadata_index = release._formula_owned_gate_adapter()
+    metadata_index = (
+        release._formula_owned_gate_adapter() if consumer is None else consumer.engine
+    )
     tables = {entity: frame.table(entity) for entity in frame.entities}
     formula_owned = metadata_index._engine_computed_columns(
         tables,
@@ -522,13 +583,16 @@ def _load_pool_manifest(
     *,
     expected_manifest_sha256: str | None,
     worker_identity_attestation: Path | None,
+    consumer: HeadToHeadConsumer | None = None,
 ) -> LoadedArtifact:
     frame, manifest, authenticated = load_authenticated_us_multispine_pool_for_scoring(
         manifest_path,
         expected_manifest_sha256=expected_manifest_sha256,
         worker_identity_attestation=worker_identity_attestation,
     )
-    frame, formula_owned_receipt = _drop_historical_formula_owned_columns(frame)
+    frame, formula_owned_receipt = _drop_historical_formula_owned_columns(
+        frame, **({} if consumer is None else {"consumer": consumer})
+    )
     terminal_gates = manifest.get("terminal_gates")
     if not isinstance(terminal_gates, Mapping):
         raise ValueError(
@@ -567,7 +631,9 @@ def _load_pool_manifest(
     )
 
 
-def _load_h5(path: Path) -> LoadedArtifact:
+def _load_h5(
+    path: Path, *, consumer: HeadToHeadConsumer | None = None
+) -> LoadedArtifact:
     layout = _h5_layout(path)
     if layout == "entity_tables":
         try:
@@ -582,19 +648,30 @@ def _load_h5(path: Path) -> LoadedArtifact:
             )
         # The exact loader the canonical read-only fiscal scorer uses
         # (tools/score_us_fiscal_targets.py:436 -> release._load_frame).
-        frame = release._load_frame(path)
+        frame = release._load_frame(
+            path, **({} if consumer is None else {"dataset_cls": consumer.dataset_cls})
+        )
         loader: dict[str, object] = {
             "kind": "microcosm_entity_h5",
             "weight_kind": frame.weights_for("household").kind.value,
         }
     else:
-        frame, layout_receipt = fiscal_scorer._load_legacy_pe_flat_frame(path)
+        loader_kwargs = (
+            {}
+            if consumer is None
+            else {"variable_entity_by_name": consumer.variable_entity_map()}
+        )
+        frame, layout_receipt = fiscal_scorer._load_legacy_pe_flat_frame(
+            path, **loader_kwargs
+        )
         loader = {
             "kind": "legacy_policyengine_flat_h5",
             "weight_kind": frame.weights_for("household").kind.value,
             "layout_receipt": layout_receipt,
         }
-    frame, formula_owned_receipt = _drop_historical_formula_owned_columns(frame)
+    frame, formula_owned_receipt = _drop_historical_formula_owned_columns(
+        frame, **({} if consumer is None else {"consumer": consumer})
+    )
     sha256 = _sha256(path)
     identity: dict[str, object] = {
         "kind": "h5",
@@ -619,6 +696,7 @@ def load_artifact(
     *,
     expected_manifest_sha256: str | None = None,
     worker_identity_attestation: Path | None = None,
+    consumer: HeadToHeadConsumer | None = None,
 ) -> LoadedArtifact:
     """Load a role-neutral H5 or authenticated pool into the common frame API."""
 
@@ -628,6 +706,7 @@ def load_artifact(
             resolved,
             expected_manifest_sha256=expected_manifest_sha256,
             worker_identity_attestation=worker_identity_attestation,
+            consumer=consumer,
         )
     else:
         if (
@@ -638,7 +717,7 @@ def load_artifact(
                 "Candidate manifest authentication options apply only to a "
                 "pool manifest."
             )
-        artifact = _load_h5(resolved)
+        artifact = _load_h5(resolved, consumer=consumer)
     _assert_rss_below_limit(f"after loading {artifact.identity['filename']}")
     return artifact
 
@@ -808,6 +887,7 @@ def _score_chunk_household_sliced(
     artifact_name: str,
     chunk_label: str,
     maximum_microsim_batch_size: int | None,
+    consumer: HeadToHeadConsumer | None = None,
 ) -> ScoredChunk:
     """Materialize, score, and reduce one chunk without a dense full-pool table.
 
@@ -851,6 +931,7 @@ def _score_chunk_household_sliced(
                 maximum_microsim_batch_size=maximum_microsim_batch_size,
                 target_materialization_cache_dir=None,
                 target_materialization_cache_context=None,
+                **({} if consumer is None else consumer.materialization_kwargs()),
             )
         )
         _assert_nothing_dropped(
@@ -1429,7 +1510,9 @@ def _inapplicable_battery_payload(
     }
 
 
-def _battery_payload_from_observed_origins(frame: Frame) -> dict[str, object]:
+def _battery_payload_from_observed_origins(
+    frame: Frame, *, consumer: HeadToHeadConsumer | None = None
+) -> dict[str, object]:
     observed = _observed_origin_receipt(frame)
     if observed["entities_missing_provenance_columns"]:
         reason = (
@@ -1461,7 +1544,9 @@ def _battery_payload_from_observed_origins(frame: Frame) -> dict[str, object]:
             "mode": "artifact_already_carried_ssi"
         }
     else:
-        materialized = materialize_multispine_agreement_outputs(frame)
+        materialized = materialize_multispine_agreement_outputs(
+            frame, **({} if consumer is None else {"engine": consumer.engine})
+        )
         evaluation_frame = materialized.frame
         materialization_receipt = dict(materialized.receipt)
     gate = by_origin_battery_artifact_evidence(evaluation_frame)
@@ -1517,10 +1602,15 @@ def _battery_payload_from_pool_receipt(
     }
 
 
-def _terminal_battery_payload(artifact: LoadedArtifact) -> dict[str, object]:
-    if artifact.terminal_gates is not None:
+def _terminal_battery_payload(
+    artifact: LoadedArtifact, *, consumer: HeadToHeadConsumer | None = None
+) -> dict[str, object]:
+    # A historical pool receipt does not bind this explicit comparison model.
+    # Keep the original receipt on the loaded artifact; calculate the common
+    # model's observed battery separately (or report its inapplicability).
+    if artifact.terminal_gates is not None and consumer is None:
         return _battery_payload_from_pool_receipt(artifact.terminal_gates)
-    return _battery_payload_from_observed_origins(artifact.frame)
+    return _battery_payload_from_observed_origins(artifact.frame, consumer=consumer)
 
 
 def score_loaded_artifact(
@@ -1530,13 +1620,14 @@ def score_loaded_artifact(
     yardstick: FiscalYardstick,
     maximum_microsim_batch_size: int | None,
     population_weight_mode: Literal["rescaled", "shipped"] = "rescaled",
+    consumer: HeadToHeadConsumer | None = None,
 ) -> tuple[dict[str, object], tuple[tuple[str, str, str], ...]]:
     """Run the common scoring path for one already-normalized artifact."""
 
     if population_weight_mode not in _POPULATION_WEIGHT_MODES:
         raise ValueError("Unknown population weight mode.")
     cd_provenance = _validate_cd_provenance(artifact, yardstick)
-    terminal_battery = _terminal_battery_payload(artifact)
+    terminal_battery = _terminal_battery_payload(artifact, consumer=consumer)
     if population_weight_mode == "rescaled":
         base_frame, mass_repair = release._with_base_population_mass_repair(
             artifact.frame
@@ -1578,6 +1669,7 @@ def score_loaded_artifact(
             artifact_name=artifact_name,
             chunk_label=chunk_label,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
+            consumer=consumer,
         )
         _assert_nothing_dropped(
             artifact_name=f"{artifact_name} {chunk_label}",
@@ -1822,6 +1914,7 @@ def score_head_to_head(
     candidate_manifest_sha256: str | None = None,
     candidate_worker_identity_attestation: Path | None = None,
     population_weight_mode: Literal["rescaled", "shipped"] = "rescaled",
+    consumer: HeadToHeadConsumer | None = None,
 ) -> dict[str, object]:
     """Compile once, then score incumbent and optional candidate sequentially."""
 
@@ -1862,6 +1955,7 @@ def score_head_to_head(
             path,
             expected_manifest_sha256=expected_manifest_sha256,
             worker_identity_attestation=worker_identity_attestation,
+            **({} if consumer is None else {"consumer": consumer}),
         )
         artifact_payload, contract = score_loaded_artifact(
             artifact=loaded,
@@ -1869,6 +1963,7 @@ def score_head_to_head(
             yardstick=yardstick,
             maximum_microsim_batch_size=maximum_microsim_batch_size,
             population_weight_mode=population_weight_mode,
+            **({} if consumer is None else {"consumer": consumer}),
         )
         artifacts[name] = artifact_payload
         contracts[name] = contract

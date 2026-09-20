@@ -4153,11 +4153,17 @@ def _reform_household_income_tax(
     formula_metadata=None,
     dataset_cls=None,
     spm: Mapping[str, object] | None = None,
+    zero_variable_reform_factory=None,
 ) -> np.ndarray:
     spm = None if spm is None else dict(spm)
     _assert_no_formula_owned_columns(base_frame, formula_metadata=formula_metadata)
     reform_income_tax = np.zeros(n_households, dtype=np.float64)
-    reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
+    make_reform = (
+        _make_zero_variable_reform
+        if zero_variable_reform_factory is None
+        else zero_variable_reform_factory
+    )
+    reform = make_reform(system, reform_spec.neutralized_variable)
     # microcosm#456: a reform simulation cannot reuse the engine's shared
     # class-level system instance, so letting each batch construct its own
     # ``Microsimulation(reform=...)`` rebuilt the full tax-benefit system per
@@ -4582,12 +4588,20 @@ def _person_variable_to_tax_unit(*, frame: Frame, values: np.ndarray) -> np.ndar
     return out
 
 
-def _make_zero_variable_reform(system, variable_name: str):
-    from policyengine_us.model_api import Reform, Variable
+def _make_zero_variable_reform(
+    system, variable_name: str, *, reform_cls=None, variable_cls=None
+):
+    if reform_cls is None or variable_cls is None:
+        from policyengine_us.model_api import Reform, Variable
+
+        if reform_cls is None:
+            reform_cls = Reform
+        if variable_cls is None:
+            variable_cls = Variable
 
     original = system.variables[variable_name]
 
-    class NeutralizedVariable(Variable):
+    class NeutralizedVariable(variable_cls):
         value_type = original.value_type
         entity = original.entity
         label = f"Neutralized {variable_name}"
@@ -4602,7 +4616,7 @@ def _make_zero_variable_reform(system, variable_name: str):
 
     NeutralizedVariable.__name__ = variable_name
 
-    class NeutralizeVariableReform(Reform):
+    class NeutralizeVariableReform(reform_cls):
         def apply(self):
             self.replace_variable(NeutralizedVariable)
 
@@ -4652,7 +4666,13 @@ def _load_or_materialize_target_frame(
     microsimulation_cls=None,
     system_factory=None,
     spm: Mapping[str, object] | None = None,
+    zero_variable_reform_factory=None,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
+    if zero_variable_reform_factory is not None and (
+        target_frame_checkpoint_path is not None
+        or target_materialization_cache_dir is not None
+    ):
+        raise ValueError("Explicit reform factory requires target caches disabled.")
     # Dependency injection does not declare cache identity: the caller must
     # bind the actual consumer and effective SPM selection in its context.
     spm = None if spm is None else dict(spm)
@@ -4693,6 +4713,7 @@ def _load_or_materialize_target_frame(
         microsimulation_cls=microsimulation_cls,
         system_factory=system_factory,
         spm=spm,
+        zero_variable_reform_factory=zero_variable_reform_factory,
     )
     if (
         target_frame_checkpoint_path is not None
@@ -4729,7 +4750,13 @@ def _materialize_target_frame(
     microsimulation_cls=None,
     system_factory=None,
     spm: Mapping[str, object] | None = None,
+    zero_variable_reform_factory=None,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
+    if (
+        zero_variable_reform_factory is not None
+        and target_materialization_cache_dir is not None
+    ):
+        raise ValueError("Explicit reform factory requires target caches disabled.")
     spm = None if spm is None else dict(spm)
     if formula_metadata is not None:
         _assert_no_formula_owned_columns(base_frame, formula_metadata=formula_metadata)
@@ -5139,6 +5166,11 @@ def _materialize_target_frame(
                 formula_metadata=formula_metadata,
                 dataset_cls=dataset_cls,
                 spm=spm,
+                **(
+                    {}
+                    if zero_variable_reform_factory is None
+                    else {"zero_variable_reform_factory": zero_variable_reform_factory}
+                ),
             )
             if (
                 target_materialization_cache_dir is not None
