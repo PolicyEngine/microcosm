@@ -1642,7 +1642,7 @@ def _finalize_epoch():
 
 
 @contextmanager
-def verification_epoch():
+def verification_epoch(*, join=False):
     """Validate each native capsule once per run, and again in full at the end.
 
     The memo is opt-in and scoped: nothing outside this context manager changes
@@ -1655,9 +1655,19 @@ def verification_epoch():
     The record it yields is this epoch's own receipt: how many borrows were
     answered from the memo, how many re-ran the complete validation, and how
     many unconditional final re-validations closed it.
+
+    ``join=True`` reuses the innermost open epoch without closing or clearing
+    it. The caller must retain that outer scope until its result can escape:
+    changes invisible to the memo signature are refused at the outer close.
+    With no open epoch, joining creates and closes a normal epoch. The default
+    retains independent nested finalization.
     """
 
     global _EPOCH_RECORD
+    _require(type(join) is bool, "VERIFICATION_EPOCH_JOIN")
+    if join and _EPOCHS:
+        yield _EPOCH_RECORD
+        return
     record = {
         "protocol": PROTOCOL + "/verification-epoch/1",
         "hits": 0,

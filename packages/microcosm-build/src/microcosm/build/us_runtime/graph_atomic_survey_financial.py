@@ -881,7 +881,8 @@ def check_atomic_survey_financial_run(run):
     """Permanently revoke an enabled completion after any failed host check."""
     entry = _run_entry(run)
     try:
-        return _check_atomic_survey_financial_run(run)
+        with survey._source_owner().verification_epoch(join=True):
+            return _check_atomic_survey_financial_run(run)
     except Exception:
         if entry[2].completion_boundary is not None:
             entry[2].completion_boundary.revoke()

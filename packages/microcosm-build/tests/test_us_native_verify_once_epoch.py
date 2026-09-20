@@ -372,6 +372,144 @@ def test_nested_epochs_finalize_at_every_level(tmp_path, monkeypatch):
     assert owner._MEMO == {}
 
 
+@pytest.mark.parametrize("invalid", [None, 0, 1, "true", (), []])
+def test_join_requires_an_exact_boolean(invalid):
+    with owner.verification_epoch() as outer:
+        with pytest.raises(
+            owner.SurveyPopulationPreparationError, match="VERIFICATION_EPOCH_JOIN"
+        ):
+            with owner.verification_epoch(join=invalid):
+                pytest.fail("invalid join entered its body")
+        assert owner.epoch_record() is outer
+        assert owner._EPOCHS == [outer]
+    assert owner.epoch_record() is None
+
+
+def test_join_without_an_open_epoch_validates_and_closes(tmp_path, monkeypatch):
+    preparation = owner.prepare_authenticated_survey_population(
+        **fixture(tmp_path, monkeypatch)
+    )
+    with _Counter(owner._source_files) as counter:
+        with owner.verification_epoch(join=True) as record:
+            _borrow(preparation)
+            _borrow(preparation)
+            assert counter.counts["_source_files"] == 1
+        assert counter.counts["_source_files"] == 2
+    assert record["hits"] == record["misses"] == record["final_validations"] == 1
+    assert owner.epoch_record() is None
+    assert owner._MEMO == native._MEMO == {}
+
+
+def test_join_reuses_the_innermost_epoch_without_a_close(tmp_path, monkeypatch):
+    preparation = owner.prepare_authenticated_survey_population(
+        **fixture(tmp_path, monkeypatch)
+    )
+    with _Counter(owner._source_files) as counter:
+        with owner.verification_epoch() as outer:
+            _borrow(preparation)
+            with owner.verification_epoch() as inner:
+                assert inner is not outer
+                with owner.verification_epoch(join=True) as joined:
+                    assert joined is inner
+                    _borrow(preparation)
+                assert owner.epoch_record() is inner
+                assert counter.counts["_source_files"] == 1
+                assert inner["hits"] == 1
+                assert inner["final_validations"] == 0
+                assert len(owner._EPOCHS) == 2
+            assert counter.counts["_source_files"] == 2
+            assert owner.epoch_record() is outer
+        assert counter.counts["_source_files"] == 3
+    assert inner["final_validations"] == outer["final_validations"] == 1
+    assert owner._MEMO == native._MEMO == {}
+
+
+def test_caught_join_failure_does_not_skip_the_outer_full_validation(
+    tmp_path, monkeypatch
+):
+    from fractions import Fraction
+
+    preparation = owner.prepare_authenticated_survey_population(
+        **fixture(tmp_path, monkeypatch)
+    )
+    state = owner._ISSUED[id(preparation)][2]
+    with pytest.raises(owner.SurveyPopulationPreparationError, match="PLAN_CHANGED"):
+        with owner.verification_epoch() as outer:
+            _borrow(preparation)
+            with pytest.raises(RuntimeError, match="joined body failed"):
+                with owner.verification_epoch(join=True) as joined:
+                    assert joined is outer
+                    object.__setattr__(state.plan.selected[0], "share", Fraction(99))
+                    _borrow(
+                        preparation
+                    )  # Signature-invisible; outer close must refuse.
+                    raise RuntimeError("joined body failed")
+            assert owner.epoch_record() is outer
+            assert outer["final_validations"] == 0
+    assert owner.epoch_record() is None
+    assert owner._MEMO == native._MEMO == {}
+
+
+def test_join_still_refuses_a_changed_source_at_the_borrow(tmp_path, monkeypatch):
+    arguments = fixture(tmp_path, monkeypatch)
+    preparation = owner.prepare_authenticated_survey_population(**arguments)
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match="SOURCE_STAT_CHANGED"
+    ):
+        with owner.verification_epoch():
+            _borrow(preparation)
+            with owner.verification_epoch(join=True):
+                _touch(arguments["source_dir"] / "selection-request.json")
+                with pytest.raises(
+                    owner.SurveyPopulationPreparationError, match="SOURCE_STAT_CHANGED"
+                ):
+                    _borrow(preparation)
+    assert owner._MEMO == native._MEMO == {}
+
+
+@pytest.mark.parametrize("failure_stage", ["body", "close"])
+@pytest.mark.parametrize("completion_enabled", [True, False])
+def test_financial_check_failure_keeps_completion_revocation_boundary(
+    monkeypatch, failure_stage, completion_enabled
+):
+    """Orchestration only: an epoch-close failure is a failed host check too.
+
+    The fake entry exercises exception routing, not run issuance or authority.
+    The genuine nineteen-node test covers source reads and returned data.
+    """
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+
+    from microcosm.build.us_runtime import graph_atomic_survey_financial as financial
+
+    revoked = []
+    boundary = SimpleNamespace(revoke=lambda: revoked.append(True))
+    state = SimpleNamespace(
+        completion_boundary=boundary if completion_enabled else None
+    )
+
+    @contextmanager
+    def failing_epoch(*, join):
+        assert join is True
+        yield
+        if failure_stage == "close":
+            raise owner.SurveyPopulationPreparationError("CLOSE_REFUSED")
+
+    def check(_):
+        if failure_stage == "body":
+            raise owner.SurveyPopulationPreparationError("BODY_REFUSED")
+        return object()
+
+    monkeypatch.setattr(financial, "_run_entry", lambda _: (None, None, state))
+    monkeypatch.setattr(financial, "_check_atomic_survey_financial_run", check)
+    monkeypatch.setattr(owner, "verification_epoch", failing_epoch)
+    with pytest.raises(
+        owner.SurveyPopulationPreparationError, match=failure_stage.upper() + "_REFUSED"
+    ):
+        financial.check_atomic_survey_financial_run(object())
+    assert revoked == ([True] if completion_enabled else [])
+
+
 # --------------------------------------------------------------------------
 # An inner close's own window: what moves while it validates is never the
 # new normal.
