@@ -13,6 +13,7 @@ model, tax treatment and release decision.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import sys
@@ -309,15 +310,21 @@ def _allocation_columns(basis, out):
 
 
 def _topcoded(kinds, codes, statuses):
-    """Censoring of the dollars this leaf actually admits, or unknown."""
-    seen = False
+    """Censoring of the dollars this leaf actually admits, or unknown.
+
+    The reading is "some admitted slot is topcoded", so one readable flag of 1
+    settles it even when another admitted slot's flag cannot be read. Only an
+    unreadable flag with no censoring established elsewhere leaves it unknown.
+    """
+    unreadable = False
     for kind, code, status in zip(kinds, codes, statuses, strict=True):
         if kind != "reported_source_slot":
             continue
         if status != "in_printed_range":
-            return pd.NA
-        seen = seen or code == 1
-    return seen
+            unreadable = True
+        elif code == 1:
+            return True
+    return pd.NA if unreadable else False
 
 
 def _legacy_arithmetic(basis):
@@ -574,8 +581,13 @@ def _module_constants():
     Collected rather than listed, so a constant added later is bound without
     anyone remembering to extend this seal.
     """
+    # Detached, not aliased: a constant that is a live mapping owned by another
+    # module would otherwise be snapshotted by reference, so mutating it in
+    # place would mutate this seal with it and pass its own equality check.
     return {
-        name: dict(value) if isinstance(value, MappingProxyType) else value
+        name: copy.deepcopy(
+            dict(value) if isinstance(value, MappingProxyType) else value
+        )
         for name, value in vars(sys.modules[__name__]).items()
         if name != "_LIVE"
         and name.isupper()
@@ -601,7 +613,13 @@ def _live():
         legacy.US_DISABILITY_BENEFITS_OUTPUT_COLUMNS,
         legacy.DISABILITY_BENEFITS_ARCHIVED_DERIVATION_URL,
         legacy.DISABILITY_BENEFITS_ARCHIVED_SOURCE_COLUMNS_URL,
-        routing.source._function_seal(legacy.derive_us_disability_benefits_from_asec),
+        tuple(
+            routing.source._function_seal(function)
+            for function in (
+                legacy.derive_us_disability_benefits_from_asec,
+                legacy._strict_numeric_source,
+            )
+        ),
         # The qualified source owner, its printed semantics and its seal.
         detail,
         detail.PROTOCOL,
@@ -624,6 +642,12 @@ def _live():
                 detail.retirement_detail_values_seal,
                 detail._slot_status,
                 detail._amount_pair,
+                # The owner cross-checks the retained DIS amounts against the
+                # money owner, but the source codes, receipt and flag literals
+                # this leaf reads come only from the capture, so the capture
+                # and comparison path is bound here too.
+                detail._capture_member,
+                detail._compare_amount,
             )
         ),
         routing,
@@ -638,6 +662,11 @@ def _live():
                 routing.receipt_status,
                 routing.literal_code,
                 routing._codes_frame,
+                routing._read_capture,
+                routing._file_sha,
+                routing._sha,
+                routing.coverage._capture,
+                routing.coverage._identity,
                 routing.source._function_seal,
                 routing.source._pure_final,
                 physical._series_digest,
@@ -646,7 +675,7 @@ def _live():
     )
 
 
-def _evidence(person, detail_values, seal, implementation):
+def _evidence(person, detail_values, seal):
     allocation = _allocation_entries()
     return json.loads(
         json.dumps(
@@ -708,7 +737,11 @@ def _evidence(person, detail_values, seal, implementation):
                 "retirement_detail_protocol": detail.PROTOCOL,
                 "retirement_detail_values_sha256": seal,
                 "retirement_detail_evidence": detail_values.evidence,
-                "implementation_sha256": implementation,
+                "implementation_sha256": _IMPLEMENTATION_SHA256,
+                "implementation_sha256_scope": (
+                    "the bytes of this module as imported; a later edit refuses "
+                    "rather than being reported"
+                ),
                 "acs_completion_assigned": False,
                 "under15_completed_with_zero": False,
                 "niu_completed_with_zero": False,
@@ -721,7 +754,8 @@ def _evidence(person, detail_values, seal, implementation):
                 "allocation_flags_qualify_receipt": False,
                 "model_fitted": False,
                 "clone_redraw_issued": False,
-                "raw_member_read": False,
+                "adds_raw_member_reader": False,
+                "member_capture_owner": detail.PROTOCOL,
                 "source_admission_issued": False,
                 "release_eligible": False,
             }
@@ -729,10 +763,18 @@ def _evidence(person, detail_values, seal, implementation):
     )
 
 
+def _implementation_unchanged():
+    """The loaded functions and the file on disk must still be one thing."""
+    return (
+        _live() == _LIVE
+        and hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        == _IMPLEMENTATION_SHA256
+    )
+
+
 def compose_other_disability(detail_values):
     """Borrow the qualified detail owner and return detached descriptive values."""
-    _require(_live() == _LIVE, "IMPLEMENTATION_CHANGED")
-    implementation = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    _require(_implementation_unchanged(), "IMPLEMENTATION_CHANGED")
     _require(
         type(detail_values) is detail.CurrentAsecRetirementDetailValues,
         "DETAIL_OWNER_TYPE",
@@ -750,18 +792,14 @@ def compose_other_disability(detail_values):
     _require("native_person_id" in detail_values.person, "DETAIL_NATIVE_AXIS")
     person = project_other_disability(detail_values.person)
     result = CurrentAsecOtherDisabilityValues(
-        person, _evidence(person, detail_values, seal, implementation)
+        person, _evidence(person, detail_values, seal)
     )
     stamp = other_disability_values_seal(result)
     _require(
         detail.retirement_detail_values_seal(detail_values) == seal,
         "DETAIL_VALUES_CHANGED",
     )
-    _require(
-        _live() == _LIVE
-        and hashlib.sha256(Path(__file__).read_bytes()).hexdigest() == implementation,
-        "IMPLEMENTATION_CHANGED",
-    )
+    _require(_implementation_unchanged(), "IMPLEMENTATION_CHANGED")
     _require(other_disability_values_seal(result) == stamp, "FINAL_VALUES_CHANGED")
     return result
 
@@ -811,7 +849,7 @@ def attach_other_disability_columns(values, receiving):
     clones of a source person carry bit-identical values and no draw is taken.
     Rows on an arm this source never observed stay unknown rather than zero.
     """
-    _require(_live() == _LIVE, "IMPLEMENTATION_CHANGED")
+    _require(_implementation_unchanged(), "IMPLEMENTATION_CHANGED")
     _require(type(values) is CurrentAsecOtherDisabilityValues, "VALUES_TYPE")
     seal = other_disability_values_seal(values)
     basis = values.person
@@ -933,4 +971,5 @@ def attach_other_disability_columns(values, receiving):
     return OtherDisabilityAttachment(columns, receipt)
 
 
+_IMPLEMENTATION_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 _LIVE = _live()

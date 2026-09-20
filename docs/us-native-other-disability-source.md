@@ -55,9 +55,12 @@ A person's leaf is known only when both slots resolve. A "yes" answer with no
 populated source in either slot is `affirmed_receipt_without_reported_source`
 and stays unknown rather than becoming a zero. A recipient zero under a
 reported non-workers-compensation source stays ambiguous, because the printed
-entry says `0 = none or niu`. Under-15 rows and NIU rows stay unknown even
-though the archived arithmetic reads them as zero; the divergence is recorded
-in `other_disability_archived_arithmetic_amount` and never adopted.
+entry says `0 = none or niu`. Under-15 rows and NIU rows stay unknown
+wherever the archived arithmetic would have read them; whatever it read — zero
+on a consistent row, a positive number on a contradictory one, or nothing at
+all when a literal will not parse — is recorded in
+`other_disability_archived_arithmetic_amount` and
+`other_disability_archived_arithmetic_evaluable`, and never adopted.
 
 ## Provenance is not knownness
 
@@ -65,7 +68,10 @@ Every published allocation flag for this family (`I_DISYN`, `I_DISSC1`,
 `I_DISSC2`, `I_DISVL1`, `I_DISVL2`) is evaluated against its own printed
 conditional universe, read from the detail owner's entries rather than
 restated. A flag outside its universe, unpopulated, or unreadable is labeled as
-exactly that.
+exactly that, in that order of precedence: a flag whose universe cannot be
+resolved, or that sits outside it, is answered before its own literal is
+judged, so an unpopulated or malformed literal is only reported where the flag
+was in its universe to begin with.
 
 Two family-level answers are reported, under names that say which is which.
 `other_disability_published_flag_origin` is the routing owner's reading, which
@@ -73,7 +79,10 @@ is universe-blind by that owner's charter: a nonzero flag read outside its own
 printed universe still counts as a publisher allocation there.
 `other_disability_allocation_status` is this module's own reading, built from
 the per-flag labels above, so a flag outside its universe does not allocate
-this family. Neither qualifies or disqualifies a receipt:
+this family. Its precedence is: an in-universe publisher allocation settles the
+family; otherwise an unresolved universe or literal, then an unpopulated flag,
+then a clear in-universe zero; and `no_flag_in_its_universe` only where every
+printed universe — all of which are `X > 0` here — is false. Neither qualifies or disqualifies a receipt:
 `other_disability_allocation_qualifies_receipt` is `False` on every row.
 Topcode flags describe only the dollars this leaf admits, and
 `topcode_corrected` stays `False`.
@@ -100,12 +109,23 @@ its semantics can be inspected and tested; neither it nor
 `other_disability_values_seal` confers authority. `compose_other_disability`
 seals the borrowed detail owner before and after projection and rechecks its
 own active implementation dependencies. That fence binds every module-level
-constant of this file, every function in it, and the borrowed callables it
-actually depends on — the detail owner's qualifier, literal projection, slot
-status and seal, the routing owner's receipt, literal, code-frame and
-allocation helpers, and the archived arithmetic with its parameter dictionary.
-`qualify_current_asec_other_disability` additionally rechecks the retained
-preparation and native issuance.
+constant of this file, detached rather than aliased; every function defined in
+it; the bytes of the file as imported, so an edit after import refuses instead
+of being reported; and an **enumerated** set of borrowed callables — the detail
+owner's qualifier, literal projection, slot status, amount pair, member capture
+and amount comparison and seal; the routing owner's receipt, literal,
+code-frame, capture, digest and allocation helpers; and the archived arithmetic
+with its own input guard and parameter dictionary. That list is deliberate, not
+a transitive closure: it covers the callables this module's own path depends on
+for the literals it reads, and it does not attest anything those callables in
+turn call. `qualify_current_asec_other_disability` additionally rechecks the
+retained preparation and native issuance.
+
+The detail owner cross-checks the retained `DIS_VAL1/2` amounts against the
+authenticated money owner's bits, but `DIS_YN`, `DIS_SC1/2` and the allocation
+and topcode literals reach this leaf from the member capture alone. That is why
+the capture path is inside the fence, and it is a boundary a consumer should
+know about rather than a property this module can prove on its own.
 
 ACS completion, SSI eligibility, tax treatment, topcode correction, host
 composition, calibration and release remain separate work owned elsewhere. The
