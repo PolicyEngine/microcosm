@@ -1,0 +1,1 @@
+Add opt-in native sex inputs to survey enrichment. The graph exposes qualified ASEC sex/allocation and ACS sex observations, binds nullable `is_female` once per original person, then copies it through the existing clone mapping without filling unknowns or changing weights.
