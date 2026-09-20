@@ -156,3 +156,40 @@ output reuse. The genuine-owner integration test reuses the existing enrichment
 suite's actual issued owner; run it with the compatible continuation source,
 not against a frozen active measurement tree. No native data or country model
 calculation is needed by the lightweight suite.
+
+### Optional veterans’ benefits development route
+
+The retained native enrichment host accepts `groups=("veterans_benefits",)` with
+`full_original_amount_donors=True`. Existing default groups and donor selection
+remain unchanged. This route qualifies `VET_VAL` and `VET_YN` from the exact
+retained 2025 ASEC person member for 2024 income. Positive “yes” answers and
+explicit “no” plus zero are known; NIU, recipient zero, missing answers and
+contradictions remain unknown. Age 15 is the lower reporting boundary, without
+an upper-age, veteran-status or VA-healthcare filter.
+
+`I_VETYN` and `I_VETVAL` retain their literals, published codes, conditional flag
+universes and allocation status. A zero flag outside its universe does not
+establish an unallocated observation. Allocation provenance does not create
+income zeros or discard otherwise known publisher-allocated amounts. The
+six-digit veterans amount range does not change the five-digit UC/WC ranges.
+
+The model uses full-original current ASEC DESIGN donors with qualified amounts
+and predictors, including donors absent from the selected receiving support.
+It draws once per eligible original ACS person and carries that draw to both
+existing clones. ASEC originals and their clones retain the qualified source
+amount and unknownness. The ASEC2025/income2024-to-ACS2024 transfer is an explicit
+development assumption; held-out quality, donor adequacy and release equivalence
+remain unverified.
+
+When veterans is selected, `survey_amounts.canonical.version` keeps all receiving
+support after prior enrichment, and `survey_amounts.canonical.attach` writes only
+selected veterans and child-support canonical outputs. Child-only runs retain
+their existing node IDs. An enabled canonical-state stage follows this version.
+Carried canonical values establish no source authority: supported float32/float64
+storage is replaced from qualified source/model values with exact-loss checks;
+unsupported storage and unrelated ownership collisions refuse. The parent source
+branch, other columns, entity axes, memberships, weights and ledger are preserved.
+
+Invented-source and tiny real-fit/replay tests qualify this component boundary.
+They do not establish full financial/PUF/enrichment-owner acceptance, a completed
+native input profile, actual-source quality or publication eligibility.
