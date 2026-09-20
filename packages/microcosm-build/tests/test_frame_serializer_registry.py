@@ -378,15 +378,14 @@ def _round_trip_us_annual_static_aging(
 ) -> BooleanRoundTrip:
     pytest.importorskip("policyengine_us")
     from microcosm.build.us_annual_static_aging import _write_year
+    from microcosm.frame.materialize import engine_tables
 
     source = _dtype_family_table(nullable_case)
     before = source.copy(deep=True)
     frame = _us_frame(source)
     path = tmp_path / "annual.h5"
     try:
-        _write_year(
-            path, {entity: frame.table(entity) for entity in frame.entities}, 2025
-        )
+        _write_year(path, engine_tables(frame, weighted_entities=("household",)), 2025)
     finally:
         pd.testing.assert_frame_equal(
             source, before, check_exact=True, check_dtype=True
