@@ -887,7 +887,9 @@ def _stored_enum_name(value: object) -> str | None:
     return str(value)
 
 
-def _input_representation_reason(series, variable, enum_type) -> str | None:
+def _input_representation_reason(
+    series, variable, enum_type, *, exact_integer=False
+) -> str | None:
     """Return a fixed reason only; never include source values in diagnostics."""
     if series.isna().any():
         return "NULL"
@@ -899,6 +901,8 @@ def _input_representation_reason(series, variable, enum_type) -> str | None:
     except (TypeError, ValueError):
         return "DTYPE"
     values = np.asarray(series.values)
+    if exact_integer and values.dtype.kind not in "iu":
+        return "INTEGER_DTYPE"
     value_type = getattr(variable, "value_type", None)
     if value_type is enum_type:
         allowed = _enum_domain(variable)
@@ -951,6 +955,18 @@ def _input_representation_reason(series, variable, enum_type) -> str | None:
             or (np.isfinite(values) & ~np.isfinite(converted)).any()
         ):
             return "FLOAT_RANGE"
+        if exact_integer:
+            # Some country ID variables are declared as floats. Their storage
+            # must preserve integer identity, unlike ordinary monetary inputs.
+            # Check bounds as Python integers before casting back: floating
+            # comparisons can round the bound itself (e.g. uint64's maximum).
+            bounds = np.iinfo(values.dtype)
+            if len(converted) and (
+                int(converted.min()) < bounds.min or int(converted.max()) > bounds.max
+            ):
+                return "INTEGER_LOSS"
+            if not np.array_equal(converted.astype(values.dtype), values):
+                return "INTEGER_LOSS"
     elif value_type is str:
         if dtype.kind not in "OUS" or not all(
             isinstance(value, str) for value in values
@@ -1048,6 +1064,7 @@ class PolicyEngineUSEngine:
         _validate_source_input_names(declared, variables)
         tables = self._engine_tables(bundle)
         computed = self._engine_computed_columns(tables, period=period)
+        structural = self._structural_columns()
         for entity, table in tables.items():
             for column in table:
                 variable = variables.get(column)
@@ -1072,7 +1089,10 @@ class PolicyEngineUSEngine:
                             reason = "EXPIRED"
                         else:
                             reason = _input_representation_reason(
-                                table[column], variable, Enum
+                                table[column],
+                                variable,
+                                Enum,
+                                exact_integer=column in structural,
                             )
                     except (TypeError, ValueError, AttributeError, OverflowError):
                         # Conversion/encoding failures can contain row examples.

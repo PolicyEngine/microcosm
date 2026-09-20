@@ -317,6 +317,42 @@ def test_group_identifier_uses_its_live_dtype(metadata_case):
         engine.validate_input_representation(frame, period=2024)
 
 
+@pytest.mark.parametrize("column", ["family_id", "person_family_id", "person_id"])
+@pytest.mark.parametrize(
+    "source_dtype,target_dtype,values,accepted",
+    [
+        ("int64", "float32", [2**24, 2**24 + 2], True),
+        ("int64", "float32", [2**24, 2**24 + 1], False),
+        ("int64", "float64", [2**53, 2**53 + 2], True),
+        ("int64", "float64", [2**53, 2**53 + 1], False),
+        ("uint64", "float64", [2**64 - 4096, 2**64 - 2048], True),
+        ("uint64", "float64", [2**64 - 2048, 2**64 - 1], False),
+    ],
+)
+def test_floating_structural_metadata_preserves_exact_integer_ids(
+    metadata_case, column, source_dtype, target_dtype, values, accepted
+):
+    engine, frame, registry, _, _ = metadata_case
+    if column == "person_id":
+        entity = "person"
+        frame.person[column] = pd.Series(values, dtype=source_dtype)
+    else:
+        entity = "family" if column == "family_id" else "person"
+        frame.table("family")["family_id"] = pd.Series(values, dtype=source_dtype)
+        frame.person["person_family_id"] = pd.Series(values, dtype=source_dtype)
+        registry["family_id"].dtype = np.dtype(source_dtype)
+        registry["person_family_id"].dtype = np.dtype(source_dtype)
+    registry[column] = _variable(entity, float, target_dtype)
+    before = {name: frame.table(name).copy(deep=True) for name in frame.entities}
+    if accepted:
+        engine.validate_input_representation(frame, period=2024)
+    else:
+        with pytest.raises(ValueError, match="INPUT_REPRESENTATION_INTEGER_LOSS"):
+            engine.validate_input_representation(frame, period=2024)
+    for name in frame.entities:
+        pd.testing.assert_frame_equal(frame.table(name), before[name])
+
+
 def test_end_in_selected_year_is_not_expired(metadata_case):
     engine, frame, registry, _, _ = metadata_case
     registry["amount"].end = datetime.date(2024, 1, 1)
