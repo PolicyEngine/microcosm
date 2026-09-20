@@ -3179,8 +3179,9 @@ def _aca_source_tax_unit_table_batched(
     *,
     microsimulation_cls,
     maximum_microsim_batch_size: int | None,
+    formula_metadata=None,
 ) -> pd.DataFrame:
-    _assert_no_formula_owned_columns(frame)
+    _assert_no_formula_owned_columns(frame, formula_metadata=formula_metadata)
     tax_unit = frame.table("tax_unit").copy()
     household = frame.table("household")
     positions = _tax_unit_to_household_positions(frame)
@@ -3233,6 +3234,7 @@ def _aca_source_tax_unit_table_batched(
                 dataset=_dataset_from_frame(
                     batch_frame,
                     assert_no_formula_owned_columns=False,
+                    formula_metadata=formula_metadata,
                 )
             )
             batch_tax_unit = _aca_source_tax_unit_table_from_simulation(
@@ -3820,8 +3822,22 @@ def _formula_owned_gate_adapter() -> PolicyEngineUSVariableMetadataIndex:
     return _FORMULA_OWNED_GATE_ADAPTER
 
 
-def _assert_no_formula_owned_columns(frame: Frame) -> None:
-    adapter = _formula_owned_gate_adapter()
+def _assert_no_formula_owned_columns(
+    frame: Frame,
+    *,
+    formula_metadata: PolicyEngineUSVariableMetadataIndex
+    | PolicyEngineUSEngine
+    | None = None,
+) -> None:
+    """Check ownership with the supplied metadata or the cached static default.
+
+    Supplying metadata does not qualify a consumer, source input, or release.
+    It only selects whose period-specific formula ownership is checked; the
+    caller must separately bind that provider to its admitted consumer.
+    """
+    adapter = (
+        _formula_owned_gate_adapter() if formula_metadata is None else formula_metadata
+    )
     tables = {entity: frame.table(entity) for entity in frame.entities}
     formula_owned = adapter._engine_computed_columns(tables, period=PERIOD)
     if formula_owned:
@@ -3837,9 +3853,10 @@ def _dataset_from_frame(
     zero_variables: Iterable[str] = (),
     system=None,
     assert_no_formula_owned_columns: bool = True,
+    formula_metadata=None,
 ):
     if assert_no_formula_owned_columns:
-        _assert_no_formula_owned_columns(frame)
+        _assert_no_formula_owned_columns(frame, formula_metadata=formula_metadata)
 
     from policyengine_us.data import USSingleYearDataset
 
@@ -4045,7 +4062,10 @@ def _batched_reform_validation_simulate_factory_from_frame(
     maximum_microsim_batch_size: int | None = DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE,
     microsimulation_cls=None,
     dataset_from_frame=None,
+    formula_metadata=None,
 ):
+    if formula_metadata is not None:
+        _assert_no_formula_owned_columns(frame, formula_metadata=formula_metadata)
     if microsimulation_cls is None:
         from policyengine_us import Microsimulation
 
@@ -4056,6 +4076,7 @@ def _batched_reform_validation_simulate_factory_from_frame(
             return _dataset_from_frame(
                 batch_frame,
                 assert_no_formula_owned_columns=False,
+                formula_metadata=formula_metadata,
             )
 
     def simulate(reform):
@@ -4078,8 +4099,9 @@ def _reform_household_income_tax(
     microsimulation_cls,
     n_households: int,
     batch_size: int | None,
+    formula_metadata=None,
 ) -> np.ndarray:
-    _assert_no_formula_owned_columns(base_frame)
+    _assert_no_formula_owned_columns(base_frame, formula_metadata=formula_metadata)
     reform_income_tax = np.zeros(n_households, dtype=np.float64)
     reform = _make_zero_variable_reform(system, reform_spec.neutralized_variable)
     # microcosm#456: a reform simulation cannot reuse the engine's shared
@@ -4114,6 +4136,7 @@ def _reform_household_income_tax(
                 zero_variables=(reform_spec.neutralized_variable,),
                 system=system,
                 assert_no_formula_owned_columns=False,
+                formula_metadata=formula_metadata,
             )
             reformed = microsimulation_cls(
                 tax_benefit_system=reform_system,
@@ -4566,7 +4589,12 @@ def _load_or_materialize_target_frame(
     target_materialization_cache_dir: Path | None = None,
     target_materialization_cache_context: Mapping[str, object] | None = None,
     gate_congressional_district_targets: bool = True,
+    formula_metadata=None,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
+    if formula_metadata is not None:
+        # A checkpoint is not a substitute for the current consumer's source
+        # ownership check. Keep the legacy checkpoint path unchanged.
+        _assert_no_formula_owned_columns(base_frame, formula_metadata=formula_metadata)
     if (
         target_frame_checkpoint_path is not None
         and target_frame_checkpoint_identity is None
@@ -4595,6 +4623,7 @@ def _load_or_materialize_target_frame(
         target_materialization_cache_dir=target_materialization_cache_dir,
         target_materialization_cache_context=target_materialization_cache_context,
         gate_congressional_district_targets=gate_congressional_district_targets,
+        formula_metadata=formula_metadata,
     )
     if (
         target_frame_checkpoint_path is not None
@@ -4626,7 +4655,10 @@ def _materialize_target_frame(
     target_materialization_cache_dir: Path | None = None,
     target_materialization_cache_context: Mapping[str, object] | None = None,
     gate_congressional_district_targets: bool = False,
+    formula_metadata=None,
 ) -> tuple[Frame, TargetRegistry, dict[str, object]]:
+    if formula_metadata is not None:
+        _assert_no_formula_owned_columns(base_frame, formula_metadata=formula_metadata)
     from policyengine_us import CountryTaxBenefitSystem, Microsimulation
 
     if (
@@ -4638,10 +4670,12 @@ def _materialize_target_frame(
             "target_materialization_cache_dir is set."
         )
     _assert_supported_ledger_filter_metadata(target_specs)
-    _assert_no_formula_owned_columns(base_frame)
+    if formula_metadata is None:
+        _assert_no_formula_owned_columns(base_frame)
     dataset = _dataset_from_frame(
         base_frame,
         assert_no_formula_owned_columns=False,
+        formula_metadata=formula_metadata,
     )
     simulation = Microsimulation(dataset=dataset)
     system = CountryTaxBenefitSystem()
@@ -5021,6 +5055,7 @@ def _materialize_target_frame(
                 microsimulation_cls=Microsimulation,
                 n_households=n_households,
                 batch_size=maximum_microsim_batch_size,
+                formula_metadata=formula_metadata,
             )
             if (
                 target_materialization_cache_dir is not None
@@ -5084,9 +5119,9 @@ def _target_spec_is_materialized(spec, household_table: pd.DataFrame) -> bool:
 
 
 def _with_calibrated_weights(
-    base_frame: Frame, calibrated_weights: np.ndarray
+    base_frame: Frame, calibrated_weights: np.ndarray, *, formula_metadata=None
 ) -> Frame:
-    _assert_no_formula_owned_columns(base_frame)
+    _assert_no_formula_owned_columns(base_frame, formula_metadata=formula_metadata)
     return base_frame.with_weights(
         "household",
         Weights(calibrated_weights, WeightKind.CALIBRATED),
@@ -5097,9 +5132,11 @@ def _with_calibrated_weights(
     )
 
 
-def _with_l0_refit_weights(base_frame: Frame, result) -> Frame:
+def _with_l0_refit_weights(
+    base_frame: Frame, result, *, formula_metadata=None
+) -> Frame:
     """Attach post-L0 refit weights to the clean selected base-frame support."""
-    _assert_no_formula_owned_columns(base_frame)
+    _assert_no_formula_owned_columns(base_frame, formula_metadata=formula_metadata)
     return attach_l0_refit_entity_weights(
         base_frame,
         weight_entity=result.weight_entity,

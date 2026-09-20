@@ -7377,7 +7377,10 @@ def test_aca_source_runtime_refreshes_degenerate_release_inputs(
         )
 
 
-def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> None:
+@pytest.mark.parametrize("explicit_metadata", [False, True])
+def test_aca_source_tax_unit_table_batches_policyengine_inputs(
+    monkeypatch, explicit_metadata
+) -> None:
     builder = _load_builder_module()
     person = pd.DataFrame(
         {
@@ -7450,6 +7453,10 @@ def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> N
     seen_tax_unit_batches: list[tuple[int, ...]] = []
     formula_owned_assertions: list[int] = []
     dataset_assert_flags: list[bool | None] = []
+    formula_metadata = object() if explicit_metadata else None
+    seen_metadata = []
+    before = {entity: frame.table(entity).copy(deep=True) for entity in frame.entities}
+    before_weights = frame.weights_for("household").values.copy()
 
     class FakeMicrosimulation:
         def __init__(self, *, dataset):
@@ -7479,11 +7486,13 @@ def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> N
             dtype=np.float64,
         )
 
-    def fake_assert_no_formula_owned_columns(frame_arg):
+    def fake_assert_no_formula_owned_columns(frame_arg, *, formula_metadata=None):
         formula_owned_assertions.append(frame_arg.n("household"))
+        seen_metadata.append(formula_metadata)
 
     def fake_dataset_from_frame(frame_arg, **kwargs):
         dataset_assert_flags.append(kwargs.get("assert_no_formula_owned_columns"))
+        seen_metadata.append(kwargs.get("formula_metadata"))
         return frame_arg
 
     monkeypatch.setattr(
@@ -7499,11 +7508,17 @@ def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> N
         target_tables,
         microsimulation_cls=FakeMicrosimulation,
         maximum_microsim_batch_size=1,
+        formula_metadata=formula_metadata,
     ).set_index("tax_unit_id")
 
     assert seen_tax_unit_batches == [(10,), (20,), (30,)]
     assert formula_owned_assertions == [3]
     assert dataset_assert_flags == [False, False, False]
+    assert len(seen_metadata) == 4
+    assert all(metadata is formula_metadata for metadata in seen_metadata)
+    for entity, original in before.items():
+        pd.testing.assert_frame_equal(frame.table(entity), original, check_exact=True)
+    np.testing.assert_array_equal(frame.weights_for("household").values, before_weights)
     assert tax_unit.loc[10, "tax_unit_weight"] == 20.0
     assert tax_unit.loc[20, "tax_unit_weight"] == 20.0
     assert tax_unit.loc[30, "tax_unit_weight"] == 0.0
@@ -7844,6 +7859,7 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         zero_variables=(),
         system=None,
         assert_no_formula_owned_columns=True,
+        formula_metadata=None,
     ):
         datasets.append(
             (
@@ -7860,7 +7876,7 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         assert variable_name == "mock_credit"
         return object()
 
-    def fake_assert_no_formula_owned_columns(frame_arg):
+    def fake_assert_no_formula_owned_columns(frame_arg, *, formula_metadata=None):
         formula_owned_assertions.append(frame_arg.n("household"))
 
     monkeypatch.setitem(
@@ -9879,7 +9895,7 @@ def test_dataset_from_frame_rejects_formula_owned_columns_by_default(
 ) -> None:
     builder = _load_builder_module()
 
-    def fake_assert_no_formula_owned_columns(frame):
+    def fake_assert_no_formula_owned_columns(frame, *, formula_metadata=None):
         assert frame is small_frame
         raise ValueError("formula-owned guard fired")
 
@@ -9919,7 +9935,9 @@ def test_export_frame_accepts_leaf_only_columns(monkeypatch, small_frame) -> Non
 
 def test_l0_refit_export_subsets_clean_base_frame(monkeypatch, small_frame) -> None:
     builder = _load_builder_module()
-    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
+    monkeypatch.setattr(
+        builder, "_assert_no_formula_owned_columns", lambda frame, **kwargs: None
+    )
     result = SimpleNamespace(
         selected_entity_ids=np.asarray([2], dtype="int64"),
         weight_entity="household",
@@ -10477,6 +10495,7 @@ def _install_multi_reform_fakes(
         zero_variables=(),
         system=None,
         assert_no_formula_owned_columns=True,
+        formula_metadata=None,
     ):
         return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
 
@@ -10496,7 +10515,7 @@ def _install_multi_reform_fakes(
     monkeypatch.setattr(
         builder,
         "_assert_no_formula_owned_columns",
-        lambda frame_arg: None,
+        lambda frame_arg, **kwargs: None,
     )
     monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
     monkeypatch.setattr(
