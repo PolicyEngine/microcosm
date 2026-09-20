@@ -28,6 +28,7 @@ from . import support_provenance as provenance
 
 source, full, support = ss.source, ss.full, ss.full.support
 PROTOCOL = "microcosm.us.puf55-survey-recipients.v1"
+ORIGINAL_ARM_PROTOCOL = "microcosm.us.puf55-survey-original-recipients.v1"
 PROFILES = (full.PUF55_SURVEY_SS, full.PUF55_SURVEY_SS_NO_TOTAL)
 MONEY_PREDICTORS = full.PUF59.predictors[2:]
 MONEY_COLUMNS = (
@@ -51,6 +52,12 @@ MAX_RECEIPT_BYTES = 128 * 1024
 def _require(condition, reason):
     if not condition:
         raise ValueError("PUF55_SURVEY_RECIPIENTS_" + reason)
+
+
+def recipient_protocol(arm):
+    """Keep the existing clone-one protocol; qualify arm zero explicitly."""
+    _require(type(arm) is int and arm in (0, 1), "RECIPIENT_ARM")
+    return PROTOCOL if arm == 1 else ORIGINAL_ARM_PROTOCOL
 
 
 def _table_digest(table):
@@ -353,8 +360,9 @@ def _current_money_surface(frame, recipient_mask):
     return features, evidence
 
 
-def _project(source_frame, frame, report, measured):
+def _project(source_frame, frame, report, measured, *, arm=1):
     """Pure projection after live ownership checks; never an authority issuer."""
+    recipient_protocol(arm)
     people, units = frame.person, frame.table("tax_unit")
     original_people = _aligned(source_frame, frame, "person")
     original_units = _aligned(source_frame, frame, "tax_unit")
@@ -404,7 +412,7 @@ def _project(source_frame, frame, report, measured):
     for name, values in first.items():
         received_measurement[name] = values
     recipients = (
-        units[provenance.support_clone_index_column("tax_unit")].eq(1).to_numpy()
+        units[provenance.support_clone_index_column("tax_unit")].eq(arm).to_numpy()
     )
     features, money_evidence = _current_money_surface(frame, recipients)
     for name in MONEY_PREDICTORS:
@@ -447,6 +455,7 @@ class Puf55SurveyRecipients:
     tax_unit: pd.DataFrame
     matrices: tuple[tuple[str, bytes], ...]
     receipt: bytes
+    arm: int = 1
 
 
 def _result_stamp(result):
@@ -463,21 +472,24 @@ def _result_stamp(result):
         ),
         "RESULT_TYPE",
     )
+    recipient_protocol(result.arm)
     return (
         _table_digest(result.person),
         _table_digest(result.tax_unit),
         result.matrices,
         result.receipt,
+        result.arm,
     )
 
 
-def qualify_puf55_survey_recipients(financial_run):
+def qualify_puf55_survey_recipients(financial_run, *, arm=1):
     """Require the actual financial run and requalify source observations.
 
     This admits numerical preparation under retained modeled roles only. It
     cannot establish current-money tax-unit reconstruction or release validity.
     Source receipt objects and caller-supplied role tables are not accepted.
     """
+    protocol = recipient_protocol(arm)
     financial.check_atomic_survey_financial_run(financial_run)
     financial.require_complete_property_taxes(financial_run)
     entry = financial._run_entry(financial_run)
@@ -497,11 +509,12 @@ def qualify_puf55_survey_recipients(financial_run):
         source_frame.person, source_frame.table("tax_unit"), authoritative_report
     )
     person, units, matrices, money_evidence = _project(
-        source_frame, frame, authoritative_report, expected_measurement
+        source_frame, frame, authoritative_report, expected_measurement, arm=arm
     )
     receipt = source._encode(
         {
-            "protocol": PROTOCOL,
+            "protocol": protocol,
+            **({"recipient_arm": arm} if arm == 0 else {}),
             "financial_run_sha256": financial.codec.sha(entry[1]),
             "preparation_sha256": financial.codec.sha(state.preparation_entry[1]),
             "person_projection_sha256": _table_digest(person),
@@ -533,7 +546,11 @@ def qualify_puf55_survey_recipients(financial_run):
             ),
             "receiving_tax_units": len(units),
             "receiving_persons": len(person),
-            "partition": "all clone-one tax units exactly once; empty routes omitted in nine/eight order",
+            "partition": (
+                "all clone-one tax units exactly once; empty routes omitted in nine/eight order"
+                if arm == 1
+                else "all clone-zero tax units exactly once; empty routes omitted in nine/eight order"
+            ),
             "role_boundary": "retained modeled HEAD/actual JOINT SPOUSE roles; not observed filer status",
             "money_contract": "existing six features sum all modeled tax-unit members; current financial leaves only",
             "current_money_tax_units_reconstructed_here": False,
@@ -545,7 +562,7 @@ def qualify_puf55_survey_recipients(financial_run):
         },
         maximum=MAX_RECEIPT_BYTES,
     )
-    result = Puf55SurveyRecipients(financial_run, person, units, matrices, receipt)
+    result = Puf55SurveyRecipients(financial_run, person, units, matrices, receipt, arm)
     stamp = _result_stamp(result)
     financial.check_atomic_survey_financial_run(financial_run)
     financial._pure_run(financial_run, entry)
@@ -554,7 +571,7 @@ def qualify_puf55_survey_recipients(financial_run):
         source_frame.person, source_frame.table("tax_unit"), fresh
     )
     final_person, final_units, final_matrices, final_money = _project(
-        source_frame, frame, fresh, fresh_measurement
+        source_frame, frame, fresh, fresh_measurement, arm=arm
     )
     _require(
         financial._run_entry(financial_run) is entry
@@ -566,6 +583,7 @@ def qualify_puf55_survey_recipients(financial_run):
             _table_digest(final_units),
             final_matrices,
             receipt,
+            arm,
         )
         == stamp
         and final_money == money_evidence,
