@@ -54,7 +54,10 @@ missing producer for the ``national_and_cd_target_fit`` item of
 ``native_survey_handoff.REQUIRED_RELEASE_EVIDENCE``; classification lives in
 ``microcosm.build.us_runtime.target_geography_view`` and a row whose scope no
 declared evidence identifies is reported ``unresolved`` rather than counted as
-national.
+national. A row's area identifier is read only from a declaration at that same
+level, so the distinct-area counts never borrow a district's parent state or a
+sub-view geography; a row with no identifier at its level is counted in
+``rows_without_geography_id`` rather than given one.
 
 No gate, threshold, tolerance, or band is applied to the comparison: the
 output is evidence for the owner's flip decision, not a verdict. The
@@ -116,7 +119,7 @@ from microcosm.calibrate import TargetRegistry, score_targets
 from microcosm.calibrate.solve import relative_error_loss
 from microcosm.frame import US_SCHEMA, Frame
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 MAX_RSS_BYTES = 20 * 1024**3
 MARKDOWN_WORST_TARGET_ROWS = 50
 # Registry chunk size for streaming materialize-and-score. The target-column
@@ -250,7 +253,8 @@ _CODE_CITATIONS = {
     ),
     "geography_view_classification": (
         "packages/microcosm-build/src/microcosm/build/us_runtime/"
-        "target_geography_view.py (declared-evidence level resolution); "
+        "target_geography_view.py (declared-evidence level resolution and "
+        "level-bound identifier binding); "
         "packages/microcosm-data/src/microcosm/data/"
         "us_critical_targets.py:68-82 (shared CD classifier); "
         "packages/microcosm-build/src/microcosm/build/us_runtime/"
@@ -1241,6 +1245,22 @@ def _fiscal_rows_and_aggregate(
                 "geography_level": view.level,
                 "geography_id": view.geography_id,
                 "geography_level_source": view.level_source,
+                "geography_id_source": view.geography_id_source,
+                "geography_id_is_canonical": view.geography_id_is_canonical,
+                # Carried only where they say something the bound identifier
+                # and its source do not: a row declaring one identifier is
+                # fully described without restating it.
+                "geography_id_declarations": (
+                    [
+                        [source, identifier]
+                        for source, identifier in view.declared_geography_ids
+                    ]
+                    if len({value for _, value in view.declared_geography_ids}) > 1
+                    else []
+                ),
+                "geography_id_declarations_conflict": (
+                    view.geography_id_declarations_conflict
+                ),
                 "congressional_district_evidence": (
                     view.congressional_district_evidence
                 ),
@@ -1292,6 +1312,15 @@ def _geography_view_rollup(
     artifact's aggregate loss exactly as the family rollup's do. No threshold
     is applied and no view is dropped: a view with zero rows simply does not
     appear, and unresolved rows keep their own bucket.
+
+    ``distinct_canonical_geography_id_count`` counts distinct *census GEOIDs*
+    — one encoding, bound at the row's own level — so it is an area count
+    rather than a string count. Two companions make it readable and together
+    with it partition the view's rows: ``rows_with_bare_geography_id`` are
+    rows whose area is named only in the prefix-stripped bare form and are
+    therefore outside the count (mixing the two spellings in one set would
+    count one area twice), and ``rows_without_geography_id`` are rows whose
+    level is known but whose area is not declared at all.
     """
 
     groups: dict[str, dict[str, object]] = {}
@@ -1305,7 +1334,10 @@ def _geography_view_rollup(
                 "weight_share": 0.0,
                 "loss_contribution": 0.0,
                 "rows_over_10pct": 0,
-                "distinct_geography_ids": set(),
+                "rows_with_bare_geography_id": 0,
+                "rows_without_geography_id": 0,
+                "geography_id_source_counts": {},
+                "distinct_canonical_geography_ids": set(),
                 "worst_target": None,
                 "worst_contribution": -1.0,
             },
@@ -1319,8 +1351,19 @@ def _geography_view_rollup(
         if abs(float(row["absolute_relative_error"])) > 0.10:
             group["rows_over_10pct"] = int(group["rows_over_10pct"]) + 1
         geography_id = str(row["geography_id"])
-        if geography_id:
-            group["distinct_geography_ids"].add(geography_id)  # type: ignore[union-attr]
+        id_source = str(row["geography_id_source"])
+        source_counts = group["geography_id_source_counts"]
+        source_counts[id_source] = int(source_counts.get(id_source, 0)) + 1  # type: ignore[union-attr]
+        if not geography_id:
+            group["rows_without_geography_id"] = (
+                int(group["rows_without_geography_id"]) + 1
+            )
+        elif bool(row["geography_id_is_canonical"]):
+            group["distinct_canonical_geography_ids"].add(geography_id)  # type: ignore[union-attr]
+        else:
+            group["rows_with_bare_geography_id"] = (
+                int(group["rows_with_bare_geography_id"]) + 1
+            )
         if contribution > float(group["worst_contribution"]):
             group["worst_contribution"] = contribution
             group["worst_target"] = f"{row['name']}@{row['period']}"
@@ -1328,11 +1371,14 @@ def _geography_view_rollup(
     for level in sorted(groups, key=_view_order_index):
         group = groups[level]
         share = float(group["weight_share"])
-        group["distinct_geography_id_count"] = len(
-            group["distinct_geography_ids"]  # type: ignore[arg-type]
+        group["distinct_canonical_geography_id_count"] = len(
+            group["distinct_canonical_geography_ids"]  # type: ignore[arg-type]
         )
-        del group["distinct_geography_ids"]
+        del group["distinct_canonical_geography_ids"]
         del group["worst_contribution"]
+        group["geography_id_source_counts"] = dict(
+            sorted(group["geography_id_source_counts"].items())  # type: ignore[union-attr]
+        )
         group["mean_capped_scaled_error"] = (
             float(group["loss_contribution"]) / share if share > 0 else 0.0
         )
@@ -1350,15 +1396,32 @@ def _geography_view_resolution(
     three declared views rather than absorbed into the national one, so this
     count is the honest completeness statement for the
     ``national_and_cd_target_fit`` evidence item.
+
+    ``geography_id_source_counts`` is the same statement one level down: which
+    declaration named each row's area, with
+    :data:`~microcosm.build.us_runtime.target_geography_view.UNBOUND_GEOGRAPHY_ID_SOURCE`
+    counting the rows whose level is known but whose area is not.
     """
 
     by_source: dict[str, int] = {}
+    by_id_source: dict[str, int] = {}
     unresolved: list[str] = []
     disagreements: list[dict[str, object]] = []
+    id_conflicts: list[dict[str, object]] = []
     for row in rows:
         source = str(row["geography_level_source"])
         by_source[source] = by_source.get(source, 0) + 1
+        id_source = str(row["geography_id_source"])
+        by_id_source[id_source] = by_id_source.get(id_source, 0) + 1
         level = str(row["geography_level"])
+        if bool(row["geography_id_declarations_conflict"]):
+            id_conflicts.append(
+                {
+                    "target": str(row["name"]),
+                    "level": level,
+                    "declared": row["geography_id_declarations"],
+                }
+            )
         if level == UNRESOLVED_GEOGRAPHY_VIEW_LEVEL:
             unresolved.append(str(row["name"]))
         elif bool(row["congressional_district_evidence"]) and (
@@ -1368,6 +1431,12 @@ def _geography_view_resolution(
     return {
         "declared_levels": list(US_TARGET_GEOGRAPHY_VIEW_ORDER),
         "level_source_counts": dict(sorted(by_source.items())),
+        "geography_id_source_counts": dict(sorted(by_id_source.items())),
+        "conflicting_geography_id_declaration_count": len(id_conflicts),
+        "conflicting_geography_id_declaration_examples": sorted(
+            id_conflicts,
+            key=lambda row: str(row["target"]),
+        )[:20],
         "unresolved_target_count": len(unresolved),
         "unresolved_target_examples": sorted(unresolved)[:20],
         "congressional_district_evidence_disagreement_count": len(disagreements),
@@ -1377,8 +1446,17 @@ def _geography_view_resolution(
         )[:20],
         "note": (
             "declared evidence only; an unresolved row is never counted as "
-            "national, and a disagreement between the shared CD classifier "
-            "and an explicit declared level is reported rather than resolved"
+            "national, an identifier is read only from a declaration at the "
+            "row's own level, and a disagreement between the shared CD "
+            "classifier and an explicit declared level is reported rather "
+            "than resolved. conflicting_geography_id_declaration_count is a "
+            "defensive invariant over the two verbatim copies of one ledger "
+            "field, which the target compiler already refuses to let diverge "
+            "(ledger_targets.py:934-952): on the compiled path it is expected "
+            "to read zero, and a non-zero value means a producer bypassed "
+            "that constructor. It does not adjudicate a bare identifier "
+            "against a prefixed one; this axis declares no equivalence "
+            "between the two encodings"
         ),
         "code_citation": _CODE_CITATIONS["geography_view_classification"],
     }
@@ -2598,7 +2676,12 @@ def render_markdown(payload: Mapping[str, object]) -> str:
                 "as national). Rows where the shared congressional-district "
                 "classifier disagrees with an explicit declared level: "
                 f"**{resolution['congressional_district_evidence_disagreement_count']:,}** "
-                "(reported, not resolved).",
+                "(reported, not resolved). Rows whose level is known but "
+                "whose area is not declared at that level: "
+                f"**{resolution['geography_id_source_counts'].get('none', 0):,}**. "
+                "Rows whose two ledger copies of one geography id disagree: "
+                f"**{resolution['conflicting_geography_id_declaration_count']:,}** "
+                "(expected zero).",
             ]
         )
     for role, artifact in roles:
@@ -2617,17 +2700,20 @@ def render_markdown(payload: Mapping[str, object]) -> str:
                 "",
                 f"## {role}: loss by national / state / CD view",
                 "",
-                "| view | targets | distinct areas | weight share | loss "
+                "| view | targets | distinct areas (census GEOID) | rows with "
+                "bare area id | rows without area id | weight share | loss "
                 "contribution | weighted mean capped error | rows over 10% | "
                 "worst target |",
-                "|---|---:|---:|---:|---:|---:|---:|---|",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
             ]
         )
         for group in view_rollup:
             lines.append(
                 f"| {_markdown_escape(group['geography_level'])} | "
                 f"{group['target_count']:,} | "
-                f"{group['distinct_geography_id_count']:,} | "
+                f"{group['distinct_canonical_geography_id_count']:,} | "
+                f"{group['rows_with_bare_geography_id']:,} | "
+                f"{group['rows_without_geography_id']:,} | "
                 f"{_markdown_number(group['weight_share'])} | "
                 f"{_markdown_number(group['loss_contribution'])} | "
                 f"{_markdown_number(group['mean_capped_scaled_error'])} | "
@@ -2641,7 +2727,15 @@ def render_markdown(payload: Mapping[str, object]) -> str:
                 f"`{source}`={count:,}"
                 for source, count in resolution["level_source_counts"].items()
             )
-            + "."
+            + "; identifier sources: "
+            + ", ".join(
+                f"`{source}`={count:,}"
+                for source, count in resolution["geography_id_source_counts"].items()
+            )
+            + ". Rows whose two ledger copies of one geography id disagree: "
+            f"**{resolution['conflicting_geography_id_declaration_count']:,}** "
+            "(a defensive invariant the target compiler already enforces; "
+            "expected zero)."
         )
         rollup = _family_basis_rollup(rows)
         lines.extend(

@@ -37,6 +37,74 @@ is_congressional_district_target`, which the release builder uses
 rather than restated: as the fallback when no explicit level is declared, and
 as a cross-check that is *reported* — never silently preferred — when it
 disagrees with an explicit level.
+
+Identifiers
+-----------
+
+Level and identifier are not independent choices, and reading them
+independently names the wrong area. The compiler stamps a district's *parent*
+state on congressional-district rows (``fiscal_targets.py:2825-2830`` derives
+``state_fips`` as ``congressional_district_geoid[:2]``), and a hierarchy
+geography can sit at a level this axis does not advertise as a view at all. So
+an identifier is read only from a declaration whose *own* declared level is
+the row's resolved level, in the order below; when no declaration at that
+level carries one the identifier stays empty with
+:data:`UNBOUND_GEOGRAPHY_ID_SOURCE`, never substituted from another level.
+
+This is a contract repair, not a correction to any number a scorecard has
+emitted. Every reference the US compiler builds carries a hierarchy seed, and
+``_calibration_hierarchy`` refuses an empty or non-single-valued fact
+geography (``ledger_targets.py:934-952``) while ``HierarchyNode`` refuses an
+empty id (``calibrate/hierarchy.py:24-37``), so on today's compiled registry
+every row resolves through ``hierarchy_geography`` with a bound id and the
+binding below returns exactly what the previous unbound key search returned.
+The repair matters because the previous search would have named the wrong area
+the moment a producer emitted a row without a view-level hierarchy, and
+because the level resolution already admits three routes that the identifier
+search did not follow.
+
+Two identifier encodings exist, and this module treats exactly one of them as
+the canonical name of an area:
+
+* **canonical** --- the prefixed census GEOID (``0100000US``, ``0400000US06``,
+  ``5001900US0601``) that the ledger compiler copies verbatim from the
+  Chronicle fact into both ``hierarchy.geography.id``
+  (``ledger_targets.py:947,978-986``) and ``metadata['ledger_geography_id']``
+  (``ledger_targets.py:3232-3233``). Because those two are one fact field read
+  twice --- and ``_calibration_hierarchy`` already raises unless the member
+  facts agree on ``(level, id)`` (``ledger_targets.py:934-947``) --- they are
+  comparable to each other, and
+  :attr:`TargetGeographyView.geography_id_declarations_conflict` is the
+  defensive assertion that they do agree. On the compiled path it is expected
+  to be false for every row; a true value means a producer bypassed that
+  constructor.
+* **bare** --- ``state_fips`` (``fiscal_targets.py:3452-3459``) and
+  ``congressional_district_geoid`` (``fiscal_targets.py:3462-3477``), which
+  the US target compiler derives from the canonical GEOID by stripping its
+  summary-level prefix. This is a restatement, not a second declaration of an
+  area, so it is never compared against a canonical id and never counted as a
+  conflict.
+
+The bare form is **not** an interchangeable spelling, and this module makes no
+claim that it is. Stripping is lossless for a state (one prefix,
+``0400000US``), but lossy for a congressional district: both the 117th-Congress
+``5001700US`` and the current ``5001900US`` prefix strip to the same four
+digits (``congressional_district_vintage.py:19-20``), and the packaged vintage
+crosswalk splits ``5001700US0101`` across three different current districts.
+So a bare-bound row's area is not comparable to a canonically-bound row's, and
+mapping between them would need a prefix rule this module deliberately does not
+own --- ``"0400000US"`` is an unnamed literal repeated across four production
+modules today, with no shared constant to import.
+
+Consequence for the scorecard, and the reason the binding alone is not enough:
+an identifier bound from the bare form must never enter a distinct-area count
+beside canonical ones, or one area would be counted twice under two spellings
+--- the same wrong count the level binding exists to prevent, one step along.
+:attr:`TargetGeographyView.geography_id_is_canonical` is how a consumer keeps
+the two apart; ``score_us_release_head_to_head`` counts distinct *canonical*
+ids and reports bare-bound and unbound rows as their own counts beside it.
+Every declaration at the level stays visible in
+:attr:`TargetGeographyView.declared_geography_ids`, merged with nothing.
 """
 
 from __future__ import annotations
@@ -48,6 +116,7 @@ from microcosm.data.us_critical_targets import is_congressional_district_target
 
 __all__ = [
     "GEOGRAPHY_VIEW_LEVEL_ALIASES",
+    "UNBOUND_GEOGRAPHY_ID_SOURCE",
     "UNRESOLVED_GEOGRAPHY_VIEW_LEVEL",
     "US_TARGET_GEOGRAPHY_VIEW_LEVELS",
     "US_TARGET_GEOGRAPHY_VIEW_ORDER",
@@ -66,6 +135,9 @@ US_TARGET_GEOGRAPHY_VIEW_LEVELS: tuple[str, ...] = (
 #: A row whose scope no declared evidence identifies. Never a silent national.
 UNRESOLVED_GEOGRAPHY_VIEW_LEVEL = "unresolved"
 
+#: No declaration at the row's resolved level carries an identifier.
+UNBOUND_GEOGRAPHY_ID_SOURCE = "none"
+
 #: Rendering/rollup order: the declared views first, refusals last.
 US_TARGET_GEOGRAPHY_VIEW_ORDER: tuple[str, ...] = (
     *US_TARGET_GEOGRAPHY_VIEW_LEVELS,
@@ -79,11 +151,20 @@ US_TARGET_GEOGRAPHY_VIEW_ORDER: tuple[str, ...] = (
 GEOGRAPHY_VIEW_LEVEL_ALIASES: Mapping[str, str] = {"country": "national"}
 
 _EXPLICIT_LEVEL_METADATA_KEYS = ("ledger_geography_level", "geography_scope")
-_GEOGRAPHY_ID_METADATA_KEYS = (
-    "ledger_geography_id",
-    "congressional_district_geoid",
-    "state_fips",
-)
+
+#: The two sources that carry the Chronicle fact's ``geography.id`` verbatim,
+#: in binding order. Same field, read twice, so they are comparable to each
+#: other and a difference between them is a real conflict.
+_CANONICAL_GEOGRAPHY_ID_SOURCES = ("hierarchy_geography", "ledger_geography_id")
+
+#: The bare, prefix-stripped restatement of that same identifier, one key per
+#: level it can name. ``state_fips`` names a state wherever it appears --- on a
+#: district row it is the district's parent (``fiscal_targets.py:2825-2830``)
+#: --- so it is only ever an identifier for the level that owns it.
+_LEVEL_OWNED_ID_METADATA_KEYS: Mapping[str, str] = {
+    "state": "state_fips",
+    "congressional_district": "congressional_district_geoid",
+}
 
 
 @dataclass(frozen=True)
@@ -96,10 +177,55 @@ class TargetGeographyView:
     level_source: str
     #: The shared CD classifier's independent reading of the same row.
     congressional_district_evidence: bool
+    #: Which declaration ``geography_id`` was read from;
+    #: :data:`UNBOUND_GEOGRAPHY_ID_SOURCE` when no declaration at ``level``
+    #: carried one.
+    geography_id_source: str = UNBOUND_GEOGRAPHY_ID_SOURCE
+    #: Every ``(source, identifier)`` declared *at* ``level``, in binding
+    #: order. Kept whole rather than merged.
+    declared_geography_ids: tuple[tuple[str, str], ...] = ()
 
     @property
     def resolved(self) -> bool:
         return self.level != UNRESOLVED_GEOGRAPHY_VIEW_LEVEL
+
+    @property
+    def geography_id_bound(self) -> bool:
+        """An identifier was read from a declaration at this row's level."""
+
+        return self.geography_id_source != UNBOUND_GEOGRAPHY_ID_SOURCE
+
+    @property
+    def geography_id_is_canonical(self) -> bool:
+        """``geography_id`` is a prefixed census GEOID, not the bare form.
+
+        A consumer counting distinct areas must count only canonical
+        identifiers: the bare restatement is a different spelling of an area
+        (and, for a district, a vintage-lossy one), so mixing the two in one
+        set counts one area twice.
+        """
+
+        return self.geography_id_source in _CANONICAL_GEOGRAPHY_ID_SOURCES
+
+    @property
+    def geography_id_declarations_conflict(self) -> bool:
+        """The two verbatim copies of the fact's geography id disagree.
+
+        Only the prefixed-GEOID sources are compared, because they are the
+        same Chronicle field read twice. The bare ``state_fips`` /
+        ``congressional_district_geoid`` restatement is derived from that same
+        id and is never counted as a second declaration of an area.
+
+        Reported, never resolved: preferring either copy would move a row to a
+        different area on undeclared grounds.
+        """
+
+        declared = {
+            source: value
+            for source, value in self.declared_geography_ids
+            if source in _CANONICAL_GEOGRAPHY_ID_SOURCES
+        }
+        return len(set(declared.values())) > 1
 
     @property
     def disagrees_with_congressional_district_evidence(self) -> bool:
@@ -115,8 +241,12 @@ class TargetGeographyView:
         )
 
 
+def _text(raw: object) -> str:
+    return str(raw or "").strip()
+
+
 def _normalized_level(raw: object) -> str:
-    level = str(raw or "").strip()
+    level = _text(raw)
     if not level:
         return ""
     level = GEOGRAPHY_VIEW_LEVEL_ALIASES.get(level, level)
@@ -127,9 +257,43 @@ def _hierarchy_geography(hierarchy: object) -> tuple[str, str]:
     geography = getattr(hierarchy, "geography", None)
     if geography is None:
         return "", ""
-    return str(getattr(geography, "level", "") or ""), str(
-        getattr(geography, "id", "") or ""
-    )
+    return _text(getattr(geography, "level", "")), _text(getattr(geography, "id", ""))
+
+
+def _declared_geography_ids(
+    *,
+    level: str,
+    metadata: Mapping[str, object],
+    hierarchy_level: str,
+    hierarchy_id: str,
+) -> tuple[tuple[str, str], ...]:
+    """Every identifier available at ``level``, in binding order.
+
+    The two canonical sources contribute only at the level *they* declare: a
+    hierarchy geography at ``county`` declares a different level and is
+    therefore not an identifier for this row.
+
+    The bare key is different, and deliberately so: ``state_fips`` and
+    ``congressional_district_geoid`` carry no level of their own, so the key is
+    admitted purely because *the row* resolved to the level that owns it --- by
+    whatever evidence did so, including the shared CD classifier's substring
+    fallback. That is what keeps a district's parent ``state_fips`` out of the
+    district's own declarations, and it is the whole of the guarantee: the key
+    is not independently attested.
+    """
+
+    declared: list[tuple[str, str]] = []
+    if hierarchy_id and _normalized_level(hierarchy_level) == level:
+        declared.append(("hierarchy_geography", hierarchy_id))
+    ledger_id = _text(metadata.get("ledger_geography_id"))
+    if ledger_id and _normalized_level(metadata.get("ledger_geography_level")) == level:
+        declared.append(("ledger_geography_id", ledger_id))
+    owned_key = _LEVEL_OWNED_ID_METADATA_KEYS.get(level, "")
+    if owned_key:
+        owned_id = _text(metadata.get(owned_key))
+        if owned_id:
+            declared.append((owned_key, owned_id))
+    return tuple(declared)
 
 
 def us_target_geography_view(
@@ -146,6 +310,11 @@ def us_target_geography_view(
     Only when no explicit level exists does the shared congressional-district
     classifier act as evidence of its own. Anything else is
     :data:`UNRESOLVED_GEOGRAPHY_VIEW_LEVEL`.
+
+    The identifier is then read only from a declaration at that same resolved
+    level: the hierarchy geography, then the ledger identifier, then the bare
+    identifier the level owns. No identifier is carried across levels, and an
+    unresolved row reports none at all.
     """
 
     metadata = metadata if isinstance(metadata, Mapping) else {}
@@ -169,20 +338,26 @@ def us_target_geography_view(
             geography_id="",
             level_source="none",
             congressional_district_evidence=cd_evidence,
+            geography_id_source=UNBOUND_GEOGRAPHY_ID_SOURCE,
+            declared_geography_ids=(),
         )
 
-    geography_id = hierarchy_id
-    if not geography_id:
-        for key in _GEOGRAPHY_ID_METADATA_KEYS:
-            candidate = str(metadata.get(key) or "").strip()
-            if candidate:
-                geography_id = candidate
-                break
+    declared = _declared_geography_ids(
+        level=level,
+        metadata=metadata,
+        hierarchy_level=hierarchy_level,
+        hierarchy_id=hierarchy_id,
+    )
+    geography_id, geography_id_source = (
+        declared[0] if declared else ("", UNBOUND_GEOGRAPHY_ID_SOURCE)
+    )
     return TargetGeographyView(
         level=level,
         geography_id=geography_id,
         level_source=level_source,
         congressional_district_evidence=cd_evidence,
+        geography_id_source=geography_id_source,
+        declared_geography_ids=declared,
     )
 
 

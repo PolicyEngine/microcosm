@@ -72,6 +72,27 @@ required by item 5 above. Congressional-district membership itself is not
 restated here: it comes from the shared
 `microcosm.data.us_critical_targets.is_congressional_district_target`.
 
+The same module also owns which metadata key identifies an *area* at each
+level (`_LEVEL_OWNED_ID_METADATA_KEYS`: `state` → `state_fips`,
+`congressional_district` → `congressional_district_geoid`) and which two
+sources carry the ledger fact's geography id verbatim
+(`_CANONICAL_GEOGRAPHY_ID_SOURCES`). Both matter because the US target
+compiler derives a district's parent `state_fips` from its geoid
+(`fiscal_targets.py:2825-2830`), so an identifier read without regard to level
+would name the wrong area. Read an identifier only through
+`us_target_geography_view`; do not re-derive a level-to-key mapping in a
+consumer.
+
+Those two source groups are also two *encodings* — the prefixed census GEOID
+and its prefix-stripped bare restatement — and this repo has no shared
+constant for the state prefix (`"0400000US"` is an unnamed literal in
+`fiscal_targets.py`, `congressional_district_vintage.py`,
+`congressional_district_geography.py` and `medicaid_take_up.py`). Until one
+exists, `target_geography_view` declares no equivalence between them:
+`TargetGeographyView.geography_id_is_canonical` is how a consumer counting
+distinct areas keeps the encodings apart, and no consumer should convert
+between them on its own.
+
 Do not add another geographic-level enumeration to a US comparison, scorer, or
 diagnostics module. Extend this definition and both its consistency tests when
 a new view is supported.
