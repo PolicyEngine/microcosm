@@ -162,6 +162,8 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         # graph attachment declares ancestry and transports exact clones.
         "current_survey_hours_source.py",
         "graph_current_survey_hours.py",
+        # Retained original pair fanout through the existing exact clone mapping.
+        "graph_current_survey_immigration.py",
         "current_survey_housing.py",  # Qualify survey observations and validate both clone identity joins.
         "graph_current_survey_housing.py",  # Declare housing source/donor and paired attachment identity inputs.
         # Reviewed 2026-09-13: original survey reference-person observations
@@ -478,6 +480,8 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "graph_current_survey_health.py",
         # Actual source hours recoding and exact two-clone graph attachment.
         "graph_current_survey_hours.py",
+        # Retained original pair fanout through the existing exact clone mapping.
+        "graph_current_survey_immigration.py",
         # Typed housing observation, household fit/draw and SPM-unit attachment
         "graph_current_survey_housing.py",
         # Source-supported reference-person declaration and canonical attachment.

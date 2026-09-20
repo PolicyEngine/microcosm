@@ -52,6 +52,7 @@ from . import current_survey_amounts as values
 from . import graph_current_survey_health as health_graph
 from . import graph_current_survey_hours as hours_graph
 from . import graph_current_survey_housing as housing_graph
+from . import graph_current_survey_immigration as immigration_graph
 from . import graph_current_survey_predictors as predictor_graph
 from . import graph_current_survey_spm as spm_graph
 
@@ -82,6 +83,7 @@ def _live():
         housing_graph.housing,
         housing_graph.participation,
         spm_graph,
+        immigration_graph,
     ):
         for name, item in vars(module).items():
             if type(item) is FunctionType:
@@ -140,6 +142,7 @@ def _live():
         )
     )
     result.append(("spm_configuration", spm_graph.PROTOCOL, spm_graph.source._live()))
+    result.append(("immigration_configuration", immigration_graph.configuration()))
     result.append(
         (
             "housing_configuration",
@@ -185,6 +188,17 @@ def _spm_after_edge():
         "attachment",
         hours_graph.ATTACHMENT_TYPE,
     )
+
+
+def _immigration_after_edge(spm_enabled):
+    if spm_enabled:
+        return ArtifactInput(
+            "spm_attachment",
+            spm_graph.ATTACH_NODE,
+            "attachment",
+            spm_graph.ATTACHMENT_TYPE,
+        )
+    return _spm_after_edge()
 
 
 def _spm_configuration(acs_profile, asec_scope_policy, outside_role_placeholder):
@@ -367,6 +381,7 @@ class Boundary:
         spm_acs_profile=None,
         spm_asec_scope_policy=None,
         spm_outside_role_placeholder=None,
+        immigration_transfer=None,
     ):
         live = _live()
         self.spm_options = (
@@ -376,8 +391,29 @@ class Boundary:
         )
         self.spm_configuration = _spm_configuration(*self.spm_options)
         self.run = run
+        immigration_entry = (
+            None
+            if immigration_transfer is None
+            else immigration_graph.retained_entry(immigration_transfer)
+        )
         self.parent_view = parent.check_survey_puf55_run(run)
         self.parent_entry = parent._run_entry(run)
+        self.immigration_transfer = immigration_transfer
+        self.immigration_entry = self.immigration_origins = (
+            self.immigration_pairs_bytes
+        ) = None
+        self.immigration_nodes = ()
+        if immigration_transfer is not None:
+            self.immigration_entry = immigration_entry
+            self.immigration_origins = (
+                self.immigration_entry[2].acs_entry[2].qualified.origins
+            )
+            self.immigration_pairs_bytes = immigration_graph.pair_bytes(
+                immigration_transfer.pairs
+            )
+            self._immigration_pure()
+            immigration_transfer.validate()
+            self._immigration_pure()
         self.qualified = values.qualify_current_survey_amounts(run, groups=groups)
         self.qualified_stamp = values.seal(self.qualified)
         self.parent_stamp = physical._population_stamp(run.population)
@@ -448,12 +484,20 @@ class Boundary:
             receiving_version=parent.attach.FILTER_NODE,
             after=_hours_after_edge(),
         )
+        if self.immigration_transfer is not None:
+            self.immigration_nodes = immigration_graph.immigration_nodes(
+                self.immigration_transfer,
+                run.population.frame,
+                receiving_version=parent.attach.FILTER_NODE,
+                after=_immigration_after_edge(self.spm is not None),
+            )
         self.nodes = (
             *self.amount_nodes,
             *self.health_nodes,
             *self.housing_nodes,
             *self.hours_nodes,
             *self.spm_nodes,
+            *self.immigration_nodes,
         )
         self.declaration = tuple(self.nodes)
         self.live = _live()
@@ -469,6 +513,36 @@ class Boundary:
             run.sources,
         )
         self._spm_pure()
+        self._immigration_pure()
+
+    def _immigration_pure(self):
+        if self.immigration_transfer is None:
+            require(
+                self.immigration_entry is None
+                and self.immigration_origins is None
+                and self.immigration_pairs_bytes is None
+                and self.immigration_nodes == (),
+                "IMMIGRATION_DISABLED_STATE",
+            )
+            return
+        require(
+            immigration_graph.retained_entry(self.immigration_transfer)
+            is self.immigration_entry,
+            "IMMIGRATION_ENTRY_CHANGED",
+        )
+        state = self.immigration_entry[2]
+        require(
+            state.run is self.run.financial_run
+            and state.run_entry is parent.financial._run_entry(self.run.financial_run)
+            and state.original is self.run.financial_run.prefix.allocated_population
+            and state.acs_entry[2].qualified.origins is self.immigration_origins
+            and self.immigration_origins.index.equals(
+                self.immigration_transfer.pairs.index
+            )
+            and immigration_graph.pair_bytes(self.immigration_transfer.pairs)
+            == self.immigration_pairs_bytes,
+            "IMMIGRATION_COMMON_PARENT",
+        )
 
     def _spm_objects(self):
         return (
@@ -575,6 +649,17 @@ class Boundary:
                     outside_role_placeholder=self.spm_options[2],
                 )
             )
+            and self.immigration_nodes
+            == (
+                ()
+                if self.immigration_transfer is None
+                else immigration_graph.immigration_nodes(
+                    self.immigration_transfer,
+                    self.run.population.frame,
+                    receiving_version=parent.attach.FILTER_NODE,
+                    after=_immigration_after_edge(self.spm is not None),
+                )
+            )
             and self.nodes
             == (
                 *self.amount_nodes,
@@ -582,6 +667,7 @@ class Boundary:
                 *self.housing_nodes,
                 *self.hours_nodes,
                 *self.spm_nodes,
+                *self.immigration_nodes,
             ),
             "BOUNDARY_DECLARATIONS",
         )
@@ -607,6 +693,7 @@ class Boundary:
                 "COMPILED_CHANGED",
             )
         self._spm_pure()
+        self._immigration_pure()
 
     def borrow(self):
         require(
@@ -630,6 +717,8 @@ class Boundary:
         self.hours.validate()
         if self.spm is not None:
             self.spm.validate()
+        if self.immigration_transfer is not None:
+            self.immigration_transfer.validate()
         self.pure()
 
     def context(self, context):
@@ -697,6 +786,8 @@ class Boundary:
         self.hours.validate()
         if self.spm is not None:
             self.spm.validate()
+        if self.immigration_transfer is not None:
+            self.immigration_transfer.validate()
         self.pure()
 
 
@@ -891,6 +982,7 @@ def _construct(
     spm_acs_profile=None,
     spm_asec_scope_policy=None,
     spm_outside_role_placeholder=None,
+    immigration_transfer=None,
 ):
     boundary = Boundary(
         run,
@@ -899,6 +991,7 @@ def _construct(
         spm_acs_profile=spm_acs_profile,
         spm_asec_scope_policy=spm_asec_scope_policy,
         spm_outside_role_placeholder=spm_outside_role_placeholder,
+        immigration_transfer=immigration_transfer,
     )
     compiled = compile_graph(
         replace(run.compiled.graph, nodes=(*run.compiled.graph.nodes, *boundary.nodes))
@@ -946,6 +1039,9 @@ def _construct(
         ):
             require(kernel.ref not in kernels.refs(), "SPM_KERNEL_COLLISION")
             kernels.register(kernel)
+    for kernel in immigration_graph.immigration_kernels(boundary):
+        require(kernel.ref not in kernels.refs(), "IMMIGRATION_KERNEL_COLLISION")
+        kernels.register(kernel)
     registry = parent._registry(run.store.codecs, codecs.SourceCodecRegistry())
     store = ContentStore(run.store.root, codecs=registry)
     paths, source_keys = _source_paths_and_keys(compiled, dict(run.sources), store)
@@ -1132,11 +1228,14 @@ def run_us_survey_enrichment(
     spm_acs_profile=None,
     spm_asec_scope_policy=None,
     spm_outside_role_placeholder=None,
+    immigration_transfer=None,
 ):
-    """Execute and verify enrichment, optionally adding annual source SPM inputs.
+    """Execute and verify enrichment with optional SPM and realized immigration.
 
     SPM requires an explicit ACS profile and OUTSIDE role representation. An
     absent ASEC scope policy preserves UNRESOLVED for the country refusal gate.
+    Immigration consumes the same financial parent's genuine original transfer;
+    this host only fans its final pair to existing clones, without another draw.
     """
     require(resume in ("auto", "require"), "RESUME")
     boundary = _construct(
@@ -1146,6 +1245,7 @@ def run_us_survey_enrichment(
         spm_acs_profile=spm_acs_profile,
         spm_asec_scope_policy=spm_asec_scope_policy,
         spm_outside_role_placeholder=spm_outside_role_placeholder,
+        immigration_transfer=immigration_transfer,
     )
     observed, stamps = {}, {}
 
@@ -1228,6 +1328,7 @@ def run_us_survey_enrichment(
     health_ids = {n.id for n in boundary.health_nodes}
     hours_ids = {n.id for n in boundary.hours_nodes}
     spm_ids = {n.id for n in boundary.spm_nodes}
+    immigration_ids = {n.id for n in boundary.immigration_nodes}
     group_nodes = {_ids(g)[0]: g for g in boundary.qualified.groups}
     column_nodes = {_ids(g)[1]: g for g in boundary.qualified.groups}
     original = population_ops.Population.from_frame(
@@ -1239,7 +1340,25 @@ def run_us_survey_enrichment(
         if node_id in run.compiled.order:
             current[version] = observed[node_id]
             continue
-        if node_id in spm_ids:
+        if node_id in immigration_ids:
+            immigration_artifacts = parent._loaded_values(
+                boundary, manifest, loaded, node
+            )
+            immigration_result = immigration_graph.immigration_result(
+                boundary.immigration_transfer,
+                node,
+                immigration_artifacts,
+                current[version].frame.person,
+            )
+            require(
+                all(
+                    loaded[node_id, name] == payload
+                    for name, payload in immigration_result.artifacts.items()
+                ),
+                "IMMIGRATION_RESULT_ARTIFACT",
+            )
+            expected = population_ops.patch(current[version], node, immigration_result)
+        elif node_id in spm_ids:
             spm_artifacts = parent._loaded_values(boundary, manifest, loaded, node)
             spm_result = spm_graph.spm_result(
                 boundary.spm, node, spm_artifacts, current[version].frame
@@ -1360,6 +1479,18 @@ def run_us_survey_enrichment(
             ),
             "attachment_sha256": codec.sha(loaded[spm_graph.ATTACH_NODE, "attachment"]),
         }
+    immigration_receipt = {}
+    if boundary.immigration_transfer is not None:
+        immigration_receipt["immigration"] = {
+            "enabled": True,
+            "transfer_receipt_sha256": codec.sha(boundary.immigration_transfer.receipt),
+            "pairs_sha256": codec.sha(loaded[immigration_graph.SOURCE_NODE, "pairs"]),
+            "attachment_sha256": codec.sha(
+                loaded[immigration_graph.ATTACH_NODE, "attachment"]
+            ),
+            "graph_fit_artifact_qualified": False,
+            "national_stock_alignment_qualified": False,
+        }
     receipt = codec.encode_json(
         {
             "protocol": values.PROTOCOL,
@@ -1389,13 +1520,16 @@ def run_us_survey_enrichment(
             "hours_age15_policy": boundary.hours.proposals.age15_policy,
             "hours_under15_policy": boundary.hours.proposals.under15_policy,
             "spm": spm_receipt,
+            **immigration_receipt,
             "release_eligible": False,
         }
     )
     output = SurveyEnrichmentRun(
         run,
         observed[
-            spm_graph.ATTACH_NODE
+            immigration_graph.ATTACH_NODE
+            if boundary.immigration_transfer is not None
+            else spm_graph.ATTACH_NODE
             if boundary.spm is not None
             else hours_graph.ATTACH_NODE
         ],

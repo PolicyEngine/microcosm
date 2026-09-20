@@ -1,0 +1,1 @@
+Optionally attach a genuine original-survey immigration transfer's realized pair to both existing survey clones through the retained enrichment host, preserving source ancestry, geography, weights and replay checks without another fit or draw.
