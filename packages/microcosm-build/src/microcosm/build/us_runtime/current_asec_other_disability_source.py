@@ -841,6 +841,7 @@ def qualify_current_asec_other_disability(preparation):
         type(preparation) is source.AuthenticatedSurveyPopulationPreparation,
         "PREPARATION_TYPE",
     )
+    _require(_implementation_unchanged(), "IMPLEMENTATION_CHANGED")
     entry = preparation._checked()
     state, native = entry[2], entry[2].native[1]
     issued = source.asec_native._ISSUED.get(id(native))
@@ -858,6 +859,9 @@ def qualify_current_asec_other_disability(preparation):
         and other_disability_values_seal(result) == seal,
         "FINAL_OWNER_OR_VALUES",
     )
+    # Requalification performs source I/O after composition has sealed its
+    # implementation. Bind that final callback to the same implementation.
+    _require(_implementation_unchanged(), "IMPLEMENTATION_CHANGED")
     return result
 
 
