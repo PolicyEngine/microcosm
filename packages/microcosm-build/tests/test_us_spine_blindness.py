@@ -155,6 +155,9 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "current_survey_spm_amount_source.py",
         # Original ASEC pension/disability/survivor details; no population model.
         "current_asec_retirement_detail_source.py",
+        # Reduces that owner's two disability slots to one leaf and copies each
+        # original row to its own clones; no draw, model or completion.
+        "current_asec_other_disability_source.py",
         "current_asec_unemployment_source.py",  # UC literal -> original ASEC ids.
         "current_survey_amounts.py",  # Validate origin join; fan out to both clones.
         "current_survey_health_source.py",  # Qualify exact ACS/ASEC source rosters.
@@ -452,6 +455,9 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         # Qualified WC receipt/amount observations, preserving NIU/under-15 unknowns
         "current_asec_workers_compensation_source.py",
         "current_asec_veterans_source.py",
+        # Non-workers-compensation disability slots borrowed from the retirement
+        # detail owner; unknown never becomes an observed zero.
+        "current_asec_other_disability_source.py",
         # Complete original ASEC amount support, separate from receiving selection.
         "current_asec_amount_donor.py",
         # Qualified original property donor/recipient branch composition
