@@ -1047,11 +1047,13 @@
         "microcosm.frame.units",
         "numpy",
         "pandas",
+        "policyengine_core.enums",
+        "policyengine_core.periods",
         "policyengine_us",
         "policyengine_us.data"
       ],
-      "resource_accesses_sha256": "b3a55c9ba22f5a08ec9775278c49b4f6a1f8b2787f182605707ab0978ea1212a",
-      "unbound_uses_sha256": "fc1d7672cf7653b8d21a2d19b0e2ae6fb8dbdad78003b8c2ce76d6f3a3741f23"
+      "resource_accesses_sha256": "99645fb543d5ccbca2e4e7b7cbaec98aca16420ea9ee75899a0b9acefa7298d3",
+      "unbound_uses_sha256": "4bb7a9c3ca6b4f469b349a9509e3896bcd055b189ca0b023e823532c15850add"
     },
     "microcosm.frame/bundle.py": {
       "imports": [
@@ -1287,7 +1289,7 @@
         "numpy",
         "pandas"
       ],
-      "resource_accesses_sha256": "99afee26ca660c678dcbd7117eb2e64d70a0343ead9a602fa5819222aca02bc3",
+      "resource_accesses_sha256": "821bcdd47bfd228288d4cfadfe38e06d24869cfd450b96e811f51f21fb2e7033",
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
     "microcosm.graph/view.py": {
@@ -1575,6 +1577,8 @@
     "numpy": "versioned dependency in explicit stages",
     "pandas": "versioned dependency in explicit stages",
     "pandas.api.types": "versioned dependency in explicit stages",
+    "policyengine_core.enums": "Optional explicit PolicyEngineUSEngine.validate_input_representation metadata route only; inactive in US source stages. Scoped Enum uses remain in the unbound-use contract, without a new stage dependency or runtime attestation.",
+    "policyengine_core.periods": "Optional explicit PolicyEngineUSEngine.validate_input_representation metadata route only; inactive in US source stages. Scoped parse_period uses remain in the unbound-use contract, without a new stage dependency or runtime attestation.",
     "policyengine_uk": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "policyengine_uk.data": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "policyengine_us": "live evaluation only, explicitly pinned installed runtime and parameter identity; inactive in other shared adapter routes",
