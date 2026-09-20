@@ -1741,6 +1741,7 @@ def test_comparison_refuses_a_view_that_differs_between_artifacts() -> None:
                         "geography_id": "",
                         "geography_id_source": "none",
                         "geography_id_is_canonical": False,
+                        "geography_id_is_bare": False,
                         "geography_id_declarations": [],
                         "geography_id_declarations_conflict": False,
                         "absolute_relative_error": 0.1,
@@ -1759,7 +1760,7 @@ def test_comparison_refuses_a_view_that_differs_between_artifacts() -> None:
 def test_scorecard_markdown_renders_the_view_axis(monkeypatch, tmp_path) -> None:
     module = _load_head_to_head_module()
     payload = _geography_head_to_head(module, monkeypatch)
-    assert payload["schema_version"] == 5
+    assert payload["schema_version"] == 6
 
     markdown = module.render_markdown(payload)
     assert "## incumbent: loss by national / state / CD view" in markdown
@@ -2285,7 +2286,8 @@ def test_scorecard_markdown_states_the_identifier_binding(
 
     assert (
         "| view | targets | distinct areas (census GEOID) | rows with "
-        "bare area id | rows without area id |" in markdown
+        "bare area id | rows with unrecognized area id | rows without area id |"
+        in markdown
     )
     assert "identifier sources:" in markdown
     # The owner-facing comparison section states them too, not only the
@@ -2302,3 +2304,119 @@ def test_scorecard_markdown_states_the_identifier_binding(
     second = module.write_scorecard(payload, tmp_path / "two" / "scorecard")
     for path_one, path_two in zip(first, second, strict=True):
         assert path_one.read_bytes() == path_two.read_bytes()
+
+
+@pytest.mark.parametrize("source", ["hierarchy", "ledger"])
+@pytest.mark.parametrize(
+    "level,identifier,canonical,bare",
+    [
+        ("national", "0100000US", True, False),
+        ("national", "US", False, False),
+        ("state", "0400000US06", True, False),
+        ("state", "06", False, True),
+        ("state", "0400000US99", False, False),
+        ("state", "06001", False, False),
+        ("state", "5001900US0601", False, False),
+        ("congressional_district", "5001700US0601", True, False),
+        ("congressional_district", "5001900US0601", True, False),
+        ("congressional_district", "0601", False, True),
+        ("congressional_district", "06", False, False),
+        ("congressional_district", "5001900US9901", False, False),
+        ("congressional_district", "5001900US06１１", False, False),
+    ],
+)
+def test_geography_encoding_depends_on_value_and_level(
+    source, level, identifier, canonical, bare
+):
+    """The same declaration fields admit bare and malformed text as well."""
+    from microcosm.build.us_runtime.target_geography_view import (
+        us_target_geography_view,
+    )
+
+    metadata = (
+        {"ledger_geography_level": level, "ledger_geography_id": identifier}
+        if source == "ledger"
+        else {}
+    )
+    hierarchy = (
+        _hierarchy("row", level=level, geography_id=identifier)
+        if source == "hierarchy"
+        else None
+    )
+    view = us_target_geography_view(name="row", metadata=metadata, hierarchy=hierarchy)
+    assert view.geography_id == identifier  # Never rewrite a code or infer vintage.
+    assert view.geography_id_is_canonical is canonical
+    assert view.geography_id_is_bare is bare
+
+
+@pytest.mark.parametrize("declaration", ["ledger", "hierarchy", "scope"])
+def test_unsupported_explicit_scope_prevents_cd_substring_fallback(declaration):
+    from microcosm.build.us_runtime.target_geography_view import (
+        us_target_geography_view,
+    )
+
+    metadata = {"congressional_district_geoid": "0601"}
+    hierarchy = None
+    if declaration == "hierarchy":
+        hierarchy = _hierarchy("row", level="county", geography_id="06001")
+    else:
+        metadata[
+            "ledger_geography_level" if declaration == "ledger" else "geography_scope"
+        ] = "county"
+    view = us_target_geography_view(
+        name="x.congressional_district_example",
+        metadata=metadata,
+        hierarchy=hierarchy,
+    )
+    assert view.congressional_district_evidence is True
+    assert view.level == "unresolved"
+    assert view.geography_id == ""
+    assert view.geography_id_source == "none"
+
+
+def test_mixed_declaration_encodings_do_not_double_count_areas(monkeypatch):
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name=name,
+                entity="household",
+                value=400.0,
+                measure="m_income",
+                period=2024,
+                source="fixture",
+                family="fixture_family",
+                metadata={
+                    "ledger_geography_level": "state",
+                    "ledger_geography_id": identifier,
+                },
+            )
+            for name, identifier in (
+                ("canonical", "0400000US06"),
+                ("bare", "06"),
+                ("unrecognized", "06001"),
+            )
+        ],
+        country="us",
+    )
+    monkeypatch.setattr(sys.modules[__name__], "_geography_registry", lambda: registry)
+    payload = _geography_head_to_head(_load_head_to_head_module(), monkeypatch)
+    for artifact in payload["artifacts"].values():
+        view = artifact["fiscal"]["by_geography_level"][0]
+        assert view["distinct_canonical_geography_id_count"] == 1
+        assert view["rows_with_bare_geography_id"] == 1
+        assert view["rows_with_unrecognized_geography_id"] == 1
+        assert view["rows_without_geography_id"] == 0
+
+
+def test_known_level_missing_id_count_excludes_unresolved_rows(monkeypatch):
+    module = _load_head_to_head_module()
+    payload = _geography_head_to_head(module, monkeypatch)
+    for artifact in payload["artifacts"].values():
+        resolution = artifact["fiscal"]["geography_view_resolution"]
+        assert resolution["unresolved_target_count"] == 1
+        assert resolution["geography_id_source_counts"]["none"] == 2
+        assert resolution["resolved_without_geography_id_count"] == 1
+    assert (
+        "Rows whose level is known but whose area is not declared at that "
+        "level: **1**" in module.render_markdown(payload)
+    )

@@ -119,7 +119,7 @@ from microcosm.calibrate import TargetRegistry, score_targets
 from microcosm.calibrate.solve import relative_error_loss
 from microcosm.frame import US_SCHEMA, Frame
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 MAX_RSS_BYTES = 20 * 1024**3
 MARKDOWN_WORST_TARGET_ROWS = 50
 # Registry chunk size for streaming materialize-and-score. The target-column
@@ -1247,6 +1247,7 @@ def _fiscal_rows_and_aggregate(
                 "geography_level_source": view.level_source,
                 "geography_id_source": view.geography_id_source,
                 "geography_id_is_canonical": view.geography_id_is_canonical,
+                "geography_id_is_bare": view.geography_id_is_bare,
                 # Carried only where they say something the bound identifier
                 # and its source do not: a row declaring one identifier is
                 # fully described without restating it.
@@ -1315,12 +1316,13 @@ def _geography_view_rollup(
 
     ``distinct_canonical_geography_id_count`` counts distinct *census GEOIDs*
     — one encoding, bound at the row's own level — so it is an area count
-    rather than a string count. Two companions make it readable and together
-    with it partition the view's rows: ``rows_with_bare_geography_id`` are
+    rather than a string count. The other counters describe rows, not distinct
+    areas: ``rows_with_bare_geography_id`` are
     rows whose area is named only in the prefix-stripped bare form and are
     therefore outside the count (mixing the two spellings in one set would
-    count one area twice), and ``rows_without_geography_id`` are rows whose
-    level is known but whose area is not declared at all.
+    count one area twice). ``rows_with_unrecognized_geography_id`` retains
+    other nonempty identifiers; ``rows_without_geography_id`` includes every
+    row without an identifier, including unresolved scopes.
     """
 
     groups: dict[str, dict[str, object]] = {}
@@ -1335,6 +1337,7 @@ def _geography_view_rollup(
                 "loss_contribution": 0.0,
                 "rows_over_10pct": 0,
                 "rows_with_bare_geography_id": 0,
+                "rows_with_unrecognized_geography_id": 0,
                 "rows_without_geography_id": 0,
                 "geography_id_source_counts": {},
                 "distinct_canonical_geography_ids": set(),
@@ -1360,9 +1363,13 @@ def _geography_view_rollup(
             )
         elif bool(row["geography_id_is_canonical"]):
             group["distinct_canonical_geography_ids"].add(geography_id)  # type: ignore[union-attr]
-        else:
+        elif bool(row["geography_id_is_bare"]):
             group["rows_with_bare_geography_id"] = (
                 int(group["rows_with_bare_geography_id"]) + 1
+            )
+        else:
+            group["rows_with_unrecognized_geography_id"] = (
+                int(group["rows_with_unrecognized_geography_id"]) + 1
             )
         if contribution > float(group["worst_contribution"]):
             group["worst_contribution"] = contribution
@@ -1400,7 +1407,8 @@ def _geography_view_resolution(
     ``geography_id_source_counts`` is the same statement one level down: which
     declaration named each row's area, with
     :data:`~microcosm.build.us_runtime.target_geography_view.UNBOUND_GEOGRAPHY_ID_SOURCE`
-    counting the rows whose level is known but whose area is not.
+    counting all rows without an identifier. The narrower
+    ``resolved_without_geography_id_count`` excludes unresolved scopes.
     """
 
     by_source: dict[str, int] = {}
@@ -1408,6 +1416,7 @@ def _geography_view_resolution(
     unresolved: list[str] = []
     disagreements: list[dict[str, object]] = []
     id_conflicts: list[dict[str, object]] = []
+    resolved_without_id = 0
     for row in rows:
         source = str(row["geography_level_source"])
         by_source[source] = by_source.get(source, 0) + 1
@@ -1424,10 +1433,13 @@ def _geography_view_resolution(
             )
         if level == UNRESOLVED_GEOGRAPHY_VIEW_LEVEL:
             unresolved.append(str(row["name"]))
-        elif bool(row["congressional_district_evidence"]) and (
-            level != "congressional_district"
-        ):
-            disagreements.append({"target": str(row["name"]), "level": level})
+        else:
+            if not row["geography_id"]:
+                resolved_without_id += 1
+            if bool(row["congressional_district_evidence"]) and (
+                level != "congressional_district"
+            ):
+                disagreements.append({"target": str(row["name"]), "level": level})
     return {
         "declared_levels": list(US_TARGET_GEOGRAPHY_VIEW_ORDER),
         "level_source_counts": dict(sorted(by_source.items())),
@@ -1438,6 +1450,7 @@ def _geography_view_resolution(
             key=lambda row: str(row["target"]),
         )[:20],
         "unresolved_target_count": len(unresolved),
+        "resolved_without_geography_id_count": resolved_without_id,
         "unresolved_target_examples": sorted(unresolved)[:20],
         "congressional_district_evidence_disagreement_count": len(disagreements),
         "congressional_district_evidence_disagreement_examples": sorted(
@@ -2678,7 +2691,7 @@ def render_markdown(payload: Mapping[str, object]) -> str:
                 f"**{resolution['congressional_district_evidence_disagreement_count']:,}** "
                 "(reported, not resolved). Rows whose level is known but "
                 "whose area is not declared at that level: "
-                f"**{resolution['geography_id_source_counts'].get('none', 0):,}**. "
+                f"**{resolution['resolved_without_geography_id_count']:,}**. "
                 "Rows whose two ledger copies of one geography id disagree: "
                 f"**{resolution['conflicting_geography_id_declaration_count']:,}** "
                 "(expected zero).",
@@ -2701,10 +2714,11 @@ def render_markdown(payload: Mapping[str, object]) -> str:
                 f"## {role}: loss by national / state / CD view",
                 "",
                 "| view | targets | distinct areas (census GEOID) | rows with "
-                "bare area id | rows without area id | weight share | loss "
+                "bare area id | rows with unrecognized area id | rows without "
+                "area id | weight share | loss "
                 "contribution | weighted mean capped error | rows over 10% | "
                 "worst target |",
-                "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+                "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
             ]
         )
         for group in view_rollup:
@@ -2713,6 +2727,7 @@ def render_markdown(payload: Mapping[str, object]) -> str:
                 f"{group['target_count']:,} | "
                 f"{group['distinct_canonical_geography_id_count']:,} | "
                 f"{group['rows_with_bare_geography_id']:,} | "
+                f"{group['rows_with_unrecognized_geography_id']:,} | "
                 f"{group['rows_without_geography_id']:,} | "
                 f"{_markdown_number(group['weight_share'])} | "
                 f"{_markdown_number(group['loss_contribution'])} | "
