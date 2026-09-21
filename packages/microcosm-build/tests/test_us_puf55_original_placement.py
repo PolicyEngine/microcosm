@@ -199,7 +199,7 @@ def test_placement_artifact_is_replay_invariant_across_receiving_seals():
     persisted placement document must not embed that seal.
     """
     qualified, inputs, table = fixture()
-    first = result(qualified, inputs, table)
+    _, first = result(qualified, inputs, table)
     frame = inputs.receiving.frame
     tables = {e: frame.table(e).copy(deep=True) for e in frame.entities}
     person = tables["person"]
@@ -211,9 +211,9 @@ def test_placement_artifact_is_replay_invariant_across_receiving_seals():
         ),
     )
     assert placement._stamp(replayed) != placement._stamp(inputs)
-    second = result(qualified, replayed, table)
-    assert second.artifacts == first.artifacts
-    document = codec.decode_json(first.artifacts["placement"])
+    _, second = result(qualified, replayed, table)
+    assert second == first
+    document = codec.decode_json(first)
     assert "input_population_stamps" not in document
     assert document["input_population_versions"] == [
         inputs.financial_parent.version,
