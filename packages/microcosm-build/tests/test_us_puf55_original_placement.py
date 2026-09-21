@@ -211,16 +211,18 @@ def test_candidate_outputs_accept_a_structural_version_that_carried_arm_one_valu
     assert placement.candidate_outputs(reowned, PROFILE) == baseline
     # The full placement path accepts the re-owned receiving population.
     result(qualified, reowned, table)
-    changed = _reowned_by_receiving_version(inputs)
-    changed.receiving.frame.person.loc[0, placement.SINGLETON_OUTPUTS[0]] = 5.0
-    with pytest.raises(ValueError, match="ARM_ONE_OUTPUT_CARRIED"):
-        placement.candidate_outputs(changed, PROFILE)
+    # Owner refusal first: replace() shares the frame object, and the carried
+    # case below mutates it.
     other = _reowned_by_receiving_version(inputs)
     owners = dict(other.receiving.owners)
     owners["tax_unit", placement.UNIT_OUTPUTS[0]] = "invented.later"
     other = replace(other, receiving=replace(other.receiving, owners=owners))
     with pytest.raises(ValueError, match="ARM_ONE_OUTPUT_OWNER"):
         placement.candidate_outputs(other, PROFILE)
+    changed = _reowned_by_receiving_version(inputs)
+    changed.receiving.frame.person.loc[0, placement.SINGLETON_OUTPUTS[0]] = 5.0
+    with pytest.raises(ValueError, match="ARM_ONE_OUTPUT_CARRIED"):
+        placement.candidate_outputs(changed, PROFILE)
 
 
 @pytest.mark.parametrize(
