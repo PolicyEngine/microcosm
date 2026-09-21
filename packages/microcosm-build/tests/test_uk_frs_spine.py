@@ -2416,3 +2416,55 @@ def test_care_hours_map_the_hourtot_band_codes_and_refuse_unknown_codes() -> Non
         frs_care_hours(pd.DataFrame({"hourtot": [11]}))
     with pytest.raises(ValueError, match="must be integral"):
         frs_care_hours(pd.DataFrame({"hourtot": [2.5]}))
+
+
+def test_collect_fit_weight_records_sees_through_the_run_proxies():
+    """A staged run wraps every stage in ObservedTransform, and the graph
+    driver in a source transform that proxies attribute reads; the collector
+    must find the hook through both, or every telemetry-enabled spine loses
+    its weights-audit evidence (as every one since 2026-09-01 did)."""
+
+    from microcosm.build.observation import ObservedTransform
+
+    tool = _load_tool()
+    record = SimpleNamespace(
+        fit_name="uk_was_2018_20_wealth:savings", weight_kind="design"
+    )
+
+    class _Fit:
+        fit_weight_records = (record,)
+
+        def __call__(self, frame):
+            return frame
+
+    class _GraphLike:
+        """The graph source transform after run_with_sources: the hook
+        copied into its own __dict__, reads proxied to the inner stage."""
+
+        def __init__(self, inner):
+            self.transform = inner
+            self.fit_weight_records = inner.fit_weight_records
+
+        def run_with_sources(self, frame, sources):
+            return frame
+
+        def __getattr__(self, name):
+            return getattr(self.__dict__["transform"], name)
+
+    def observed(transform, stage_id):
+        return ObservedTransform(
+            transform, stage_id=stage_id, produced_column_count=1, observer=None
+        )
+
+    implementations = {
+        "frs_spine": observed(lambda frame: frame, "frs_spine"),
+        "was_wealth": observed(_Fit(), "was_wealth"),
+        "etb_vat": observed(_GraphLike(_Fit()), "etb_vat"),
+    }
+    records = tool._collect_fit_weight_records(
+        stage_names=("frs_spine", "was_wealth", "etb_vat"),
+        implementations=implementations,
+    )
+    expected = [{"fit_name": "uk_was_2018_20_wealth:savings", "weight_kind": "design"}]
+    assert records == {"was_wealth": expected, "etb_vat": expected}
+    assert "frs_spine" not in records
