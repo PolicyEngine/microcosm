@@ -126,6 +126,26 @@ def _source(tmp_path: Path) -> AcsPumsSource:
     return AcsPumsSource(household_zip=household_zip, person_zip=person_zip)
 
 
+def test_acs_loader_preserves_hours_and_allocation_without_filling_blanks(tmp_path):
+    household_zip = tmp_path / "hours-hh.zip"
+    person_zip = tmp_path / "hours-person.zip"
+    _write_csv_zip(household_zip, {"psam_husa.csv": [_household("hours", NP=2)]})
+    _write_csv_zip(
+        person_zip,
+        {
+            "psam_pusa.csv": [
+                _person("hours", 1, 20, WKHP=40, WKL=1, FWKHP=1),
+                _person("hours", 2, 25, AGEP=12, WKHP=None, WKL=None, FWKHP=0),
+            ]
+        },
+    )
+    tables, _ = load_acs_pums_tables(AcsPumsSource(household_zip, person_zip))
+    assert tables["person"]["WKHP"].iloc[0] == 40
+    assert pd.isna(tables["person"]["WKHP"].iloc[1])
+    assert tables["person"]["FWKHP"].tolist() == [1, 0]
+    assert "weekly_hours_worked_before_lsr" not in tables["person"]
+
+
 def _asec_shaped_frame() -> Frame:
     """Return one ASEC-like row sharing only structural and lineage fields."""
 

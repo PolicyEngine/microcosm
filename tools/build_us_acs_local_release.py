@@ -60,6 +60,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from microcosm.build.us_runtime.acs_local_hours import acs_local_hours_signal_gate
+
 _TOOLS_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _TOOLS_DIR.parent
 if str(_TOOLS_DIR) not in sys.path:
@@ -771,6 +773,7 @@ def do_materialize(args) -> None:
     staging_sha = _sha256(args.staging_h5)
     ladder_sha = _sha256(args.ladder)
     frame = _load_staging_frame(args.staging_h5)
+    _require_local_hours(frame, _load_json(summary_path))
     log(
         f"loaded staging frame households={frame.n('household')} "
         f"({time.time() - started:.1f}s)"
@@ -1093,6 +1096,7 @@ def _write_calibrated_artifact(args, weights: np.ndarray, identity: dict) -> Non
     from microcosm.frame import Frame, WeightKind, Weights
 
     frame = _load_staging_frame(args.staging_h5)
+    _require_local_hours(frame, _load_json(_staging_summary_path(args)))
     staging_ids = frame.table("household")["household_id"].to_numpy()
     with pd.HDFStore(args.checkpoint_dir / "target_frame_lean.h5", mode="r") as store:
         lean_ids = store["household"]["household_id"].to_numpy()
@@ -1429,7 +1433,24 @@ def finalize_reviewed_limitations(
     return list(deduped.values())
 
 
+def _local_hours_gate(frame, staging_summary: dict):
+    audit = staging_summary.get("reviewed_engine_input_nulls")
+    if not isinstance(audit, list) or not all(isinstance(item, dict) for item in audit):
+        raise SystemExit("Local hours gate requires the staging input-null audit.")
+    return acs_local_hours_signal_gate(frame, source_null_audit=audit)
+
+
+def _require_local_hours(frame, staging_summary: dict) -> None:
+    gate = _local_hours_gate(frame, staging_summary)
+    if not gate.passed:
+        raise SystemExit("Local hours coverage failed: " + "; ".join(gate.failures))
+
+
 def do_finalize(args) -> None:
+    from microcosm.build.us_runtime.hours_worked import (
+        US_HOURS_WORKED_POOL_OUTPUT_COLUMNS,
+        us_hours_worked_signal_gate,
+    )
     from microcosm.build.us_runtime.puma_ladder import (
         load_us_puma_ladder,
         us_puma_ladder_gate,
@@ -1455,14 +1476,29 @@ def do_finalize(args) -> None:
     spine_qa = _load_json(args.checkpoint_dir / "spine_qa.json")
     consumer_export = _load_json(args.checkpoint_dir / "consumer_export.json")
 
+    hours_artifact_sha = _sha256(args.out_h5)
     frame = _load_staging_frame(args.out_h5)
+    local_hours_gate = _local_hours_gate(frame, staging_summary)
     households = frame.table("household")
     weights = np.asarray(frame.weights_for("household").values, dtype=np.float64)
     load_us_puma_ladder(args.ladder)
     ladder_gate = us_puma_ladder_gate(households, weights)
     composition = spine_composition(households, frame.table("person"), weights)
+    # microcosm#765: refuse to package an artifact whose usual-weekly-hours
+    # surface is the engine's constant-40 default (or otherwise out of band),
+    # which silently no-ops SNAP's ABAWD and general work-requirement tests.
+    # weeks_worked is dropped from the pool/ACS surface, so scope the gate to
+    # the two hours columns it carries.
+    hours_gate = us_hours_worked_signal_gate(
+        frame, required_columns=US_HOURS_WORKED_POOL_OUTPUT_COLUMNS
+    )
     del frame
     gc.collect()
+    if _sha256(args.out_h5) != hours_artifact_sha:
+        raise SystemExit(
+            "The calibrated H5 changed during hours_worked_signal validation. "
+            "Re-run --stage qa and --stage finalize against the current artifact."
+        )
 
     breakdown: dict[str, int] = {}
     for target in targets:
@@ -1485,10 +1521,22 @@ def do_finalize(args) -> None:
 
     mass = diagnostics.get("mass_conserved_ratio", 0.0)
     gates = {
+        "acs_local_hours_signal": {
+            "passed": local_hours_gate.passed,
+            "failures": list(local_hours_gate.failures),
+            "detail": dict(local_hours_gate.details),
+            "artifact_sha256": hours_artifact_sha,
+        },
         "us_puma_ladder_gate": {
             "passed": bool(ladder_gate.passed),
             "failures": list(ladder_gate.failures),
             "detail": dict(ladder_gate.details),
+        },
+        "hours_worked_signal": {
+            "passed": bool(hours_gate.passed),
+            "failures": list(hours_gate.failures),
+            "detail": dict(hours_gate.details),
+            "artifact_sha256": hours_artifact_sha,
         },
         "calibration": {
             # The cap criterion alone is near-tautological (the solver clips
@@ -1573,7 +1621,13 @@ def do_finalize(args) -> None:
     limitations = finalize_reviewed_limitations(staging_summary, diagnostics, spine_qa)
     hard_failures = [
         name
-        for name in ("us_puma_ladder_gate", "calibration", "consumer_ready")
+        for name in (
+            "us_puma_ladder_gate",
+            "hours_worked_signal",
+            "acs_local_hours_signal",
+            "calibration",
+            "consumer_ready",
+        )
         if not gates[name]["passed"]
     ]
     updated_summary = dict(staging_summary)
@@ -1663,6 +1717,25 @@ def do_package(args) -> dict:
             f"certified ({h5_sha[:12]}… vs {str(qa_sha)[:12]}…). Re-run "
             "--stage qa and --stage finalize against the current artifact."
         )
+    gates = gate_report.get("gates")
+    hours_gate = gates.get("hours_worked_signal") if isinstance(gates, dict) else None
+    if not isinstance(hours_gate, dict) or hours_gate.get("passed") is not True:
+        raise SystemExit(
+            "Packaging requires a present, passing hours_worked_signal gate; "
+            "an old simulation_ready summary is insufficient. Re-run --stage finalize."
+        )
+    if hours_gate.get("artifact_sha256") != h5_sha:
+        raise SystemExit(
+            "The hours_worked_signal gate is missing its artifact binding or "
+            "certifies different H5 bytes. Re-run --stage finalize against the "
+            "current artifact."
+        )
+    # Old summaries can say simulation_ready despite #765. Recheck the
+    # actual artifact and the source-null evidence before packaging it.
+    hours_frame = _load_staging_frame(calibrated_h5)
+    _require_local_hours(hours_frame, staging_summary)
+    del hours_frame
+    gc.collect()
     dropped_cells = identity.get("population_cells_dropped") or []
     if dropped_cells:
         raise SystemExit(
@@ -1867,6 +1940,16 @@ def do_package(args) -> dict:
         if not root_copy.exists() or _sha256(root_copy) != h5_sha:
             log(f"copying calibrated H5 to artifact root {root_copy} …")
             shutil.copy2(calibrated_h5, root_copy)
+    # Check the actual final artifact, including a reused copy or the no-copy
+    # path. A changed source/copy must not inherit the earlier hours verdict.
+    if _sha256(root_copy) != h5_sha:
+        if root_copy.resolve() != calibrated_h5.resolve():
+            # A refused copy must not sit where a good package puts its artifact.
+            root_copy.unlink(missing_ok=True)
+        raise SystemExit(
+            "The packaged H5 no longer matches the hours_worked_signal artifact "
+            "binding. Re-run --stage qa and --stage finalize against stable bytes."
+        )
 
     result = {
         "release_id": release_id,

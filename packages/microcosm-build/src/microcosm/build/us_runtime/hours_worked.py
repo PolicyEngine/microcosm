@@ -296,22 +296,30 @@ def us_hours_worked_summary(frame: Frame) -> dict[str, object]:
     }
 
 
-def us_hours_worked_signal_gate(frame: Frame) -> GateResult:
+def us_hours_worked_signal_gate(
+    frame: Frame,
+    *,
+    required_columns: tuple[str, ...] = US_HOURS_WORKED_OUTPUT_COLUMNS,
+) -> GateResult:
     """Require the hours surface to carry a plausible worked distribution.
 
     Fails when a column is missing or constant, when the weighted share of
     persons with positive usual weekly hours leaves the plausibility band,
     or when mean weekly hours among workers does — each of which reproduces
     (or inverts) the everyone-works-40-hours failure of microcosm #242.
+
+    ``required_columns`` scopes the presence check. It defaults to the full
+    three-column surface the fiscal-refresh/pool derivation owns. Callers that
+    gate a pool/ACS surface (which deliberately drops ``weeks_worked``) pass
+    ``US_HOURS_WORKED_POOL_OUTPUT_COLUMNS`` so the gate binds on the two columns
+    that surface actually carries (microcosm#765). The worked-share and
+    mean-hours bands read ``weekly_hours_worked_before_lsr`` either way, so they
+    bind regardless of scope.
     """
 
     person = frame.table("person")
     failures: list[str] = []
-    missing = [
-        column
-        for column in US_HOURS_WORKED_OUTPUT_COLUMNS
-        if column not in person.columns
-    ]
+    missing = [column for column in required_columns if column not in person.columns]
     if missing:
         return GateResult(
             name="hours_worked_signal",

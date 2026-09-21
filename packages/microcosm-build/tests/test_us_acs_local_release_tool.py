@@ -225,6 +225,34 @@ def test_do_finalize_requires_calibration_diagnostics(tmp_path: Path) -> None:
         module.do_finalize(args)
 
 
+def test_local_hours_gate_refuses_missing_source_audit() -> None:
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match="staging input-null audit"):
+        module._require_local_hours(None, {})
+
+
+def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None:
+    from microcosm.build.gates import GateResult
+
+    module = _load_tool_module()
+    seen = []
+
+    def failed_gate(frame, *, source_null_audit):
+        seen.append((frame, source_null_audit))
+        return GateResult(
+            name="acs_local_hours_signal",
+            passed=False,
+            failures=("acs_2024_1yr: unresolved hours",),
+        )
+
+    monkeypatch.setattr(module, "acs_local_hours_signal_gate", failed_gate)
+    marker = object()
+    audit = [{"entity": "person", "column": "weekly_hours_worked_before_lsr"}]
+    with pytest.raises(SystemExit, match="acs_2024_1yr: unresolved hours"):
+        module._require_local_hours(marker, {"reviewed_engine_input_nulls": audit})
+    assert seen == [(marker, audit)]
+
+
 def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     """Absent evidence must refuse packaging, never read as vacuously green."""
 
@@ -277,3 +305,307 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     )
     with pytest.raises(SystemExit, match="consumer_export.json is missing"):
         module.do_package(args)
+
+
+def _staging_frame_with_hours(weekly: list[float], last_week: list[float]):
+    """A minimal US-schema staging frame carrying the two pool hours columns."""
+
+    from microcosm.build.us_runtime.acs_pums import ACS_2024_1YR_SPINE
+    from microcosm.build.us_runtime.acs_transfer import ASEC_PUF_DONOR_SPINE
+    from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+    n = len(weekly)
+    ids = np.arange(1, n + 1)
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            "weekly_hours_worked_before_lsr": np.asarray(weekly, dtype=float),
+            "hours_worked_last_week": np.asarray(last_week, dtype=float),
+            "person_spine": np.resize([ACS_2024_1YR_SPINE, ASEC_PUF_DONOR_SPINE], n),
+        }
+    )
+    tables = {
+        "person": person,
+        "household": pd.DataFrame({"household_id": ids}),
+        "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+        "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+        "family": pd.DataFrame({"family_id": ids}),
+        "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+    }
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(np.ones(n, dtype=np.float64), WeightKind.DESIGN)},
+    )
+
+
+def _finalize_args(module, tmp_path: Path):
+    staging = tmp_path / "staging.h5"
+    staging.touch()
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps({"reviewed_limitations": [], "reviewed_engine_input_nulls": []})
+    )
+    (tmp_path / "out.h5").write_bytes(b"invented-finalize-artifact")
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir(exist_ok=True)
+    (ckpt / "calibration_diagnostics.json").write_text(
+        json.dumps(
+            {"final_loss": 0.1, "initial_loss": 0.5, "mass_conserved_ratio": 1.0}
+        )
+    )
+    ladder = tmp_path / "ladder.npz"
+    ladder.write_bytes(b"ladder-bytes")
+    return module._parse_args(
+        [
+            "--stage",
+            "finalize",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(ckpt),
+            "--out-h5",
+            str(tmp_path / "out.h5"),
+            "--ladder",
+            str(ladder),
+        ]
+    )
+
+
+def _run_finalize(module, monkeypatch, args, frame):
+    import microcosm.build.us_runtime.puma_ladder as puma
+    from microcosm.build.gates import GateResult
+
+    monkeypatch.setattr(puma, "load_us_puma_ladder", lambda *a, **k: None)
+    monkeypatch.setattr(
+        puma,
+        "us_puma_ladder_gate",
+        lambda *a, **k: GateResult(
+            name="us_puma_ladder", passed=True, failures=(), details={}
+        ),
+    )
+    monkeypatch.setattr(module, "spine_composition", lambda *a, **k: {})
+    monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
+    monkeypatch.setattr(
+        module,
+        "_verify_run_identity",
+        lambda a: {"ladder_sha256": module._sha256(a.ladder)},
+    )
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    report = (
+        json.loads(args.gate_report.read_text()) if args.gate_report.exists() else None
+    )
+    return str(exc.value), report
+
+
+def test_do_finalize_hard_fails_on_constant_forty_hours(tmp_path, monkeypatch) -> None:
+    # microcosm#765: an artifact whose usual weekly hours are the engine's
+    # constant-40 default must block packaging via the finalize hard gate.
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    frame = _staging_frame_with_hours([40.0] * 8, [40.0] * 8)
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert "hours_worked_signal" in message
+    assert report["gates"]["hours_worked_signal"]["passed"] is False
+
+
+def test_do_finalize_hours_gate_passes_on_plausible_surface(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    weekly = [40.0, 38.0, 20.0, 45.0, 0.0, 0.0, 0.0, 0.0]
+    last_week = [40.0, 35.0, 22.0, 40.0, 0.0, 0.0, 0.0, 5.0]
+    frame = _staging_frame_with_hours(weekly, last_week)
+    _message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert report["gates"]["hours_worked_signal"]["passed"] is True
+    assert report["gates"]["acs_local_hours_signal"]["passed"] is True
+    assert report["gates"]["hours_worked_signal"]["artifact_sha256"] == module._sha256(
+        args.out_h5
+    )
+
+
+def _package_args_with_hours(module, tmp_path, *, gate_state):
+    """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
+    from microcosm.frame import put_frame_table
+
+    args = _finalize_args(module, tmp_path)
+    args.out = tmp_path / "release"
+    args.allow_dirty = True
+    frame = _staging_frame_with_hours(
+        [40.0, 38.0, 20.0, 45.0, 0.0, 0.0, 0.0, 0.0],
+        [40.0, 35.0, 22.0, 40.0, 0.0, 0.0, 0.0, 5.0],
+    )
+    with pd.HDFStore(args.out_h5, mode="w") as store:
+        for entity in frame.entities:
+            table = frame.table(entity).copy()
+            if entity == "household":
+                table["household_weight"] = frame.weights_for(entity).values
+            put_frame_table(store, entity, table, preferred_format="fixed")
+    artifact_sha = module._sha256(args.out_h5)
+    gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if gate_state == "failed":
+        gate.update(passed=False, failures=["invented hours failure"])
+    elif gate_state == "truthy":
+        gate["passed"] = "true"
+    elif gate_state == "unbound":
+        del gate["artifact_sha256"]
+    elif gate_state == "stale":
+        gate["artifact_sha256"] = "0" * 64
+    gates = {} if gate_state == "missing" else {"hours_worked_signal": gate}
+    args.gate_report.write_text(json.dumps({"gates": gates}))
+    args.out_summary.write_text(json.dumps({"simulation_ready": True}))
+    evidence = {
+        "run_identity.json": {
+            "staging_sha256": module._sha256(args.staging_h5),
+            "population_cells_dropped": [],
+        },
+        "spine_qa.json": {
+            "plain_consumption": True,
+            "artifact_sha256": artifact_sha,
+            "per_spine": {},
+        },
+        "consumer_export.json": {"staging_sha256": artifact_sha},
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, value in evidence.items():
+        (args.checkpoint_dir / name).write_text(json.dumps(value))
+    return args
+
+
+@pytest.mark.parametrize(
+    "gate_state", ["missing", "failed", "truthy", "unbound", "stale"]
+)
+def test_package_requires_current_hours_gate_even_with_green_old_summary(
+    tmp_path, gate_state
+):
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, gate_state=gate_state)
+    with pytest.raises(SystemExit, match="hours_worked_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+
+
+def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(tmp_path):
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, gate_state="passed")
+    result = module.do_package(args)
+    release_dir = Path(result["release_dir"])
+    gate = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
+        "hours_worked_signal"
+    ]
+    copied_sha = module._sha256(Path(result["root_artifact"]["local_path"]))
+    assert gate["passed"] is True
+    assert gate["artifact_sha256"] == result["root_artifact"]["sha256"] == copied_sha
+
+
+def test_finalize_retains_independent_source_and_general_hours_results(
+    tmp_path, monkeypatch
+):
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    # ACS has no within-spine signal; ASEC supplies enough observed support
+    # for the overall gate to pass. Neither result may overwrite the other.
+    donor = [40.0, 38.0, 20.0, 45.0, 40.0, 35.0, 32.0, 0.0]
+    weekly = [value for donor_value in donor for value in (0.0, donor_value)]
+    frame = _staging_frame_with_hours(weekly, weekly)
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert report["gates"]["hours_worked_signal"]["passed"] is True
+    assert report["gates"]["acs_local_hours_signal"]["passed"] is False
+    assert "acs_local_hours_signal" in message
+
+
+def test_finalize_refuses_artifact_changed_during_hours_validation(
+    tmp_path, monkeypatch
+):
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    frame = _staging_frame_with_hours(
+        [40.0, 38.0, 20.0, 45.0, 0.0, 0.0, 0.0, 0.0],
+        [40.0, 35.0, 22.0, 40.0, 0.0, 0.0, 0.0, 5.0],
+    )
+    original_gate = module._local_hours_gate
+
+    def changed_artifact(checked_frame, summary):
+        result = original_gate(checked_frame, summary)
+        args.out_h5.write_bytes(b"different-invented-artifact")
+        return result
+
+    monkeypatch.setattr(module, "_local_hours_gate", changed_artifact)
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert "changed during hours_worked_signal validation" in message
+    assert report is None
+    assert not args.out_summary.exists()
+
+
+@pytest.mark.parametrize("copy_state", ["new", "already_present", "no_copy"])
+def test_package_rechecks_final_bytes_after_copy_or_reuse(
+    tmp_path, monkeypatch, copy_state
+):
+    import shutil as real_shutil
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, gate_state="passed")
+    root_copy = args.out / module.ARTIFACT_FILENAME
+    original_sha = module._sha256
+    root_hashes = []
+    if copy_state == "new":
+
+        def changed_copy(source, destination):
+            result = real_shutil.copy2(source, destination)
+            Path(destination).write_bytes(b"changed-during-copy")
+            return result
+
+        class _ToolShutil:
+            """Rebind only the tool's own ``shutil`` name, not the global module."""
+
+            copy2 = staticmethod(changed_copy)
+
+            def __getattr__(self, name):
+                return getattr(real_shutil, name)
+
+        monkeypatch.setattr(module, "shutil", _ToolShutil())
+    elif copy_state == "already_present":
+        root_copy.parent.mkdir(parents=True)
+        root_copy.write_bytes(args.out_h5.read_bytes())
+
+        def changed_after_reuse_check(path):
+            result = original_sha(path)
+            if Path(path) == root_copy:
+                root_hashes.append(result)
+                if len(root_hashes) == 1:
+                    root_copy.write_bytes(b"changed-after-reuse-check")
+            return result
+
+        monkeypatch.setattr(module, "_sha256", changed_after_reuse_check)
+    else:
+        # The artifact root IS the calibrated H5, so nothing is copied and only
+        # the final re-hash can notice a source that changed after the gates.
+        root_copy.parent.mkdir(parents=True)
+        args.out_h5.rename(root_copy)
+        args.out_h5 = root_copy
+        releases = args.out / "releases"
+        changed = []
+
+        def changed_while_writing_sums(path):
+            if not changed and releases in Path(path).parents:
+                changed.append(path)
+                with root_copy.open("ab") as stream:
+                    stream.write(b"changed-after-the-gates")
+            return original_sha(path)
+
+        monkeypatch.setattr(module, "_sha256", changed_while_writing_sums)
+    with pytest.raises(SystemExit, match="packaged H5.*hours_worked_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    if copy_state == "already_present":
+        assert len(root_hashes) == 2, "the reuse check and the final re-hash"
+    if copy_state == "no_copy":
+        assert root_copy.exists(), "the calibrated H5 itself is never removed"
+    else:
+        assert not root_copy.exists(), "a refused copy is not left at the root"

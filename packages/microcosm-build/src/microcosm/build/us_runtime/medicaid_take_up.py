@@ -588,6 +588,11 @@ class MedicaidEnrollmentSubstitution:
         reason: Why the substituted-for month is missing — quotes the CMS
             footnote.
         issue: Tracking issue (``"microcosm#386"``).
+        state_name: The state's display name, reviewed with the entry. A feed
+            that carries Chronicle labels gives every natural state spec a
+            calibration hierarchy, and the substituted state has no fact in
+            the substituted-for month to take a label from, so the register
+            supplies it. It is never derived from the FIPS code.
     """
 
     state_fips: str
@@ -598,6 +603,7 @@ class MedicaidEnrollmentSubstitution:
     substitute_value: float
     reason: str
     issue: str
+    state_name: str = ""
 
 
 #: The reviewed CMS Medicaid enrollment substitution register. Rhode Island is
@@ -628,6 +634,7 @@ US_MEDICAID_ENROLLMENT_SUBSTITUTIONS: tuple[MedicaidEnrollmentSubstitution, ...]
             "(Total Medicaid Enrollment 273,400)."
         ),
         issue="microcosm#386",
+        state_name="Rhode Island",
     ),
 )
 
@@ -791,6 +798,66 @@ def _substituted_medicaid_enrollment_spec(
         measure=name,
         value=float(substitution.substitute_value),
         metadata=metadata,
+        hierarchy=_substituted_hierarchy(
+            template,
+            substitution,
+            name=name,
+            state_fips=state_fips,
+            groupby_value_id=groupby_value_id,
+        ),
+    )
+
+
+def _substituted_hierarchy(
+    template: TargetSpec,
+    substitution: MedicaidEnrollmentSubstitution,
+    *,
+    name: str,
+    state_fips: str,
+    groupby_value_id: str,
+):
+    """The template's calibration hierarchy, re-pointed at the substituted state.
+
+    A feed without Chronicle labels compiles specs with no hierarchy, and the
+    clone has none either. A labelled feed gives the template one whose target
+    id is the template's own name, whose geography is the template's state and
+    whose state dimension carries the template's value, so a plain ``replace``
+    would stamp a neighbouring state onto this spec and then fail the
+    registry's rule that a hierarchy's target id equals its spec name. The
+    provider, category and target label are the family's and carry over; the
+    geography, the state dimension and the target id are this state's. The
+    state's label comes from the reviewed register entry, never from its FIPS
+    code.
+    """
+    hierarchy = template.hierarchy
+    if hierarchy is None:
+        return None
+    state_name = substitution.state_name.strip()
+    if not state_name:
+        raise ValueError(
+            "Medicaid enrollment substitution for state FIPS "
+            f"{state_fips!r} needs a reviewed state_name: the compiled family "
+            "carries a calibration hierarchy, and the substituted state has "
+            "no fact to take a label from."
+        )
+    template_value_id = template.metadata.get("ledger_layout_groupby_value_id")
+    groupby_dimension = template.metadata.get("ledger_layout_groupby_dimension")
+    dimensions = tuple(
+        replace(dimension, value_id=groupby_value_id, value_label=state_name)
+        if dimension.value_id == template_value_id
+        and groupby_dimension in (None, "", dimension.id)
+        else dimension
+        for dimension in hierarchy.dimensions
+    )
+    return replace(
+        hierarchy,
+        geography=replace(
+            hierarchy.geography,
+            id=f"0400000US{state_fips}",
+            label=state_name,
+        ),
+        dimensions=dimensions,
+        target=replace(hierarchy.target, id=name),
     )
 
 
