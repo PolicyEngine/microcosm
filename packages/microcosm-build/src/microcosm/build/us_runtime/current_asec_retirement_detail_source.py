@@ -452,8 +452,9 @@ def _compare_amount(ready, positions, name, literals):
     return field
 
 
-def qualify_current_asec_retirement_detail(preparation):
+def qualify_current_asec_retirement_detail(preparation, *, full_original=False):
     """Borrow the original preparation, capture once, and requalify before return."""
+    require(type(full_original) is bool, "FULL_ORIGINAL_OPTION")
     source = routing.source
     require(
         type(preparation) is source.AuthenticatedSurveyPopulationPreparation,
@@ -542,9 +543,14 @@ def qualify_current_asec_retirement_detail(preparation):
         len(set(native_ids)) == len(native_ids) and set(native_ids) <= set(basis.index),
         "SELECTED_NATIVE_JOIN",
     )
-    out = basis.loc[native_ids].copy()
-    out["native_person_id"] = native_ids
-    out.index = pd.Index(selected.person_id.to_numpy(), name="person_id")
+    if full_original:
+        out = basis.copy()
+        out["native_person_id"] = basis.index.to_numpy(copy=True)
+        out.index = pd.Index(basis.index.to_numpy(copy=True), name="person_id")
+    else:
+        out = basis.loc[native_ids].copy()
+        out["native_person_id"] = native_ids
+        out.index = pd.Index(selected.person_id.to_numpy(), name="person_id")
     literals = ordered.copy()
     literals.index = basis.index.copy()
     evidence = {
@@ -592,6 +598,12 @@ def qualify_current_asec_retirement_detail(preparation):
         "source_admission_issued": False,
         "release_eligible": False,
     }
+    if full_original:
+        evidence.update(
+            projection_scope="full_original_current_asec",
+            selected_rows=len(selected),
+            projection_rows=len(out),
+        )
     # Freeze detached JSON-compatible metadata before its seal; do not retain the
     # module's mutable constant dictionaries inside a returned descriptive view.
     result = CurrentAsecRetirementDetailValues(

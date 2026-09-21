@@ -834,8 +834,9 @@ def compose_other_disability(detail_values):
     return result
 
 
-def qualify_current_asec_other_disability(preparation):
+def qualify_current_asec_other_disability(preparation, *, full_original=False):
     """Requalify the actual retained preparation through its own detail owner."""
+    _require(type(full_original) is bool, "FULL_ORIGINAL_OPTION")
     source = routing.source
     _require(
         type(preparation) is source.AuthenticatedSurveyPopulationPreparation,
@@ -846,9 +847,12 @@ def qualify_current_asec_other_disability(preparation):
     state, native = entry[2], entry[2].native[1]
     issued = source.asec_native._ISSUED.get(id(native))
     _require(issued is not None, "NATIVE_ISSUANCE")
-    result = compose_other_disability(
-        detail.qualify_current_asec_retirement_detail(preparation)
+    qualified_detail = (
+        detail.qualify_current_asec_retirement_detail(preparation, full_original=True)
+        if full_original
+        else detail.qualify_current_asec_retirement_detail(preparation)
     )
+    result = compose_other_disability(qualified_detail)
     seal = other_disability_values_seal(result)
     source._pure_final(state)
     _require(
