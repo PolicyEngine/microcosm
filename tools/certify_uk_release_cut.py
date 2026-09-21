@@ -73,15 +73,30 @@ _LEDGER_COMPILE_PARITY_PERIODS = (2023, 2025)
 _LOCAL_COMPILE_PARITY_PERIOD = 2025
 
 
+def _ledger_facts_size(path: Path) -> int:
+    """The consumer facts file's size: the artifact directory holds it."""
+
+    facts = path / "consumer_facts.jsonl" if path.is_dir() else path
+    return facts.stat().st_size
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
     code_pin = git_code_pin(_REPOSITORY)
     predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+    # Logbook pin roles carry exactly the digest and the byte size, as the
+    # builds' do; a digest alone refused every real certification up front.
     source_pins = {
-        "candidate_h5": {"sha256": args.candidate_sha256},
-        "ledger_facts": {"sha256": args.ledger_facts_sha256},
+        "candidate_h5": {
+            "sha256": args.candidate_sha256,
+            "size_bytes": args.candidate_h5.stat().st_size,
+        },
+        "ledger_facts": {
+            "sha256": args.ledger_facts_sha256,
+            "size_bytes": _ledger_facts_size(args.ledger_facts),
+        },
     }
     state = AttemptState(
         build_id=f"{_PIPELINE}-attempt-{started_ts.strftime('%Y%m%dT%H%M%SZ')}",
