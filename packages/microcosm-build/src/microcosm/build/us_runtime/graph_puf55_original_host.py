@@ -19,6 +19,7 @@ from microcosm.graph import (
     Determinism,
     KernelBase,
     KernelResult,
+    Node,
     Numeric,
     StructuralDelta,
     executor,
@@ -34,6 +35,50 @@ fixed_graph = application.fixed_graph
 recipient_graph = fixed_graph.parent
 codec, physical = values.codec, values.attachment.physical
 require = values.require
+
+
+SOURCE_VERSION_REF = "us.survey_puf55.original_source_version@1"
+
+
+def original_source_version_node(financial_population):
+    """Open the original arm's private keep-all version off the financial version.
+
+    The arm-zero recipient projection, matrices and fixed inputs read the same
+    seven financial-owned leaves as arm one, but they must not become members of
+    the financial version: ``survey_puf55.receiving`` filters that version and a
+    structural node depends on every non-structural member of its base, so the
+    authenticated parent's keys would change and the prefix invariant would fail.
+    """
+    version, frame = financial_population.version, financial_population.frame
+    require(type(version) is str and bool(version), "SOURCE_VERSION_BASE")
+    return Node(
+        recipient_graph.ORIGINAL_SOURCE_VERSION_NODE,
+        SOURCE_VERSION_REF,
+        base=version,
+        structural=StructuralDelta.FILTER,
+        mass="conserve",
+        inputs=recipient_graph.financial.financial._inputs(frame),
+        params={"protocol": values.PROTOCOL, "recipient_arm": 0},
+        description="Keep every financial-version entity and weight in a private version for the original arm's recipient projection, matrices and fixed inputs, so no arm-zero node joins the authenticated parent's version closure.",
+    )
+
+
+def source_version_population(financial_population, incoming, node):
+    """Independently materialize the declared keep-all source version."""
+    require(
+        node == original_source_version_node(financial_population)
+        and node.base == incoming.version,
+        "SOURCE_VERSION_DECLARATION",
+    )
+    physical.replay.same_replayed_population(incoming, financial_population)
+    frame = incoming.frame
+    selected = frame.select(np.ones(frame.n("person"), dtype=bool))
+    for entity in frame.entities:
+        require(
+            selected.table(entity).equals(frame.table(entity)),
+            "SOURCE_VERSION_FRAME_CHANGED",
+        )
+    return population_ops.patch(incoming, node, KernelResult(frame=selected))
 
 
 def modules():
@@ -92,9 +137,18 @@ class Binding:
             host.run, host.run.population
         )
         self.template_stamp = values._stamp(self.template)
+        self.entry, _ = recipient_graph._check_values(self.fixed.recipients)
+        self.source_version = original_source_version_node(
+            self.entry[2].financial_population
+        )
         self.source_nodes = (
+            self.source_version,
             *recipient_graph.puf55_survey_recipient_nodes(self.fixed.recipients),
             *fixed_graph.puf55_survey_fixed_input_nodes(self.fixed),
+        )
+        require(
+            all(n.population == self.source_version.id for n in self.source_nodes[1:]),
+            "SOURCE_VERSION_MEMBERSHIP",
         )
         self.apply_nodes = application.original_application_nodes(
             self.fixed, self.routes, population=terminal.population, **self.seeds
@@ -176,6 +230,18 @@ class Binding:
         require(self.receiving is not None, "TERMINAL_NOT_OBSERVED")
         return replace(self.template, receiving=self.receiving)
 
+    def source_context(self, context):
+        self.host.context(context)
+        financial = self.entry[2].financial_population
+        require(
+            context.node == self.source_version
+            and context.node.base == financial.version
+            and context.params == context.node.params,
+            "SOURCE_VERSION_CONTEXT_NODE",
+        )
+        recipient_graph.host._current_context_frame(context, financial.frame)
+        self.pure()
+
     def context(self, context):
         self.host.context(context)
         require(context.node in self.placement_nodes, "PLACEMENT_CONTEXT_NODE")
@@ -243,6 +309,13 @@ class Binding:
     def reconstruct(self, node, incoming, artifacts, persisted):
         """Called in the host's independent ordered reconstruction, not its observer."""
         self.pure()
+        if node.id == recipient_graph.ORIGINAL_SOURCE_VERSION_NODE:
+            require(not artifacts and not persisted, "SOURCE_VERSION_ARTIFACTS")
+            expected = source_version_population(
+                self.entry[2].financial_population, incoming, node
+            )
+            self.pure()
+            return expected
         inputs = self.inputs()
         if node.id == fragment.KEEP_NODE:
             physical.replay.same_replayed_population(incoming, inputs.receiving)
@@ -286,6 +359,23 @@ class _Kernel(KernelBase):
             _node_payload,
             dependencies=self.capabilities.dependencies,
         )
+
+
+class SourceVersionKernel(_Kernel):
+    ref = SOURCE_VERSION_REF
+    capabilities = replace(_Kernel.capabilities, structural=StructuralDelta.FILTER)
+
+    def run(self, context):
+        b = self.binding
+        b.source_context(context)
+        ids = b.entry[2].financial_population.frame.person.person_id
+        result = KernelResult(
+            keep=pd.Series(
+                np.ones(len(ids), dtype=bool), index=pd.Index(ids, name="person_id")
+            )
+        )
+        b.source_context(context)
+        return result
 
 
 class KeepAllKernel(_Kernel):
@@ -351,6 +441,7 @@ def kernels(binding):
             development_rules=fixed_graph.values.DEVELOPMENT_RULES,
         ),
         application.observed.LegacyQRFApplyObservedMatrixKernel(),
+        SourceVersionKernel(binding),
         KeepAllKernel(binding),
         PlacementKernel(binding),
     )

@@ -344,6 +344,13 @@ def test_declarations_bind_full_receiving_slices_actual_edges_and_rule_metadata(
     (node,) = graph.puf55_survey_fixed_input_nodes(value)
     assert node.id == graph.fixed_input_node_id(arm)
     assert node.params["recipient_arm"] == arm
+    # Arm one extends the financial version it was issued from; arm zero joins
+    # the original arm's private keep-all version so it never enters the
+    # authenticated parent's version closure (graph_puf55_original_host).
+    assert node.population == graph.parent.recipient_population_version(arm, "invented")
+    assert node.population == (
+        "invented" if arm == 1 else graph.parent.ORIGINAL_SOURCE_VERSION_NODE
+    )
     metadata = observed.codec.decode_json(node.params["rule_metadata"].encode())
     assert metadata == observed.development_rule_metadata(value.rules)
     assert node.inputs == graph.parent.financial.financial._inputs(frame)

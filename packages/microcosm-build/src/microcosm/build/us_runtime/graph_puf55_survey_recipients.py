@@ -35,6 +35,13 @@ host = financial.financial.host
 codec, model_input = financial.codec, values.model_input
 PROJECTION_NODE = "survey_puf55.recipient_projection"
 MATRIX_NODE = "survey_puf55.recipient_matrices"
+# The original arm's source nodes live in a private keep-all version opened off
+# the financial version (graph_puf55_original_host.original_source_version_node).
+# compile_graph makes every structural node depend on every non-structural
+# member of its base version, and survey_puf55.receiving filters the financial
+# version, so an arm-zero node declared directly on that version would join the
+# authenticated parent's predecessor closure and change its key.
+ORIGINAL_SOURCE_VERSION_NODE = "survey_puf55.original_source_version"
 PROJECTION_TYPE = ArtifactType("microcosm.us.puf55_survey_recipient_projection", 1)
 ORIGINAL_PROJECTION_TYPE = ArtifactType(
     "microcosm.us.puf55_survey_original_recipient_projection", 1
@@ -58,6 +65,16 @@ def recipient_node_ids(arm=1):
 def projection_type(arm=1):
     values.recipient_protocol(arm)
     return PROJECTION_TYPE if arm == 1 else ORIGINAL_PROJECTION_TYPE
+
+
+def recipient_population_version(arm, financial_version):
+    """Arm one is declared on the financial version it extends; arm zero on its own."""
+    values.recipient_protocol(arm)
+    values._require(
+        type(financial_version) is str and bool(financial_version),
+        "GRAPH_FINANCIAL_VERSION",
+    )
+    return financial_version if arm == 1 else ORIGINAL_SOURCE_VERSION_NODE
 
 
 def _edges(run):
@@ -147,7 +164,9 @@ def puf55_survey_recipient_nodes(qualified):
         ).decode(),
     }
     common = {
-        "population": entry[2].financial_population.version,
+        "population": recipient_population_version(
+            qualified.arm, entry[2].financial_population.version
+        ),
         # The same source names already declared by the authenticated prefix:
         # survey_population_source and us_atomic_block_support. Full live-run
         # checks borrow both, including the recipient's ASEC literal reread.

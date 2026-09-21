@@ -158,6 +158,8 @@ def _descriptive_binding():
         **SEEDS,
     )
     binding.source_nodes = ()
+    binding.source_version = None
+    binding.entry = None
     binding.apply_nodes = original.application.original_application_nodes(
         fixed, declarations, population=terminal.population, **SEEDS
     )
@@ -285,6 +287,123 @@ def test_whole55_extension_declarations_compile_after_late_terminal():
         compiled.order.index(n.id) < compiled.order.index(fragment.ATTACH_NODE)
         for n in b.apply_nodes
     )
+
+
+def _invented_arm_zero_source_nodes(monkeypatch, financial):
+    """Actual arm-zero builders over invented values; no financial owner is issued."""
+    from test_us_puf55_observed_recipients import _invented_values
+
+    recipients, fixed_graph = original.recipient_graph, original.fixed_graph
+    value, frame = _invented_values(arm=0, rules=fixed_graph.values.DEVELOPMENT_RULES)
+    financial.frame = frame
+    entry = (
+        None,
+        b"invented-run",
+        SimpleNamespace(
+            financial_population=financial,
+            source_items=(("invented_source", "invented_path"),),
+            preparation_entry=(None, b"invented-preparation"),
+        ),
+    )
+    monkeypatch.setattr(recipients, "_check_values", lambda x: (entry, {}))
+    monkeypatch.setattr(recipients, "_pins", lambda x: {})
+    monkeypatch.setattr(recipients, "_edges", lambda x: ())
+    projection, matrix = recipients.puf55_survey_recipient_nodes(value.recipients)
+    (fixed,) = fixed_graph.puf55_survey_fixed_input_nodes(value)
+    return frame, (projection, matrix, fixed)
+
+
+def _create_node(version, frame):
+    structural = {(e, frame.schema.entity_id_column(e)) for e in frame.entities} | {
+        ("person", frame.schema.membership_column(g))
+        for g in frame.schema.group_entities
+    }
+    return Node(
+        version,
+        "fixture.create@1",
+        structural=StructuralDelta.CREATE,
+        sources=("invented", "invented_source"),
+        mass="free",
+        outputs=tuple(
+            Owned(e, c, populations.token_for_dtype(frame.table(e)[c].dtype))
+            for e in frame.entities
+            for c in frame.table(e)
+            if (e, c) not in structural
+        ),
+    )
+
+
+def test_original_source_nodes_do_not_join_the_parent_filter_base_version(
+    monkeypatch,
+):
+    """The prefix invariant: arm-zero source nodes never change parent keys.
+
+    compile_graph makes a structural node depend on every non-structural member
+    of its base version. survey_puf55.receiving filters the financial version, so
+    arm-zero nodes declared on that version would enter its predecessor closure
+    (the genuine successor3 run failed PREFIX_DECLARATION_OR_KEY on 113 nodes).
+    """
+    financial = SimpleNamespace(version="invented.financial")
+    frame, source_nodes = _invented_arm_zero_source_nodes(monkeypatch, financial)
+    version = original.original_source_version_node(financial)
+    assert version.id == original.recipient_graph.ORIGINAL_SOURCE_VERSION_NODE
+    assert version.base == financial.version
+    assert version.structural is StructuralDelta.FILTER and not version.outputs
+    assert {n.population for n in source_nodes} == {version.id}
+    create = _create_node(financial.version, frame)
+    receiving = Node(
+        "invented.parent.receiving",
+        "fixture.filter@1",
+        base=financial.version,
+        structural=StructuralDelta.FILTER,
+        mass="conserve",
+        inputs=(next(s for s in source_nodes[0].inputs if s.entity == "person"),),
+    )
+    sources = (
+        SourceRef("invented", "frame-store"),
+        SourceRef("invented_source", "frame-store"),
+    )
+    parent = compile_graph(Graph("invented-parent", sources, (create, receiving)))
+    before = parent.predecessors[receiving.id]
+    extended = compile_graph(
+        Graph("invented-extended", sources, (create, receiving, version, *source_nodes))
+    )
+    assert extended.predecessors[receiving.id] == before
+    assert all(extended.versions[n.id] == version.id for n in source_nodes)
+    assert extended.order.index(version.id) < min(
+        extended.order.index(n.id) for n in source_nodes
+    )
+    # The defective binding (arm zero on the financial version) is what the
+    # successor3 host compiled: the parent filter gains three predecessors.
+    regressed = compile_graph(
+        Graph(
+            "invented-regressed",
+            sources,
+            (
+                create,
+                receiving,
+                *(replace(n, population=financial.version) for n in source_nodes),
+            ),
+        )
+    )
+    assert set(regressed.predecessors[receiving.id]) - set(before) == {
+        n.id for n in source_nodes
+    }
+
+
+def test_source_version_population_is_an_exact_keep_all(monkeypatch):
+    financial = SimpleNamespace(version="invented.financial")
+    frame, _ = _invented_arm_zero_source_nodes(monkeypatch, financial)
+    incoming = populations.Population.from_frame(frame, financial.version)
+    financial_population = populations.Population.from_frame(frame, financial.version)
+    node = original.original_source_version_node(financial_population)
+    expected = original.source_version_population(financial_population, incoming, node)
+    assert expected.version == node.id
+    assert all(expected.frame.table(e).equals(frame.table(e)) for e in frame.entities)
+    with pytest.raises(ValueError, match="SOURCE_VERSION_DECLARATION"):
+        original.source_version_population(
+            financial_population, incoming, replace(node, base="other")
+        )
 
 
 def test_real_host_rejects_unissued_parent_even_when_original_option_enabled():

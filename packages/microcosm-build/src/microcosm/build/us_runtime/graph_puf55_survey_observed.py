@@ -54,7 +54,9 @@ def puf55_survey_fixed_input_nodes(qualified):
         Node(
             fixed_input_node_id(recipient.arm),
             Puf55SurveyFixedInputKernel.ref,
-            population=entry[2].financial_population.version,
+            population=parent.recipient_population_version(
+                recipient.arm, entry[2].financial_population.version
+            ),
             sources=tuple(name for name, _ in entry[2].source_items),
             inputs=parent.financial.financial._inputs(
                 entry[2].financial_population.frame

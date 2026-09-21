@@ -2337,7 +2337,10 @@ def run_us_survey_enrichment(
     original_placement_ids = (
         set()
         if boundary.original is None
-        else {n.id for n in boundary.original.placement_nodes}
+        else {
+            boundary.original.source_version.id,
+            *(n.id for n in boundary.original.placement_nodes),
+        }
     )
     if boundary.original is not None:
         boundary.original.verify_sources(manifest, loaded)
