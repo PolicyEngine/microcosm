@@ -9,12 +9,16 @@ Union-arm and AGI-only thinning algebra adapted from PolicyEngine/microcosm
 PR964, commit f7df78b2a00421f9b90305a9b7db192444075ae0, puf_agi_tail.py.
 The native profile preserves independent SS, SCF and three late-owned leaves;
 it is not the reference implementation's full65-minus-three transfer profile.
+Two deliberate divergences from that reference are documented where they
+occur: :func:`_rescale_exact` corrects a largest cell weight rather than the
+last one, and the AGI floor decision never routes through a float64 total.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -33,6 +37,10 @@ MAX_AGI_ONLY_DONORS = 3_000
 # A complete actual source requires a different, independently reviewed owner.
 MAX_DECLARED_RETURNS = 10_000
 MAX_DECLARED_PERSONS = 100_000
+# The donor-side build-period income locator. It is the reference selector's
+# own 20-leaf donor proxy, not the seven-column recipient-side AGI-band locator
+# `puf_capital_gains_tail._RECIPIENT_AGI_PROXY_COLUMNS`, which places recipient
+# households into SOI bands. Neither list substitutes for the other.
 PROXY_AGI_COMPONENTS = (
     "employment_income_before_lsr",
     "self_employment_income_before_lsr",
@@ -55,7 +63,22 @@ PROXY_AGI_COMPONENTS = (
     "alimony_income",
     "salt_refund_income",
 )
+# A selected donor either kept its declared return weight untouched or had that
+# weight rescaled inside a thinned arm-two cell. Unchanged numeric values do
+# not retain DESIGN population semantics after conditional support selection:
+# the whole selection is IMPORTANCE support either way. These labels record
+# which of the two happened, never a population mass claim.
+WEIGHT_TREATMENT_UNCHANGED = "unchanged_declared_return_weight"
+WEIGHT_TREATMENT_RESCALED = "cell_rescaled_to_preserve_declared_cell_weight_sum"
 _ROLES = frozenset(("head", "spouse", "dependent", "unclassified", "ambiguous"))
+# Money storage is narrowed to the two exactly supported physical widths.
+# Narrower or wider integers, float16/float32 and non-native byte order are
+# refused rather than silently reinterpreted at a precision this contract
+# never demonstrated.
+_INT64 = np.dtype("int64")
+_FLOAT64 = np.dtype("float64")
+_AMOUNT_DTYPES = (_INT64, _FLOAT64)
+_SNAPSHOT_DTYPES = frozenset(dtype.str for dtype in (np.dtype(bool), *_AMOUNT_DTYPES))
 
 
 def _require(condition: bool, code: str) -> None:
@@ -68,6 +91,31 @@ def _json(value: object) -> bytes:
     return json.dumps(
         value, sort_keys=True, separators=(",", ":"), allow_nan=False
     ).encode()
+
+
+def _filing_status_domain() -> tuple[int, ...]:
+    """Return the admitted filing-status codes from the existing PUF authority.
+
+    ``puf_support._FILING_STATUS_CODES`` is the canonical decode map the US
+    runtime already uses to turn engine filing-status names into the integer
+    codes this contract receives, and ``puf_capital_gains_tail`` derives its
+    integer-keyed inverse view from the same five entries. Reading the
+    canonical map here keeps SURVIVING_SPOUSE (5) admissible without a second
+    local enumeration; see docs/shared-constants.md. The import is deferred
+    for the same reason the profile derivation defers its own.
+    """
+    from .puf_support import _FILING_STATUS_CODES
+
+    values = tuple(_FILING_STATUS_CODES.values())
+    _require(
+        len(values) == len(set(values))
+        and all(
+            type(value) in (int, float) and float(value).is_integer() and value > 0
+            for value in values
+        ),
+        "FILING_STATUS_AUTHORITY",
+    )
+    return tuple(sorted(int(value) for value in values))
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +166,17 @@ class TailProjectionProvenance:
 
 @dataclass(frozen=True, slots=True)
 class _Column:
+    """A typed payload plus its all-known witness.
+
+    This contract is all-known only. ``_known`` refuses any mask that is not
+    entirely true, so ``known`` is always ``b"\\x01" * rows`` and carries no
+    information beyond the row count; ``_restore`` requires exactly that
+    constant. The field is an explicit witness of that limitation, not a
+    partial-knownness channel. Admitting partial knownness would first require
+    threading the caller's real mask through ``_snapshot``; until that happens
+    the constant may not be reinterpreted as measured knownness.
+    """
+
     name: str
     dtype: str
     payload: bytes
@@ -236,11 +295,13 @@ def _validate_tables(
             )
             _require(bool(np.isfinite(table[name].to_numpy()).all()), "NONFINITE")
             if name in ("person_id", "donor_recid", "filing_status_code"):
-                _require(dtype == np.dtype("int64"), "IDENTITY_DTYPE")
+                _require(dtype == _INT64, "IDENTITY_DTYPE")
             elif table is persons and name in profile.boolean_outputs:
                 _require(dtype == np.dtype(bool), "BOOLEAN_DTYPE")
             else:
-                _require(dtype.kind in "iuf", "AMOUNT_DTYPE")
+                # Exactly int64 or float64: a narrower float would store money
+                # at a precision the proxy and reconciliation never assume.
+                _require(dtype in _AMOUNT_DTYPES, "AMOUNT_DTYPE")
     _require(
         returns.donor_recid.gt(0).all()
         and returns.donor_recid.is_unique
@@ -250,10 +311,11 @@ def _validate_tables(
     )
     _require(persons.donor_recid.isin(returns.donor_recid).all(), "ORPHAN_PERSON")
     _require(
-        returns.filing_status_code.isin((1, 2, 3, 4)).all(), "FILING_STATUS_DOMAIN"
+        returns.filing_status_code.isin(_filing_status_domain()).all(),
+        "FILING_STATUS_DOMAIN",
     )
     _require(
-        returns.weight.dtype == np.dtype("float64")
+        returns.weight.dtype == _FLOAT64
         and returns.weight.ge(0).all()
         and np.isfinite(returns.weight.sum()),
         "WEIGHT_DOMAIN",
@@ -261,6 +323,8 @@ def _validate_tables(
 
 
 def _known(table: pd.DataFrame, known: pd.DataFrame) -> None:
+    # All-known only, by design: a partially known declaration refuses here
+    # rather than being snapshotted as if every cell had been observed.
     _require(
         type(known) is pd.DataFrame
         and known.index.equals(table.index)
@@ -272,6 +336,8 @@ def _known(table: pd.DataFrame, known: pd.DataFrame) -> None:
 
 
 def _snapshot(table: pd.DataFrame, names: tuple[str, ...]) -> _Table:
+    # The constant witness is sound only because `_known` already refused every
+    # non-all-true mask. Do not relax `_known` without threading a real mask.
     return _Table(
         len(table),
         tuple(
@@ -301,6 +367,7 @@ def declare_puf_tail_role_projection(
     Return values use tax-return grain. Person booleans remain physical bool;
     return-side booleans are aggregated numeric inputs, not person flags. All
     unknown cells refuse; zero can only arrive as an explicit known value.
+    Money is stored at exactly int64 or float64; no other width is admitted.
     """
     _provenance(provenance)
     _require(weight_kind is WeightKind.DESIGN, "RETURN_WEIGHT_KIND")
@@ -336,15 +403,16 @@ def _restore(table: _Table, names: tuple[str, ...], limit: int) -> pd.DataFrame:
     )
     values = {}
     for column in table.columns:
-        _require(type(column.dtype) is str, "SNAPSHOT_DTYPE")
-        try:
-            dtype = np.dtype(column.dtype)
-        except (TypeError, ValueError):
-            raise ValueError("NATIVE_PUF_TAIL_SNAPSHOT_DTYPE") from None
+        # The admitted set is the native-order physical bool/int64/float64
+        # triple `_snapshot` can produce. A forged narrower or byte-swapped
+        # dtype refuses instead of reinterpreting the same payload bytes.
         _require(
-            dtype.kind in "biuf"
-            and dtype.itemsize <= 8
-            and type(column.payload) is bytes
+            type(column.dtype) is str and column.dtype in _SNAPSHOT_DTYPES,
+            "SNAPSHOT_DTYPE",
+        )
+        dtype = np.dtype(column.dtype)
+        _require(
+            type(column.payload) is bytes
             and len(column.payload) == table.rows * dtype.itemsize
             and type(column.known) is bytes
             and column.known == b"\x01" * table.rows,
@@ -384,11 +452,31 @@ def projection_tables(
 
 @dataclass(frozen=True, slots=True)
 class SelectedTailDonor:
+    """One selected donor return. Descriptive only; no household is implied.
+
+    Attributes:
+        donor_recid: The declared return identifier.
+        arm: 1 capital-gains only, 2 AGI only, 3 both.
+        proxy_agi: The float64 diagnostic proxy total. The inclusive floor
+            decision does not route through this value; see :func:`_proxy_agi`.
+        weight: The selected support weight, in the treatment named below.
+        spouse_payload_nonzero: Whether any declared spouse cell of this donor
+            is nonzero, or ``None`` when the donor was never role-screened
+            (arm 1 is outside the declared role-eligibility scope). This is a
+            description of the declared payload, not a structural requirement:
+            an all-zero spouse row on a joint return still says nothing about
+            whether a later population owner must construct a spouse, and that
+            owner alone determines household structure.
+        weight_treatment: ``WEIGHT_TREATMENT_UNCHANGED`` or
+            ``WEIGHT_TREATMENT_RESCALED``.
+    """
+
     donor_recid: int
     arm: int
     proxy_agi: float
     weight: float
-    needs_spouse: bool
+    spouse_payload_nonzero: bool | None
+    weight_treatment: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -410,7 +498,14 @@ class NativeTailSelection:
 
     @property
     def weight_kind(self) -> WeightKind:
-        """Resampled donor-return support, not household population mass."""
+        """Selected donor-return support, not household population mass.
+
+        Thinned arm-two cells carry rescaled weights and every other selected
+        weight is its unchanged declared value, but conditional support
+        selection does not retain DESIGN population semantics either way, so
+        the whole selection is IMPORTANCE. Per-donor ``weight_treatment``
+        records which of the two happened.
+        """
         return WeightKind.IMPORTANCE
 
 
@@ -430,6 +525,12 @@ def _role_eligibility(
     persons: pd.DataFrame,
     profile: NativeTailProfile,
 ) -> tuple[str | None, bool]:
+    """Screen one AGI-arm donor and describe its declared spouse payload.
+
+    The returned flag is descriptive: it reports whether any declared spouse
+    cell is nonzero. It is not a structural claim about the household a later
+    population owner builds, and it does not consult ``filing_status_code``.
+    """
     roles = persons.role
     if (
         roles.eq("head").sum() != 1
@@ -444,6 +545,11 @@ def _role_eligibility(
         return "dependent_monetary_value", False
     # A mixed-type row Series coerces exact int64 identities/amounts to float.
     # Sum Python scalars so signed integer reconciliation cannot wrap or round.
+    # The sum is also person-row-order independent: by the two checks above an
+    # eligible donor has exactly one head, at most one spouse and exactly zero
+    # dependent money, so at most two of the summed scalars are nonzero and
+    # float64 addition of one or two values among zeros carries no order-
+    # dependent rounding.
     if any(
         sum(persons[column].tolist()) != returns[column].iat[position].item()
         for column in monetary
@@ -457,7 +563,67 @@ def _role_eligibility(
     )
 
 
+def _proxy_agi(returns: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Return the float64 diagnostic proxy total and the exact floor decision.
+
+    The inclusive floor decision never routes through the float64 total. A
+    row's int64 components are summed as Python integers, which is exact at
+    any magnitude, and its float64 components are summed with ``math.fsum``,
+    which returns the correctly rounded sum of the doubles it was given --
+    that is a stable summation, not universally exact real arithmetic. The
+    comparison ``float_part >= AGI_FLOOR - integer_part`` is then an exact
+    CPython float/int comparison, so an int64 component above 2**53 cannot
+    move a donor across the floor by rounding. The returned float64 total is a
+    diagnostic view used for the receipt masses and the rank-decile order; it
+    is not calculated AGI and is not the threshold authority.
+    """
+    integer_names = [
+        name for name in PROXY_AGI_COMPONENTS if returns[name].dtype == _INT64
+    ]
+    integer_set = set(integer_names)
+    float_names = [name for name in PROXY_AGI_COMPONENTS if name not in integer_set]
+    rows = len(returns)
+    if integer_names:
+        integer_parts = [
+            sum(values)
+            for values in zip(
+                *(returns[name].tolist() for name in integer_names), strict=True
+            )
+        ]
+    else:
+        integer_parts = [0] * rows
+    try:
+        if float_names:
+            float_parts = [
+                math.fsum(values)
+                for values in zip(
+                    *(returns[name].tolist() for name in float_names), strict=True
+                )
+            ]
+        else:
+            float_parts = [0.0] * rows
+    except OverflowError:
+        raise ValueError("NATIVE_PUF_TAIL_PROXY_OVERFLOW") from None
+    proxy = np.asarray(
+        [
+            integer + decimal
+            for integer, decimal in zip(integer_parts, float_parts, strict=True)
+        ],
+        dtype=np.float64,
+    )
+    _require(bool(np.isfinite(proxy).all()), "PROXY_OVERFLOW")
+    above_floor = np.asarray(
+        [
+            decimal >= AGI_FLOOR - integer
+            for integer, decimal in zip(integer_parts, float_parts, strict=True)
+        ],
+        dtype=bool,
+    )
+    return proxy, above_floor
+
+
 def _mass(rows: pd.DataFrame) -> dict[str, int | float]:
+    """Float64 diagnostic totals. Not an exact reconciliation of the amounts."""
     weights = rows.weight.to_numpy(dtype=np.float64)
     proxy = rows.proxy_agi.to_numpy(dtype=np.float64)
     values = {
@@ -472,6 +638,8 @@ def _mass(rows: pd.DataFrame) -> dict[str, int | float]:
 
 def _cell_quotas(counts: np.ndarray) -> np.ndarray:
     budget = min(MAX_AGI_ONLY_DONORS, int(counts.sum()))
+    # An inexpensive invariant rather than a live guard: groupby cells are
+    # non-empty, so len(counts) <= counts.sum() and the budget covers them.
     _require(len(counts) <= budget, "CELL_BUDGET")
     if budget == int(counts.sum()):
         return counts.copy()
@@ -482,47 +650,72 @@ def _cell_quotas(counts: np.ndarray) -> np.ndarray:
     extra = np.floor(ideal).astype(np.int64)
     quotas += extra
     missing = budget - int(quotas.sum())
+    # Also invariants, not fixes for an observed counterexample: a negative
+    # remainder would bump every cell but one, and the exit checks below are
+    # the postconditions the largest-remainder allocation actually owes.
+    _require(0 <= missing <= len(counts), "CELL_QUOTA_REMAINDER")
     quotas[np.argsort(-(ideal - extra), kind="stable")[:missing]] += 1
+    _require(
+        int(quotas.sum()) == budget
+        and bool((quotas >= 1).all())
+        and bool((quotas <= counts).all()),
+        "CELL_QUOTA_POSTCONDITION",
+    )
     return quotas
 
 
 def _rescale_exact(weights: np.ndarray, total: float) -> np.ndarray:
+    """Rescale a kept cell so its float64 weight sum is exactly ``total``.
+
+    The reference selector forced the residual onto the last row. A cell with
+    dispersed weights can have a last row orders of magnitude smaller than the
+    correction, which either drives that weight non-positive or leaves the
+    ``nextafter`` walk unable to move the sum at all, refusing a cell that is
+    perfectly representable. Correcting a largest weight keeps each step's
+    resolution at or above the resolution of the sum being corrected.
+    Positivity, finiteness and exact conservation remain mandatory: a cell
+    mass that still cannot be represented refuses instead of being approximated.
+    """
     result = weights * (total / float(weights.sum()))
+    target = int(np.argmax(result))
     for _ in range(8):
         observed = float(result.sum())
         if observed == total:
             break
-        result[-1] += total - observed
+        result[target] += total - observed
     else:
         for _ in range(64):
             observed = float(result.sum())
             if observed == total:
                 break
-            result[-1] = np.nextafter(
-                result[-1], np.inf if observed < total else -np.inf
+            result[target] = np.nextafter(
+                result[target], np.inf if observed < total else -np.inf
             )
     _require(
-        np.isfinite(result).all()
-        and (result > 0).all()
+        bool(np.isfinite(result).all())
+        and bool((result > 0).all())
         and float(result.sum()) == total,
         "EXACT_CELL_WEIGHT",
     )
     return result
 
 
-def _thin(rows: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, object]]:
+def _thin(
+    rows: pd.DataFrame,
+) -> tuple[pd.DataFrame, dict[str, object], frozenset[int]]:
     ranked = rows.sort_values(["proxy_agi", "donor_recid"], kind="stable").copy()
     ranked["decile"] = (
         np.arange(len(ranked), dtype=np.int64) * 10 // max(len(ranked), 1)
     )
     cells = list(ranked.groupby(["filing_status_code", "decile"], sort=True))
     quotas = _cell_quotas(np.asarray([len(cell) for _, cell in cells], dtype=np.int64))
-    kept_cells, receipts = [], []
+    kept_cells, receipts, rescaled = [], [], set()
     for ((status, decile), cell), quota in zip(cells, quotas, strict=True):
         ordered = cell.sort_values("donor_recid", kind="stable").copy()
         before = _mass(ordered)
         if quota == len(ordered):
             kept = ordered.copy()
+            treatment = WEIGHT_TREATMENT_UNCHANGED
         else:
             indices = np.floor((np.arange(quota) + 0.5) * len(ordered) / quota).astype(
                 int
@@ -531,6 +724,8 @@ def _thin(rows: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, object]]:
             kept["weight"] = _rescale_exact(
                 kept.weight.to_numpy(dtype=np.float64), float(before["weight"])
             )
+            treatment = WEIGHT_TREATMENT_RESCALED
+            rescaled.update(int(recid) for recid in kept.donor_recid)
         after = _mass(kept)
         receipts.append(
             {
@@ -539,6 +734,7 @@ def _thin(rows: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, object]]:
                 "count_before": len(ordered),
                 "kept_count": len(kept),
                 "dropped_count": len(ordered) - len(kept),
+                "weight_treatment": treatment,
                 **{
                     name + "_before": before[name]
                     for name in ("weight", "proxy_agi_sum", "weighted_proxy_agi")
@@ -554,14 +750,23 @@ def _thin(rows: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, object]]:
     kept = (
         pd.concat(kept_cells, ignore_index=True) if kept_cells else rows.iloc[:0].copy()
     )
-    return kept, {
-        "maximum_count": MAX_AGI_ONLY_DONORS,
-        "count_before": len(rows),
-        "kept_count": len(kept),
-        "dropped_count": len(rows) - len(kept),
-        "amount_mass_conserved": False,
-        "cells": receipts,
-    }
+    return (
+        kept,
+        {
+            "maximum_count": MAX_AGI_ONLY_DONORS,
+            "count_before": len(rows),
+            "kept_count": len(kept),
+            "dropped_count": len(rows) - len(kept),
+            "rescaled_cell_count": sum(
+                1
+                for cell in receipts
+                if cell["weight_treatment"] == WEIGHT_TREATMENT_RESCALED
+            ),
+            "amount_mass_conserved": False,
+            "cells": receipts,
+        },
+        frozenset(rescaled),
+    )
 
 
 def select_native_puf_tail(
@@ -601,22 +806,22 @@ def select_native_puf_tail(
     _require(
         not (gains & (~eligible | (weights <= 0))).any(), "CAPITAL_GAINS_ELIGIBILITY"
     )
-    proxy = np.zeros(len(returns), dtype=np.float64)
-    for name in PROXY_AGI_COMPONENTS:
-        proxy += returns[name].to_numpy(dtype=np.float64)
-    _require(np.isfinite(proxy).all(), "PROXY_OVERFLOW")
-    agi = eligible & (weights > 0) & (proxy >= AGI_FLOOR)
+    proxy, above_floor = _proxy_agi(returns)
+    agi = eligible & (weights > 0) & above_floor
     rows = returns.loc[:, ["donor_recid", "weight", "filing_status_code"]].copy()
     rows["proxy_agi"] = proxy
     rows["arm"] = gains.astype(np.int8) + 2 * agi.astype(np.int8)
-    rows["needs_spouse"] = False
     groups = {
         int(key): group for key, group in people.groupby("donor_recid", sort=False)
     }
     reasons: dict[str, list[int]] = {}
+    # Only role-screened donors get a spouse-payload description. A donor
+    # absent from this mapping was never examined, which is not the same as a
+    # donor examined and found to have an all-zero spouse payload.
+    spouse_payload: dict[int, bool] = {}
     for position in np.flatnonzero(agi):
         recid = int(returns.donor_recid.iat[position])
-        reason, needs_spouse = _role_eligibility(
+        reason, spouse_rows_nonzero = _role_eligibility(
             returns,
             int(position),
             groups.get(recid, people.iloc[:0]),
@@ -625,12 +830,12 @@ def select_native_puf_tail(
         if reason is not None:
             reasons.setdefault(reason, []).append(int(position))
         else:
-            rows.loc[position, "needs_spouse"] = needs_spouse
+            spouse_payload[recid] = spouse_rows_nonzero
     skipped_positions = sorted(p for positions in reasons.values() for p in positions)
     keep = gains | agi
     keep[skipped_positions] = False
     candidates = rows.iloc[np.flatnonzero(keep)]
-    thinned, thinning = _thin(candidates.loc[candidates.arm.eq(2)])
+    thinned, thinning, rescaled = _thin(candidates.loc[candidates.arm.eq(2)])
     selected = pd.concat(
         [candidates.loc[candidates.arm.ne(2)], thinned], ignore_index=True
     ).sort_values("donor_recid", kind="stable")
@@ -640,15 +845,42 @@ def select_native_puf_tail(
             int(row.arm),
             float(row.proxy_agi),
             float(row.weight),
-            bool(row.needs_spouse),
+            spouse_payload.get(int(row.donor_recid)),
+            WEIGHT_TREATMENT_RESCALED
+            if int(row.donor_recid) in rescaled
+            else WEIGHT_TREATMENT_UNCHANGED,
         )
         for row in selected.itertuples(index=False)
     )
     skipped = rows.iloc[skipped_positions].sort_values("donor_recid", kind="stable")
+    skipped_index = np.asarray(skipped_positions, dtype=np.int64)
     agi_selected = sum(row.arm in (2, 3) for row in donors)
+    capital_gains_selected = sum(row.arm in (1, 3) for row in donors)
+    both_selected = sum(row.arm == 3 for row in donors)
+    # Every skipped position came out of the AGI loop, so a capital-gains
+    # donor can only be skipped when it is also an AGI candidate; CG-only
+    # support is never role-screened and never thinned.
+    capital_gains_skipped = int(gains[skipped_index].sum())
+    both_skipped = int((gains & agi)[skipped_index].sum())
+    rescaled_selected = sum(
+        row.weight_treatment == WEIGHT_TREATMENT_RESCALED for row in donors
+    )
     _require(
         int(agi.sum()) == agi_selected + len(skipped) + thinning["dropped_count"],
         "SELECTION_COUNT_EQUATION",
+    )
+    _require(
+        int(gains.sum()) == capital_gains_selected + capital_gains_skipped,
+        "CAPITAL_GAINS_COUNT_EQUATION",
+    )
+    _require(
+        int((gains & agi).sum()) == both_selected + both_skipped,
+        "BOTH_ARM_COUNT_EQUATION",
+    )
+    _require(rescaled_selected == len(rescaled), "WEIGHT_TREATMENT_ACCOUNTING")
+    _require(
+        all((row.spouse_payload_nonzero is None) == (row.arm == 1) for row in donors),
+        "SPOUSE_PAYLOAD_SCOPE",
     )
     receipt = {
         "protocol": PROTOCOL,
@@ -662,15 +894,35 @@ def select_native_puf_tail(
         "input_weight_kind": projection.weight_kind.value,
         "selected_weight_kind": WeightKind.IMPORTANCE.value,
         "weight_scope": "donor_return_support_not_population_households",
+        "weight_treatment_counts": {
+            WEIGHT_TREATMENT_UNCHANGED: len(donors) - rescaled_selected,
+            WEIGHT_TREATMENT_RESCALED: rescaled_selected,
+        },
         "agi_floor": AGI_FLOOR,
         "comparison": "greater_than_or_equal",
+        "filing_status_domain": list(_filing_status_domain()),
         "proxy_components": PROXY_AGI_COMPONENTS,
         "proxy_is_calculated_agi": False,
+        "proxy_floor_arithmetic": (
+            "exact_integer_part_with_correctly_rounded_float_part"
+        ),
+        "proxy_totals_arithmetic": (
+            "float64_diagnostic_sums_not_exact_amount_reconciliation"
+        ),
         "agi_candidate_count": int(agi.sum()),
         "agi_selected_count": agi_selected,
-        "both_selected_count": sum(row.arm == 3 for row in donors),
+        "capital_gains_candidate_count": int(gains.sum()),
+        "capital_gains_selected_count": capital_gains_selected,
+        "capital_gains_skipped_count": capital_gains_skipped,
+        "both_candidate_count": int((gains & agi).sum()),
+        "both_selected_count": both_selected,
+        "both_skipped_count": both_skipped,
         "dependent_boolean_policy": "ignored_explicitly",
         "role_eligibility_scope": "agi_only_and_both_arms",
+        "spouse_payload_flag": (
+            "descriptive_nonzero_declared_spouse_cells_not_a_structural_requirement"
+        ),
+        "spouse_payload_scope": "null_outside_role_eligibility_scope",
         "capital_gains_selection": "caller_declared_fixture_mask_not_source_qualification",
         "skipped": {
             **_mass(skipped),
