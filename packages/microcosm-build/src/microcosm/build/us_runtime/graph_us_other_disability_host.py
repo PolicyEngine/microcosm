@@ -496,6 +496,26 @@ def _result(boundary, node, artifacts):
     return KernelResult(columns=columns, artifacts={"attachment": payload})
 
 
+def _materialize_filter_result(incoming, node, result):
+    """Independently select the full Frame before structural population patching."""
+    require(
+        node.id in (fragment.DONOR_NODE, fragment.VERSION_NODE)
+        and node.structural is StructuralDelta.FILTER
+        and node.base == incoming.version
+        and result.frame is None,
+        "HOST_FILTER_DECLARATION",
+    )
+    # Match the executor's typed person-ID mask contract, including nullable
+    # boolean masks without nulls. Selection remains independent of its output.
+    executor._validate_filter_mask(node, result.keep, incoming)
+    frame = incoming.frame
+    person = frame.schema.person_entity
+    identifier = frame.schema.entity_id_column(person)
+    ids = pd.Index(frame.table(person)[identifier].to_numpy(copy=True), name=identifier)
+    selected = frame.select(result.keep.reindex(ids).to_numpy(dtype=bool, copy=True))
+    return replace(result, frame=selected, keep=None)
+
+
 def _verify_model(boundary, loaded, donor):
     q = boundary.fragment.qualified
     if q.matrix is None:
@@ -628,6 +648,8 @@ def run_continuation(
         ):
             result = _result(boundary, node, artifacts)
             require(persisted == result.artifacts, "HOST_RESULT_ARTIFACT")
+            if node.structural is StructuralDelta.FILTER:
+                result = _materialize_filter_result(current[node.base], node, result)
             expected = (
                 population_ops.Population.from_frame(result.frame, node.id)
                 if node.structural is StructuralDelta.CREATE
