@@ -54,10 +54,12 @@ from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import engine_tables
 
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
-#: The shared exclusion-expiry clock, fixed inside the committed register's
-#: validity window (latest approval 2026-09-05, expires 2027-02-10) so the suite
-#: never drifts across an expiry boundary.
-CLOCK = date(2026, 9, 15)
+#: The shared exclusion-expiry clock, fixed inside the committed registers'
+#: validity window (latest approval 2026-09-18, the v20 self-employment
+#: 20-30k deferral on the target-fit register; earliest expiry 2026-10-16,
+#: the same entry) so the suite never drifts across an approval or expiry
+#: boundary. Move it forward when a register gains a later approval.
+CLOCK = date(2026, 9, 18)
 
 VALIDATE_REFERENCE = (
     "microcosm.build.uk_runtime.weighted_integrity."
