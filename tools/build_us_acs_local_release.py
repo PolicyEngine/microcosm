@@ -1658,6 +1658,49 @@ def do_finalize(args) -> None:
     log(f"finalize stage complete: gates green, {len(limitations)} limitations")
 
 
+#: Staging settings a packaged build manifest records, so a reader can see how
+#: the ACS spine was built without opening the staging summary.
+_STAGING_ORCHESTRATION_KEYS = (
+    "max_households",
+    "n_estimators",
+    "max_targets_per_fit",
+    "acs_share",
+    "chunksize",
+    "seed",
+    "geography_seed",
+    "donor_channel",
+)
+
+
+def _require_uncapped_staging(staging_summary: dict) -> dict[str, object]:
+    """Refuse to package a staging run that was capped, or cannot show it was not.
+
+    ``tools/build_us_acs_multispine_base.py --max-households`` caps the ACS
+    spine for smokes. The donor spine keeps every state and congressional
+    district populated, so a capped run drops no ladder population cell and
+    passes every finalize gate; without this check it packages into a release
+    directory with a publish command and nothing in either manifest says it
+    is a smoke. A summary that does not record the cap cannot establish that
+    the spine is whole, so it is refused too.
+    """
+
+    orchestration = staging_summary.get("orchestration")
+    if not isinstance(orchestration, dict) or "max_households" not in orchestration:
+        raise SystemExit(
+            "The staging summary does not record orchestration.max_households, "
+            "so packaging cannot establish that the ACS spine is uncapped. "
+            "Re-run staging with the current builder; a smoke's output must "
+            "not be packaged."
+        )
+    cap = orchestration["max_households"]
+    if cap is not None:
+        raise SystemExit(
+            f"The staging run was capped at {cap} ACS household(s) "
+            "(--max-households); a smoke's output must not be packaged."
+        )
+    return {key: orchestration.get(key) for key in _STAGING_ORCHESTRATION_KEYS}
+
+
 def do_package(args) -> dict:
     diagnostics = _load_json(args.checkpoint_dir / "calibration_diagnostics.json")
     gate_report = _load_json(args.gate_report)
@@ -1675,6 +1718,8 @@ def do_package(args) -> dict:
         raise SystemExit(
             "Refusing to package: the finalized summary is not simulation_ready."
         )
+    # Before any release directory exists: a refused smoke leaves nothing.
+    staging_orchestration = _require_uncapped_staging(staging_summary)
 
     code = _repo_code_identity(args.allow_dirty)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -1828,6 +1873,7 @@ def do_package(args) -> dict:
         },
         "gates": gate_report.get("gates", {}),
         "run_identity": identity,
+        "staging_orchestration": staging_orchestration,
         "refresh_recipe": refresh_recipe,
     }
 

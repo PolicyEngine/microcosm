@@ -261,7 +261,9 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     ckpt.mkdir()
     staging = tmp_path / "staging.h5"
     staging.write_bytes(b"staging")
-    (tmp_path / "staging.summary.json").write_text("{}")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps({"orchestration": {"max_households": None}})
+    )
     out_h5 = tmp_path / "out.h5"
     out_h5.write_bytes(b"artifact")
     (ckpt / "calibration_diagnostics.json").write_text(json.dumps({"households": 1}))
@@ -430,6 +432,23 @@ def test_do_finalize_hours_gate_passes_on_plausible_surface(
     )
 
 
+_UNSET = object()
+
+
+def _write_staging_orchestration(tmp_path: Path, *, max_households=_UNSET) -> None:
+    """Record (or omit) the staging cap in the fixture's staging summary."""
+    path = tmp_path / "staging.summary.json"
+    summary = json.loads(path.read_text())
+    summary.pop("orchestration", None)
+    if max_households is not _UNSET:
+        summary["orchestration"] = {
+            "max_households": max_households,
+            "n_estimators": 100,
+            "max_targets_per_fit": 8,
+        }
+    path.write_text(json.dumps(summary))
+
+
 def _package_args_with_hours(module, tmp_path, *, gate_state):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
     from microcosm.frame import put_frame_table
@@ -437,6 +456,7 @@ def _package_args_with_hours(module, tmp_path, *, gate_state):
     args = _finalize_args(module, tmp_path)
     args.out = tmp_path / "release"
     args.allow_dirty = True
+    _write_staging_orchestration(tmp_path, max_households=None)
     frame = _staging_frame_with_hours(
         [40.0, 38.0, 20.0, 45.0, 0.0, 0.0, 0.0, 0.0],
         [40.0, 35.0, 22.0, 40.0, 0.0, 0.0, 0.0, 5.0],
@@ -502,6 +522,39 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(tmp_path
     copied_sha = module._sha256(Path(result["root_artifact"]["local_path"]))
     assert gate["passed"] is True
     assert gate["artifact_sha256"] == result["root_artifact"]["sha256"] == copied_sha
+
+
+@pytest.mark.parametrize(
+    ("max_households", "message"),
+    [
+        (5000, r"capped at 5000 ACS household"),
+        (0, r"capped at 0 ACS household"),
+        (_UNSET, r"does not record orchestration\.max_households"),
+    ],
+    ids=["capped", "capped-at-zero", "cap-not-recorded"],
+)
+def test_package_refuses_a_capped_or_unattested_staging_run(
+    tmp_path, max_households, message
+):
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, gate_state="passed")
+    _write_staging_orchestration(tmp_path, max_households=max_households)
+    with pytest.raises(SystemExit, match=message):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not (args.out / "releases").exists(), "a refused smoke leaves no release"
+
+
+def test_package_records_the_uncapped_staging_settings(tmp_path):
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, gate_state="passed")
+    result = module.do_package(args)
+    manifest = json.loads(
+        (Path(result["release_dir"]) / "build_manifest.json").read_text()
+    )
+    assert manifest["staging_orchestration"]["max_households"] is None
+    assert manifest["staging_orchestration"]["n_estimators"] == 100
+    assert manifest["staging_orchestration"]["max_targets_per_fit"] == 8
 
 
 def test_finalize_retains_independent_source_and_general_hours_results(
