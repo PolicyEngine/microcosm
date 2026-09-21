@@ -192,8 +192,15 @@ build evidence only.
 
 The tool refuses, before writing anything, when:
 
-1. the parent's SHA-256 is not the exact pinned donor (the same digest as the
-   reviewed Build P parent, `microcosm.data.source_enrichment.PARENT_DATASET_SHA256`);
+1. the parent's SHA-256 is not one of the two exact pinned parents: the
+   reviewed Build P parent (the same digest as
+   `microcosm.data.source_enrichment.PARENT_DATASET_SHA256`), or the published
+   national default `populace-us-2024-spm-20260915`, which is that population
+   with the native `is_spm_independent_minor_role` column. Measured on
+   21 September 2026, counts only: under the locked engine's adult rule the
+   Build P file has 28 of 59,900 SPM units with no classified adult and the
+   role-carrying file has none, so the second parent is the better ACS donor.
+   The receipt records which lineage was qualified;
 2. the output directory already exists or is a symlink;
 3. any of `receives_wic`, `receives_snap`, `receives_tanf` already exists on any
    entity table;

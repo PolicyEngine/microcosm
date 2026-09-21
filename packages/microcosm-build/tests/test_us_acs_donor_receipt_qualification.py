@@ -538,6 +538,27 @@ def test_refuses_a_parent_that_is_not_the_pinned_donor(donor, monkeypatch) -> No
     assert not fixture.output.exists()
 
 
+def test_accepts_the_spm_role_parent_and_records_which_lineage_it_qualified(
+    donor, monkeypatch
+) -> None:
+    fixture = donor()
+    monkeypatch.setattr(builder, "DONOR_SHA256", "f" * 64)
+    monkeypatch.setattr(builder, "SPM_ROLE_PARENT_SHA256", file_sha256(fixture.parent))
+
+    receipt = _qualify(fixture)
+
+    assert receipt["parent"]["sha256"] == file_sha256(fixture.parent)
+    assert "native SPM role" in receipt["parent"]["lineage"]
+
+
+def test_pins_the_published_spm_role_release_digest() -> None:
+    # The digest the published populace-us-2024-spm-20260915 manifest declares.
+    assert set(builder.pinned_parents()) == {
+        "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
+        "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84",
+    }
+
+
 @pytest.mark.parametrize("column", ["receives_wic", "receives_snap", "receives_tanf"])
 def test_refuses_a_preexisting_qualified_column(donor, monkeypatch, column) -> None:
     fixture = donor()

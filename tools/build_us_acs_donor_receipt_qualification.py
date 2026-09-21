@@ -71,6 +71,27 @@ from microcosm.frame import Frame
 #: this tool's own pin so the tool does not inherit the release contract.
 DONOR_SHA256 = "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e"
 
+#: The published national default ``populace-us-2024-spm-20260915``: the same
+#: Build P population with the native ``is_spm_independent_minor_role`` column
+#: added by the source-enrichment lane (its release manifest declares this
+#: digest). Qualifying it instead of the bare Build P file gives the ACS staging
+#: a donor whose SPM units all have a classified adult.
+SPM_ROLE_PARENT_SHA256 = (
+    "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84"
+)
+
+
+def pinned_parents() -> dict[str, str]:
+    """Exact parent digests this tool accepts, with the lineage each names."""
+
+    return {
+        DONOR_SHA256: "populace-us-2024-buildp-sparse (July Build P donor)",
+        SPM_ROLE_PARENT_SHA256: (
+            "populace-us-2024-spm-20260915 (Build P plus the native SPM role)"
+        ),
+    }
+
+
 #: Output column -> owning entity. Ordered as written.
 QUALIFIED_COLUMNS: dict[str, str] = {
     "receives_wic": "person",
@@ -891,8 +912,10 @@ def qualify_donor(
         raise FileExistsError(
             "Output directory already exists; choose a new candidate directory"
         )
-    if file_sha256(parent_h5) != DONOR_SHA256:
-        _refuse("Only the exact pinned Build P donor can be qualified")
+    parent_sha256 = file_sha256(parent_h5)
+    parent_lineage = pinned_parents().get(parent_sha256)
+    if parent_lineage is None:
+        _refuse("Only an exact pinned Build P lineage parent can be qualified")
     producer_identity = _producer_identity()
 
     frame = load_legacy_calibrated_us_h5(parent_h5)
@@ -951,7 +974,7 @@ def qualify_donor(
             parent_h5,
             child_h5,
             plan,
-            expected_parent_sha256=DONOR_SHA256,
+            expected_parent_sha256=parent_sha256,
         )
         reload_report = verify_reload(frame, child_h5, derived)
         if (
@@ -966,7 +989,11 @@ def qualify_donor(
                 "none; local build evidence. Not a release, staged bundle, "
                 "calibration or latest pointer."
             ),
-            "parent": {"filename": parent_h5.name, "sha256": DONOR_SHA256},
+            "parent": {
+                "filename": parent_h5.name,
+                "sha256": parent_sha256,
+                "lineage": parent_lineage,
+            },
             "dataset": {
                 "filename": child_h5.name,
                 "sha256": preservation["candidate_sha256"],
