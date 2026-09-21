@@ -449,6 +449,7 @@ def compose_uk_release_certification(
         "score_receipt": {
             "filename": score_receipt_path.name,
             "sha256": hashlib.sha256(score_receipt_bytes).hexdigest(),
+            "evaluation": _score_receipt_summary(score_receipt),
         },
         "exclusions_evaluated_on": exclusions_evaluated_on.isoformat(),
         "shippable": True,
@@ -728,6 +729,10 @@ def _verify_identity_join(
         )
 
 
+#: The verdict a certifiable score receipt must carry (candidate_score).
+UK_SCORE_RECEIPT_VERDICT_PASSED = "passed"
+
+
 def _verify_score_receipt(receipt: Mapping[str, Any], *, candidate_sha256: str) -> None:
     artifacts = receipt.get("artifacts")
     scored = (
@@ -742,6 +747,62 @@ def _verify_score_receipt(receipt: Mapping[str, Any], *, candidate_sha256: str) 
             f"({candidate_sha256!r}); the rule-1 score must be measured on "
             "this candidate's bytes."
         )
+    # Rule 1 (microcosm#578) is decided by the scorer on the surface both
+    # artifacts can materialize and signed into the receipt; the certifier
+    # refuses anything short of a passed verdict, so publication never runs
+    # on an unpassed evaluation. Pruned rows are reported, never a failure,
+    # but the surface must close over them.
+    evaluation = receipt.get("evaluation")
+    if not isinstance(evaluation, Mapping):
+        raise UKReleaseCertificationError(
+            "the score receipt carries no evaluation block; re-score the "
+            "candidate with tools/score_uk_national_candidate.py so the "
+            "rule-1 verdict is signed run evidence."
+        )
+    surface = evaluation.get("scored_surface")
+    counts = (
+        {key: surface.get(key) for key in ("n_scored", "n_pruned", "n_surface")}
+        if isinstance(surface, Mapping)
+        else {}
+    )
+    if (
+        len(counts) != 3
+        or not all(isinstance(value, int) and value >= 0 for value in counts.values())
+        or counts["n_scored"] + counts["n_pruned"] != counts["n_surface"]
+        or counts["n_scored"] == 0
+    ):
+        raise UKReleaseCertificationError(
+            "the score receipt's scored surface does not close: n_scored + "
+            "n_pruned must equal n_surface with at least one scored target."
+        )
+    verdict = evaluation.get("verdict")
+    if verdict != UK_SCORE_RECEIPT_VERDICT_PASSED:
+        raise UKReleaseCertificationError(
+            f"the score receipt's evaluation verdict is {verdict!r}, not "
+            f"{UK_SCORE_RECEIPT_VERDICT_PASSED!r}: rule 1 (microcosm#578) is "
+            "not met on the common surface, so the cut cannot be certified."
+        )
+
+
+def _score_receipt_summary(receipt: Mapping[str, Any]) -> dict[str, Any]:
+    evaluation = receipt["evaluation"]
+    surface = evaluation["scored_surface"]
+    rule_1 = evaluation.get("rule_1")
+    losses = (
+        {
+            "candidate_full_loss": rule_1.get("candidate_full_loss"),
+            "incumbent_full_loss": rule_1.get("incumbent_full_loss"),
+        }
+        if isinstance(rule_1, Mapping)
+        else {}
+    )
+    return {
+        "verdict": evaluation["verdict"],
+        "n_scored": surface["n_scored"],
+        "n_pruned": surface["n_pruned"],
+        "n_surface": surface["n_surface"],
+        **losses,
+    }
 
 
 def _status_census(payload: Mapping[str, Any]) -> dict[str, int]:

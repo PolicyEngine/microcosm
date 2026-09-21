@@ -86,6 +86,25 @@ uv run --no-sync python tools/score_uk_national_candidate.py \
 Both artifacts are verified against the supplied digests before they are read,
 and both sides are scored on the same frozen register.
 
+A target whose measure the incumbent cannot materialize (the admin-basis UC
+family measures, the CGT asset type, the ONS household type: inputs the
+enhanced FRS never carried) is pruned from **both** arms and reported, never
+refused: the scorer warns on stderr naming every absent measure and the rows
+it removed, and the receipt carries them under
+`incumbent_unresolvable_pruned` (`n_pruned`, `n_scored`, `n_surface`, the
+rows with their family and measure). The score stands on the common surface
+with band edges from the full register (#803). A measure the *candidate*
+cannot materialize still refuses: that is a defect.
+`--no-prune-incumbent-unresolvable` restores the refusal on the incumbent
+side too. The receipt's `evaluation` block decides rule 1 (#578) on that
+surface: `verdict` is `passed` when the candidate's full loss is below the
+incumbent's, `failed` otherwise, and the release-cut certifier refuses any
+receipt whose verdict is not `passed` or whose surface does not close, so
+publication never runs on an unpassed evaluation. The rowwise driver's
+national role runs this evaluation at the end of every build it is given an
+incumbent for (microcosm#965) and writes the same receipt as
+`score_vs_incumbent.json`.
+
 ## Evidence directory
 
 `data/ukds/acceptance/623-first-calibrated-candidate/` should contain:

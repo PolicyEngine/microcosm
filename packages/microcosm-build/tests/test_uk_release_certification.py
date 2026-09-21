@@ -42,6 +42,7 @@ def _load_fixture_module():
 _FIXTURES = _load_fixture_module()
 _TEST_KEY = _FIXTURES.TEST_KEY
 _green_certification_inputs_fixture = _FIXTURES.green_certification_inputs
+green_score_receipt = _FIXTURES.green_score_receipt
 _signing_key_fixture = _FIXTURES.signing_key
 _sha = _FIXTURES.sha256
 _stub_registry = _FIXTURES.stub_registry
@@ -283,6 +284,59 @@ def test_compose_refuses_score_receipt_scored_on_another_artifact(
     )
     with pytest.raises(UKReleaseCertificationError, match="artifacts.candidate.sha256"):
         compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_a_score_receipt_whose_verdict_is_not_passed(
+    green_certification_inputs,
+):
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    receipt["evaluation"]["verdict"] = "failed"
+    receipt["evaluation"]["rule_1"]["passed"] = False
+    green_certification_inputs["score_receipt_path"].write_text(
+        json.dumps(receipt), encoding="utf-8"
+    )
+    with pytest.raises(UKReleaseCertificationError, match="verdict is 'failed'"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_a_score_receipt_without_an_evaluation(
+    green_certification_inputs,
+):
+    # A receipt from the strict scorer carries the cross-pin but no verdict:
+    # rule 1 was never decided on a closed surface, so it cannot certify.
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    del receipt["evaluation"]
+    green_certification_inputs["score_receipt_path"].write_text(
+        json.dumps(receipt), encoding="utf-8"
+    )
+    with pytest.raises(UKReleaseCertificationError, match="no evaluation block"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_a_score_receipt_whose_surface_does_not_close(
+    green_certification_inputs,
+):
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    receipt["evaluation"]["scored_surface"]["n_pruned"] = 5
+    green_certification_inputs["score_receipt_path"].write_text(
+        json.dumps(receipt), encoding="utf-8"
+    )
+    with pytest.raises(UKReleaseCertificationError, match="does not close"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_certification_summarises_the_score_receipt_verdict(
+    green_certification_inputs,
+):
+    certification = compose_uk_release_certification(**green_certification_inputs)
+    assert certification["score_receipt"]["evaluation"] == {
+        "verdict": "passed",
+        "n_scored": 305,
+        "n_pruned": 2,
+        "n_surface": 307,
+        "candidate_full_loss": 0.0096,
+        "incumbent_full_loss": 0.211,
+    }
 
 
 def test_compose_refuses_absent_signing_key(green_certification_inputs, monkeypatch):

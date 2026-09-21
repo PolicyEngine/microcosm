@@ -106,6 +106,44 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def green_score_receipt(candidate_sha: str) -> dict:
+    """A score receipt the certifier accepts: measured on the candidate's
+    bytes, scored on a closed common surface, rule 1 passed."""
+
+    return {
+        "artifacts": {
+            "candidate": {"sha256": candidate_sha, "size_bytes": 15},
+            "incumbent": {"sha256": "9" * 64, "size_bytes": 1},
+        },
+        "candidate_full_loss": 0.0096,
+        "incumbent_full_loss": 0.211,
+        "candidate_target_wins": 293,
+        "incumbent_target_wins": 12,
+        "incumbent_unresolvable_pruned": {
+            "n_pruned": 2,
+            "n_scored": 305,
+            "n_surface": 307,
+            "rows": {},
+            "measures": ["benunit.uc_calibration_child_count"],
+            "families": {"dwp_universal_credit": 2},
+            "note": "pruned from both arms",
+        },
+        "evaluation": {
+            "schema_version": 1,
+            "rule": "microcosm#578 rule 1 on the common surface",
+            "scored_surface": {"n_scored": 305, "n_pruned": 2, "n_surface": 307},
+            "rule_1": {
+                "passed": True,
+                "candidate_full_loss": 0.0096,
+                "incumbent_full_loss": 0.211,
+                "candidate_target_wins": 293,
+                "incumbent_target_wins": 12,
+            },
+            "verdict": "passed",
+        },
+    }
+
+
 @pytest.fixture(name="green_certification_inputs")
 def green_certification_inputs(tmp_path: Path):
     """Three green signed parts plus a closed identity join."""
@@ -177,16 +215,7 @@ def green_certification_inputs(tmp_path: Path):
     }
     score_receipt = tmp_path / "score_vs_enhanced_frs.json"
     score_receipt.write_text(
-        json.dumps(
-            {
-                "artifacts": {
-                    "candidate": {"sha256": candidate_sha, "size_bytes": 15},
-                    "incumbent": {"sha256": "9" * 64, "size_bytes": 1},
-                },
-                "candidate_target_wins": 293,
-            }
-        ),
-        encoding="utf-8",
+        json.dumps(green_score_receipt(candidate_sha)), encoding="utf-8"
     )
     return {
         "release_id": "uk-757-first-certified-cut",
