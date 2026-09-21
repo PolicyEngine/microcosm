@@ -485,7 +485,10 @@ def pruned_block(
         "n_pruned": len(pruned),
         "n_scored": int(n_scored),
         "n_surface": int(n_surface),
-        "rows": {name: asdict(row) for name, row in sorted(pruned.items())},
+        # Keyed ``pruned_targets``, never ``rows``: the staging telemetry's
+        # content policy refuses row-level collections by key name, and this
+        # receipt rides the run as a reviewed aggregate artifact.
+        "pruned_targets": {name: asdict(row) for name, row in sorted(pruned.items())},
         "measures": sorted({row.unresolvable_measure for row in pruned.values()}),
         "families": dict(sorted(families.items())),
         "note": INCUMBENT_UNRESOLVABLE_NOTE,
@@ -536,11 +539,11 @@ def pruned_warning(score: Mapping[str, Any]) -> str | None:
         "materialized on the incumbent and were pruned from BOTH arms; the "
         f"score stands on {pruned['n_scored']} common targets:"
     ]
-    rows = pruned.get("rows", {})
+    targets = pruned.get("pruned_targets", {})
     for measure in pruned.get("measures", []):
         names = sorted(
             name
-            for name, row in rows.items()
+            for name, row in targets.items()
             if row.get("unresolvable_measure") == measure
         )
         lines.append(

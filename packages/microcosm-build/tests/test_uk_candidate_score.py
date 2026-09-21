@@ -162,7 +162,7 @@ def test_prunes_the_target_the_incumbent_cannot_materialize_and_scores_the_rest(
     assert pruned["n_surface"] == 2
     assert pruned["measures"] == [MEASURE_B]
     assert pruned["families"] == {"family_b": 1}
-    assert pruned["rows"]["target_b"] == {
+    assert pruned["pruned_targets"]["target_b"] == {
         "name": "target_b",
         "family": "family_b",
         "unresolvable_measure": MEASURE_B,

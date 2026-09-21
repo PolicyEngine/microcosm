@@ -123,7 +123,7 @@ def green_score_receipt(candidate_sha: str) -> dict:
             "n_pruned": 2,
             "n_scored": 305,
             "n_surface": 307,
-            "rows": {},
+            "pruned_targets": {},
             "measures": ["benunit.uc_calibration_child_count"],
             "families": {"dwp_universal_credit": 2},
             "note": "pruned from both arms",

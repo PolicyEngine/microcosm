@@ -91,8 +91,8 @@ family measures, the CGT asset type, the ONS household type: inputs the
 enhanced FRS never carried) is pruned from **both** arms and reported, never
 refused: the scorer warns on stderr naming every absent measure and the rows
 it removed, and the receipt carries them under
-`incumbent_unresolvable_pruned` (`n_pruned`, `n_scored`, `n_surface`, the
-rows with their family and measure). The score stands on the common surface
+`incumbent_unresolvable_pruned` (`n_pruned`, `n_scored`, `n_surface`,
+`pruned_targets` with each one's family and measure, `measures`, `families`). The score stands on the common surface
 with band edges from the full register (#803). A measure the *candidate*
 cannot materialize still refuses: that is a defect.
 `--no-prune-incumbent-unresolvable` restores the refusal on the incumbent
