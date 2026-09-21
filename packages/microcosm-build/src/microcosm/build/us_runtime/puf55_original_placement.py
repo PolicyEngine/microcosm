@@ -355,7 +355,16 @@ def placement_result(qualified, inputs, conditioning, merge_receipt, *, profile)
             "policy": policy,
             "qualification_sha256": codec.sha(qualified.receipt),
             "merge_sha256": codec.sha(merge_receipt),
-            "input_population_stamps": list(source_stamp[:3]),
+            # The population seal (_stamp) is an in-process mutation check and
+            # is verified before and after this document is built; it hashes
+            # replay-variant state, so persisting it made the placement artifact
+            # differ between the cold execution and the required-replay
+            # reconstruction (genuine successor6). Persist the versions only.
+            "input_population_versions": [
+                inputs.financial_parent.version,
+                inputs.arm_one.version,
+                inputs.receiving.version,
+            ],
             "candidate_outputs": candidates,
             "eligibility_table": statuses.to_json(orient="table"),
             "write_counts": writes,

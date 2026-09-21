@@ -191,6 +191,37 @@ def test_known_person_value_change_refuses(where):
         result(qualified, inputs, table)
 
 
+def test_placement_artifact_is_replay_invariant_across_receiving_seals():
+    """The genuine successor6 required replay refused PLACEMENT_ARTIFACTS.
+
+    The receiving terminal observed during replay carries the same frame,
+    version, owners and mass ledger but a different in-process seal; the
+    persisted placement document must not embed that seal.
+    """
+    qualified, inputs, table = fixture()
+    first = result(qualified, inputs, table)
+    frame = inputs.receiving.frame
+    tables = {e: frame.table(e).copy(deep=True) for e in frame.entities}
+    person = tables["person"]
+    tables["person"] = person[list(person.columns)[::-1]]
+    replayed = replace(
+        inputs,
+        receiving=populations.Population.from_frame(
+            _frame(frame, tables), inputs.receiving.version, inputs.receiving.owners
+        ),
+    )
+    assert placement._stamp(replayed) != placement._stamp(inputs)
+    second = result(qualified, replayed, table)
+    assert second.artifacts == first.artifacts
+    document = codec.decode_json(first.artifacts["placement"])
+    assert "input_population_stamps" not in document
+    assert document["input_population_versions"] == [
+        inputs.financial_parent.version,
+        inputs.arm_one.version,
+        inputs.receiving.version,
+    ]
+
+
 def _reowned_by_receiving_version(inputs):
     """The receiving terminal sits behind a structural version that re-owns cells."""
     owners = {key: inputs.receiving.version for key in inputs.receiving.owners}
