@@ -38,7 +38,10 @@ _ISSUED_RUNS = {}
 class SurveyPuf55Run:
     """Actual result handle; constructor/copies do not issue run authority."""
 
-    financial_run: financial.AtomicSurveyFinancialRunValues
+    financial_run: (
+        financial.AtomicSurveyFinancialRunValues
+        | financial.PreGeographySurveyFinancialRunValues
+    )
     population: population_ops.Population
     manifest: object
     compiled: object
@@ -241,7 +244,7 @@ def _construct(
     financial_run, donor_sources, *, fixture_definition, seed, n_estimators, zero_atol
 ):
     """Construct actual declarations and bind actual source keys without running."""
-    financial.check_atomic_survey_financial_run(financial_run)
+    financial.check_survey_financial_run(financial_run)
     require(type(seed) is int and 0 <= seed < 2**64, "SEED")
     require(type(n_estimators) is int and n_estimators > 0, "TREE_COUNT")
     # The authenticated prefix may include household-only child-property

@@ -506,7 +506,7 @@ def test_financial_check_failure_keeps_completion_revocation_boundary(
     with pytest.raises(
         owner.SurveyPopulationPreparationError, match=failure_stage.upper() + "_REFUSED"
     ):
-        financial.check_atomic_survey_financial_run(object())
+        financial.check_survey_financial_run(object())
     assert revoked == ([True] if completion_enabled else [])
 
 

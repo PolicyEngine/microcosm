@@ -210,7 +210,7 @@ def test_heterogeneous_replay_preserves_physical_controls(field):
 
 def _preflight(monkeypatch, manifest, compiled, check, events=None):
     run = SimpleNamespace(manifest=manifest, compiled=compiled)
-    monkeypatch.setattr(graph.financial, "check_atomic_survey_financial_run", check)
+    monkeypatch.setattr(graph.financial, "check_survey_financial_run", check)
 
     def unexpected_access(*args, **kwargs):
         pytest.fail("Source state or PUF construction reached before refusal")

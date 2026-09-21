@@ -394,7 +394,7 @@ def qualify_puf55_survey_fixed_inputs(financial_run, *, arm=0, development_rules
             and codec.encode_json(fresh.evidence) == source_evidence,
             "FINAL_ROUTING_CHANGED",
         )
-    recipients.financial.check_atomic_survey_financial_run(financial_run)
+    recipients.financial.check_survey_financial_run(financial_run)
     recipients.financial._pure_run(financial_run, entry)
     final = _project_values(
         frame, qualified.person, source_basis=basis, rules=development_rules

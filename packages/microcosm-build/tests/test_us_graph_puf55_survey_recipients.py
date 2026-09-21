@@ -230,8 +230,7 @@ def test_last_owner_check_seals_graph_outputs_and_population(recipient_graph, ta
         caller = frame.f_back
         if (
             event == "return"
-            and frame.f_code
-            is graph.financial.check_atomic_survey_financial_run.__code__
+            and frame.f_code is graph.financial.check_survey_financial_run.__code__
             and caller is not None
             and caller.f_code is graph._Kernel.run.__code__
             and "result" in caller.f_locals

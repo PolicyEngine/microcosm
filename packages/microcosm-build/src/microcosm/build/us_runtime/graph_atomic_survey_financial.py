@@ -1,8 +1,9 @@
-"""Checked atomic survey geography plus current financial development output.
+"""Checked survey financial outputs before or after atomic geography.
 
-The base nineteen nodes retain the raw allocation and the pre-financial clone
-separately. An explicit property-income option adds sixteen nodes and retains
-the complete legacy financial population alongside its extended output. Support
+The atomic nineteen-node and pre-geography fourteen-node bases both retain the
+raw allocation and pre-financial clone. An explicit property option adds sixteen
+nodes and retains the complete legacy financial population alongside its extended
+output. Support
 bytes establish integrity, not publisher provenance or release eligibility.
 """
 
@@ -54,6 +55,9 @@ survey = atomic.survey
 reconstruction = atomic.reconstruction
 require = values.require
 RUN_PROTOCOL = "microcosm.us.atomic-survey-financial-run.v1"
+PRE_GEOGRAPHY_RUN_PROTOCOL = "microcosm.us.pre-geography-survey-financial-run.v1"
+_ATOMIC = "atomic_assigned"
+_PRE_GEOGRAPHY = "pre_geography"
 _ISSUED_RUNS = {}
 
 
@@ -77,6 +81,33 @@ class AtomicSurveyFinancialRunValues:
 
 
 @dataclass(frozen=True)
+class PreGeographySurveyFinancialRunValues:
+    """Issued financial output over the genuine four-node survey clone prefix."""
+
+    prefix: survey.SurveyPopulationRunValues
+    financial_population: Population
+    manifest: object
+    compiled: object
+    store: object
+    kernels: object
+    sources: dict
+    projection: bytes
+    matrix: bytes
+
+    def checked_view(self):
+        return check_pre_geography_survey_financial_run(self)
+
+
+@dataclass(frozen=True)
+class CheckedPreGeographySurveyFinancialRun:
+    """Descriptive values; no assigned geography or independent authority."""
+
+    payload: bytes
+    digest: str
+    population: Population
+
+
+@dataclass(frozen=True)
 class CheckedAtomicSurveyFinancialRun:
     """Descriptive values; authority remains in the actual issued run handle."""
 
@@ -87,6 +118,7 @@ class CheckedAtomicSurveyFinancialRun:
 
 @dataclass(frozen=True)
 class _FinancialRunState:
+    prefix_mode: str
     prefix: object
     prefix_objects: tuple
     preparation_entry: tuple
@@ -101,7 +133,7 @@ class _FinancialRunState:
     store: object
     kernels: object
     source_items: tuple
-    config_bytes: bytes
+    config_bytes: bytes | None
     projection: bytes
     matrix: bytes
     pins: bytes
@@ -739,15 +771,131 @@ def _manifest_population_seals(manifest, compiled, *, completion_boundary=None):
     )
 
 
+def _result_mode(run):
+    if type(run) is AtomicSurveyFinancialRunValues:
+        return _ATOMIC
+    require(type(run) is PreGeographySurveyFinancialRunValues, "UNISSUED_FINANCIAL_RUN")
+    return _PRE_GEOGRAPHY
+
+
+def _prefix_names(mode):
+    require(mode in (_ATOMIC, _PRE_GEOGRAPHY), "FINANCIAL_PREFIX_MODE")
+    if mode == _ATOMIC:
+        return (
+            "allocated_population",
+            "observed_population",
+            "expanded_population",
+            "geography_population",
+            "clone_population",
+        )
+    return ("allocated_population", "clone_population")
+
+
+def _prefix_config(prefix, mode):
+    expected = (
+        atomic.AtomicSurveyPopulationRunValues
+        if mode == _ATOMIC
+        else survey.SurveyPopulationRunValues
+    )
+    require(
+        mode in (_ATOMIC, _PRE_GEOGRAPHY) and type(prefix) is expected,
+        "FINANCIAL_PREFIX_TYPE",
+    )
+    return prefix.geography_config if mode == _ATOMIC else None
+
+
+def _prefix_objects(prefix, mode):
+    config = _prefix_config(prefix, mode)
+    return (
+        prefix.preparation,
+        prefix.manifest,
+        prefix.compiled,
+        prefix.store,
+        prefix.kernels,
+        prefix.sources,
+        *((config,) if mode == _ATOMIC else ()),
+    )
+
+
+def _prefix_host_edges(mode):
+    _prefix_names(mode)
+    return (
+        *financial.host.current_survey_host_edges(),
+        *((financial._geography_edge(),) if mode == _ATOMIC else ()),
+    )
+
+
 def _run_entry(run):
     entry = _ISSUED_RUNS.get(id(run))
+    mode = _result_mode(run)
     require(
-        type(run) is AtomicSurveyFinancialRunValues
-        and entry is not None
-        and entry[0]() is run,
+        entry is not None and entry[0]() is run and entry[2].prefix_mode == mode,
         "UNISSUED_FINANCIAL_RUN",
     )
+    _prefix_config(entry[2].prefix, mode)
     return entry
+
+
+def financial_host_edges(run):
+    """The exact prefix evidence of an issued run, never caller-selected edges."""
+    return _prefix_host_edges(_run_entry(run)[2].prefix_mode)
+
+
+def _pre_geography_prefix_expectations(prefix):
+    """Reconstruct both clone observations without assigning or borrowing geography.
+
+    The prefix container is descriptive. Its real preparation and exact complete
+    allocation/clone values establish this numerical expectation; the financial
+    host still verifies the actual executor, registry, artifacts and final seals.
+    """
+    _prefix_config(prefix, _PRE_GEOGRAPHY)
+    entry = prefix.preparation._checked()
+    view = values.source.CheckedSurveyPopulationView(
+        entry[1],
+        entry[2].context,
+        entry[2].frame,
+        entry[2].plan,
+        json.loads(entry[1]),
+    )
+    columns, nodes = reconstruction._raw_allocation(view, prefix.allocated_population)
+    clone_nodes = atomic.clone.us_combined_survey_clone_nodes(
+        columns,
+        base=survey.ALLOCATION_NODE,
+        source_channels=("acs", "asec"),
+    )
+    require(
+        tuple(n.normative() for n in prefix.compiled.graph.nodes)
+        == tuple(n.normative() for n in (*nodes, *clone_nodes))
+        and len(prefix.compiled.order) == 4,
+        "PRE_GEOGRAPHY_PREFIX_DECLARATION",
+    )
+    values.host.survey_budget._initial(
+        view,
+        prefix.allocated_population,
+        prefix.clone_population,
+        preparation=prefix.preparation,
+        geography_config=None,
+    )
+    cloned, receipts = reconstruction._clone_expectations(
+        prefix.allocated_population,
+        clone_nodes,
+        prefix.compiled,
+    )
+    atomic.same_replayed_population(
+        cloned[atomic.clone.COMBINED_CLONE_CLAIM_NODE],
+        prefix.clone_population,
+    )
+    expected = {
+        survey.CREATE_NODE: Population.from_frame(entry[2].frame, survey.CREATE_NODE),
+        survey.ALLOCATION_NODE: prefix.allocated_population,
+        **cloned,
+    }
+    values.source._pure_final(entry[2])
+    require(
+        values.source._ISSUED.get(id(prefix.preparation)) is entry,
+        "PRE_GEOGRAPHY_PREPARATION_CHANGED",
+    )
+    return expected, receipts
 
 
 def _financial_terminal(
@@ -785,11 +933,17 @@ def _run_document(run, state):
     """Portable ancestry omits timing/cache hits and private physical seals."""
     return codec.encode_json(
         {
-            "protocol": RUN_PROTOCOL,
+            "protocol": RUN_PROTOCOL
+            if state.prefix_mode == _ATOMIC
+            else PRE_GEOGRAPHY_RUN_PROTOCOL,
             "graph_sha256": codec.sha(state.declaration.encode()),
             "manifest_key": state.manifest.key,
             "preparation_sha256": codec.sha(state.preparation_entry[1]),
-            "geography_config_sha256": codec.sha(state.config_bytes),
+            **(
+                {"geography_config_sha256": codec.sha(state.config_bytes)}
+                if state.prefix_mode == _ATOMIC
+                else {"prefix_mode": _PRE_GEOGRAPHY, "atomic_geography_assigned": False}
+            ),
             "projection_sha256": codec.sha(state.projection),
             "matrix_sha256": codec.sha(state.matrix),
             "host_edges": codec.decode_json(state.pins),
@@ -983,20 +1137,14 @@ def _pure_run(run, entry):
         and all(
             a is b
             for a, b in zip(
-                (
-                    prefix.preparation,
-                    prefix.manifest,
-                    prefix.compiled,
-                    prefix.store,
-                    prefix.kernels,
-                    prefix.sources,
-                    prefix.geography_config,
-                ),
+                _prefix_objects(prefix, state.prefix_mode),
                 state.prefix_objects,
                 strict=True,
             )
         )
-        and values.host.survey_budget._config_payload(prefix.geography_config)
+        and values.host.survey_budget._config_payload(
+            _prefix_config(prefix, state.prefix_mode)
+        )
         == state.config_bytes
         and run.manifest.to_json_bytes() == state.manifest_bytes
         and prefix.manifest.to_json_bytes() == state.prefix_manifest_bytes
@@ -1071,7 +1219,19 @@ def _pure_run(run, entry):
 
 
 def check_atomic_survey_financial_run(run):
-    """Permanently revoke an enabled completion after any failed host check."""
+    """Check only the issued atomic variant; absence is never inferred."""
+    require(type(run) is AtomicSurveyFinancialRunValues, "UNISSUED_FINANCIAL_RUN")
+    return check_survey_financial_run(run)
+
+
+def check_pre_geography_survey_financial_run(run):
+    """Check only the issued financial variant preceding atomic assignment."""
+    require(type(run) is PreGeographySurveyFinancialRunValues, "UNISSUED_FINANCIAL_RUN")
+    return check_survey_financial_run(run)
+
+
+def check_survey_financial_run(run):
+    """Check the exact two issued variants; revoke completion on refusal."""
     entry = _run_entry(run)
     try:
         with survey._source_owner().verification_epoch(join=True):
@@ -1163,7 +1323,7 @@ def _check_atomic_survey_financial_run(run):
         host_pins=codec.decode_json(state.pins),
         n_estimators=state.n_estimators,
         demographic_conditioning=state.demographic_conditioning,
-        geography_config=prefix.geography_config,
+        geography_config=_prefix_config(prefix, state.prefix_mode),
     )
     if state.property_income is not None:
         _property_module().verify_materialized_property_income(
@@ -1190,15 +1350,18 @@ def _check_atomic_survey_financial_run(run):
             artifacts=loaded,
             legacy_matrix_producer_key=keys[financial.PROJECTION_NODE],
             demographic_conditioning=state.demographic_conditioning,
-            geography_config=prefix.geography_config,
+            geography_config=_prefix_config(prefix, state.prefix_mode),
         )
     if state.person_status_boundary is not None:
         state.person_status_boundary.requalify()
     if state.development_boundary is not None:
         state.development_boundary.requalify()
-    result = CheckedAtomicSurveyFinancialRun(
-        entry[1], codec.sha(entry[1]), run.financial_population
+    checked_type = (
+        CheckedAtomicSurveyFinancialRun
+        if state.prefix_mode == _ATOMIC
+        else CheckedPreGeographySurveyFinancialRun
     )
+    result = checked_type(entry[1], codec.sha(entry[1]), run.financial_population)
     _pure_run(run, entry)
     return result
 
@@ -1230,19 +1393,13 @@ def _issue_run(
 ):
     """Called only after this runner's complete materialization/replay checks."""
     prefix = result.prefix
+    mode = _result_mode(result)
+    config = _prefix_config(prefix, mode)
+    require((config is not None) == (mode == _ATOMIC), "FINANCIAL_PREFIX_CONFIG")
     populations = tuple(
         (name, population, reconstruction._population_stamp(population))
         for name, population in (
-            *(
-                (name, getattr(prefix, name))
-                for name in (
-                    "allocated_population",
-                    "observed_population",
-                    "expanded_population",
-                    "geography_population",
-                    "clone_population",
-                )
-            ),
+            *((name, getattr(prefix, name)) for name in _prefix_names(mode)),
             ("financial", result.financial_population),
         )
     )
@@ -1257,16 +1414,9 @@ def _issue_run(
         )
     )
     state = _FinancialRunState(
+        mode,
         prefix,
-        (
-            prefix.preparation,
-            prefix.manifest,
-            prefix.compiled,
-            prefix.store,
-            prefix.kernels,
-            prefix.sources,
-            prefix.geography_config,
-        ),
+        _prefix_objects(prefix, mode),
         preparation_entry,
         result.financial_population,
         populations,
@@ -1279,7 +1429,7 @@ def _issue_run(
         result.store,
         result.kernels,
         tuple(sorted(result.sources.items())),
-        prefix.geography_config.to_bytes(),
+        values.host.survey_budget._config_payload(config),
         result.projection,
         result.matrix,
         codec.encode_json(pins),
@@ -1455,6 +1605,9 @@ def _live(
     result["financial_contract"] = values.source._runtime_marker(
         (
             RUN_PROTOCOL,
+            PRE_GEOGRAPHY_RUN_PROTOCOL,
+            _ATOMIC,
+            _PRE_GEOGRAPHY,
             values.FEATURES,
             values.DEMOGRAPHIC_FEATURES,
             values.TARGETS,
@@ -1622,11 +1775,97 @@ def run_atomic_survey_financial(
     return_values=False,
     _population_retention="all",
 ):
-    """Verify the base financial graph and its explicitly selected extension."""
-    # One verification epoch for the whole run; the prefix run below opens
-    # a nested one, and each closes with a full re-authentication. This run's
-    # own record is carried into the manifest below; the prefix's record rides
-    # its own manifest the same way.
+    """Complete finances after the existing atomic geography prefix."""
+    return _run_survey_financial(
+        source_dir,
+        snapshot_root=snapshot_root,
+        store_root=store_root,
+        fraction=fraction,
+        seed=seed,
+        geography_config=geography_config,
+        demographic_conditioning=demographic_conditioning,
+        n_estimators=n_estimators,
+        property_income=property_income,
+        rebase_property_taxes=rebase_property_taxes,
+        person_status=person_status,
+        household_roles=household_roles,
+        child_property=child_property,
+        source_qualified_development_inputs=source_qualified_development_inputs,
+        resume=resume,
+        return_values=return_values,
+        _population_retention=_population_retention,
+        _prefix_mode=_ATOMIC,
+    )
+
+
+def run_pre_geography_survey_financial(
+    source_dir,
+    *,
+    snapshot_root,
+    store_root,
+    fraction,
+    seed,
+    demographic_conditioning=False,
+    n_estimators=100,
+    property_income=None,
+    rebase_property_taxes=False,
+    person_status=False,
+    household_roles=False,
+    child_property=None,
+    source_qualified_development_inputs=False,
+    resume="auto",
+    return_values=False,
+    _population_retention="all",
+):
+    """Complete finances on genuine clones before assigning atomic geography."""
+    return _run_survey_financial(
+        source_dir,
+        snapshot_root=snapshot_root,
+        store_root=store_root,
+        fraction=fraction,
+        seed=seed,
+        geography_config=None,
+        demographic_conditioning=demographic_conditioning,
+        n_estimators=n_estimators,
+        property_income=property_income,
+        rebase_property_taxes=rebase_property_taxes,
+        person_status=person_status,
+        household_roles=household_roles,
+        child_property=child_property,
+        source_qualified_development_inputs=source_qualified_development_inputs,
+        resume=resume,
+        return_values=return_values,
+        _population_retention=_population_retention,
+        _prefix_mode=_PRE_GEOGRAPHY,
+    )
+
+
+def _run_survey_financial(
+    source_dir,
+    *,
+    snapshot_root,
+    store_root,
+    fraction,
+    seed,
+    geography_config,
+    _prefix_mode,
+    demographic_conditioning=False,
+    n_estimators=100,
+    property_income=None,
+    rebase_property_taxes=False,
+    person_status=False,
+    household_roles=False,
+    child_property=None,
+    source_qualified_development_inputs=False,
+    resume="auto",
+    return_values=False,
+    _population_retention="all",
+):
+    """Verify one of the two explicit prefixes and the same financial operations."""
+    _prefix_names(_prefix_mode)
+    # One verification epoch for the whole financial run. The existing atomic
+    # prefix opens its own nested scope; the raw four-node clone prefix uses
+    # this outer scope. Every independent scope closes with full source checks.
     with survey._source_owner().verification_epoch() as verification:
         require(
             type(_population_retention) is str
@@ -1657,13 +1896,14 @@ def run_atomic_survey_financial(
         if child_property is not None:
             extension = _completion_module()
             extension.validate_options(child_property)
-            base = run_atomic_survey_financial(
+            base = _run_survey_financial(
                 source_dir,
                 snapshot_root=snapshot_root,
                 store_root=store_root,
                 fraction=fraction,
                 seed=seed,
                 geography_config=geography_config,
+                _prefix_mode=_prefix_mode,
                 demographic_conditioning=demographic_conditioning,
                 n_estimators=n_estimators,
                 property_income=property_income,
@@ -1698,26 +1938,36 @@ def run_atomic_survey_financial(
             source_qualified_development_inputs=source_qualified_development_inputs,
         )
         config_bytes = values.host.survey_budget._config_payload(geography_config)
-        require(config_bytes is not None, "ATOMIC_GEOGRAPHY_REQUIRED")
-        prefix = atomic.run_atomic_survey_population(
-            source_dir,
+        require(
+            (config_bytes is not None)
+            if _prefix_mode == _ATOMIC
+            else config_bytes is None,
+            "ATOMIC_GEOGRAPHY_REQUIRED"
+            if _prefix_mode == _ATOMIC
+            else "PRE_GEOGRAPHY_CONFIG",
+        )
+        prefix_arguments = dict(
             snapshot_root=snapshot_root,
             store_root=store_root,
             fraction=fraction,
             seed=seed,
-            geography_config=geography_config,
             resume=resume,
             return_values=True,
         )
+        if _prefix_mode == _ATOMIC:
+            prefix = atomic.run_atomic_survey_population(
+                source_dir,
+                **prefix_arguments,
+                geography_config=geography_config,
+            )
+        else:
+            prefix = survey.run_authenticated_survey_population(
+                source_dir,
+                **prefix_arguments,
+                clones=True,
+            )
         entry = prefix.preparation._checked()
-        prefix_objects = (
-            prefix.preparation,
-            prefix.manifest,
-            prefix.compiled,
-            prefix.store,
-            prefix.kernels,
-            prefix.sources,
-        )
+        prefix_objects = _prefix_objects(prefix, _prefix_mode)
         prefix_manifest_bytes = prefix.manifest.to_json_bytes()
         prefix_declaration = graph_to_json(prefix.compiled.graph)
         retained = {
@@ -1725,13 +1975,7 @@ def run_atomic_survey_financial(
                 getattr(prefix, name),
                 reconstruction._population_stamp(getattr(prefix, name)),
             )
-            for name in (
-                "allocated_population",
-                "observed_population",
-                "expanded_population",
-                "geography_population",
-                "clone_population",
-            )
+            for name in _prefix_names(_prefix_mode)
         }
         qualified = values.qualify_current_survey_predictors(
             prefix.preparation,
@@ -1752,17 +1996,33 @@ def run_atomic_survey_financial(
                 geography_config=geography_config,
             )
         )
-        geography = reconstruction.reconstruct_atomic_survey_geography(
-            prefix.preparation, prefix.allocated_population, geography_config
+        if _prefix_mode == _ATOMIC:
+            geography = reconstruction.reconstruct_atomic_survey_geography(
+                prefix.preparation, prefix.allocated_population, geography_config
+            )
+            base_expected = {
+                survey.CREATE_NODE: Population.from_frame(
+                    entry[2].frame, survey.CREATE_NODE
+                ),
+                survey.ALLOCATION_NODE: prefix.allocated_population,
+                **{stage.node.id: stage.population for stage in geography.stages},
+            }
+            prefix_receipts = {
+                stage.node.id: json.loads(stage.receipt) for stage in geography.stages
+            }
+        else:
+            base_expected, prefix_receipts = _pre_geography_prefix_expectations(prefix)
+        host_edges = _prefix_host_edges(_prefix_mode)
+        ordering_edge = (
+            financial._geography_edge()
+            if _prefix_mode == _ATOMIC
+            else next(edge for edge in host_edges if edge.name == "frame_context")
         )
         pins, prefix_artifacts = {}, {}
         for node_id, record in prefix.manifest.nodes.items():
             for name, key in record.opaque_artifacts.items():
                 prefix_artifacts[node_id, name] = prefix.store.load_bytes(key)
-        for edge in (
-            *financial.host.current_survey_host_edges(),
-            financial._geography_edge(),
-        ):
+        for edge in host_edges:
             record = prefix.manifest.node(edge.producer)
             pins[edge.name] = {
                 "producer_key": record.key,
@@ -1777,15 +2037,12 @@ def run_atomic_survey_financial(
             status_qualified = status_graph.qualify_current_survey_person_status(
                 prefix.preparation
             )
-            status_edges = (
-                *financial.host.current_survey_host_edges(),
-                financial._geography_edge(),
-            )
+            status_edges = host_edges
             status_nodes = status_graph.current_survey_person_status_nodes(
                 status_qualified,
                 prefix.clone_population.frame,
                 receiving_version=prefix.clone_population.version,
-                after=financial._geography_edge(),
+                after=ordering_edge,
                 host_edges=status_edges,
                 host_pins=pins,
             )
@@ -1860,10 +2117,7 @@ def run_atomic_survey_financial(
                 population=tax_nodes[-1].population
                 if rebase_property_taxes
                 else prefix.clone_population.version,
-                host_edges=(
-                    *values.host.current_survey_host_edges(),
-                    financial._geography_edge(),
-                ),
+                host_edges=host_edges,
                 host_pins=pins,
                 after_columns=final_outputs,
                 after_edges=()
@@ -1892,29 +2146,36 @@ def run_atomic_survey_financial(
             )
         )
         require(
-            len(prefix.compiled.order) == 9
+            len(prefix.compiled.order) == (9 if _prefix_mode == _ATOMIC else 4)
             and len(property_nodes) == (0 if property_graph is None else 16)
             and len(tax_nodes) == (3 if rebase_property_taxes else 0)
             and len(status_nodes) == (4 if person_status else 0)
             and len(compiled.order)
-            == 19
+            == (19 if _prefix_mode == _ATOMIC else 14)
             + len(status_nodes)
             + len(property_nodes)
             + len(tax_nodes)
             + len(development_nodes),
             "ATOMIC_COMPILER_ROSTER",
         )
-        gate_edge = financial._geography_edge()
-        require(
-            gate_edge.producer in compiled.predecessors[financial.DONOR_NODE]
-            and prefix_artifacts[gate_edge.producer, gate_edge.artifact]
-            == qualified.geography_validation,
-            "ATOMIC_GEOGRAPHY_GATE_EDGE",
-        )
+        if _prefix_mode == _ATOMIC:
+            gate_edge = financial._geography_edge()
+            require(
+                gate_edge.producer in compiled.predecessors[financial.DONOR_NODE]
+                and prefix_artifacts[gate_edge.producer, gate_edge.artifact]
+                == qualified.geography_validation,
+                "ATOMIC_GEOGRAPHY_GATE_EDGE",
+            )
+        else:
+            require(
+                qualified.geography_validation is None
+                and financial._geography_edge().producer not in compiled.order,
+                "PRE_GEOGRAPHY_GATE_ABSENT",
+            )
         if status_graph is not None:
             require(
                 status_graph.BIND_NODE in compiled.predecessors[financial.DONOR_NODE]
-                and gate_edge.producer
+                and ordering_edge.producer
                 in compiled.predecessors[status_graph.SOURCE_NODE],
                 "PERSON_STATUS_ORDERING",
             )
@@ -1958,7 +2219,7 @@ def run_atomic_survey_financial(
                 status_qualified,
                 prefix.clone_population.frame,
                 receiving_version=prefix.clone_population.version,
-                after=financial._geography_edge(),
+                after=ordering_edge,
                 host_edges=status_edges,
                 host_pins=pins,
                 require_current=require_status_current,
@@ -1996,16 +2257,9 @@ def run_atomic_survey_financial(
         keys, implementations = _all_node_keys(compiled, kernels, source_keys)
         if development_boundary is not None:
             development_boundary.keys = tuple(sorted(keys.items()))
-        base_expected = {
-            survey.CREATE_NODE: Population.from_frame(
-                entry[2].frame, survey.CREATE_NODE
-            ),
-            survey.ALLOCATION_NODE: prefix.allocated_population,
-            **{s.node.id: s.population for s in geography.stages},
-        }
         receipts = {
             **{n: r.receipt for n, r in prefix.manifest.nodes.items()},
-            **{s.node.id: json.loads(s.receipt) for s in geography.stages},
+            **prefix_receipts,
         }
         donor_node = compiled.graph.node(financial.DONOR_NODE)
         donor = population_ops.patch(
@@ -2269,7 +2523,12 @@ def run_atomic_survey_financial(
         if development_boundary is not None:
             final_node = _development_module().ATTACH_NODE
         legacy_population = observed[financial.ATTACH_NODE]
-        result = AtomicSurveyFinancialRunValues(
+        result_type = (
+            AtomicSurveyFinancialRunValues
+            if _prefix_mode == _ATOMIC
+            else PreGeographySurveyFinancialRunValues
+        )
+        result = result_type(
             prefix,
             observed[final_node],
             manifest,
@@ -2340,7 +2599,7 @@ def run_atomic_survey_financial(
         require(
             values.source._ISSUED.get(id(prefix.preparation)) is entry
             and prefix.preparation.payload == entry[1]
-            and prefix.geography_config is geography_config
+            and _prefix_config(prefix, _prefix_mode) is geography_config
             and values.host.survey_budget._config_payload(geography_config)
             == config_bytes
             and result.prefix is prefix
@@ -2354,14 +2613,7 @@ def run_atomic_survey_financial(
             and all(
                 a is b
                 for a, b in zip(
-                    (
-                        prefix.preparation,
-                        prefix.manifest,
-                        prefix.compiled,
-                        prefix.store,
-                        prefix.kernels,
-                        prefix.sources,
-                    ),
+                    _prefix_objects(prefix, _prefix_mode),
                     prefix_objects,
                     strict=True,
                 )
@@ -2390,7 +2642,12 @@ def run_atomic_survey_financial(
             )
         for version, population in (
             (survey.CREATE_NODE, base_expected[survey.CREATE_NODE]),
-            (survey.ALLOCATION_NODE, prefix.observed_population),
+            (
+                survey.ALLOCATION_NODE,
+                prefix.observed_population
+                if _prefix_mode == _ATOMIC
+                else prefix.allocated_population,
+            ),
             (atomic.clone.COMBINED_CLONE_NODE, prefix.clone_population),
         ):
             survey._same_frame(population.frame, prefix.manifest.population(version))

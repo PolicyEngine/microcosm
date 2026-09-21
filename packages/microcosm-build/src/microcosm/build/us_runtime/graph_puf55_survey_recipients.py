@@ -327,7 +327,7 @@ class _Kernel(KernelBase):
         # Recheck the live source/store/support owners, then the retained run,
         # context and outputs. Retained-run/context checks also read the store;
         # this artifact-output kernel is not a source-free replay boundary.
-        financial.check_atomic_survey_financial_run(run)
+        financial.check_survey_financial_run(run)
         financial._pure_run(run, entry)
         self._context(context, qualified)
         values._require(
