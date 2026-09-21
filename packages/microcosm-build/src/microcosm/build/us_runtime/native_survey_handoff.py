@@ -22,7 +22,11 @@ from microcosm.frame.rules import ExportContract
 from microcosm.graph.store import _decode_frame_metadata, _encode_frame_metadata
 
 from . import graph_us_survey_enrichment as native
-from .input_coverage_profile import HISTORICAL_REQUIRED_INPUTS
+from .input_coverage_profile import (
+    HISTORICAL_REQUIRED_INPUTS,
+    MANIFEST_SHA256,
+    USInputProfile,
+)
 from .l0_refit_export import (
     US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS,
     US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS,
@@ -30,7 +34,6 @@ from .l0_refit_export import (
     US_RELEASE_REQUIRED_SPM_UNIT_SOURCE_COLUMNS,
     US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS,
 )
-from .multispine_pool import pool_input_surface
 from .prior_year_income_constants import US_PRIOR_YEAR_INCOME_OUTPUT_COLUMNS
 from .survey_population_replay import same_replayed_frame
 
@@ -77,13 +80,26 @@ def _sha_file(path):
     return digest.hexdigest()
 
 
+def native_survey_input_inventory_scope() -> dict:
+    """Name the descriptive rosters checked here, without live engine authority."""
+    return {
+        "checked_rosters": ["release_source_columns", "historical_input_profile"],
+        "historical_profile": USInputProfile.HISTORICAL.value,
+        "historical_source_manifest_sha256": MANIFEST_SHA256,
+        "legacy_pool_input_surface_checked": False,
+        "live_take_up_abi_inventory_qualified": False,
+        "complete_engine_input_inventory_verified": False,
+    }
+
+
 def native_survey_input_inventory(frame: Frame) -> list[dict]:
-    """Compare maintained rosters without inventing sources or applicability."""
+    """Describe historical/release rosters; pool and live take-up remain unchecked.
+
+    These are name/grain declarations, not a complete engine input contract.
+    Calling the legacy pool's roster would instantiate a country engine through
+    its agreement and take-up registries, even for storage-only inspection.
+    """
     roster = {}
-    for entry in pool_input_surface():
-        roster.setdefault((entry.entity, entry.variable), set()).add(
-            "pool:" + entry.family
-        )
     for entity, columns in (
         ("person", US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS),
         ("tax_unit", US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS),
@@ -209,6 +225,7 @@ def inspect_native_survey_release_input(
             )
         },
         "input_inventory": inventory,
+        "input_inventory_scope": native_survey_input_inventory_scope(),
         "missing_inputs": [
             r for r in inventory if r["status"] in ("missing", "contains_unknowns")
         ],

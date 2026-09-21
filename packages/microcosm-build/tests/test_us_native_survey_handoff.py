@@ -1,6 +1,9 @@
 """Invented storage/coverage checks; never issue a substitute native owner."""
 
+import builtins
+import importlib.util
 import json
+import sys
 from types import SimpleNamespace
 
 import numpy as np
@@ -9,6 +12,103 @@ from test_us_common_frame_export_contract import _parent
 
 from microcosm.build.us_runtime import native_survey_handoff as handoff
 from microcosm.frame.rules import ExportContract
+
+
+def test_fresh_handoff_import_and_inventory_do_not_load_legacy_pool_or_country(
+    monkeypatch,
+):
+    """Probe fresh module execution even when other tests imported the handoff."""
+    original_import = builtins.__import__
+    imports = []
+    legacy = "microcosm.build.us_runtime.multispine_pool"
+
+    def guarded_import(name, globals=None, locals=None, fromlist=(), level=0):
+        absolute = (
+            importlib.util.resolve_name("." * level + name, globals["__package__"])
+            if level
+            else name
+        )
+        imports.append(absolute)
+        assert absolute != legacy and not absolute.startswith(legacy + ".")
+        assert absolute != "policyengine" and not absolute.startswith(
+            ("policyengine.", "policyengine_")
+        )
+        return original_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    name = handoff.__name__ + "_engine_free_probe"
+    spec = importlib.util.spec_from_file_location(name, handoff.__file__)
+    assert spec is not None and spec.loader is not None
+    fresh = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, name, fresh)
+    spec.loader.exec_module(fresh)
+    frame = _parent()
+    assert fresh.native_survey_input_inventory(frame)
+    assert fresh.engine_export_inventory(
+        frame, ExportContract(required=("absent",), optional=(), forbidden=())
+    )["missing_required"] == ["absent"]
+    assert imports  # The guard covered real imports, not a cached module return.
+
+
+def test_inventory_covers_exact_maintained_descriptive_rosters():
+    frame = _parent()
+    rows = handoff.native_survey_input_inventory(frame)
+    by_key = {(row["entity"], row["variable"]): row for row in rows}
+    assert len(by_key) == len(rows)
+    declared = {
+        (entity, name)
+        for entity, columns in (
+            ("person", handoff.US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS),
+            ("tax_unit", handoff.US_RELEASE_REQUIRED_TAX_UNIT_SOURCE_COLUMNS),
+            ("spm_unit", handoff.US_RELEASE_REQUIRED_SPM_UNIT_SOURCE_COLUMNS),
+            (
+                "household",
+                (
+                    *handoff.US_RELEASE_REQUIRED_HOUSEHOLD_SOURCE_COLUMNS,
+                    *handoff.US_RELEASE_REQUIRED_HOUSEHOLD_NONCONSTANT_SOURCE_COLUMNS,
+                ),
+            ),
+        )
+        for name in columns
+    }
+    assert {row["variable"] for row in rows} == (
+        {name for _entity, name in declared} | set(handoff.HISTORICAL_REQUIRED_INPUTS)
+    )
+    for key in declared:
+        assert by_key[key]["declarations"] == ["release_source_columns"]
+    assert by_key["household", "household_weight"]["status"] == "typed_weight"
+    assert all(
+        set(row["declarations"])
+        <= {"release_source_columns", "historical_input_profile"}
+        and not row["source_signal_verified"]
+        and not row["applicability_verified"]
+        for row in rows
+    )
+    # A historical name with no declared grain stays unresolved when absent.
+    assert by_key[None, "age"]["status"] == "missing"
+    assert frame.person.columns.tolist() == _parent().person.columns.tolist()
+
+
+def test_inventory_scope_discloses_unqualified_legacy_and_live_engine_surfaces():
+    scope = handoff.native_survey_input_inventory_scope()
+    assert scope == {
+        "checked_rosters": ["release_source_columns", "historical_input_profile"],
+        "historical_profile": handoff.USInputProfile.HISTORICAL.value,
+        "historical_source_manifest_sha256": handoff.MANIFEST_SHA256,
+        "legacy_pool_input_surface_checked": False,
+        "live_take_up_abi_inventory_qualified": False,
+        "complete_engine_input_inventory_verified": False,
+    }
+    scope["checked_rosters"].clear()
+    assert handoff.native_survey_input_inventory_scope()["checked_rosters"]
+    assert (
+        "engine_input_projection_and_formula_ownership"
+        in handoff.REQUIRED_RELEASE_EVIDENCE
+    )
+    assert (
+        "spm_structure_role_and_country_runtime_qualification"
+        in handoff.REQUIRED_RELEASE_EVIDENCE
+    )
 
 
 def test_coverage_names_missing_leaves_and_excludes_prior_year_income():
