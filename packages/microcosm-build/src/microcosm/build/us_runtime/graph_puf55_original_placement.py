@@ -135,17 +135,17 @@ def original_placement_nodes(
     )
     candidates = values.candidate_outputs(inputs, profiles[0])
     frame = inputs.receiving.frame
+    # Entity IDs and memberships arrive in the executor's structural view; they
+    # have no column owner in the compiled declaration, so a Slice naming them
+    # refuses to compile against the actual host version. Declare only the
+    # qualified person values and candidate outputs; an entity with neither
+    # declares no Slice.
     slices = []
     for entity in frame.entities:
-        columns = [frame.schema.entity_id_column(entity)]
-        if entity == "person":
-            columns.extend(
-                frame.schema.membership_column(group)
-                for group in frame.schema.group_entities
-            )
-            columns.extend(qualified.person_values)
+        columns = list(qualified.person_values) if entity == "person" else []
         columns.extend(name for e, name, _ in candidates if e == entity)
-        slices.append(Slice(entity, tuple(dict.fromkeys(columns))))
+        if columns:
+            slices.append(Slice(entity, tuple(dict.fromkeys(columns))))
     params = {
         "protocol": values.PROTOCOL,
         "profiles": tuple(profile.value for profile in profiles),
