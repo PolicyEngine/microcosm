@@ -224,6 +224,13 @@ def test_whole55_extension_declarations_compile_after_late_terminal():
     """Actual apply/placement declarations; metadata suppliers are not models."""
     b, inputs = _descriptive_binding()
     frame = inputs.receiving.frame
+    # Like the actual host CREATE, own no entity ID or membership column: the
+    # executor projects those structurally and the compiler refuses a Slice that
+    # names them (the first genuine Stage B run failed on exactly that).
+    structural = {(e, frame.schema.entity_id_column(e)) for e in frame.entities} | {
+        ("person", frame.schema.membership_column(g))
+        for g in frame.schema.group_entities
+    }
     create = Node(
         inputs.receiving.version,
         "fixture.create@1",
@@ -234,7 +241,14 @@ def test_whole55_extension_declarations_compile_after_late_terminal():
             Owned(e, c, populations.token_for_dtype(frame.table(e)[c].dtype))
             for e in frame.entities
             for c in frame.table(e)
+            if (e, c) not in structural
         ),
+    )
+    assert not any(
+        (s.entity, c) in structural
+        for n in b.placement_nodes
+        for s in n.inputs
+        for c in s.columns
     )
     # External prefix producers are declaration-only placeholders, explicitly no
     # source authority/fitted model/cache-hit claim. Every actual110 apply node
