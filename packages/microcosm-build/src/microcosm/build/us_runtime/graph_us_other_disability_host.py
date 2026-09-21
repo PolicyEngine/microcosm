@@ -567,6 +567,35 @@ def _verify_model(boundary, loaded, donor):
     )
 
 
+def _compare_manifest_population(population, manifest, version):
+    """Compare the Frame/ledger surface without inventing execution owners."""
+    physical.replay.same_replayed_population(
+        population_ops.Population.from_frame(
+            population.frame, version, mass_ledger=population.mass_ledger
+        ),
+        population_ops.Population.from_frame(
+            manifest.population(version),
+            version,
+            mass_ledger=manifest.mass_ledger(version),
+        ),
+    )
+
+
+def _compare_predecessor_populations(predecessor, observed, receiving_node):
+    # The retained receiving owner has full execution context. Check that
+    # context before comparing the manifest's intentionally narrower surface.
+    physical.replay.same_replayed_population(
+        predecessor.population, observed[receiving_node]
+    )
+    for version in predecessor.manifest.populations:
+        inherited_terminal = next(
+            observed[n]
+            for n in reversed(predecessor.compiled.order)
+            if predecessor.compiled.versions[n] == version
+        )
+        _compare_manifest_population(inherited_terminal, predecessor.manifest, version)
+
+
 def run_continuation(
     predecessor, *, seed, n_estimators, resume, original_application_seed
 ):
@@ -669,31 +698,12 @@ def run_continuation(
             expected = current[version]
         physical.replay.same_replayed_population(expected, observed[node_id])
         current[version] = expected
-    # Compare every inherited final version independently to its retained owner.
-    for version in predecessor.manifest.populations:
-        inherited_terminal = next(
-            observed[n]
-            for n in reversed(predecessor.compiled.order)
-            if predecessor.compiled.versions[n] == version
-        )
-        physical.replay.same_replayed_population(
-            inherited_terminal,
-            population_ops.Population.from_frame(
-                predecessor.manifest.population(version),
-                version,
-                mass_ledger=predecessor.manifest.mass_ledger(version),
-            ),
-        )
+    _compare_predecessor_populations(
+        predecessor, observed, boundary.terminal_binding[0].id
+    )
     _verify_model(boundary, loaded, donor)
     for version, population in current.items():
-        physical.replay.same_replayed_population(
-            population,
-            population_ops.Population.from_frame(
-                manifest.population(version),
-                version,
-                mass_ledger=manifest.mass_ledger(version),
-            ),
-        )
+        _compare_manifest_population(population, manifest, version)
     attachment = codec.decode_json(loaded[fragment.ATTACH_NODE, "attachment"])
     receipt = json.loads(predecessor.receipt)
     receipt.update(
