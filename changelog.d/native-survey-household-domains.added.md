@@ -1,0 +1,1 @@
+Add a source-owned domain projection for the exact survey allocation and raw clone0/1 prefix, retaining group-quarter exclusions, rational design anchors and live verification custody without claiming downstream matching or release authority.
