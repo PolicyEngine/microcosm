@@ -280,12 +280,10 @@ risks, not footnotes:
 - **Protected families are defined, not vibes.** The non-degradation clause
   names specific target families (income-tax-relevant: capital gains,
   dividends, interest, retirement income; and the benefit-program
-  families) with explicit tolerances. SPM poverty is protected through the
-  held-out regression gate (see the survey tax-benefit holdout bullet
-  below), never as a target family — and "SPM resource components" earn no
-  separate listing: their survey-measured versions are the prohibited
-  quadrant, and their administrative totals are already the
-  benefit-program families. A contribution may not
+  families) with explicit tolerances. Survey poverty comparisons are excluded
+  from these gates. SPM resource components earn no separate listing: their
+  survey-measured versions cannot be targets, and their administrative totals
+  are already covered by the benefit-program families. A contribution may not
   worsen any protected family beyond tolerance even if it improves aggregate
   loss. This list is versioned with the population and is the steward's call.
 - **Off-target validity.** Generate-big-then-prune *selects* records by the
@@ -302,11 +300,18 @@ risks, not footnotes:
   all — may never be fitted. The rebuild replaces the survey's tax-benefit
   measurement with imputed, computed, and admin-calibrated values; fitting
   the survey-derived version launders its error back in and destroys the
-  held-out signal the evaluation depends on. Corollary: deviations from
-  official poverty metrics are expected by construction (corrected
-  underreporting should sit below survey-based rates, all else equal) and
-  are never inherently problematic — official numbers are comparators, not
-  truth.
+  held-out signal the evaluation depends on.
+- **Survey poverty is comparison-only.** Report comparable US SPM/OPM, UK
+  HBAI and other survey poverty measures with their definitions and periods.
+  Do not use them as calibration targets, objective terms, informal tuning
+  goals, candidate-selection scores or release gates based on benchmark
+  proximity. This includes choosing weights, imputations, take-up assignments,
+  target deferrals or hyperparameters to bring poverty closer to a survey
+  estimate. Differences can prompt investigation; they do not establish a
+  defect or a preferred direction of change. Fix definition, measurement and
+  implementation errors on independent evidence, even when a correction moves
+  the comparison farther from the survey estimate. These correctness checks
+  remain release requirements; matching the poverty rate does not.
 - **Correlated evidence.** Target standard errors from one survey are
   design-correlated across its published cells; treating them as diagonal
   overweights cell-rich surveys (the standard GREG caveat). Evidence

@@ -1,0 +1,1 @@
+Clarify that survey poverty is a comparison diagnostic and cannot guide calibration, informal tuning, candidate selection or release gates based on benchmark proximity. Preserve independent measurement and implementation correctness checks.
