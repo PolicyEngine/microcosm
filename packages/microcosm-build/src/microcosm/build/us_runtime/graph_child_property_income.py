@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import json
 import sys
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from threading import get_ident
 from types import FunctionType
 
 import numpy as np
@@ -88,6 +91,9 @@ MAX_ROSTER_BYTES = 64 * MAX_ARTIFACT_BYTES
 # source: four times that, rounded up to the next whole million.
 MAX_ORIGINALS = 15_000_000
 require = child.require
+_VERIFICATION_OPERATION = ContextVar(
+    "child_property_verification_operation", default=None
+)
 
 
 def _json(value):
@@ -228,6 +234,7 @@ def _live():
             MAX_ARTIFACT_BYTES,
             MAX_ROSTER_BYTES,
             MAX_ORIGINALS,
+            _VERIFICATION_OPERATION,
             SOURCE_NAME,
             adapter.PROTOCOL,
             adapter.MAX_DRAW_BYTES,
@@ -894,6 +901,152 @@ def _verification_value(verification, payloads):
     )
 
 
+def _reconstruction_seal(value):
+    expected, payloads, donor, recipient = value
+    return (
+        child.physical._population_stamp(expected),
+        tuple(sorted(payloads.items())),
+        child.physical._table_stamp(donor),
+        child.physical._table_stamp(recipient),
+    )
+
+
+@dataclass(frozen=True)
+class _MaterializedProof:
+    population: object
+    artifacts: object
+    supports: object
+    verification: object
+    seal: object
+
+    def current_seal(self):
+        return (
+            child.physical._population_stamp(self.population),
+            _materialized_evidence_seal(
+                self.artifacts, self.verification, self.supports
+            ),
+        )
+
+    def check(self):
+        require(self.current_seal() == self.seal, "OPERATION_EVIDENCE_CHANGED")
+
+    def verify(self, boundary):
+        boundary.verify_materialized(
+            self.population,
+            self.artifacts,
+            support_populations=self.supports,
+            verification=self.verification,
+        )
+
+
+class _ReconstructionMemo:
+    """One independently verified semantic result, never a checked-owner verdict."""
+
+    def __init__(self, boundary, inputs, value):
+        self.boundary, self.inputs, self.value = boundary, inputs, value
+        self.seal = _reconstruction_seal(value)
+        self.proofs = {}
+
+    def check(self):
+        self.boundary._pure()
+        require(
+            self.boundary._reconstruction_inputs() == self.inputs,
+            "OPERATION_INPUTS_CHANGED",
+        )
+        require(
+            _reconstruction_seal(self.value) == self.seal,
+            "OPERATION_RECONSTRUCTION_CHANGED",
+        )
+
+    def retain(self, proof):
+        # Retain mutable evidence containers, even when their bytes match a
+        # previous borrow. A later callback must not mutate an earlier result.
+        key = tuple(
+            id(value)
+            for value in (
+                proof.population,
+                proof.artifacts,
+                proof.supports,
+                proof.verification,
+            )
+        )
+        old = self.proofs.get(key)
+        if old is not None:
+            old.check()
+        else:
+            self.proofs[key] = proof
+
+
+class _VerificationOperation:
+    def __init__(self):
+        self.thread = get_ident()
+        self.entries = {}
+        self.closing = False
+        self.failed = False
+        self.active = True
+
+    def check(self):
+        require(
+            self.active and not self.failed and self.thread == get_ident(),
+            "VERIFICATION_OPERATION_INACTIVE",
+        )
+
+    def revoke(self):
+        self.failed = True
+        for entry in self.entries.values():
+            entry.boundary.revoked = True
+
+    def close(self):
+        self.check()
+        self.closing = True
+        entries = tuple(self.entries.values())
+        for entry in entries:
+            entry.check()
+            # Reuse is disabled throughout closing, including nested joins.
+            # This is the real verifier over actual retained materialization.
+            next(reversed(entry.proofs.values())).verify(entry.boundary)
+        # Every callback/I/O above precedes these detached seals, including
+        # seals of earlier participants and earlier materialized evidence.
+        require(tuple(self.entries.values()) == entries, "OPERATION_ROSTER_CHANGED")
+        for entry in entries:
+            entry.check()
+            for proof in entry.proofs.values():
+                proof.check()
+
+
+@contextmanager
+def verification_operation():
+    """Reuse only child semantic reconstruction within one synchronous operation.
+
+    Each borrow still requalifies its source/parent before and after comparing
+    actual output and artifact evidence. The first result is retained only
+    after those checks; close independently reconstructs once per participant
+    with reuse disabled. No result or success memo survives this context.
+    Callers must seal their own returned objects after its closing callbacks.
+    """
+    current = _VERIFICATION_OPERATION.get()
+    if current is not None:
+        current.check()
+        try:
+            yield
+        except BaseException:
+            current.revoke()
+            raise
+        return
+    operation = _VerificationOperation()
+    token = _VERIFICATION_OPERATION.set(operation)
+    try:
+        yield
+        operation.close()
+    except BaseException:
+        operation.revoke()
+        raise
+    finally:
+        operation.active = False
+        operation.entries.clear()
+        _VERIFICATION_OPERATION.reset(token)
+
+
 class ChildPropertyBoundary:
     """Actual preparation custody plus a sealed country-parent callback.
 
@@ -1017,6 +1170,22 @@ class ChildPropertyBoundary:
             for ref in (DONOR_REF, RECIPIENT_REF, ATTACH_REF, VERIFY_REF)
         ) + (adapter.JointEmpiricalFitKernel(), adapter.JointEmpiricalDrawKernel())
 
+    def _reconstruction_inputs(self):
+        """Pure content/identity binding after a genuine fresh _current borrow."""
+        return (
+            id(self.preparation),
+            id(self.entry),
+            id(self.parent),
+            child.source._function_seal(self.require_parent),
+            child.child_property_sources_seal(self.qualified),
+            child.physical._table_stamp(self.origins),
+            child.physical._population_stamp(self.parent),
+            _json(self.options.document()),
+            _json(self.host_pins),
+            tuple(node.normative() for node in self.nodes),
+            _SOURCE_BYTES,
+        )
+
     def verify_materialized(
         self, population, artifacts, *, support_populations, verification
     ):
@@ -1033,9 +1202,25 @@ class ChildPropertyBoundary:
                 == evidence_seal,
                 "INITIAL_OWNER_EVIDENCE_CHANGED",
             )
-            expected, _, payloads, donor, recipient = _reconstruct(
-                qualified, self.origins, self.parent, self.options, self.nodes
-            )
+            operation = _VERIFICATION_OPERATION.get()
+            memo = None
+            inputs = None
+            if operation is not None:
+                operation.check()
+                if not operation.closing:
+                    inputs = self._reconstruction_inputs()
+                    memo = operation.entries.get(self)
+                    if memo is not None:
+                        memo.check()
+                        require(memo.inputs == inputs, "OPERATION_INPUTS_CHANGED")
+            if memo is None:
+                expected, _, payloads, donor, recipient = _reconstruct(
+                    qualified, self.origins, self.parent, self.options, self.nodes
+                )
+            else:
+                expected, payloads, donor, recipient = memo.value
+            reconstructed = expected, payloads, donor, recipient
+            reconstructed_seal = _reconstruction_seal(reconstructed)
             verify_node = self.nodes[-1]
             _artifacts(verify_node, artifacts, payloads, self.host_pins)
             _verification_value(verification, payloads)
@@ -1074,9 +1259,35 @@ class ChildPropertyBoundary:
                 )
                 replay.same_replayed_population(support, support_populations[name])
             self._pure()
+            require(
+                _reconstruction_seal(reconstructed) == reconstructed_seal,
+                "FINAL_RECONSTRUCTION_CHANGED",
+            )
+            if operation is not None and not operation.closing:
+                operation.check()
+                require(
+                    self._reconstruction_inputs() == inputs,
+                    "OPERATION_INPUTS_CHANGED",
+                )
+                if memo is None:
+                    memo = _ReconstructionMemo(self, inputs, reconstructed)
+                    operation.entries[self] = memo
+                memo.retain(
+                    _MaterializedProof(
+                        population,
+                        artifacts,
+                        support_populations,
+                        verification,
+                        (stamp, evidence_seal),
+                    )
+                )
+                memo.check()
             return json.loads(payloads[VERIFY, "verification"])
-        except Exception:
+        except BaseException:
             self.revoked = True
+            operation = _VERIFICATION_OPERATION.get()
+            if operation is not None:
+                operation.revoke()
             raise
 
 

@@ -332,18 +332,51 @@ def _validate_readback_after_owner_io(borrowed, frame, report, final):
     same_replayed_frame(borrowed.frame, frame)
 
 
+def _checkpoint_file_identity(directory):
+    root = Path(directory)
+    return _sha_file(root / "population.h5"), (root / "handoff.json").read_bytes()
+
+
+def _check_checkpoint_file_identity(directory, expected):
+    if _checkpoint_file_identity(directory) != expected:
+        raise ValueError("NATIVE_HANDOFF_CHECKPOINT_CHANGED")
+
+
 def write_native_survey_development_checkpoint(
     run, directory, *, export_contract=None
 ) -> NativeSurveyDevelopmentInput:
     """Export a real native owner and verify complete readback before returning."""
-    borrowed = inspect_native_survey_release_input(run, export_contract=export_contract)
-    _write_checkpoint(borrowed.frame, borrowed.report, directory)
+    native._issued_run_entry(run)
+    written = False
     try:
-        return load_native_survey_development_checkpoint(directory, run=run)
+        with native.parent.financial.child_verification_operation(
+            run.parent_run.financial_run
+        ):
+            borrowed = inspect_native_survey_release_input(
+                run, export_contract=export_contract
+            )
+            _write_checkpoint(borrowed.frame, borrowed.report, directory)
+            written = True
+            files = _checkpoint_file_identity(directory)
+            result = load_native_survey_development_checkpoint(directory, run=run)
+            report_bytes = _json(result.report)
+            entry = native._ISSUED.get(id(run))
+        # Closing callbacks must not change delivered files, the live owner,
+        # readback, or descriptive report. File reads precede detached seals.
+        _check_checkpoint_file_identity(directory, files)
+        native._pure_retained_run(run, entry)
+        if (
+            _json(result.report) != report_bytes
+            or _json(borrowed.report) != report_bytes
+        ):
+            raise ValueError("NATIVE_HANDOFF_CHECKPOINT_REPORT")
+        same_replayed_frame(run.population.frame, result.frame)
+        return result
     except BaseException:
         # The writer owns this newly created directory; failed final owner checks
         # must not leave a completed-looking handoff document.
-        (Path(directory) / "handoff.json").unlink(missing_ok=True)
+        if written:
+            (Path(directory) / "handoff.json").unlink(missing_ok=True)
         raise
 
 

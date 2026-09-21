@@ -1070,6 +1070,19 @@ def _pure_run(run, entry):
     require(_run_entry(run) is entry, "FINAL_FINANCIAL_RUN_ISSUANCE")
 
 
+def child_verification_operation(run):
+    """Scope child-only reconstruction reuse for an existing financial owner.
+
+    Direct financial checks keep their original full verification behavior.
+    Higher operations join this scope and seal their results after it closes.
+    """
+    from contextlib import nullcontext
+
+    if _run_entry(run)[2].completion_boundary is None:
+        return nullcontext()
+    return _completion_module().child.verification_operation()
+
+
 def check_atomic_survey_financial_run(run):
     """Permanently revoke an enabled completion after any failed host check."""
     entry = _run_entry(run)

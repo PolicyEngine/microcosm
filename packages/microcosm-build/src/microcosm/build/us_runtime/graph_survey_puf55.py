@@ -173,6 +173,19 @@ def check_survey_puf55_run(run):
     """
     entry = _run_entry(run)
     try:
+        with financial.child_verification_operation(run.financial_run):
+            result = _check_survey_puf55_run(run, entry)
+        # Closing child verification invokes genuine owner callbacks. The
+        # complete retained PUF result must still match after those callbacks.
+        _pure_run(run, entry)
+        return result
+    except BaseException:
+        _forget_run(run, entry)
+        raise
+
+
+def _check_survey_puf55_run(run, entry):
+    try:
         _pure_run(run, entry)
         state, boundary = entry[2], entry[2].boundary
         boundary.borrow()

@@ -2140,12 +2140,63 @@ def _run_seal(run):
     )
 
 
-def check_survey_enrichment_run(run):
+def _pure_retained_run(run, entry):
+    """Detached owner/result fence, including after verification-operation close."""
+    require(_ISSUED.get(id(run)) is entry and entry[0]() is run, "UNISSUED_RUN")
+    _, boundary, stamp, objects, _ = entry
+    require(
+        all(
+            a is b
+            for a, b in zip(
+                objects,
+                (
+                    run.parent_run,
+                    run.population,
+                    run.manifest,
+                    run.compiled,
+                    run.store,
+                    run.kernels,
+                    run.sources,
+                ),
+                strict=True,
+            )
+        ),
+        "RUN_OBJECTS",
+    )
+    boundary.pure()
+    require(_run_seal(run) == stamp, "RUN_CHANGED")
+    require(_ISSUED.get(id(run)) is entry, "UNISSUED_RUN")
+
+
+def _issued_run_entry(run):
     entry = _ISSUED.get(id(run))
     require(
         type(run) is SurveyEnrichmentRun and entry is not None and entry[0]() is run,
         "UNISSUED_RUN",
     )
+    return entry
+
+
+def check_survey_enrichment_run(run):
+    entry = _issued_run_entry(run)
+    try:
+        with parent.financial.child_verification_operation(
+            run.parent_run.financial_run
+        ):
+            _check_survey_enrichment_run(run, entry)
+        # A closing reconstruction can call foreign owners. Retain a final
+        # detached result seal after all such callbacks, including nested joins.
+        _pure_retained_run(run, entry)
+    except BaseException:
+        if _ISSUED.get(id(run)) is entry:
+            del _ISSUED[id(run)]
+        raise
+    return CheckedSurveyEnrichmentRun(
+        run.receipt, codec.sha(run.receipt), run.population
+    )
+
+
+def _check_survey_enrichment_run(run, entry):
     _, boundary, stamp, objects, artifacts = entry
     try:
         boundary.borrow()
