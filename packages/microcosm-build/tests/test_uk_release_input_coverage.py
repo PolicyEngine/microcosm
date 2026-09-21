@@ -27,6 +27,16 @@ from microcosm.build.uk_runtime import (
 from microcosm.frame import EntitySchema, Frame, MassChangeRecord, WeightKind, Weights
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
+_SHIPPED_MANIFEST = (
+    _REPO_ROOT
+    / "packages"
+    / "microcosm-build"
+    / "src"
+    / "microcosm"
+    / "build"
+    / "uk"
+    / "release_input_coverage_manifest.json"
+)
 
 
 def _person_frame(columns: dict[str, np.ndarray]) -> Frame:
@@ -604,7 +614,6 @@ class TestUKManifest:
         assert manifest.required_build_stages == frozenset(
             {
                 "hmrc_spi_income",
-                "hmrc_cgt_gains",
                 "cgt_incidence_clone",
                 "cgt_band_donors",
                 "hmrc_cgt_gains_spine",
@@ -691,18 +700,33 @@ class TestUKManifest:
         with pytest.raises(ValueError, match="candidate_evidence.tier"):
             load_uk_release_input_coverage_manifest(str(bad))
 
-    def test_deferred_family_requires_restoration_status(self, tmp_path) -> None:
-        source = (
-            _REPO_ROOT
-            / "packages"
-            / "microcosm-build"
-            / "src"
-            / "microcosm"
-            / "build"
-            / "uk"
-            / "release_input_coverage_manifest.json"
+    def test_pass_through_family_must_not_require_a_reason(self, tmp_path) -> None:
+        payload = json.loads(_SHIPPED_MANIFEST.read_text(encoding="utf-8"))
+        family = payload["family_coverage"]["was_wealth"]
+        assert family["mass_change_semantics"] == "weights_pass_through"
+        family["required_mass_change_reason"] = "invented receipt"
+        bad = tmp_path / "pass_through_with_reason.json"
+        bad.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="must not require a mass-change"):
+            load_uk_release_input_coverage_manifest(str(bad))
+
+    def test_receipted_family_requires_a_reason(self, tmp_path) -> None:
+        payload = json.loads(_SHIPPED_MANIFEST.read_text(encoding="utf-8"))
+        family = payload["family_coverage"]["hmrc_spi_income"]
+        # The loader defaults an absent semantics key to mass_conserving.
+        assert family.get("mass_change_semantics", "mass_conserving") == (
+            "mass_conserving"
         )
-        payload = json.loads(source.read_text(encoding="utf-8"))
+        family.pop("required_mass_change_reason")
+        bad = tmp_path / "receipted_without_reason.json"
+        bad.write_text(json.dumps(payload), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="needs a reviewed"):
+            load_uk_release_input_coverage_manifest(str(bad))
+
+    def test_deferred_family_requires_restoration_status(self, tmp_path) -> None:
+        payload = json.loads(_SHIPPED_MANIFEST.read_text(encoding="utf-8"))
         payload["family_coverage"]["hmrc_spi_income"]["status"] = (
             "deferred_until_restored"
         )
@@ -733,7 +757,7 @@ class TestUKManifest:
         spine_stages = tuple(
             stage
             for stage in manifest.required_build_stages
-            if stage not in {"hmrc_spi_income", "hmrc_cgt_gains"}
+            if stage != "hmrc_spi_income"
         )
         result = assert_uk_release_input_coverage_build_stages(
             (*spine_stages, "hmrc_spi_income_spine"),
@@ -744,10 +768,7 @@ class TestUKManifest:
             manifest.family_coverage["hmrc_spi_income"]["superseded_by"]["stage"]
             == "hmrc_spi_income_spine"
         )
-        assert (
-            manifest.family_coverage["hmrc_cgt_gains"]["superseded_by"]["stage"]
-            == "hmrc_cgt_gains_spine"
-        )
+        assert "hmrc_cgt_gains" not in manifest.family_coverage
 
     def test_supersession_does_not_hide_a_genuinely_missing_family(self) -> None:
         manifest = load_uk_release_input_coverage_manifest()
@@ -757,7 +778,6 @@ class TestUKManifest:
             if stage
             not in {
                 "hmrc_spi_income",
-                "hmrc_cgt_gains",
                 "student_loans",
             }
         )

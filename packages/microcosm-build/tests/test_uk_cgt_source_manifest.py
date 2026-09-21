@@ -1,18 +1,15 @@
-"""Contract tests for the UK capital gains source manifest."""
+"""Contract tests for the UK capital gains stage manifest and family."""
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
+from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime.cgt_asset_type import (
     UK_CGT_ASSET_TYPE_MASS_CONSERVATION_REASON,
 )
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_IMPUTATION_SEED,
-    UK_CGT_IMPUTATION_STAGE_NAME,
-    UK_CGT_MASS_CONSERVATION_REASON,
     UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+    UK_CGT_SPINE_STAGE_NAME,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
 )
 from microcosm.build.uk_runtime.cgt_structure import (
@@ -35,31 +32,24 @@ from microcosm.build.uk_runtime.student_loans import (
     STUDENT_LOANS_MASS_CHANGE_REASON,
 )
 
-_MANIFEST_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "src"
-    / "microcosm"
-    / "build"
-    / "uk"
-    / "cgt_source_stages.json"
-)
+
+def _stage():
+    """The spine's CGT amounts stage: since microcosm#823 the only one."""
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    return spec.sources.stage_map()[UK_CGT_SPINE_STAGE_NAME]
 
 
-def _stage() -> dict:
-    payload = json.loads(_MANIFEST_PATH.read_text(encoding="utf-8"))
-    stages = payload["stages"]
-    assert len(stages) == 1
-    return stages[0]
+def _operations() -> dict[str, dict]:
+    return {op.kind: dict(op.parameters) for op in _stage().operations}
 
 
 def test_manifest_names_the_resource_the_code_reads() -> None:
     """One provenance, declared once: the manifest repeats the module's roster."""
-    artifacts = {artifact["role"]: artifact for artifact in _stage()["artifacts"]}
+    artifacts = {artifact["role"]: artifact for artifact in _stage().artifacts}
     assert "published_fact_surface" not in artifacts
     surface = artifacts["cgt_conditioning_facts"]
-    verify = {operation["kind"]: operation for operation in _stage()["operations"]}[
-        "verify_vendored_fact_resource"
-    ]
+    verify = _operations()["verify_vendored_fact_resource"]
 
     assert surface["resource"] == HMRC_CGT_CONDITIONING_RESOURCE
     assert surface["runtime_sha256_required"] is True
@@ -72,9 +62,9 @@ def test_manifest_names_the_resource_the_code_reads() -> None:
 
 
 def test_manifest_operations_match_the_stage_implementation() -> None:
-    operations = {operation["kind"]: operation for operation in _stage()["operations"]}
+    operations = _operations()
 
-    assert _stage()["stage"] == UK_CGT_IMPUTATION_STAGE_NAME
+    assert _stage().stage == UK_CGT_SPINE_STAGE_NAME
     proxy = operations["taxable_income_proxy"]
     assert tuple(proxy["components"]) == UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS
     draws = operations["within_band_draws"]
@@ -86,9 +76,7 @@ def test_manifest_operations_match_the_stage_implementation() -> None:
 
 
 def test_band_facts_stay_fenced_from_calibration() -> None:
-    fence = {operation["kind"]: operation for operation in _stage()["operations"]}[
-        "classify_cgt_band_facts_with_reviewed_fence"
-    ]
+    fence = _operations()["classify_cgt_band_facts_with_reviewed_fence"]
 
     assert fence["calibration_permitted"] is False
     assert fence["fenced_fact_count"] == 76
@@ -97,25 +85,52 @@ def test_band_facts_stay_fenced_from_calibration() -> None:
 
 def test_receipt_reason_matches_the_stage_constant() -> None:
     """The gate matches on the exact string, so one source of truth."""
-    receipt = {operation["kind"]: operation for operation in _stage()["operations"]}[
-        "record_mass_conservation_receipt"
-    ]
+    receipt = _operations()["record_mass_conservation_receipt"]
 
-    assert receipt["reason"] == UK_CGT_MASS_CONSERVATION_REASON
+    assert receipt["reason"] == UK_CGT_SPINE_MASS_CONSERVATION_REASON
     assert receipt["declared_factor"] == 1.0
 
 
 def test_family_coverage_carries_the_stage_as_required_at_build() -> None:
     manifest = load_uk_release_input_coverage_manifest()
-    family = manifest.family_coverage[UK_CGT_IMPUTATION_STAGE_NAME]
+    family = manifest.family_coverage[UK_CGT_SPINE_STAGE_NAME]
 
     assert family["status"] == "required_at_build"
-    assert family["source_manifest"] == _MANIFEST_PATH.name
+    assert family["source_manifest"] == "source_stages.json"
     assert family["calibration_permitted"] is False
     assert family["outputs"] == ["capital_gains"]
     assert family["output_weight_kind"] == "importance"
-    assert family["required_mass_change_reason"] == UK_CGT_MASS_CONSERVATION_REASON
-    assert UK_CGT_IMPUTATION_STAGE_NAME in manifest.required_build_stages
+    assert (
+        family["required_mass_change_reason"] == UK_CGT_SPINE_MASS_CONSERVATION_REASON
+    )
+    assert UK_CGT_SPINE_STAGE_NAME in manifest.required_build_stages
+
+
+def test_the_june_path_cgt_family_is_retired() -> None:
+    """One CGT gains family, the spine's (microcosm#823)."""
+    manifest = load_uk_release_input_coverage_manifest()
+    assert "hmrc_cgt_gains" not in manifest.family_coverage
+    assert "hmrc_cgt_gains" not in manifest.required_build_stages
+    assert "hmrc_cgt_gains" not in load_country_spec("uk").sources.stage_map()
+
+
+def test_stages_without_a_declared_receipt_require_none() -> None:
+    """A column-writing stage that leaves the weights untouched records no
+    mass receipt, so the contract demands none; the weight-kind check still
+    covers it. The first release cut failed five families on a reason the
+    generator had invented."""
+    manifest = load_uk_release_input_coverage_manifest()
+    for name in (
+        "was_wealth",
+        "lcfs_consumption",
+        "etb_vat",
+        "etb_services",
+        "regional_property_uprating",
+    ):
+        family = manifest.family_coverage[name]
+        assert "required_mass_change_reason" not in family, name
+        assert family["mass_change_semantics"] == "weights_pass_through", name
+        assert family["output_weight_kind"] == "importance", name
 
 
 def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
@@ -136,9 +151,6 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
     manifest = load_uk_release_input_coverage_manifest()
     spi_reason = str(
         manifest.family_coverage["hmrc_spi_income"]["required_mass_change_reason"]
-    )
-    e5_reason = str(
-        manifest.family_coverage["was_wealth"]["required_mass_change_reason"]
     )
     compliant = SimpleNamespace(
         household_weight_kind=WeightKind.IMPORTANCE,
@@ -170,13 +182,6 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
                 old_total=100.0,
                 new_total=100.0,
                 declared_factor=1.0,
-                reason=UK_CGT_MASS_CONSERVATION_REASON,
-            ),
-            MassChangeRecord(
-                entity="household",
-                old_total=100.0,
-                new_total=100.0,
-                declared_factor=1.0,
                 reason=UK_CGT_SPINE_MASS_CONSERVATION_REASON,
             ),
             MassChangeRecord(
@@ -200,13 +205,6 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
                 declared_factor=1.0,
                 reason=STUDENT_LOANS_MASS_CHANGE_REASON,
             ),
-            MassChangeRecord(
-                entity="household",
-                old_total=100.0,
-                new_total=100.0,
-                declared_factor=1.0,
-                reason=e5_reason,
-            ),
         ),
     )
 
@@ -219,7 +217,7 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
         mass_log=compliant.mass_log[:1],
     )
     _, failures = _family_build_state_diagnostics(missing_receipt, manifest)
-    assert any("hmrc_cgt_gains" in failure for failure in failures)
+    assert any("hmrc_cgt_gains_spine" in failure for failure in failures)
 
     wrong_kind = SimpleNamespace(
         household_weight_kind=WeightKind.DESIGN,
@@ -228,16 +226,5 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
     )
     _, failures = _family_build_state_diagnostics(wrong_kind, manifest)
     assert any(
-        "hmrc_cgt_gains" in failure and "kind" in failure for failure in failures
+        "hmrc_cgt_gains_spine" in failure and "kind" in failure for failure in failures
     )
-
-
-def test_certified_and_spine_families_require_distinct_receipts() -> None:
-    """One record must never satisfy both CGT families (review finding)."""
-    manifest = load_uk_release_input_coverage_manifest()
-    families = manifest.family_coverage
-    certified = families["hmrc_cgt_gains"]["required_mass_change_reason"]
-    spine = families["hmrc_cgt_gains_spine"]["required_mass_change_reason"]
-    assert certified == UK_CGT_MASS_CONSERVATION_REASON
-    assert spine == UK_CGT_SPINE_MASS_CONSERVATION_REASON
-    assert certified != spine

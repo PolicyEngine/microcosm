@@ -508,7 +508,7 @@
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
    "effective_mass_requirements": {},
-   "mass_change_semantics": "mass_conserving",
+   "mass_change_semantics": "weights_pass_through",
    "output_weight_kind": "importance",
    "outputs": [
     "dfe_education_spending",
@@ -522,7 +522,6 @@
     "nhs_admitted_patient_spending",
     "nhs_outpatient_spending"
    ],
-   "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
    "source_manifest_sha256": "dd405553c28d556cf1444301913705931ebe01fa156ac827188286953dc7738e",
@@ -537,12 +536,11 @@
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
    "effective_mass_requirements": {},
-   "mass_change_semantics": "mass_conserving",
+   "mass_change_semantics": "weights_pass_through",
    "output_weight_kind": "importance",
    "outputs": [
     "full_rate_vat_expenditure_rate"
    ],
-   "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
    "source_manifest_sha256": "dd405553c28d556cf1444301913705931ebe01fa156ac827188286953dc7738e",
@@ -573,36 +571,6 @@
    },
    "stage": "hmrc_cgt_asset_type_spine",
    "status": "required_at_build"
-  },
-  "hmrc_cgt_gains": {
-   "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
-   "base_candidate_tier": "frs",
-   "calibration_permitted": false,
-   "effective_mass_requirements": {},
-   "fact_fence_id": "cgt_band_facts_policy_endogenous_proxy_conditioned",
-   "fenced_fact_count": 76,
-   "output_weight_kind": "importance",
-   "outputs": [
-    "capital_gains"
-   ],
-   "required_mass_change_reason": "Amounts-only capital gains redraw: household weights pass through unchanged and total household mass is conserved.",
-   "source_manifest": "cgt_source_stages.json",
-   "source_manifest_sha256": "1b7e6c10728255c3fe2d6d0a33288fae50b282e348e0db9832b7f6073e66d9b7",
-   "source_vintages": {
-    "conditioning_resource": "hmrc_cgt_conditioning_facts.json",
-    "conditioning_resource_sha256": "f5bb0ad93fff3332b7ae8fb580f002d13207b3f95e44a3103c50108279d94797",
-    "conditioning_surface": "2024-25",
-    "hmrc_surface": "2024-25",
-    "mapped_build_period": "2024"
-   },
-   "stage": "hmrc_cgt_gains",
-   "status": "required_at_build",
-   "superseded_by": {
-    "reason": "The FRS spine build executes hmrc_cgt_gains_spine, which applies the same HMRC Table 3 amounts redraw directly in source_stages.json before calibration.",
-    "source_manifest": "source_stages.json",
-    "source_manifest_sha256": "dd405553c28d556cf1444301913705931ebe01fa156ac827188286953dc7738e",
-    "stage": "hmrc_cgt_gains_spine"
-   }
   },
   "hmrc_cgt_gains_spine": {
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
@@ -728,7 +696,7 @@
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
    "effective_mass_requirements": {},
-   "mass_change_semantics": "mass_conserving",
+   "mass_change_semantics": "weights_pass_through",
    "output_weight_kind": "importance",
    "outputs": [
     "food_and_non_alcoholic_beverages_consumption",
@@ -751,7 +719,6 @@
     "gas_consumption",
     "has_fuel_consumption"
    ],
-   "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
    "source_manifest_sha256": "dd405553c28d556cf1444301913705931ebe01fa156ac827188286953dc7738e",
@@ -766,10 +733,9 @@
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
    "effective_mass_requirements": {},
-   "mass_change_semantics": "mass_conserving",
+   "mass_change_semantics": "weights_pass_through",
    "output_weight_kind": "importance",
    "outputs": [],
-   "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [
     "main_residence_value",
     "property_wealth"
@@ -833,7 +799,7 @@
    "base_candidate_sha256": "f17306ccb2aad7ff0130be3589b560afb2e2a12a943570911cd0c77f07934833",
    "base_candidate_tier": "frs",
    "effective_mass_requirements": {},
-   "mass_change_semantics": "mass_conserving",
+   "mass_change_semantics": "weights_pass_through",
    "output_weight_kind": "importance",
    "outputs": [
     "owned_land",
@@ -853,7 +819,6 @@
     "mortgage_debt",
     "consumer_debt"
    ],
-   "required_mass_change_reason": "E5 source-stage transform preserves household rows and typed household weights; total household mass is conserved.",
    "rewrites": [],
    "source_manifest": "source_stages.json",
    "source_manifest_sha256": "dd405553c28d556cf1444301913705931ebe01fa156ac827188286953dc7738e",

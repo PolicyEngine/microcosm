@@ -33,11 +33,6 @@
       "schema_id": "vintages.schema.json"
     },
     {
-      "path": "cgt_source_stages.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
       "path": "degenerate_reviewed_exclusions.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

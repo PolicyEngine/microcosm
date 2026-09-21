@@ -251,6 +251,14 @@ def _source_stage_base_candidate_tier(
     return validate_uk_release_tier(base_candidate.get("tier"))
 
 
+#: A family whose stage writes columns and passes the household weights
+#: through untouched: no mass receipt is recorded, so none is required.
+_WEIGHTS_PASS_THROUGH = "weights_pass_through"
+_MASS_CHANGE_SEMANTICS = frozenset(
+    {"mass_conserving", "mass_increasing_support", _WEIGHTS_PASS_THROUGH}
+)
+
+
 def _parse_family_coverage(
     raw: object,
     *,
@@ -312,9 +320,7 @@ def _parse_family_coverage(
                     f"{resource}: family {name!r} superseded_by must be an object."
                 )
             superseding_stage = str(superseded_by.get("stage", "")).strip()
-            superseding_manifest = str(
-                superseded_by.get("source_manifest", "")
-            ).strip()
+            superseding_manifest = str(superseded_by.get("source_manifest", "")).strip()
             superseding_sha = str(
                 superseded_by.get("source_manifest_sha256", "")
             ).strip()
@@ -362,21 +368,28 @@ def _parse_family_coverage(
         required_mass_change_reason = str(
             raw_family.get("required_mass_change_reason", "")
         ).strip()
-        if not required_mass_change_reason:
-            raise ValueError(
-                f"{resource}: family {name!r} needs a reviewed "
-                "required_mass_change_reason."
-            )
         mass_change_semantics = str(
             raw_family.get("mass_change_semantics", "mass_conserving")
         ).strip()
-        if mass_change_semantics not in {
-            "mass_conserving",
-            "mass_increasing_support",
-        }:
+        if mass_change_semantics not in _MASS_CHANGE_SEMANTICS:
             raise ValueError(
                 f"{resource}: family {name!r} has invalid "
                 f"mass_change_semantics {mass_change_semantics!r}."
+            )
+        # A stage that records a mass receipt is bound to it by reason; a
+        # weights-pass-through stage records none, so the contract carries
+        # none (a reason it demanded would fail every build by construction).
+        if mass_change_semantics == _WEIGHTS_PASS_THROUGH:
+            if required_mass_change_reason:
+                raise ValueError(
+                    f"{resource}: family {name!r} declares "
+                    f"{_WEIGHTS_PASS_THROUGH!r} semantics and must not require "
+                    "a mass-change reason."
+                )
+        elif not required_mass_change_reason:
+            raise ValueError(
+                f"{resource}: family {name!r} needs a reviewed "
+                "required_mass_change_reason."
             )
 
         raw_requirements = raw_family.get("effective_mass_requirements", {})
@@ -445,7 +458,11 @@ def _parse_family_coverage(
             ),
             "base_candidate_tier": base_candidate_tier,
             "output_weight_kind": output_weight_kind,
-            "required_mass_change_reason": required_mass_change_reason,
+            **(
+                {"required_mass_change_reason": required_mass_change_reason}
+                if required_mass_change_reason
+                else {}
+            ),
             "mass_change_semantics": mass_change_semantics,
             "effective_mass_requirements": requirements,
         }

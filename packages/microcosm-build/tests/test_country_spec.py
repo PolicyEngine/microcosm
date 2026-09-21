@@ -916,7 +916,6 @@ class TestUKCountryPackage:
             row.path for row in spec.resource_rows if row.kind == "legacy_json"
         )
         assert legacy_rows == (
-            "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
@@ -1023,7 +1022,6 @@ class TestExistingPackagesGeneralize:
             "spec/sources.yaml",
             "spec/spine.yaml",
             "spec/vintages.yaml",
-            "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
