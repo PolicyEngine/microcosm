@@ -71,7 +71,9 @@ def main() -> int:
     parser.add_argument("--year", type=int, default=2026)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument(
-        "--hbai-year", type=int, default=2024,
+        "--hbai-year",
+        type=int,
+        default=2024,
         help="year at which the HBAI-basis block is measured (HBAI FYE 2024 = April 2023 to March 2024; 0 disables)",
     )
     args = parser.parse_args()
@@ -88,7 +90,9 @@ def main() -> int:
             return np.asarray(sim.calculate(var, year).values, dtype=float)
 
         def to_person(var):
-            return np.asarray(sim.calculate(var, year, map_to="person").values, dtype=float)
+            return np.asarray(
+                sim.calculate(var, year, map_to="person").values, dtype=float
+            )
 
         pw = np.asarray(sim.calculate("person_weight", year).values, dtype=float)
         bw = np.asarray(sim.calculate("benunit_weight", year).values, dtype=float)
@@ -135,15 +139,21 @@ def main() -> int:
             "universal_credit_bn": float((uc * bw).sum() / 1e9),
             "uc_families_m": float(bw[uc > 0].sum() / 1e6),
             "child_benefit_bn": float(
-                (np.asarray(sim.calculate("child_benefit", year).values, float) * bw).sum()
+                (
+                    np.asarray(sim.calculate("child_benefit", year).values, float) * bw
+                ).sum()
                 / 1e9
             ),
             "pension_credit_bn": float(
-                (np.asarray(sim.calculate("pension_credit", year).values, float) * bw).sum()
+                (
+                    np.asarray(sim.calculate("pension_credit", year).values, float) * bw
+                ).sum()
                 / 1e9
             ),
             "council_tax_bn": float(
-                (np.asarray(sim.calculate("council_tax", year).values, float) * hw).sum()
+                (
+                    np.asarray(sim.calculate("council_tax", year).values, float) * hw
+                ).sum()
                 / 1e9
             ),
             # microcosm#968: the engine flag is the absolute line; keep the old key
@@ -167,9 +177,15 @@ def main() -> int:
 
     rows = measure(year)
     HBAI_KEYS = (
-        "poverty_bhc_absolute_pct", "poverty_bhc_relative_pct", "poverty_ahc_absolute_pct",
-        "poverty_ahc_relative_pct", "child_poverty_bhc_relative_pct", "median_equiv_bhc_income_week",
-        "p10_over_median_bhc", "p90_over_median_bhc", "zero_income_share_pct",
+        "poverty_bhc_absolute_pct",
+        "poverty_bhc_relative_pct",
+        "poverty_ahc_absolute_pct",
+        "poverty_ahc_relative_pct",
+        "child_poverty_bhc_relative_pct",
+        "median_equiv_bhc_income_week",
+        "p10_over_median_bhc",
+        "p90_over_median_bhc",
+        "zero_income_share_pct",
     )
     hbai_basis = None
     if args.hbai_year:
