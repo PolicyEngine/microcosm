@@ -191,6 +191,38 @@ def test_known_person_value_change_refuses(where):
         result(qualified, inputs, table)
 
 
+def _reowned_by_receiving_version(inputs):
+    """The receiving terminal sits behind a structural version that re-owns cells."""
+    owners = {key: inputs.receiving.version for key in inputs.receiving.owners}
+    return replace(inputs, receiving=replace(inputs.receiving, owners=owners))
+
+
+def test_candidate_outputs_accept_a_structural_version_that_carried_arm_one_values():
+    """The genuine successor4 host refused ARM_ONE_OUTPUT_OWNER at its terminal.
+
+    population.patch gives a structural version ownership of every carried
+    column, so at the canonical state version the arm-one outputs are owned by
+    that version, not by survey_puf55.attach. The candidate cut accepts that
+    owner only while the carried values equal the arm-one values.
+    """
+    qualified, inputs, table = fixture()
+    baseline = placement.candidate_outputs(inputs, PROFILE)
+    reowned = _reowned_by_receiving_version(inputs)
+    assert placement.candidate_outputs(reowned, PROFILE) == baseline
+    # The full placement path accepts the re-owned receiving population.
+    result(qualified, reowned, table)
+    changed = _reowned_by_receiving_version(inputs)
+    changed.receiving.frame.person.loc[0, placement.SINGLETON_OUTPUTS[0]] = 5.0
+    with pytest.raises(ValueError, match="ARM_ONE_OUTPUT_CARRIED"):
+        placement.candidate_outputs(changed, PROFILE)
+    other = _reowned_by_receiving_version(inputs)
+    owners = dict(other.receiving.owners)
+    owners["tax_unit", placement.UNIT_OUTPUTS[0]] = "invented.later"
+    other = replace(other, receiving=replace(other.receiving, owners=owners))
+    with pytest.raises(ValueError, match="ARM_ONE_OUTPUT_OWNER"):
+        placement.candidate_outputs(other, PROFILE)
+
+
 @pytest.mark.parametrize(
     "change",
     (

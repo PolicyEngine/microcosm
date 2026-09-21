@@ -180,10 +180,17 @@ def candidate_outputs(inputs, profile):
             if name in inputs.financial_parent.frame.table(entity):
                 continue
             key = (entity, name)
+            # A structural version between arm one and the receiving terminal
+            # (the canonical state FILTER in the actual host) re-establishes
+            # ownership of every carried cell to itself, so the receiving owner
+            # is either the arm-one attach node or the receiving version; any
+            # other owner is a later rewrite. When the version re-owned the
+            # cells, the carried values must still be the arm-one values.
+            owner = inputs.receiving.owners.get(key)
             require(
                 key in declared
                 and inputs.arm_one.owners.get(key) == node.id
-                and inputs.receiving.owners.get(key) == node.id,
+                and owner in (node.id, inputs.receiving.version),
                 "ARM_ONE_OUTPUT_OWNER",
             )
             require(name in inputs.receiving.frame.table(entity), "RECEIVING_OUTPUT")
@@ -193,6 +200,17 @@ def candidate_outputs(inputs, profile):
                 inputs.arm_one.frame.table(entity)[name].dtype == dtype, "OUTPUT_DTYPE"
             )
             require(declared[key].dtype == str(dtype), "OUTPUT_DECLARED_DTYPE")
+            if owner != node.id:
+                id_column = inputs.receiving.frame.schema.entity_id_column(entity)
+                prior = inputs.arm_one.frame.table(entity).set_index(id_column)[name]
+                current = inputs.receiving.frame.table(entity).set_index(id_column)[
+                    name
+                ]
+                require(
+                    current.index.isin(prior.index).all()
+                    and current.equals(prior.reindex(current.index)),
+                    "ARM_ONE_OUTPUT_CARRIED",
+                )
             result.append((entity, name, str(dtype)))
     return tuple(result)
 
