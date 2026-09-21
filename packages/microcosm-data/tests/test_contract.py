@@ -86,29 +86,7 @@ UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
     "SPI-channel-exclusive columns are comparable only through per-reference "
     "reviewed exclusions."
 )
-UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
-    "charitable_investment_gifts": {
-        "reason": (
-            "SPI-channel-exclusive column on a channel-blind reference: the "
-            "efrs-post-calibration incumbent structurally lacks the SPI clone "
-            "channel, so its reference mass is survey-side scraps while the "
-            "staged candidate's mass is the admin-captured SPI channel "
-            "functioning as designed (microcosm#630 case 2). Compared "
-            "normally against any future channel-aware reference."
-        ),
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#630",
-        "approved_on": "2026-08-20",
-        "expires_on": "2027-02-20",
-    },
-    "owned_land": {
-        "reason": "Sparse heavy-tailed WAS donor column (0.7 percent weighted nonzero share) whose weighted total is dominated by a handful of large farm/estate records: the spine-e stability receipt (data/ukds/acceptance/757-swap/owned_land_stability_receipt_spine_e.json) measures a 53.8 percent national and 96.7 percent West Midlands swing between adjacent seeds on the 25-stage candidate \u2014 the realization-variance class the archived incumbent data repo records at uk-data#448 (4.6x Wales swing across releases), reproduced from the E5 instrument's method. Register parity at this grain stays not meaningful; the one-month expiry keeps the end-of-workstream revisit registered on microcosm#145 live (winsorised donor or separate land imputation are the candidate remedies).",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#714",
-        "approved_on": "2026-08-26",
-        "expires_on": "2026-09-26",
-    },
-}
+UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {}
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -150,7 +128,7 @@ UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "c9211cbb923e13f4850b834b5bdb1ff1de87fe9237c332b5de63f01ed417aa2d"
+    "17545916b6926c77e9f8fc90876266cc3f8e4a381079bafc8d1c63fa8df43c04"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {

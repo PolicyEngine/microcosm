@@ -186,7 +186,15 @@ def _fixture_coverage_registry():
     }
 
 
-def _run_battery(tables, *, parity=None, fit_records=None, armed=True, clock=CLOCK):
+def _run_battery(
+    tables,
+    *,
+    parity=None,
+    fit_records=None,
+    armed=True,
+    clock=CLOCK,
+    extra_artifacts=None,
+):
     person, benunit, household = tables
     frame = uk_national_frame(
         person=person, benunit=benunit, household=household, time_period="2023"
@@ -207,6 +215,8 @@ def _run_battery(tables, *, parity=None, fit_records=None, armed=True, clock=CLO
         artifacts["aggregate_admin"] = {
             "nhs_spending_total": 202_000_000_000,
         }
+    if extra_artifacts:
+        artifacts.update(extra_artifacts)
     # Small synthetic totals exercise battery behavior without disclosing
     # the licensed 131-column reference (same patch as the legacy tests);
     # the binding's declared-pin check compares spec to runtime constant and
@@ -739,11 +749,27 @@ class TestExclusionDiscipline:
         assert set(stamps.values()) == {CLOCK.isoformat()}, stamps
 
     def test_an_expired_register_fails_closed(self) -> None:
+        # The committed input-mass register carries no entry since the
+        # 2026-09-21 retirements, so the expiry discipline is exercised on an
+        # injected receipt that lapses before the clock below; the other two
+        # registers still expire from their committed entries.
+        lapsed = {
+            "efrs-post-calibration": {
+                "owned_land": {
+                    "reason": "injected: a reviewed exclusion whose window has closed",
+                    "approved_by": "juaristi22",
+                    "adjudication": "microcosm#714",
+                    "approved_on": "2026-08-26",
+                    "expires_on": "2026-09-26",
+                }
+            }
+        }
         battery = _run_battery(
             _tables(),
             parity=_parity(),
             fit_records=(FitWeightRecord("spi_qrf", "importance"),),
             clock=date(2027, 3, 1),
+            extra_artifacts={"reviewed_input_mass_exclusions": lapsed},
         )
         failed = {o.entry.id for o in battery.outcomes if o.status is GateStatus.FAILED}
         assert {
