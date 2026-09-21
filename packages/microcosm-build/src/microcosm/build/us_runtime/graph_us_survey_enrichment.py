@@ -2209,6 +2209,8 @@ def run_us_survey_enrichment(
     full_original_amount_donors=False,
     canonical_state_input=False,
     original_application_seed=None,
+    other_disability_completion=False,
+    other_disability_seed=None,
 ):
     """Execute and verify enrichment with optional SPM and realized immigration.
 
@@ -2228,7 +2230,45 @@ def run_us_survey_enrichment(
     An explicit distinct original_application_seed additionally applies all PUF55
     models to the original arm and performs the conservative development placement
     after the completed enrichment terminal; omission preserves existing behavior.
+    Other-disability completion explicitly borrows that completed terminal before
+    any original PUF placement. It requires its own seed and uses full original
+    ASEC donors independently of the existing amount-donor option.
     """
+    require(type(other_disability_completion) is bool, "OTHER_DISABILITY_OPTION")
+    if not other_disability_completion:
+        require(other_disability_seed is None, "OTHER_DISABILITY_DISABLED_SEED")
+    else:
+        from . import graph_us_other_disability_host as disability_host
+
+        disability_host.validate_options(True, other_disability_seed)
+        require(type(n_estimators) is int and n_estimators > 0, "ESTIMATORS")
+        if original_application_seed is not None:
+            parent.check_survey_puf55_run(run)
+            original_host.application._seeds(
+                parent._run_entry(run)[2].boundary.seed, original_application_seed
+            )
+        predecessor = run_us_survey_enrichment(
+            run,
+            groups=groups,
+            n_estimators=n_estimators,
+            resume=resume,
+            spm_acs_profile=spm_acs_profile,
+            spm_asec_scope_policy=spm_asec_scope_policy,
+            spm_outside_role_placeholder=spm_outside_role_placeholder,
+            immigration_transfer=immigration_transfer,
+            health_completion=health_completion,
+            demographic_inputs=demographic_inputs,
+            race_hispanic_inputs=race_hispanic_inputs,
+            full_original_amount_donors=full_original_amount_donors,
+            canonical_state_input=canonical_state_input,
+        )
+        return disability_host.run_continuation(
+            predecessor,
+            seed=other_disability_seed,
+            n_estimators=n_estimators,
+            resume=resume,
+            original_application_seed=original_application_seed,
+        )
     require(resume in ("auto", "require"), "RESUME")
     boundary = _construct(
         run,
