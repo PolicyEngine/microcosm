@@ -1,0 +1,1 @@
+Add a bounded, invented-fixture-only native PUF tail role-projection contract and deterministic selection algebra; actual person allocation, source admission, population expansion and release qualification remain unimplemented.
