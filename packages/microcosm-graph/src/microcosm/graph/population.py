@@ -906,12 +906,14 @@ def restore_cached_expand(
 
     if node.structural is not StructuralDelta.EXPAND or result.frame is None:
         raise PopulationError("restore_cached_expand requires an EXPAND Frame.")
+    _assert_expand_weight_topology(population.frame, node)
     if result.strata is not None:
         raise PopulationError(
             f"Cached EXPAND node {node.id!r} returned kernel strata instead of "
             "its executor frame artifact."
         )
     frame = result.frame
+    _assert_expand_weight_topology(frame, node)
     if frame.schema != population.frame.schema:
         raise PopulationError(f"Cached EXPAND node {node.id!r} changed schema.")
     receipt_lineage = _expand_lineage_from_receipt(
@@ -1097,6 +1099,8 @@ def patch(
         raise PopulationError(
             "CREATE has no incumbent Population; use Population.from_frame()."
         )
+    if node.structural is StructuralDelta.EXPAND:
+        _assert_expand_weight_topology(population.frame, node)
     if node.weights is not None and node.structural is StructuralDelta.NONE:
         raise PopulationError(
             f"Node {node.id!r} declares a weight transition without a structural "
@@ -1151,6 +1155,8 @@ def patch(
     else:
         _assert_carried_weights(population.frame, frame, node)
 
+    if node.structural is StructuralDelta.EXPAND:
+        _assert_expand_weight_topology(frame, node)
     frame = _append_frame_mass_log(population.frame, frame, node, result)
 
     design_weights = _carry_design_weights(population, frame, node, result)
@@ -1419,6 +1425,28 @@ def _assert_expand_memberships(
                 f"incumbent or same-EXPAND entrant {group} ids."
             )
     return frozenset(repointed)
+
+
+def _assert_expand_weight_topology(frame: Frame, node: Node) -> None:
+    """Optional strict stored-weight topology, checked on cold and cached paths.
+
+    Effective kernel weights cannot distinguish a separately stored vector
+    from an inherited one with the same values. A selective support expansion
+    can opt into this stronger condition without changing existing EXPANDs.
+    """
+    required = node.params.get("expand_require_sole_weight_entity", False)
+    if type(required) is not bool:
+        raise PopulationError(
+            f"EXPAND node {node.id!r} requires a boolean "
+            "params['expand_require_sole_weight_entity']."
+        )
+    if required:
+        entity = _expand_weight_entity(node)
+        if set(frame.weighted_entities) != {entity}:
+            raise PopulationError(
+                f"EXPAND node {node.id!r} requires {entity!r} as its sole "
+                "stored weight entity."
+            )
 
 
 def _patch_expand(
