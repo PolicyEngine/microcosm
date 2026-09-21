@@ -45,7 +45,10 @@ def test_fresh_handoff_import_and_inventory_do_not_load_legacy_pool_or_country(
     frame = _parent()
     assert fresh.native_survey_input_inventory(frame)
     assert fresh.engine_export_inventory(
-        frame, ExportContract(required=("absent",), optional=(), forbidden=())
+        frame,
+        ExportContract(
+            required=("absent",), optional=(), forbidden=(), formula_owned_excluded=()
+        ),
     )["missing_required"] == ["absent"]
     assert imports  # The guard covered real imports, not a cached module return.
 
