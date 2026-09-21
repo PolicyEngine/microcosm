@@ -64,6 +64,7 @@ def _weighted_person_frame(
     *,
     weight_kind: WeightKind = WeightKind.DESIGN,
     mass_log: tuple[MassChangeRecord, ...] = (),
+    time_period: str | None = None,
 ) -> Frame:
     weights = np.asarray(household_weights, dtype=float)
     n = len(weights)
@@ -85,6 +86,7 @@ def _weighted_person_frame(
         EntitySchema(group_entities=("benunit", "household")),
         {"household": Weights(values=weights, kind=weight_kind)},
         mass_log=mass_log,
+        metadata=None if time_period is None else {"time_period": time_period},
     )
 
 
@@ -990,3 +992,118 @@ def test_default_us_coverage_path_is_unchanged() -> None:
     ).read_text(encoding="utf-8")
     assert "us_release_input_coverage_gate" in us_builder
     assert "uk_release_input_coverage_gate" not in us_builder
+
+
+@pytest.mark.requires_uk
+def test_coverage_engine_resolves_enum_domains_for_the_release_cut() -> None:
+    """The certifier arms this engine; the terminal enum gates read it."""
+
+    from microcosm.build.uk_runtime.release_input_coverage import (
+        PolicyEngineUKCoverageEngine,
+    )
+
+    engine = PolicyEngineUKCoverageEngine()
+    plans = engine.enum_domain("student_loan_plan")
+    combinations = engine.enum_domain("uc_deduction_combination")
+    assert {"NONE", "PLAN_1", "PLAN_2"} <= set(plans.__members__)
+    assert {"NONE", "ADVANCE_ONLY", "ALL_THREE"} <= set(combinations.__members__)
+    with pytest.raises(ValueError, match="Unknown PolicyEngine-UK variable"):
+        engine.enum_domain("not_a_variable")
+
+
+class TestFamilyBuildStateFrame:
+    """The family build-state half reads the spine frame when supplied."""
+
+    def _contract(self):
+        family = _hmrc_family_coverage()
+        family["hmrc_spi_income"].update(
+            {
+                "output_weight_kind": "importance",
+                "required_mass_change_reason": "reviewed SPI allocation",
+            }
+        )
+        return _manifest(
+            (UKReleaseInputColumn("gift_aid", "required"),),
+            family_coverage=family,
+        )
+
+    def _frames(self):
+        receipt = MassChangeRecord(
+            entity="household",
+            old_total=2_000.0,
+            new_total=2_000.0,
+            declared_factor=1.0,
+            reason="reviewed SPI allocation",
+        )
+        columns = {
+            "gift_aid": np.asarray([0.0, 100.0]),
+            "person_support_channel": np.asarray(["frs", "spi"]),
+        }
+        spine = _weighted_person_frame(
+            columns,
+            np.asarray([1_000.0, 1_000.0]),
+            weight_kind=WeightKind.IMPORTANCE,
+            mass_log=(receipt,),
+            time_period="2024",
+        )
+        release = _weighted_person_frame(
+            columns,
+            np.asarray([900.0, 1_100.0]),
+            weight_kind=WeightKind.CALIBRATED,
+            mass_log=(
+                receipt,
+                MassChangeRecord(
+                    entity="household",
+                    old_total=2_000.0,
+                    new_total=2_000.0,
+                    declared_factor=1.0,
+                    reason="national calibration",
+                ),
+            ),
+            time_period="2024",
+        )
+        return spine, release
+
+    def test_gate_reads_build_state_from_the_spine_frame(self) -> None:
+        spine, release = self._frames()
+        engine = _StubEngine({"gift_aid": 0.0})
+
+        on_release = uk_release_input_coverage_gate(
+            release, engine, manifest=self._contract()
+        )
+        assert not on_release.passed
+        assert any(
+            "expected reviewed kind 'importance'" in f for f in on_release.failures
+        )
+        assert on_release.details["family_build_state_frame"] == "release"
+
+        result = uk_release_input_coverage_gate(
+            release, engine, manifest=self._contract(), build_state_frame=spine
+        )
+        assert result.passed, result.failures
+        assert result.details["family_build_state_frame"] == "spine"
+        state = result.details["family_build_state"]["hmrc_spi_income"]
+        assert state["actual_output_weight_kind"] == "importance"
+        assert state["valid_mass_change_records"] == 1
+        # The coverage half still measured the release frame's weights.
+        assert result.details["effective_mass_by_column"]["gift_aid"][
+            "effective_signal_mass_share"
+        ] == pytest.approx(1_100.0 / 2_000.0)
+
+    def test_binding_hands_the_spine_frame_to_the_build_state_half(self) -> None:
+        from microcosm.build.gate_battery import EvidenceContext
+        from microcosm.build.uk_runtime.battery_bindings import (
+            _evaluate_release_input_coverage,
+        )
+
+        spine, release = self._frames()
+        artifacts = {
+            "coverage_engine": _StubEngine({"gift_aid": 0.0}),
+            "coverage_manifest": self._contract(),
+            "spine_frame": spine,
+        }
+        result = _evaluate_release_input_coverage(
+            EvidenceContext(frame=release, artifacts=artifacts), {}
+        )
+        assert result.passed, result.failures
+        assert result.details["family_build_state_frame"] == "spine"

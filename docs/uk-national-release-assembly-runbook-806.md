@@ -83,6 +83,7 @@ uv run --no-sync python tools/certify_uk_release_cut.py \
   --candidate-sha256 <candidate-sha256-from-build-record> \
   --candidate-name microcosm_uk_2024_25 \
   --spine-h5 <spine-h5> \
+  --spine-sha256 <spine-h5-sha256> \
   --diagnostics-json <candidate-dir>/calibration_diagnostics.json \
   --build-record-json <candidate-dir>/build_record.json \
   --seam-gate-report <candidate-dir>/microcosm_uk_2024_25.terminal_gates.json \

@@ -213,8 +213,17 @@ def _evaluate_release_input_coverage(
             f"unknown release_input_coverage check {check!r}; the declared "
             "preflight mode is 'manifest_current'."
         )
+    # The release cut supplies the spine frame the stages produced, so the
+    # family build-state half reads importance weights and stage receipts
+    # where they live; the coverage halves read the release frame.
+    spine_frame = context.artifacts.get("spine_frame")
     return uk_release_input_coverage_gate(
-        _uk_gate_surface(context.frame), engine, manifest=manifest
+        _uk_gate_surface(context.frame),
+        engine,
+        manifest=manifest,
+        build_state_frame=None
+        if spine_frame is None
+        else _uk_gate_surface(spine_frame),
     )
 
 
@@ -463,6 +472,28 @@ def _evaluate_take_up_signal(
     return uk_take_up_signal_gate(context.frame, **dict(parameters))
 
 
+def _engine_enum_domain(engine: Any, column: str) -> Any:
+    """Resolve an enum column's domain from whichever engine adapter is armed.
+
+    The public ``enum_domain`` accessor is the contract (both UK adapters
+    carry it); the private ``_variable`` lookup stays as the fallback for an
+    engine that predates it. An adapter with neither names itself in the
+    failure instead of surfacing as an AttributeError that reads like a
+    gate crash — the first release-cut run failed both enum gates that way.
+    """
+
+    accessor = getattr(engine, "enum_domain", None)
+    if callable(accessor):
+        return accessor(column)
+    lookup = getattr(engine, "_variable", None)
+    if callable(lookup):
+        return getattr(lookup(column), "possible_values", None)
+    raise ValueError(
+        f"{column} enum domain could not be resolved: the armed rules engine "
+        f"({type(engine).__name__}) exposes neither enum_domain nor _variable."
+    )
+
+
 def _evaluate_enum_domain(
     context: EvidenceContext, parameters: Mapping[str, Any]
 ) -> GateResult:
@@ -472,9 +503,7 @@ def _evaluate_enum_domain(
     column = columns[0]
     domain = context.artifacts.get(f"{column}_enum_domain")
     if domain is None:
-        engine = context.artifacts["rules_engine"]
-        variable = engine._variable(column)
-        domain = getattr(variable, "possible_values", None)
+        domain = _engine_enum_domain(context.artifacts["rules_engine"], column)
     if domain is None:
         raise ValueError(f"{column} enum domain could not be resolved from evidence.")
     matches = [

@@ -1364,3 +1364,73 @@ def test_measured_local_quality_failure_blocks_release(
     assert report["shippable"] is False
     assert report["gates"][gate_id]["status"] == "failed"
     assert report["gates"][gate_id]["criticality"] == "release_blocking"
+
+
+class TestEnumDomainResolution:
+    """The enum gates resolve their domain from whichever engine is armed."""
+
+    def _frame_with_plans(self):
+        import enum
+
+        person, benunit, household = _tables()
+        plans = ["NONE", "PLAN_2"] * len(person)
+        person["student_loan_plan"] = plans[: len(person)]
+        frame = uk_national_frame(
+            person=person, benunit=benunit, household=household, time_period="2023"
+        )
+
+        class StudentLoanPlan(enum.Enum):
+            NONE = "NONE"
+            PLAN_2 = "PLAN_2"
+
+        return frame, StudentLoanPlan
+
+    def test_public_accessor_is_the_contract(self) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        frame, domain = self._frame_with_plans()
+
+        class Accessor:
+            def enum_domain(self, column):
+                assert column == "student_loan_plan"
+                return domain
+
+        result = _evaluate_enum_domain(
+            EvidenceContext(frame=frame, artifacts={"rules_engine": Accessor()}),
+            {"columns": ["student_loan_plan"]},
+        )
+        assert result.passed
+
+    def test_private_variable_lookup_still_resolves(self) -> None:
+        from types import SimpleNamespace
+
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        frame, domain = self._frame_with_plans()
+
+        class Legacy:
+            def _variable(self, column):
+                return SimpleNamespace(possible_values=domain)
+
+        result = _evaluate_enum_domain(
+            EvidenceContext(frame=frame, artifacts={"rules_engine": Legacy()}),
+            {"columns": ["student_loan_plan"]},
+        )
+        assert result.passed
+
+    def test_an_engine_with_neither_names_itself(self) -> None:
+        from microcosm.build.uk_runtime.battery_bindings import _evaluate_enum_domain
+
+        frame, _domain = self._frame_with_plans()
+
+        class Bare:
+            pass
+
+        # The first release-cut run failed both enum gates with an
+        # AttributeError from inside the evaluator; the refusal now names the
+        # adapter and the missing accessor.
+        with pytest.raises(ValueError, match="Bare.*neither enum_domain nor _variable"):
+            _evaluate_enum_domain(
+                EvidenceContext(frame=frame, artifacts={"rules_engine": Bare()}),
+                {"columns": ["student_loan_plan"]},
+            )

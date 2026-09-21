@@ -58,6 +58,8 @@ def test_certifier_pins_carry_the_byte_sizes_the_logbook_digest_requires(
                 "microcosm_uk_2024_25",
                 "--spine-h5",
                 str(placeholders["spine.h5"]),
+                "--spine-sha256",
+                hashlib.sha256(placeholders["spine.h5"].read_bytes()).hexdigest(),
                 "--diagnostics-json",
                 str(placeholders["calibration_diagnostics.json"]),
                 "--build-record-json",
@@ -95,6 +97,12 @@ def test_certifier_pins_carry_the_byte_sizes_the_logbook_digest_requires(
             "ledger_facts": {
                 "sha256": facts_sha,
                 "size_bytes": (ledger / "consumer_facts.jsonl").stat().st_size,
+            },
+            "spine_h5": {
+                "sha256": hashlib.sha256(
+                    placeholders["spine.h5"].read_bytes()
+                ).hexdigest(),
+                "size_bytes": placeholders["spine.h5"].stat().st_size,
             },
         }
     )

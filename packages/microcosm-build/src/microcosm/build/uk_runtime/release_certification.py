@@ -264,8 +264,14 @@ def run_uk_release_cut_battery(
     input_mass_reference: Mapping[str, Any],
     exclusions_evaluated_on: date,
     gate_registry: Mapping[str, Any] | None = None,
+    spine_frame: Any | None = None,
 ) -> dict[str, Any]:
     """Run the 18 national gates over the calibrated candidate, signed.
+
+    ``spine_frame`` is the frame the spine build produced, the evidence the
+    input-coverage gate's family build-state half reads (typed importance
+    weights and each stage's mass receipt); the calibrated candidate is the
+    evidence for everything else.
 
     Always release-candidate strict: this battery exists to certify a cut,
     so an ``evidence_absent`` gap blocks rather than being tolerated, and a
@@ -306,6 +312,8 @@ def run_uk_release_cut_battery(
     }
     if fit_weight_records is not None:
         terminal_artifacts["fit_weight_records"] = fit_weight_records
+    if spine_frame is not None:
+        terminal_artifacts["spine_frame"] = spine_frame
     battery.run_phase(
         "terminal", EvidenceContext(frame=frame, artifacts=terminal_artifacts)
     )

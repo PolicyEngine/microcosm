@@ -366,6 +366,7 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
         input_mass_reference={},
         exclusions_evaluated_on=date(2026, 8, 27),
         gate_registry=_stub_registry(),
+        spine_frame=object(),
     )
     assert payload["posture"] == "release_cut"
     assert payload["release_candidate"] is True
