@@ -1469,6 +1469,10 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_solve_relative_error",
                 "support_bounds_resource",
                 "minimum_band_rows",
+                # #970 cgt_incidence_anchor stage-health check.
+                "maximum_relative_composition_error",
+                "maximum_pair_relative_error",
+                "minimum_pair_count",
                 # #890 energy_rake check: NEED shape at the DESNZ level at
                 # design weights, with the published gas-connected share.
                 "margins",

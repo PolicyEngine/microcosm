@@ -3902,6 +3902,92 @@
    "notes": "Spine stage after the amounts redraw: every liable gainer carries one main asset type and, where flagged residential, its net gain restated in capital_gains_residential_property. The residential flag is solved to the Table 8a 2024-25 totals on the individuals basis, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only. Carried interest (Table 9) is not modelled (microcosm#725)."
   },
   {
+   "stage": "cgt_incidence_anchor",
+   "survey": "Family Resources Survey 2024-25, SPI synthetic support, the HMRC Table 3 redrawn gains on the spine and Advani-Summers capital-gains incidence",
+   "source": "Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465",
+   "grain": "household",
+   "artifacts": [
+    {
+     "role": "capital_gains_incidence_and_quantiles",
+     "kind": "public_aggregate_reference",
+     "resource": "advani_summers_capital_gains_distribution.json",
+     "format": "json",
+     "runtime_sha256_required": true
+    },
+    {
+     "role": "policy_parameters",
+     "kind": "versioned_parameter_tree",
+     "dependency": "policyengine-uk>=2.98.0 via microcosm-build[uk]",
+     "parameters": [
+      "gov.hmrc.cgt.annual_exempt_amount"
+     ],
+     "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
+     "runtime_sha256_required": false,
+     "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time"
+    }
+   ],
+   "operations": [
+    {
+     "kind": "pair_clone_households_to_originals",
+     "clone_flag_column": "household_is_capital_gains_clone",
+     "donor_flag_column": "household_is_cgt_band_donor",
+     "id_remapping": "id_multiplier_for_values",
+     "pairing": "clone household_id minus the clone stage's id multiplier, recomputed from the pre-clone rows (clone flag false and not a band donor)",
+     "requirement": "bijection between clone and original households; an unpaired clone or original fails the build"
+    },
+    {
+     "kind": "derive_reporter_composition_from_banded_quantiles",
+     "resource": "advani_summers_capital_gains_distribution.json",
+     "income_proxy_components": [
+      "employment_income",
+      "self_employment_income",
+      "state_pension_reported",
+      "private_pension_income",
+      "property_income",
+      "savings_interest_income",
+      "dividend_income",
+      "miscellaneous_income"
+     ],
+     "allowance_subtraction": false,
+     "carrier": "oldest adult; person_id ascending breaks age ties",
+     "adult_minimum_age": 16,
+     "quantile_points": [
+      0.05,
+      0.1,
+      0.25,
+      0.5,
+      0.75,
+      0.9,
+      0.95
+     ],
+     "spline_degree": 1,
+     "extrapolation": "ext=0",
+     "crossings": "each band's degree-1 quantile spline inverted at zero and at the build period's annual exempt amount",
+     "aggregation": "crossings averaged over clone carriers weighted by household weight times the band's percent_with_gains",
+     "liable_mass": "weighted persons with capital_gains above the annual exempt amount on every household after the Table 3 redraw, clones and band donors alike",
+     "targets": "sub_exempt = liable_mass * (exempt_quantile - zero_quantile) / (1 - exempt_quantile); loss = liable_mass * zero_quantile / (1 - exempt_quantile)"
+    },
+    {
+     "kind": "transfer_clone_mass_to_originals",
+     "sub_exempt_group": "clone households whose carrier's capital_gains lie in [0, annual exempt amount]",
+     "loss_group": "clone households whose carrier's capital_gains are negative",
+     "liable_clones": "untouched",
+     "donors": "untouched",
+     "factor": "min(maximum_factor, scale * percent_with_gains) with scale solved per group by bisection so the group's mass equals its target; a group at or below its target is untouched",
+     "maximum_factor": 1.0,
+     "transfer": "each clone's removed mass is added to its paired original, so every pair's mass is conserved",
+     "weight_kind_out": "importance",
+     "conservation": "exact_total",
+     "pair_conservation": "exact",
+     "declared_factor": 1.0,
+     "reason": "Capital-gains incidence anchor moves the mass of non-liable clone households back to their paired originals until the sub-exempt and loss-making clone mass match the Advani-Summers reporter composition at the redrawn liable mass; every pair's mass and the total household mass are conserved."
+    }
+   ],
+   "outputs": [],
+   "rewrites": [],
+   "notes": "Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone's paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones and band donors are untouched, every pair's mass and the household total are conserved, and the receipt is gated at stage time."
+  },
+  {
    "stage": "salary_sacrifice",
    "survey": "Family Resources Survey 2024-25 salary-sacrifice respondents and HMRC salary-sacrifice reform analysis",
    "source": "HMRC, Salary sacrifice reform for pension contributions effective from 6 April 2029",

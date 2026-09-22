@@ -994,11 +994,11 @@ class TestUKCountryPackage:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        # 30 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
-        # #685, frs_relationships #791, then hmrc_cgt_asset_type_spine #725 as
-        # the newest) plus the
-        # two certified-pair stages the June path still uses.
-        assert len(spec.sources.stages) == 32
+        # 31 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
+        # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725, then
+        # cgt_incidence_anchor #970 as the newest) plus the two certified-pair
+        # stages the June path still uses.
+        assert len(spec.sources.stages) == 33
 
 
 class TestExistingPackagesGeneralize:
@@ -1354,6 +1354,7 @@ class TestUKGatesManifest:
             "uk_stage_cgt_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
+            "uk_stage_cgt_incidence_anchor_composition",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
@@ -1448,6 +1449,7 @@ class TestUKGatesManifest:
             "uk_stage_cgt_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
+            "uk_stage_cgt_incidence_anchor_composition",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",

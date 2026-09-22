@@ -128,6 +128,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_cgt_band_donors_support",
     "uk_stage_hmrc_cgt_gains_spine_summary",
     "uk_stage_hmrc_cgt_asset_type_spine_summary",
+    "uk_stage_cgt_incidence_anchor_composition",
     "uk_stage_salary_sacrifice_realization",
     "uk_stage_student_loans_realization",
     "uk_stage_age_tail_targets",

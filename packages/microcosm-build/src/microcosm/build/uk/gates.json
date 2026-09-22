@@ -398,6 +398,21 @@
       "notes": "Stage-time gate over the CGT asset-type receipt (microcosm#725): the logistic solve reproduces the Table 8a 2024-25 totals on the individuals basis in expectation, the realised residential taxpayer count sits within one carrier row's weight of the expectation (the weighted systematic walk's own bound, max_liable_weight, about 3,300 people at full scale), and the realised residential gains sit within the wider of the reviewed relative band and three Bernoulli sigmas of the draw (an envelope that overstates a systematic draw's noise, so conservative), so a small frame is judged by its noise floor and a production frame by the band. Every liable gainer carries an asset type and the Table 7 composition receipt is finite; the calibration binds the same two totals."
     },
     {
+      "id": "uk_stage_cgt_incidence_anchor_composition",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "cgt_incidence_anchor",
+        "check": "cgt_incidence_anchor",
+        "maximum_relative_composition_error": 1e-06,
+        "maximum_pair_relative_error": 0.0,
+        "minimum_pair_count": 1
+      },
+      "notes": "Stage-time gate over the CGT incidence anchor receipt (microcosm#970): the sub-exempt and loss-making clone groups sit at the reporter-composition targets derived from the redrawn liable mass whenever they were trimmed, never overshoot or gain mass, and stay untouched when already at or below target; liable clone mass is byte-identical before and after; every clone/original pair conserves its mass to floating-point rounding; the clone side never exceeds the original side; and at least one pair exists. The level is a modelling assumption (HMRC publishes no count below the exempt amount), so the gate fixes the anchor to its own declared composition rather than to a published target."
+    },
+    {
       "id": "uk_stage_salary_sacrifice_realization",
       "gate": "stage_health",
       "phase": "transferred",

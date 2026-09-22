@@ -2116,6 +2116,8 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "assign_residential_property_flag": 553,
         "assign_main_asset_type": 554,
     }
+    # The #970 incidence anchor is deterministic and consumes no seed.
+    assert "cgt_incidence_anchor" not in declared
     assert declared["salary_sacrifice"] == {
         "salary_sacrifice": 42,
         "salary_sacrifice_conversion": 2024,

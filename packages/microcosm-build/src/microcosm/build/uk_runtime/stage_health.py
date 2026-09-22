@@ -55,6 +55,8 @@ def uk_stage_health_gate(
         return _cgt_imputation_summary_gate(stage, evidence, parameters)
     if check == "cgt_asset_type_summary":
         return _cgt_asset_type_summary_gate(stage, evidence, parameters)
+    if check == "cgt_incidence_anchor":
+        return _cgt_incidence_anchor_gate(stage, evidence, parameters)
     if check == "latent_attribute_realization":
         return _latent_attribute_realization_gate(stage, evidence)
     if check == "household_composition":
@@ -952,6 +954,132 @@ def _cgt_asset_type_summary_gate(
             failures.append(f"{stage}: {name} gains share {value} is not a share.")
     details["residential_rows"] = residential.get("achieved_rows")
     details["classified_values"] = sorted(counts)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _cgt_incidence_anchor_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The anchor realised its reporter composition without touching anyone else.
+
+    The stage derives a target for the sub-exempt and loss-making clone mass
+    from the redrawn liable mass and the Advani-Summers composition, then
+    moves the excess to the paired originals. This gate holds each group to
+    its target when it was trimmed (never overshooting, never gaining mass,
+    untouched when it was already at or below target), the liable clone mass
+    to exactly its pre-anchor value, every pair's mass to rounding, and the
+    clone side to no more than the original side; the pairing must cover at
+    least ``minimum_pair_count`` households (microcosm#970).
+    """
+
+    check = "cgt_incidence_anchor"
+    failures: list[str] = []
+    max_relative = _finite_number(
+        parameters["maximum_relative_composition_error"],
+        label=f"{stage}.maximum_relative_composition_error",
+    )
+    max_pair_error = max(
+        _finite_number(
+            parameters["maximum_pair_relative_error"],
+            label=f"{stage}.maximum_pair_relative_error",
+        ),
+        _FLOAT_RELATIVE_TOLERANCE,
+    )
+    minimum_pairs = parameters["minimum_pair_count"]
+    if not isinstance(minimum_pairs, int) or isinstance(minimum_pairs, bool):
+        raise ValueError(f"{stage}.minimum_pair_count must be an integer.")
+    liable_mass = _finite_number(
+        evidence.get("liable_mass"), label=f"{stage}.liable_mass"
+    )
+    transferred = _finite_number(
+        evidence.get("transferred_mass"), label=f"{stage}.transferred_mass"
+    )
+    pair_error = _finite_number(
+        evidence.get("max_pair_relative_error"),
+        label=f"{stage}.max_pair_relative_error",
+    )
+    pair_count = evidence.get("pair_count")
+    if not isinstance(pair_count, int) or isinstance(pair_count, bool):
+        raise ValueError(f"{stage}.pair_count must be an integer.")
+    targets = _mapping(evidence.get("targets"), label=f"{stage}.targets")
+    before = _mapping(evidence.get("before"), label=f"{stage}.before")
+    after = _mapping(evidence.get("after"), label=f"{stage}.after")
+    mass = _mapping(
+        evidence.get("mass_by_clone_flag"), label=f"{stage}.mass_by_clone_flag"
+    )
+    details: dict[str, object] = {
+        "liable_mass": liable_mass,
+        "transferred_mass": transferred,
+        "pair_count": pair_count,
+        "max_pair_relative_error": pair_error,
+        "effective_pair_relative_tolerance": max_pair_error,
+    }
+    if liable_mass <= 0.0:
+        failures.append(f"{stage}: liable mass must be positive.")
+    if transferred < 0.0:
+        failures.append(f"{stage}: transferred mass must be non-negative.")
+    if pair_count < minimum_pairs:
+        failures.append(
+            f"{stage}: {pair_count} clone/original pairs is below the required "
+            f"{minimum_pairs}."
+        )
+    if pair_error > max_pair_error:
+        failures.append(
+            f"{stage}: pair mass error {pair_error} exceeds {max_pair_error}."
+        )
+    removed = 0.0
+    for group in ("sub_exempt", "loss"):
+        target = _finite_number(targets.get(group), label=f"{stage}.targets.{group}")
+        was = _finite_number(before.get(group), label=f"{stage}.before.{group}")
+        now = _finite_number(after.get(group), label=f"{stage}.after.{group}")
+        removed += was - now
+        details[f"{group}_target"] = target
+        details[f"{group}_before"] = was
+        details[f"{group}_after"] = now
+        if target <= 0.0:
+            failures.append(f"{stage}: {group} target must be positive.")
+            continue
+        if now > was * (1.0 + _FLOAT_RELATIVE_TOLERANCE):
+            failures.append(f"{stage}: {group} clone mass rose from {was} to {now}.")
+        if was > target:
+            error = abs(now - target) / target
+            details[f"{group}_relative_error"] = error
+            if error > max(max_relative, _FLOAT_RELATIVE_TOLERANCE):
+                failures.append(
+                    f"{stage}: {group} clone mass {now} misses its target {target} "
+                    f"by {error} (allowed {max_relative})."
+                )
+        elif not np.isclose(now, was, rtol=_FLOAT_RELATIVE_TOLERANCE, atol=0.0):
+            failures.append(
+                f"{stage}: {group} clone mass {was} was already at or below its "
+                f"target {target} but moved to {now}."
+            )
+    liable_before = _finite_number(before.get("liable"), label=f"{stage}.before.liable")
+    liable_after = _finite_number(after.get("liable"), label=f"{stage}.after.liable")
+    details["liable_clone_mass"] = liable_after
+    if liable_after != liable_before:
+        failures.append(
+            f"{stage}: liable clone mass moved from {liable_before} to {liable_after}."
+        )
+    if not np.isclose(removed, transferred, rtol=1e-9, atol=0.0):
+        failures.append(
+            f"{stage}: removed group mass {removed} disagrees with the transferred "
+            f"mass {transferred}."
+        )
+    original = _finite_number(mass.get("false"), label=f"{stage}.mass.false")
+    clone = _finite_number(mass.get("true"), label=f"{stage}.mass.true")
+    details["original_mass"] = original
+    details["clone_mass"] = clone
+    if clone > original * (1.0 + _FLOAT_RELATIVE_TOLERANCE):
+        failures.append(
+            f"{stage}: clone mass {clone} exceeds original mass {original}."
+        )
     return (
         _fail(stage, check, failures, details)
         if failures

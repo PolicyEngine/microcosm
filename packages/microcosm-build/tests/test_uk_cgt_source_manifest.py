@@ -185,9 +185,7 @@ def test_incidence_anchor_family_requires_its_conserving_receipt() -> None:
 
 def test_incidence_anchor_manifest_operations_match_the_stage_implementation() -> None:
     stage = load_country_spec("uk").sources.stage_map()[CGT_INCIDENCE_ANCHOR_STAGE_NAME]
-    declared = [
-        (operation.kind, dict(operation.parameters)) for operation in stage.operations
-    ]
+    declared = [(operation.kind, dict(operation.parameters)) for operation in stage.operations]
 
     assert declared == [
         (kind, dict(parameters))
@@ -200,6 +198,4 @@ def test_incidence_anchor_manifest_operations_match_the_stage_implementation() -
     assert roles["capital_gains_incidence_and_quantiles"]["resource"] == (
         ADVANI_SUMMERS_RESOURCE
     )
-    assert (
-        "gov.hmrc.cgt.annual_exempt_amount" in roles["policy_parameters"]["parameters"]
-    )
+    assert "gov.hmrc.cgt.annual_exempt_amount" in roles["policy_parameters"]["parameters"]

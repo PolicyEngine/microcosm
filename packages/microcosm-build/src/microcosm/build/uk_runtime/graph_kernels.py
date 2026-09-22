@@ -88,6 +88,7 @@ _STAGE_MODULES = {
     "uc_deduction_attributes": "uc_deduction_attributes",
     "cgt_incidence_clone": "cgt_structure",
     "cgt_band_donors": "cgt_structure",
+    "cgt_incidence_anchor": "cgt_structure",
     "hmrc_cgt_gains_spine": "cgt_imputation",
     "hmrc_cgt_asset_type_spine": "cgt_asset_type",
     "salary_sacrifice": "salary_sacrifice",
@@ -351,6 +352,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
     from .cgt_structure import (
         UKCGTBandDonorStageTransform,
+        UKCGTIncidenceAnchorStageTransform,
         UKCGTIncidenceCloneStageTransform,
     )
     from .etb_services import UKETBServicesStageTransform
@@ -515,6 +517,10 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "hmrc_cgt_asset_type_spine": UKCGTAssetTypeStageTransform(
                 stage=stages["hmrc_cgt_asset_type_spine"],
                 facts=cgt_asset_type_facts,
+                parameters=cgt_parameters,
+            ),
+            "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
+                stage=stages["cgt_incidence_anchor"],
                 parameters=cgt_parameters,
             ),
             "salary_sacrifice": UKSalarySacrificeStageTransform(
@@ -808,6 +814,16 @@ def _source_lineage(
     before_table = before.table(entity)
     after_table = after.table(entity)
     before_ids = pd.Index(before_table[id_column])
+    # A weights-only structural stage (the #970 incidence anchor) adds no
+    # row: every target is an incumbent, so the lineage is empty without
+    # walking the table row by row.
+    if pd.Index(after_table[id_column]).isin(before_ids).all():
+        return pd.Series(
+            [],
+            index=pd.Index([], name=id_column, dtype=before_table[id_column].dtype),
+            dtype=before_table[id_column].dtype,
+            name=id_column,
+        )
     targets: list[object] = []
     values: list[object] = []
     source_column = f"{entity}_source_id"
@@ -1007,6 +1023,7 @@ def build_uk_registry(
             "spi_support_channel",
             "cgt_incidence_clone",
             "cgt_band_donors",
+            "cgt_incidence_anchor",
         }:
             registry.register(UKExpandStageKernel(stage, transform, fixture_resolver))
         else:

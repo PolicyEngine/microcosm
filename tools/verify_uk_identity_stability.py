@@ -425,9 +425,12 @@ def e6_identity_receipt(
     # the later stage's receipt surface, not E6's; and every later stage that
     # redistributes mass leaves these rows carrying a fraction of the weight
     # E6 normalized against. Three layers stack today (SPI support channel,
-    # capital-gains clone, CGT band donors) and two of them move mass.
+    # capital-gains clone, CGT band donors) and two of them move mass: the
+    # SPI share is divided back out, the clone's mass (equal halves before
+    # the #970 anchor, pair-conserving afterwards) is folded back by pair.
     spine_mask = _unstacked_mask(household)
     if spine_mask is not None:
+        household["household_weight"] = _pre_clone_household_weights(frame)
         household = household.loc[spine_mask].reset_index(drop=True)
         spine_household_ids = set(household["household_id"].tolist())
         person = person.loc[
@@ -670,6 +673,112 @@ def e7_identity_receipt(
     }
 
 
+def _e8_clone_pairs(frame, problems: dict[str, object]) -> dict[str, object]:
+    """Check the clone/original pairs, before or after the #970 anchor.
+
+    Before the anchor both halves carry the same weight. After it (the
+    frame's mass log carries the anchor's record) each pair still sums to
+    its pre-clone weight, the clone side never exceeds the original, and the
+    anchor is recomputed from the reconstructed pre-anchor state (both halves
+    at half the pair sum, the clone stage's split up to its exact-total
+    correction) in original and reversed person order and compared with the
+    stored weights.
+    """
+
+    from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_policy_parameters
+    from microcosm.build.uk_runtime.cgt_structure import (
+        CGT_ANCHOR_MASS_CHANGE_REASON,
+        anchor_cgt_incidence,
+        load_advani_summers_distribution,
+        pair_clone_households,
+    )
+    from microcosm.build.uk_runtime.national_frame import (
+        uk_household_weight_kind,
+        uk_national_frame,
+    )
+    from microcosm.build.uk_runtime.spi_support import (
+        _importance_weights_with_exact_total,
+    )
+
+    person = frame.table("person")
+    benunit = frame.table("benunit")
+    household = frame.table("household")
+    weights = np.asarray(frame.weights_for("household").values, dtype=float)
+    anchor_records = [
+        index
+        for index, record in enumerate(frame.mass_log)
+        if record.reason == CGT_ANCHOR_MASS_CHANGE_REASON
+    ]
+    receipt: dict[str, object] = {"anchored": bool(anchor_records)}
+    try:
+        clone_positions, original_positions, _ = pair_clone_households(
+            person, benunit, household
+        )
+    except ValueError as error:
+        problems["clone_pairing"] = str(error)
+        return receipt
+    left = weights[original_positions]
+    right = weights[clone_positions]
+    receipt["pairs"] = int(len(clone_positions))
+    if not anchor_records:
+        if not np.allclose(left, right, rtol=1e-12, atol=1e-6):
+            problems["clone_pair_weights"] = int(
+                (~np.isclose(left, right, rtol=1e-12, atol=1e-6)).sum()
+            )
+        if not np.isclose(left.sum(), right.sum(), rtol=1e-12, atol=1e-6):
+            problems["clone_half_masses"] = [float(left.sum()), float(right.sum())]
+        return receipt
+    exceeds = right > left * (1.0 + 1e-12) + 1e-6
+    if exceeds.any():
+        problems["clone_exceeds_original"] = int(exceeds.sum())
+    pre = weights.copy()
+    halves = 0.5 * (left + right)
+    pre[original_positions] = halves
+    pre[clone_positions] = halves
+    exact = _importance_weights_with_exact_total(
+        pre, frame.weights_for("household").total
+    )
+    pre_frame = uk_national_frame(
+        person=person.copy(),
+        benunit=benunit.copy(),
+        household=household.copy(),
+        time_period=uk_time_period(frame),
+        weight_kind=uk_household_weight_kind(frame),
+        household_weights=exact.values,
+        mass_log=tuple(frame.mass_log[: anchor_records[0]]),
+    )
+    distribution = load_advani_summers_distribution()
+    parameters = uk_cgt_policy_parameters(uk_time_period(frame))
+    recomputed = anchor_cgt_incidence(
+        pre_frame, distribution=distribution, parameters=parameters
+    )
+    stored = pd.Series(weights, index=household["household_id"].to_numpy())
+
+    def by_household_id(result) -> np.ndarray:
+        return (
+            pd.Series(
+                result.frame.weights_for("household").values,
+                index=result.frame.table("household")["household_id"].to_numpy(),
+            )
+            .reindex(stored.index)
+            .to_numpy(dtype=float)
+        )
+
+    again = by_household_id(recomputed)
+    close = np.isclose(again, stored.to_numpy(), rtol=1e-9, atol=1e-6)
+    receipt["anchor_max_abs_weight_diff"] = float(np.abs(again - stored).max())
+    receipt["anchor_targets"] = dict(recomputed.targets)
+    receipt["anchor_after"] = dict(recomputed.after)
+    if not close.all():
+        problems["anchor_recompute"] = int((~close).sum())
+    permuted = anchor_cgt_incidence(
+        _reverse_rows(pre_frame), distribution=distribution, parameters=parameters
+    )
+    if not np.array_equal(by_household_id(permuted), again):
+        problems["anchor_permutation"] = True
+    return receipt
+
+
 def e8_identity_receipt(
     frame,
     *,
@@ -678,9 +787,12 @@ def e8_identity_receipt(
     """Receipt E8 deterministic layers under row permutation by entity id.
 
     Covered: (1) the clone-pair structure — the non-donor population splits
-    into equal-count original/clone halves whose paired household weights
-    agree to the exact-total correction tolerance and whose half-masses
-    match; (2) the CGT band-donor selection recomputed from the committed
+    into equal-count original/clone halves paired by the clone stage's id
+    offset; before the #970 anchor their paired weights agree to the
+    exact-total correction tolerance and their half-masses match, after it
+    the clone side never exceeds the original and the anchor recomputed
+    from the reconstructed pre-anchor halves reproduces the stored weights
+    in original and reversed person order; (2) the CGT band-donor selection recomputed from the committed
     resources over id-sorted candidates in original and permuted row order
     (set equality with the flagged donors, 30 donors per band, band-exact
     stored weights and carrier gains); (3) the student-loan plan column
@@ -729,15 +841,7 @@ def e8_identity_receipt(
     )
     if len(originals) != len(clones):
         problems["clone_half_counts"] = [len(originals), len(clones)]
-    else:
-        left = originals["household_weight"].to_numpy(dtype=float)
-        right = clones["household_weight"].to_numpy(dtype=float)
-        if not np.allclose(left, right, rtol=1e-12, atol=1e-6):
-            problems["clone_pair_weights"] = int(
-                (~np.isclose(left, right, rtol=1e-12, atol=1e-6)).sum()
-            )
-        if not np.isclose(left.sum(), right.sum(), rtol=1e-12, atol=1e-6):
-            problems["clone_half_masses"] = [float(left.sum()), float(right.sum())]
+    clone_pairs = _e8_clone_pairs(frame, problems)
 
     # (2) Band-donor selection recomputed from the committed resources.
     # Same contract as the E6 NHS check: age_tail now runs immediately after
@@ -871,7 +975,9 @@ def e8_identity_receipt(
         "identical_under_permutation": bool(
             "donor_selection_permutation" not in problems
             and "student_loan_plan_permutation" not in problems
+            and "anchor_permutation" not in problems
         ),
+        "clone_pairs": clone_pairs,
         "permutation_mismatches": {
             key: value
             for key, value in problems.items()
@@ -887,7 +993,9 @@ def e8_identity_receipt(
             if not key.endswith("_permutation")
         },
         "tolerance_policy": (
-            "clone-pair weights and half-masses: rtol 1e-12 / atol 1e-6 "
+            "anchored clone pairs: recomputed #970 anchor weights rtol 1e-9 / "
+            "atol 1e-6, reversed-order recompute exact; unanchored clone-pair "
+            "weights and half-masses: rtol 1e-12 / atol 1e-6 "
             "(the exact-total correction may move single weights by bit "
             "corrections); donor stored weights: rtol 1e-12 bitwise-class "
             "against published band taxpayers / 30; donor selection and "
@@ -1163,8 +1271,38 @@ _STACKED_ROW_FLAGS = (
 #: skews the comparison in the opposite direction.
 _MASS_STAGE_BY_FLAG = {
     "household_is_spi_synthetic": "spi_support_channel",
-    "household_is_capital_gains_clone": "cgt_incidence_clone",
 }
+
+
+def _pre_clone_household_weights(frame) -> np.ndarray:
+    """Household weights with each clone's mass folded back onto its original.
+
+    Before the #970 anchor both halves carry half the source weight; after it
+    the split varies per pair while the pair sum is still the pre-clone
+    weight (the anchor conserves every pair to rounding). Folding the clone
+    onto its original is therefore exact either way, where a uniform
+    ``mass_split`` divisor would be wrong after the anchor. An artifact
+    without the clone layer is returned unchanged; one with the clone flag
+    but no donor flag is treated as carrying no donors.
+    """
+
+    from microcosm.build.uk_runtime.cgt_structure import (
+        HOUSEHOLD_IS_CGT_BAND_DONOR,
+        HOUSEHOLD_IS_CGT_CLONE,
+        pair_clone_households,
+    )
+
+    household = frame.table("household")
+    weights = np.asarray(frame.weights_for("household").values, dtype=float).copy()
+    if HOUSEHOLD_IS_CGT_CLONE not in household.columns:
+        return weights
+    if HOUSEHOLD_IS_CGT_BAND_DONOR not in household.columns:
+        household = household.assign(**{HOUSEHOLD_IS_CGT_BAND_DONOR: False})
+    clone_positions, original_positions, _ = pair_clone_households(
+        frame.table("person"), frame.table("benunit"), household
+    )
+    weights[original_positions] += weights[clone_positions]
+    return weights
 
 
 def _unstacked_mask(household: pd.DataFrame):
@@ -1186,12 +1324,13 @@ def _stage_time_weight_divisor(*, after_stages: Sequence[str]) -> float:
     allocation's budget normalization is absolute, not relative — must divide
     that back out or it compares against a different grossing scale.
 
-    On the E8 roster two stages do this: `spi_support_channel` reserves
-    ``share`` of prior mass for the synthetic channel, and
-    `cgt_incidence_clone` splits each household's weight across its copies by
-    ``mass_split``. Both factors are read from the declared operations rather
-    than hardcoded, so a change to either is picked up automatically; a *new*
-    mass-redistributing op kind still has to be added here.
+    On the E8 roster one stage does this uniformly: `spi_support_channel`
+    reserves ``share`` of prior mass for the synthetic channel. The factor
+    is read from the declared operation rather than hardcoded, so a change
+    is picked up automatically; a *new* uniform mass-redistributing op kind
+    still has to be added here. The capital-gains clone is not uniform once
+    the #970 anchor has run, so its mass is restored by pair sum instead
+    (``_pre_clone_household_weights``).
 
     ``after_stages`` names only the stages that actually ran in the artifact
     under receipt — see ``_MASS_STAGE_BY_FLAG``. Deriving it from the
@@ -1216,8 +1355,6 @@ def _stage_time_weight_divisor(*, after_stages: Sequence[str]) -> float:
             kind = operation.get("kind")
             if kind == "allocate_zero_weight_prior_mass":
                 divisor *= 1.0 - float(operation["share"])
-            elif kind == "clone_records":
-                divisor *= float(operation["mass_split"])
     if divisor <= 0.0:
         raise ValueError(
             "stage-time weight divisor collapsed to zero; the declared mass "
@@ -1230,7 +1367,9 @@ def _frs_only_frame(frame):
     """Scope the artifact to the unstacked survey rows (raw FRS only).
 
     On the E8 roster this leaves the 16,288 raw FRS households, which is the
-    population the pre-stacking stages actually drew for.
+    population the pre-stacking stages actually drew for. Their weights fold
+    each clone back onto its original, exact before and after the #970
+    anchor.
     """
 
     from microcosm.build.uk_runtime.national_frame import (
@@ -1244,7 +1383,7 @@ def _frs_only_frame(frame):
         return frame
     stacked = household[flags].astype(bool).any(axis=1)
     keep = ~stacked
-    weights = frame.weights_for("household").values[keep.to_numpy()]
+    weights = _pre_clone_household_weights(frame)[keep.to_numpy()]
     household = household.loc[keep].reset_index(drop=True)
     ids = set(household["household_id"].tolist())
     person = (
