@@ -84,3 +84,7 @@ components (287,024 rows). No compiled value moved on either surface: the nation
 reference files are byte-identical, the vendored resources carry the same rows, and the three
 compile-parity receipts are unchanged; the NTS0705a bus-trips vendor selection is pinned to its
 income-quintile dimension because the #275 facts share its concepts. The compiled register version moves (`d131ebf617e3` to `4b2dc4698207`) on display metadata alone: eleven region-tier specs carry the v4 spelling in `ledger_geography_name` and `ledger_fact_label` (Yorkshire and The Humber; the East of England label), so the frozen scoring register in uk-candidate-eval needs a re-freeze before the next national solve.
+The pin then moved to `5324aa2`, Chronicle main after PR #284 (the validator fix the v4 export
+needed: `build-consumer-artifact` at `00b4b14` refused every renamed-geography row). The export
+re-run at the fix from the same suite bundle is byte-identical (287,024 rows, the same digests), so
+only the commit and the feed label move: no value, row or receipt changes.

@@ -15,7 +15,7 @@ def test_national_feed_records_the_complete_merged_source_artifact():
     pin = load_uk_chronicle_feed()
     resource = files("microcosm.build.uk").joinpath("chronicle_feed.json")
     raw = resource.read_bytes()
-    assert pin.source_commit == "00b4b14ad0e98d86dfc4c76562f9974fbded2b57"
+    assert pin.source_commit == "5324aa27a7698eef97b38a7924a36b3a1f97c137"
     assert pin.source_repo == "PolicyEngine/chronicle"
     assert pin.fact_row_count == 287024
     assert pin.facts_sha256 == (
