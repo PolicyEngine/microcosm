@@ -2,6 +2,8 @@
 
 Branch `us-labelled-filter-support`, stacked on PolicyEngine/microcosm#955
 (`us-chronicle-feed-repin`). Draft PR: PolicyEngine/microcosm#969.
+(2026-09-22: #955 merged into `main` at `6710d0f5f`; this branch is now
+re-levelled on `main` and #969 targets `main`. See section 8.)
 
 ## 1. What I read
 
@@ -162,6 +164,8 @@ RUFF_FORMAT_EXIT=0
 
 No attested spec-engine module was touched, so no identity pin moves.
 
+(Historical, 2026-09-22: true while #969 was based on
+`us-chronicle-feed-repin`; it now targets `main`, so CI runs. See section 8.)
 **PR CI does not run on this stack.** `.github/workflows/test.yml` and
 `.github/workflows/integration-tests.yml` are both
 `pull_request: branches: [main]`, so a PR based on `us-chronicle-feed-repin`
@@ -384,3 +388,56 @@ supported/identity classification was reviewed against, and the fixture
 the arm that meets the restated keys — before the re-level it passed over a
 feed carrying none, and now it passes over 31,066 real specs of which 1,988
 carry one.
+
+## 8. 2026-09-22: re-levelled on `main` after #955 merged
+
+#955 merged into `main` at `6710d0f5f`. `origin/main` was merged into this
+branch as `b10e117a0` with no conflicts
+(`tools/build_us_fiscal_refresh_release.py` and
+`packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py` changed on
+both sides and auto-merged), and #969 was retargeted to `main`. Against
+`origin/main` the branch now differs in six files: this report, the census
+script, the fixture, the changelog fragment, the test module, and
+`tools/build_us_fiscal_refresh_release.py`, where the difference is the rule,
+its constants, one docstring and the two call sites. No `packages/*/src` file
+differs from `main`, so the compile measured below is `main`'s.
+
+### The counts at `b10e117a0`
+
+Same functions as section 7:
+`compile_us_fiscal_target_registry(..., age_targets=True)` for the whole
+registry, `state_admin_specs(feed, ["snap","medicaid","soi"], soi_mode=...)`
+for the state surface, refusals from `_unsupported_ledger_filter_metadata`,
+silent skips from `_unsupported_soi_ledger_filters` over `irs_soi` specs. The
+reverted arm replaces `_restated_ledger_filter_refusal` with a function that
+returns the bare key. That is the pre-rule behaviour of both call sites, and
+so `main`'s.
+
+Both US exports on this machine gave identical counts: the pinned
+`consumer_facts_us_c5e5bf8.jsonl` (facts sha256 `b8543739…`, equal to the
+`facts_sha256` in `packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json`)
+and `chronicle_us_b571381/artifact/consumer_facts.jsonl` (`4d1dba8c…`).
+
+| Surface | Targets | Refused, rule | SOI skips, rule | Refused, reverted (`main`) | SOI skips, reverted |
+|---|---:|---:|---:|---:|---:|
+| Whole compiled registry | 32,866 | 939 | 0 | 3,208 | 2,269 |
+| State surface, `soi_mode="full"` | 31,066 | **0** | 0 | **1,988** | 1,988 |
+| State surface, `soi_mode="totals"` | 760 | 0 | 0 | 0 | 0 |
+
+With the rule reverted, the 1,988 state-surface refusals carry 2,702 entries
+(`…earned_income_credit_qualifying_children_lower_bound` 1,076,
+`…adjusted_gross_income_lower_bound` 816,
+`…adjusted_gross_income_upper_bound` 810), all on
+`irs_soi|soi_fiscal_distribution`. The whole registry's 3,208 split
+`irs_soi|soi_fiscal_distribution` 2,269, `census_population|population_age`
+936 and `ssa|ssa_ssi_age_band_recipients` 3. With the rule, the 939 left are
+section 7's age-band restatements (`ledger_filter_age_lower_bound` on 939
+targets, `ledger_filter_age_upper_bound` on 886).
+
+Every number equals section 7's, which stands unchanged. The only new
+observation is that the `b571381` export gives the pinned feed's counts on this
+tree too; section 5 had compared the two exports only on the pre-merge tree.
+
+`test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters`
+ran against the pinned feed rather than skipping, and the module passed:
+245 tests, exit 0.
