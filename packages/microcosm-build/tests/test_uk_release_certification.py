@@ -42,6 +42,7 @@ def _load_fixture_module():
 _FIXTURES = _load_fixture_module()
 _TEST_KEY = _FIXTURES.TEST_KEY
 _green_certification_inputs_fixture = _FIXTURES.green_certification_inputs
+green_score_receipt = _FIXTURES.green_score_receipt
 _signing_key_fixture = _FIXTURES.signing_key
 _sha = _FIXTURES.sha256
 _stub_registry = _FIXTURES.stub_registry
@@ -285,6 +286,125 @@ def test_compose_refuses_score_receipt_scored_on_another_artifact(
         compose_uk_release_certification(**green_certification_inputs)
 
 
+def test_compose_refuses_a_score_receipt_whose_verdict_is_not_passed(
+    green_certification_inputs,
+):
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    receipt["evaluation"]["verdict"] = "failed"
+    receipt["evaluation"]["rule_1"]["passed"] = False
+    green_certification_inputs["score_receipt_path"].write_text(
+        json.dumps(receipt), encoding="utf-8"
+    )
+    with pytest.raises(UKReleaseCertificationError, match="verdict is 'failed'"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_a_score_receipt_without_an_evaluation(
+    green_certification_inputs,
+):
+    # A receipt from the strict scorer carries the cross-pin but no verdict:
+    # rule 1 was never decided on a closed surface, so it cannot certify.
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    del receipt["evaluation"]
+    green_certification_inputs["score_receipt_path"].write_text(
+        json.dumps(receipt), encoding="utf-8"
+    )
+    with pytest.raises(UKReleaseCertificationError, match="no evaluation block"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_a_score_receipt_whose_surface_does_not_close(
+    green_certification_inputs,
+):
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    receipt["evaluation"]["scored_surface"]["n_pruned"] = 5
+    green_certification_inputs["score_receipt_path"].write_text(
+        json.dumps(receipt), encoding="utf-8"
+    )
+    with pytest.raises(UKReleaseCertificationError, match="does not close"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_a_score_receipt_pruned_through_an_unlisted_measure(
+    green_certification_inputs,
+):
+    """Pruning from both arms is doctrine: a measure the scorer pruned must
+    carry a signed entry on the reviewed incumbent-unresolvable register."""
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    receipt["incumbent_unresolvable_pruned"].update(
+        {"n_pruned": 1, "n_scored": 306, "measures": ["benunit.not_reviewed"]}
+    )
+    receipt["evaluation"]["scored_surface"].update({"n_pruned": 1, "n_scored": 306})
+    green_certification_inputs["score_receipt_path"].write_text(
+        json.dumps(receipt), encoding="utf-8"
+    )
+    with pytest.raises(UKReleaseCertificationError, match="not on the reviewed"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+    from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
+
+    def _listed(approved_on: str, expires_on: str):
+        return {
+            "benunit.not_reviewed": UKReviewedExclusion(
+                reason="the incumbent never carried it",
+                approved_by="juaristi22",
+                adjudication="microcosm#823 (test)",
+                approved_on=approved_on,
+                expires_on=expires_on,
+            )
+        }
+
+    # In force on the certification's evaluation date (2026-08-27): accepted.
+    compose_uk_release_certification(
+        **green_certification_inputs,
+        reviewed_unresolvable_measures=_listed("2026-08-01", "2027-03-01"),
+    )
+    # The same receipt does not outlive the entry: expired or not yet in
+    # force on the evaluation date refuses (review finding A2).
+    with pytest.raises(UKReleaseCertificationError, match="expired 2026-08-20"):
+        compose_uk_release_certification(
+            **green_certification_inputs,
+            reviewed_unresolvable_measures=_listed("2026-08-01", "2026-08-20"),
+        )
+    with pytest.raises(UKReleaseCertificationError, match="takes force 2026-09-01"):
+        compose_uk_release_certification(
+            **green_certification_inputs,
+            reviewed_unresolvable_measures=_listed("2026-09-01", "2027-03-01"),
+        )
+
+
+def test_compose_refuses_a_spine_that_is_not_the_recorded_parent(
+    green_certification_inputs,
+):
+    """The spine is stage evidence; it must be the parent the calibration
+    consumed, not whatever spine pins correctly at the path (review C1)."""
+    green_certification_inputs["spine_sha256"] = "b" * 64
+    with pytest.raises(UKReleaseCertificationError, match="not the parent"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_a_build_record_without_a_recorded_parent(
+    green_certification_inputs,
+):
+    del green_certification_inputs["build_record"]["input_posture"]
+    with pytest.raises(UKReleaseCertificationError, match="not the parent"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_certification_summarises_the_score_receipt_verdict(
+    green_certification_inputs,
+):
+    certification = compose_uk_release_certification(**green_certification_inputs)
+    assert certification["score_receipt"]["evaluation"] == {
+        "verdict": "passed",
+        "n_scored": 307,
+        "n_pruned": 0,
+        "n_surface": 307,
+        "candidate_full_loss": 0.0096,
+        "incumbent_full_loss": 0.211,
+    }
+
+
 def test_compose_refuses_absent_signing_key(green_certification_inputs, monkeypatch):
     monkeypatch.delenv(gate_signing_key_env("uk"))
     with pytest.raises(UKReleaseCertificationError, match="must be set"):
@@ -312,6 +432,7 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
         input_mass_reference={},
         exclusions_evaluated_on=date(2026, 8, 27),
         gate_registry=_stub_registry(),
+        spine_frame=object(),
     )
     assert payload["posture"] == "release_cut"
     assert payload["release_candidate"] is True
@@ -325,3 +446,49 @@ def test_release_cut_battery_runs_and_signs(tmp_path: Path, monkeypatch):
     ) - set(UK_NATIONAL_GATE_SCOPE)
     on_disk = json.loads(report_path.read_text(encoding="utf-8"))
     assert on_disk["attestation"]["signature"] == payload["attestation"]["signature"]
+
+
+def test_certification_fields_mirror_the_data_contract(green_certification_inputs):
+    """The composed certification carries exactly the field set the data
+    contract pins (lockstep: a field added on one side moves the other)."""
+    from microcosm.data import contract as data_contract
+
+    certification = compose_uk_release_certification(**green_certification_inputs)
+    assert set(certification) == set(data_contract._UK_CERTIFICATION_REQUIRED_FIELDS)
+    assert certification["parent_spine"] == {
+        "sha256": green_certification_inputs["spine_sha256"]
+    }
+
+
+def test_compose_refuses_a_receipt_scored_under_another_register(
+    green_certification_inputs,
+):
+    """Against the committed register of record, the receipt's register
+    digest must be the committed one (review A2, second half)."""
+    from datetime import date
+
+    from microcosm.build.uk_runtime.candidate_score import (
+        load_uk_incumbent_unresolvable_measures,
+        uk_incumbent_unresolvable_register_digest,
+    )
+
+    measure = sorted(load_uk_incumbent_unresolvable_measures())[0]
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    receipt["incumbent_unresolvable_pruned"].update(
+        {"n_pruned": 1, "n_scored": 306, "measures": [measure]}
+    )
+    receipt["incumbent_unresolvable_pruned"]["reviewed_register"]["sha256"] = "0" * 64
+    receipt["evaluation"]["scored_surface"].update({"n_pruned": 1, "n_scored": 306})
+    path = green_certification_inputs["score_receipt_path"]
+    path.write_text(json.dumps(receipt), encoding="utf-8")
+    # Inside the committed entries' window (they take force 2026-09-22).
+    green_certification_inputs["exclusions_evaluated_on"] = date(2026, 10, 1)
+    with pytest.raises(UKReleaseCertificationError, match="not the committed register"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+    receipt["incumbent_unresolvable_pruned"]["reviewed_register"]["sha256"] = (
+        uk_incumbent_unresolvable_register_digest()["sha256"]
+    )
+    path.write_text(json.dumps(receipt), encoding="utf-8")
+    certification = compose_uk_release_certification(**green_certification_inputs)
+    assert certification["score_receipt"]["evaluation"]["n_pruned"] == 1

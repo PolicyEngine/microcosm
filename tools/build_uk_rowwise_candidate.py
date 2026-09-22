@@ -4706,7 +4706,7 @@ def _evaluate_against_incumbent(
             incumbent_sha256=incumbent["sha256"],
             target_registry=inputs["national_registry"],
             calibration_year=calibration_year,
-            measure_resolver_factory=module._default_measure_resolver_factory(
+            measure_resolver_factory=module.uk_default_measure_resolver_factory(
                 out_dir, calibration_year
             ),
             candidate_label=output_paths["dataset"].stem,

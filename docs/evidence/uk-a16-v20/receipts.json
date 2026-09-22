@@ -1,0 +1,34 @@
+{
+  "purpose": "Receipts for the 2026-09-21 A16 retirements on PR #967 (microcosm#796 register discipline): the calibration measure-exclusion rows measured on the v20 national candidate at calibrated weights that never solved toward them. Aggregates only; no household rows.",
+  "date": "2026-09-21",
+  "measured_by": "scripts/measure_a16_rows_on_candidate.py (non-runnable copy from the private evaluation stack, uk-candidate-eval; run from a microcosm tree with uv run --no-sync)",
+  "candidate": {
+    "label": "v20 national (spine-s, feed c5e5bf8, 1,500 epochs, family_equal, learning rate 0.02, seed 0)",
+    "path": "/Users/mariajuaristi/Desktop/PolicyEngine/runs/uk-623-first-calibrated/spine-assessment-v20/microcosm_uk_2024.h5",
+    "sha256": "8883e59256792525afcff2fe17af7f659ba3982cd0ac7a95a4005bac5ee7b389",
+    "bytes": 176040337,
+    "time_period": 2024
+  },
+  "contract_register": {
+    "path": "/Users/mariajuaristi/Desktop/PolicyEngine/repos/uk-candidate-eval/out/frozen_scoring_register.json",
+    "n_specs": 705,
+    "note": "the full compiled contract register the evaluation stack freezes for scoring (every packaged reference, exclusions included), resolved and scored on the candidate's calibrated weights"
+  },
+  "files": {
+    "outputs/a16_rows_on_v20.json": {
+      "sha256": "ef8836a7deb4b82ca9d83e0d1d50b8d1ab86edf095b082e0f0593de8eac3468a",
+      "bytes": 17147
+    },
+    "scripts/measure_a16_rows_on_candidate.py": {
+      "sha256": "a088459fd4d12b100c7e74b198175c4c8441493371d4dab638df0388084bd2fb",
+      "bytes": 5884,
+      "note": "digest of the copy as taken from the evaluation stack, before the repository's formatter"
+    }
+  },
+  "summary": {
+    "excluded_entries": 67,
+    "measured": 62,
+    "unresolvable_on_candidate": 5,
+    "within_25pct": 10
+  }
+}

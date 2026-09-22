@@ -466,6 +466,7 @@ def prepare_uk_target_frame(
     *,
     period: int | str,
     measure_resolver: object | None,
+    band_edge_registry: TargetRegistry | None = None,
 ) -> tuple[Frame, Mapping[str, Any] | None]:
     """Materialize a registry's measures onto a frame, for scoring.
 
@@ -475,6 +476,15 @@ def prepare_uk_target_frame(
     measure that calibration deliberately strips before export. A skipped
     target refuses rather than quietly shrinking the surface both sides are
     compared on.
+
+    ``band_edge_registry`` carries the full compiled contract register when
+    ``registry`` is a pruned scoring surface, so banded fan-out edges come
+    from the compiled roster exactly as they do in the calibration stage
+    (#803) — a pruned surface must never redraw its own band edges. Injected
+    measure-input columns are dropped after materialization, mirroring the
+    stage: cross-grain measures (a person-grain and a household-grain target
+    sharing one measure name since the region fan-out) would otherwise
+    violate the prepared frame's global-column-uniqueness rule.
     """
 
     resolution = None
@@ -484,15 +494,25 @@ def prepare_uk_target_frame(
             registry,
             measure_resolver,
             period=period,
+            band_edge_registry=band_edge_registry,
         )
     adapter = CalibrationFrameAdapter(frame)
+    original_columns = {
+        entity: set(table.columns) for entity, table in adapter.tables.items()
+    }
     if resolution is not None:
         inject_measure_inputs(adapter, resolution.measure_inputs)
-    materialized = materialize_uk_ledger_targets(adapter, registry, period=period)
+    materialized = materialize_uk_ledger_targets(
+        adapter, registry, period=period, band_edge_registry=band_edge_registry
+    )
     if materialized.skipped:
         raise RuntimeError(
             "target measures did not materialize for scoring: "
             f"{[skip.__dict__ for skip in materialized.skipped]}."
+        )
+    if resolution is not None:
+        drop_injected_measure_inputs(
+            adapter, resolution.measure_inputs, original_columns
         )
     return adapter.prepared_frame(), (
         None if resolution is None else dict(resolution.receipt)

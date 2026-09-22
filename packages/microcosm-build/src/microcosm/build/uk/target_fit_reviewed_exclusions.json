@@ -1,5 +1,13 @@
 {
   "schema_version": 2,
   "description": "Reviewed target-fit exclusions for the UK terminal battery (schema 2 per #610). Each entry defers one calibration target whose |relative error| breaches the 25% release bound, with the defect diagnosed, tracked, and owned elsewhere; the receipt records the reasoning, approver, adjudication reference, approval date, and expiry. The gate keeps the target BOUND in calibration (exclusion applies to the release fence only, never the solve), reports dormant entries, FAILS stale ones (targets back inside the bound), and FAILS expired ones until the adjudication is renewed, so this register cannot rot.",
-  "exclusions": {}
+  "exclusions": {
+    "hmrc/self_employment_income_income_band_20_000_to_30_000@2025": {
+      "reason": "Calibration-competition regression from the 2026-09-18 surface expansion, not a data defect: spine-s IMPROVED this cell's raw error (+10.6% on spine-m to +6.4%), the SPI 15.7bn target is unchanged, and the 638-target solve (region-grain fan-out #906: 108 age-by-region cells, 24 regional CGT rows, regional council-tax stock; CGT bands #939) pushed the band +6.4% -> +25.3% where v18's 364-target solve left it at +10.5%. The 30_000_to_40_000 neighbour shows the same signature inside the bound (+17.5%) and every other self_employment band fits within 0.2%; no aggregate self_employment_income anchor exists to hold banded mass against the regional reshuffle. Deferred four weeks to unblock the first post-#906/#939 national line while the anchor/loss-weight fix is scoped.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#796",
+      "approved_on": "2026-09-18",
+      "expires_on": "2026-10-16"
+    }
+  }
 }

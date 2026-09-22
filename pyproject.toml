@@ -25,6 +25,10 @@ ignore = ["E501"]
 # defaults before numpy/torch load, which requires statements above the
 # import block.
 "tools/build_us_fiscal_refresh_release.py" = ["E402"]
+# Evidence scripts are frozen receipts of one-off measurements: formatted and
+# import-sorted, but their logic stays exactly as it produced the committed
+# outputs, so style rules that would edit that logic are waived.
+"docs/evidence/*/scripts/*.py" = ["B023", "B905", "E402", "E731", "N806"]
 
 [tool.ruff.lint.isort]
 # microcosm is a PEP 420 namespace package (no top-level __init__.py), so

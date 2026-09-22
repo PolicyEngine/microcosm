@@ -677,6 +677,29 @@ def _collect_stage_evidence(
     return evidence_by_stage
 
 
+def _fit_weight_hook_holder(implementation: object) -> object | None:
+    """The object declaring ``fit_weight_records``, seen through the proxies.
+
+    Detects the hook without evaluating it (a raising property must count as
+    a fitting stage with unreadable records, not vanish), and looks through
+    the wrappers a staged run puts around every stage: ``ObservedTransform``
+    (telemetry) and the graph's source transform both proxy attribute reads
+    through ``__getattr__``, which a class-level probe never consults — so
+    every telemetry-enabled spine since the graph driver silently lost the
+    block and the release-cut weights audit found no evidence.
+    """
+
+    seen: set[int] = set()
+    candidate: object | None = implementation
+    while candidate is not None and id(candidate) not in seen:
+        seen.add(id(candidate))
+        declared = getattr(type(candidate), "fit_weight_records", None) is not None
+        if declared or "fit_weight_records" in getattr(candidate, "__dict__", {}):
+            return candidate
+        candidate = getattr(candidate, "__dict__", {}).get("transform")
+    return None
+
+
 def _collect_fit_weight_records(
     *,
     stage_names: Sequence[str],
@@ -700,15 +723,11 @@ def _collect_fit_weight_records(
         implementation = implementations.get(stage_name)
         if implementation is None:
             continue
-        # Detect the hook without evaluating it: a raising property must
-        # count as a fitting stage with unreadable records, not vanish.
-        exposes_records = getattr(
-            type(implementation), "fit_weight_records", None
-        ) is not None or "fit_weight_records" in getattr(implementation, "__dict__", {})
-        if not exposes_records:
+        holder = _fit_weight_hook_holder(implementation)
+        if holder is None:
             continue
         try:
-            records = tuple(implementation.fit_weight_records or ())
+            records = tuple(holder.fit_weight_records or ())
         except Exception:  # noqa: BLE001 - unreadable records fail the audit
             records_by_stage[stage_name] = []
             continue
