@@ -133,6 +133,16 @@ BAND_IDS: tuple[str, ...] = (
 NON_USER_BAND = 0
 MAX_BAND = len(BAND_IDS) - 1
 BAND_SALT_QUANTILE = "nts_bus_use_band_quantile"
+#: How the declared trip weight relates to the household weight: ``trip_only``
+#: is a within-household factor (multiply by it), ``household_and_trip`` is the
+#: NTS W5 trip weight that already carries the diary household weight W2, so a
+#: person's counted trips are divided by W2 before the W2-weighted mean (the
+#: user guide's 52.14 x sum(JJXSC x W5) / sum(W2)).
+TRIP_WEIGHT_TRIP_ONLY = "trip_only"
+TRIP_WEIGHT_HOUSEHOLD_AND_TRIP = "household_and_trip"
+TRIP_WEIGHT_BASES: frozenset[str] = frozenset(
+    {TRIP_WEIGHT_TRIP_ONLY, TRIP_WEIGHT_HOUSEHOLD_AND_TRIP}
+)
 BAND_SALT_SIGN = "nts_bus_use_band_sign"
 WEEKS_IN_YEAR = 52.14
 LONDON_GROUP = "london"
@@ -195,6 +205,8 @@ class NTSColumns:
     london_region_code: int
     income_band_codes: Mapping[int, int]
     age_band_edges: tuple[int, ...]
+    age_band_codes: Mapping[int, int]
+    trip_weight_basis: str
     female_code: int
     mode_codes: Mapping[str, int]
     frequency_codes: Mapping[int, int]
@@ -250,6 +262,23 @@ class NTSColumns:
             raise NTSBusTravelError(
                 "age_band_edges must be an ascending list of lower bounds starting at 0."
             )
+        age_band_codes = {
+            int(code): int(lower)
+            for code, lower in _mapping(codes.get("age_band"), "codes.age_band").items()
+        }
+        if not age_band_codes or min(age_band_codes.values()) != 0:
+            raise NTSBusTravelError(
+                "codes.age_band must map every NTS age-band code to the band's "
+                "lower age in years, the youngest band to 0."
+            )
+        trip_weight_basis = str(
+            parameters.get("trip_weight_basis", TRIP_WEIGHT_TRIP_ONLY)
+        )
+        if trip_weight_basis not in TRIP_WEIGHT_BASES:
+            raise NTSBusTravelError(
+                f"trip_weight_basis must be one of {sorted(TRIP_WEIGHT_BASES)}, "
+                f"got {trip_weight_basis!r}."
+            )
         mode_codes = {
             str(series): int(code)
             for series, code in _mapping(
@@ -295,6 +324,8 @@ class NTSColumns:
             london_region_code=int(london[0]),
             income_band_codes=income_codes,
             age_band_edges=edges,
+            age_band_codes=age_band_codes,
+            trip_weight_basis=trip_weight_basis,
             female_code=int(codes.get("female", 2)),
             mode_codes=mode_codes,
             frequency_codes=frequency_codes,
@@ -405,6 +436,7 @@ def clean_nts_travel_tables(
             f"NTS household table has no rows for survey years {columns.survey_years}."
         )
     weight = pd.to_numeric(hh[columns.household_weight], errors="coerce")
+    households_zero_weight = int((~(weight.notna() & (weight > 0))).sum())
     hh = hh.loc[weight.notna() & (weight > 0)].copy()
     region_code = pd.to_numeric(hh[columns.region], errors="coerce")
     region = region_code.map(columns.region_codes)
@@ -451,21 +483,26 @@ def clean_nts_travel_tables(
     ]
     person = person.merge(hh_keep, on=columns.household_id, how="inner")
     age_code = pd.to_numeric(person[columns.age_band], errors="coerce")
-    # The NTS band code is 1-based and ordered like the declared edges.
-    person["age_band"] = (age_code - 1).clip(
-        lower=0, upper=len(columns.age_band_edges) - 1
+    # The NTS band code maps to the band's lower age through the declared
+    # codebook; the declared edges then band donor and recipient alike.
+    age_lower = age_code.map(columns.age_band_codes)
+    persons_unmapped_age = int(age_lower.isna().sum())
+    person = person.loc[age_lower.notna()].copy()
+    person["age_lower"] = age_lower.loc[person.index].astype(float)
+    person["age_band"] = age_band_ordinal(
+        person["age_lower"].to_numpy(), columns.age_band_edges
     )
-    person = person.loc[age_code.notna()].copy()
-    person["age_band"] = person["age_band"].astype(np.int64)
     sex = pd.to_numeric(person[columns.sex], errors="coerce")
     person["is_female"] = (sex == columns.female_code).astype(np.int64)
     frequency_source = FREQUENCY_SOURCE_PUBLISHED_SHARES
+    persons_unmapped_frequency = 0
     if columns.frequency is not None and columns.frequency in ind.columns:
         freq = pd.to_numeric(
             ind.set_index(columns.individual_id)[columns.frequency], errors="coerce"
         )
         band = person[columns.individual_id].map(freq).map(columns.frequency_codes)
         known = band.notna()
+        persons_unmapped_frequency = int((~known).sum())
         person = person.loc[known].copy()
         person[BAND_COLUMN] = band.loc[person.index].astype(np.int64)
         frequency_source = FREQUENCY_SOURCE_INTERVIEW
@@ -477,6 +514,13 @@ def clean_nts_travel_tables(
         tr[columns.short_walk_multiplier], errors="coerce"
     ).fillna(0.0)
     counted = trip_weight * multiplier
+    if columns.trip_weight_basis == TRIP_WEIGHT_HOUSEHOLD_AND_TRIP:
+        # W5 carries W2: divide it out so the W2-weighted person mean below
+        # reproduces the publisher's sum(JJXSC x W5) / sum(W2).
+        household_weight = tr[columns.individual_id].map(
+            person.set_index(columns.individual_id)["weight"]
+        )
+        counted = counted / household_weight.to_numpy(dtype=float)
     for series in SERIES:
         code = columns.mode_codes[series]
         per_person = (
@@ -506,6 +550,7 @@ def clean_nts_travel_tables(
         "region",
         "residence_group",
         "age_band",
+        "age_lower",
         "is_female",
         "num_vehicles",
         "household_size",
@@ -527,8 +572,13 @@ def clean_nts_travel_tables(
         "weighted_persons": float(person["weight"].sum()),
         "households_unmapped_region": unmapped,
         "households_missing_income_band": income_missing,
+        "households_zero_weight": households_zero_weight,
+        "persons_unmapped_age": persons_unmapped_age,
+        "persons_unmapped_frequency": persons_unmapped_frequency,
         "frequency_source": frequency_source,
         "frequency_column": columns.frequency,
+        "trip_weight_column": columns.trip_weight,
+        "trip_weight_basis": columns.trip_weight_basis,
         "annualisation_weeks": WEEKS_IN_YEAR,
         "trips_per_person": {
             series: float(np.average(person[column], weights=person["weight"]))
@@ -536,6 +586,24 @@ def clean_nts_travel_tables(
         },
     }
     return NTSDonor(person=person, frequency_source=frequency_source, receipt=receipt)
+
+
+def nts_support_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
+    """Per-column donor min/max of the support-clip columns (the E6 bounds input).
+
+    The band range is the declared ordinal range; the trips are the cleaned
+    donor persons' annual diary trips per series and in total.
+    """
+
+    ranges: dict[str, tuple[float, float]] = {
+        BAND_COLUMN: (float(NON_USER_BAND), float(MAX_BAND))
+    }
+    for column in UK_NTS_SUPPORT_CLIP_COLUMNS:
+        if column == BAND_COLUMN:
+            continue
+        values = donor[column].to_numpy(dtype=float)
+        ranges[column] = (float(values.min()), float(values.max()))
+    return ranges
 
 
 # --------------------------------------------------------------------------
@@ -1235,9 +1303,7 @@ class UKNTSBusTravelStageTransform:
         # Donor-side eligible share of trips per series (the fare-paying share
         # the pricing step reads beside the publisher's concessionary share).
         donor_regions = donor.person["region"].to_numpy().astype(str)
-        donor_ages = _band_lower_ages(
-            donor.person["age_band"].to_numpy(), columns.age_band_edges
-        )
+        donor_ages = donor.person["age_lower"].to_numpy(dtype=float)
         donor_eligible, _ = assign_bus_pass_eligibility(
             donor_ages, donor_regions, rules
         )
@@ -1250,7 +1316,8 @@ class UKNTSBusTravelStageTransform:
             )
         eligibility_receipt["donor_eligible_trip_share"] = eligible_trip_share
         eligibility_receipt["donor_age_basis"] = (
-            "band lower bound (the extract carries banded ages)"
+            "NTS age-band lower bound (the extract carries banded ages; the "
+            "declared codebook maps each band code to its lower age)"
         )
         # Person-level support clip on the band and the trips.
         draws = pd.DataFrame({BAND_COLUMN: band.astype(float), **trips})
@@ -1382,11 +1449,6 @@ class UKNTSBusTravelStageTransform:
         if self.last_result is None:
             return {}
         return {"evidence": self.last_result.evidence()}
-
-
-def _band_lower_ages(age_band: np.ndarray, edges: Sequence[int]) -> np.ndarray:
-    lower = np.asarray(edges, dtype=float)
-    return lower[np.clip(np.asarray(age_band, dtype=int), 0, len(lower) - 1)]
 
 
 def _trip_rate_receipt(

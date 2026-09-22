@@ -962,6 +962,7 @@ class TestUKCountryPackage:
             "local_registry_parity_fixture_2025.json",
             "was_wealth_support_bounds.json",
             "uc_deduction_support_bounds.json",
+            "nts_bus_travel_support_bounds.json",
             "local_binding_adjudications.json",
             "local_area_support_exclusions.json",
             "uk_local_target_census.json",
@@ -1074,6 +1075,7 @@ class TestExistingPackagesGeneralize:
             "local_registry_parity_fixture_2025.json",
             "was_wealth_support_bounds.json",
             "uc_deduction_support_bounds.json",
+            "nts_bus_travel_support_bounds.json",
             "local_binding_adjudications.json",
             "local_area_support_exclusions.json",
             "uk_local_target_census.json",
@@ -1508,6 +1510,7 @@ class TestUKGatesManifest:
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
             "uc_deduction_support_bounds.json",
+            "nts_bus_travel_support_bounds.json",
         )
         aggregate = params["uk_aggregate_admin"]
         assert aggregate["default_rtol"] == 0.15

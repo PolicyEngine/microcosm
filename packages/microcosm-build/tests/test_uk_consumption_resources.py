@@ -135,10 +135,34 @@ def test_e6_support_bounds_resources_are_sha_bound_and_non_placeholder() -> None
         "dfe_education_spending",
         "rail_subsidy_spending",
     }
+    # The NTS bus-travel bounds (microcosm#930) bind the SN 5340 19th-edition
+    # tabs and cover the stage's four person-level clip columns.
+    nts = _load("nts_bus_travel_support_bounds.json")
+    assert nts["source"]["ukds_study_number"] == 5340
+    assert nts["source"]["household_tab_sha256"] == (
+        "b70252b606b13c2b7f32e6da09e202e47514f6414045a017e77deb1d2a87ceb7"
+    )
+    assert nts["source"]["individual_tab_sha256"] == (
+        "e8b568497f99aeced2b379d853a1254759cdcb4409acc0b9ff3ea3d95c1f5e8d"
+    )
+    assert nts["source"]["trip_tab_sha256"] == (
+        "878b61c9fdafcbc1a85913f3af4889913bcf73c294f0221e84b3651a404284c4"
+    )
+    assert set(nts["bounds"]) == {
+        "local_bus_use_band",
+        "bus_in_london_trips",
+        "other_local_bus_trips",
+        "local_bus_trips",
+    }
+    assert nts["bounds"]["local_bus_use_band"] == [0.0, 6.0]
+    for column in ("bus_in_london_trips", "other_local_bus_trips", "local_bus_trips"):
+        low, high = nts["bounds"][column]
+        assert low == 0.0 and high > 0.0
     for name in (
         "lcfs_consumption_support_bounds.json",
         "etb_vat_support_bounds.json",
         "etb_services_support_bounds.json",
+        "nts_bus_travel_support_bounds.json",
     ):
         assert (
             "placeholder" not in (UK_PACKAGE / name).read_text(encoding="utf-8").lower()

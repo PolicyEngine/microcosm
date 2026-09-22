@@ -8865,6 +8865,7 @@
       "survey_years",
       "cars_clip",
       "age_band_edges",
+      "trip_weight_basis",
       "columns",
       "codes",
       "codebook_status"
@@ -8969,7 +8970,8 @@
         "income_band",
         "female",
         "main_mode",
-        "frequency"
+        "frequency",
+        "age_band"
        ],
        "properties": {
         "region": {
@@ -8998,11 +9000,23 @@
          "additionalProperties": {
           "type": "integer"
          }
+        },
+        "age_band": {
+         "type": "object",
+         "additionalProperties": {
+          "type": "integer"
+         }
         }
        }
       },
       "codebook_status": {
        "type": "string"
+      },
+      "trip_weight_basis": {
+       "enum": [
+        "trip_only",
+        "household_and_trip"
+       ]
       }
      }
     },

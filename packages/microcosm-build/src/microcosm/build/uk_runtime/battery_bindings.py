@@ -547,6 +547,7 @@ def _evaluate_support(
         "etb_vat_support_bounds.json",
         "etb_services_support_bounds.json",
         "uc_deduction_support_bounds.json",
+        "nts_bus_travel_support_bounds.json",
     }
     if set(resource_names) - allowed:
         raise ValueError(

@@ -2070,18 +2070,14 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "qrf_donor",
         "was_qrf_donor",
     }
-    # The NTS tabs (#930) are declared with placeholder pins until the licensed
-    # extract lands: a zero size and an all-zero digest the runtime refuses.
-    # Flip this to the positive branch when the tabs are pinned.
-    pending = {"nts_household_tab", "nts_individual_tab", "nts_trip_tab"}
-    for role, pin in pins.items():
+    # Every private input, the three NTS tabs included since the SN 5340
+    # 19th-edition extract was pinned (#930), carries a real size and digest.
+    for pin in pins.values():
         assert len(str(pin["sha256"])) == 64
+        assert str(pin["sha256"]) != "0" * 64
         assert str(pin["filename"])
-        if role in pending:
-            assert int(pin["size_bytes"]) == 0
-            assert str(pin["sha256"]) == "0" * 64
-        else:
-            assert int(pin["size_bytes"]) > 0
+        assert int(pin["size_bytes"]) > 0
+    assert pins["nts_trip_tab"]["filename"] == "trip_eul_2002-2024.tab"
     declared = {
         str(artifact["role"]): str(artifact["sha256"])
         for stage_name in (

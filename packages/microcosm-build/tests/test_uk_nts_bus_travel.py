@@ -79,19 +79,22 @@ def _synthetic_nts(
             row = {
                 "IndividualID": index,
                 "HouseholdID": int(household_id),
-                "Age_B01ID": 1 + index % 10,
+                "Age_B01ID": 1 + index % 21,
                 "Sex_B01ID": 1 + index % 2,
             }
             if frequency:
-                row["LocalBusFreq_B01ID"] = 1 + index % 7
+                # The ten OrdBus2Freq_B01ID codes, every one populated.
+                row["OrdBus2Freq_B01ID"] = 1 + (int(household_id) + member) % 10
             persons.append(row)
     individual = pd.DataFrame(persons)
+    w2 = dict(zip(household["HouseholdID"], household["W2"], strict=True))
     trips = []
     trip_id = 1
     for _, person in individual.iterrows():
-        band_code = int(person.get("LocalBusFreq_B01ID", 7))
-        count = max(0, 7 - band_code)
+        code = int(person.get("OrdBus2Freq_B01ID", 10))
+        count = max(0, 9 - code)
         london = (int(person["HouseholdID"]) - 1000) % 9 == 6
+        household_weight = float(w2[int(person["HouseholdID"])])
         for t in range(count):
             trips.append(
                 {
@@ -99,7 +102,8 @@ def _synthetic_nts(
                     "IndividualID": int(person["IndividualID"]),
                     "HouseholdID": int(person["HouseholdID"]),
                     "MainMode_B04ID": 7 if london else 8,
-                    "W5xHH": 1.0 + (t % 3) / 10.0,
+                    # W5 carries W2 (the household_and_trip basis).
+                    "W5": household_weight * (1.0 + (t % 3) / 10.0),
                     "JJXSC": 1.0,
                 }
             )
@@ -110,7 +114,7 @@ def _synthetic_nts(
                 "IndividualID": int(person["IndividualID"]),
                 "HouseholdID": int(person["HouseholdID"]),
                 "MainMode_B04ID": 3,
-                "W5xHH": 1.0,
+                "W5": household_weight,
                 "JJXSC": 1.0,
             }
         )
@@ -133,7 +137,14 @@ def test_declared_columns_and_codes_parse_from_the_committed_stage() -> None:
         "SOUTH_WEST",
     }
     assert columns.mode_codes == {BUS_IN_LONDON: 7, OTHER_LOCAL_BUS: 8}
-    assert columns.frequency_codes[1] == MAX_BAND and columns.frequency_codes[7] == 0
+    # OrdBus2Freq_B01ID: codes 1-3 are the top band, 9 and 10 the non-user
+    # band, and -9 (not applicable) is declared a non-user.
+    assert columns.frequency_codes[1] == MAX_BAND
+    assert columns.frequency_codes[3] == MAX_BAND
+    assert columns.frequency_codes[10] == 0 and columns.frequency_codes[-9] == 0
+    assert -8 not in columns.frequency_codes
+    assert columns.trip_weight_basis == "household_and_trip"
+    assert columns.age_band_codes[1] == 0 and columns.age_band_codes[21] == 85
     assert columns.survey_years == (2022, 2023, 2024)
     bad = dict(_operation(_committed_stage(), "clean_nts_travel_tables"))
     bad["codes"] = {**bad["codes"], "main_mode": {"bus_in_london": 7}}
@@ -150,15 +161,29 @@ def test_cleaning_annualises_diary_trips_per_series_and_maps_the_codebook() -> N
     assert set(person["region"]) <= set(_columns().region_codes.values())
     assert set(person["income_band"]) == {1, 2, 3}
     assert person["num_vehicles"].between(0, 5).all()
-    # Frequency code 1 (3+ a week) is the top band; code 7 the non-user band.
-    codes = individual.set_index("IndividualID")["LocalBusFreq_B01ID"]
-    expected = person["individual_id"].map(codes).map(lambda c: 7 - int(c))
+    # The interview code maps onto the band through the declared codebook.
+    codes = individual.set_index("IndividualID")["OrdBus2Freq_B01ID"]
+    expected = person["individual_id"].map(codes).map(_columns().frequency_codes)
     assert (person["local_bus_use_band"].to_numpy() == expected.to_numpy()).all()
-    # Trips: 52.14 x sum(W5xHH x JJXSC) over the bus trips only.
+    # Age: the NTS band code's lower age, banded on the declared edges (code 4
+    # is 5-10, the second declared band; code 17 is 65-69, the ninth).
+    age_codes = individual.set_index("IndividualID")["Age_B01ID"]
+    lower = person["individual_id"].map(age_codes).map(_columns().age_band_codes)
+    assert (person["age_lower"].to_numpy() == lower.to_numpy()).all()
+    assert (
+        person.loc[lower == 5, "age_band"].eq(1).all()
+        and person.loc[lower == 65, "age_band"].eq(8).all()
+    )
+    # Trips: 52.14 x sum(W5 x JJXSC) / W2 over the bus trips only (W5 carries W2).
     bus = trip[trip["MainMode_B04ID"].isin([7, 8])]
-    per_person = (bus["W5xHH"] * bus["JJXSC"]).groupby(bus["IndividualID"]).sum()
+    w2 = household.set_index("HouseholdID")["W2"]
+    counted = bus["W5"] * bus["JJXSC"] / bus["HouseholdID"].map(w2)
+    per_person = counted.groupby(bus["IndividualID"]).sum()
     expected_trips = person["individual_id"].map(per_person).fillna(0.0) * WEEKS_IN_YEAR
     assert np.allclose(person["local_bus_trips"], expected_trips)
+    assert donor.receipt["trip_weight_basis"] == "household_and_trip"
+    assert donor.receipt["households_zero_weight"] == 0
+    assert donor.receipt["persons_unmapped_frequency"] == 0
     london = person["residence_group"] == LONDON_GROUP
     assert (person.loc[london, "other_local_bus_trips"] == 0).all()
     assert (person.loc[~london, "bus_in_london_trips"] == 0).all()
@@ -171,12 +196,53 @@ def test_cleaning_annualises_diary_trips_per_series_and_maps_the_codebook() -> N
         )
 
 
+def test_cleaning_handles_the_nts_sentinels_and_the_diary_sample() -> None:
+    """-9 is a declared non-user, -8 and unknown age codes drop, W2 = 0 leaves."""
+
+    household, individual, trip = _synthetic_nts()
+    individual = individual.copy()
+    first, second, third = individual.index[:3]
+    individual.loc[first, "OrdBus2Freq_B01ID"] = -9
+    individual.loc[second, "OrdBus2Freq_B01ID"] = -8
+    individual.loc[third, "Age_B01ID"] = -8
+    household = household.copy()
+    # An interview-only household: W2 of zero, so it leaves the donor.
+    zero = household.index[-1]
+    household.loc[zero, "W2"] = 0.0
+    zero_id = int(household.loc[zero, "HouseholdID"])
+    donor = clean_nts_travel_tables(household, individual, trip, columns=_columns())
+    person = donor.person
+    ids = set(person["individual_id"])
+    assert int(individual.loc[first, "IndividualID"]) in ids
+    assert (
+        person.loc[
+            person["individual_id"] == int(individual.loc[first, "IndividualID"]),
+            "local_bus_use_band",
+        ].item()
+        == 0
+    )
+    assert int(individual.loc[second, "IndividualID"]) not in ids
+    assert int(individual.loc[third, "IndividualID"]) not in ids
+    assert zero_id not in set(person["household_id"])
+    assert donor.receipt["persons_unmapped_frequency"] == 1
+    assert donor.receipt["persons_unmapped_age"] == 1
+    assert donor.receipt["households_zero_weight"] == 1
+    bad = dict(_operation(_committed_stage(), "clean_nts_travel_tables"))
+    bad["trip_weight_basis"] = "per_stage"
+    with pytest.raises(NTSBusTravelError, match="trip_weight_basis"):
+        NTSColumns.from_parameters(bad)
+    bad = dict(_operation(_committed_stage(), "clean_nts_travel_tables"))
+    bad["codes"] = {**bad["codes"], "age_band": {"1": 5}}
+    with pytest.raises(NTSBusTravelError, match="codes.age_band"):
+        NTSColumns.from_parameters(bad)
+
+
 def test_cleaning_falls_back_to_published_shares_without_a_frequency_column() -> None:
     household, individual, trip = _synthetic_nts(frequency=False)
     donor = clean_nts_travel_tables(household, individual, trip, columns=_columns())
     assert donor.frequency_source == "published_shares"
     assert "local_bus_use_band" not in donor.person
-    assert donor.receipt["frequency_column"] == "localbusfreq_b01id"
+    assert donor.receipt["frequency_column"] == "ordbus2freq_b01id"
 
 
 def _recipient_frame(n: int = 240, *, seed: int = 3):

@@ -674,11 +674,13 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
 def _nts_donors() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Synthetic NTS Household, Individual and Trip tables (2022-2024).
 
-    Column names and codes follow the stage's declared codebook: nine English
-    GOR codes, the three income bands, W2 household weights, banded ages,
-    the interview frequency band (1 = 3+ a week ... 7 = less than yearly or
-    never) and diary trips whose main mode is bus in London (7) or other
-    local bus (8), each with the trip weight and the short-walk multiplier.
+    Column names and codes follow the stage's declared codebook (the SN 5340
+    19th-edition lookup tables): nine English GOR codes, the three income
+    bands, W2 household weights, the 21 Age_B01ID bands, the ten-code
+    OrdBus2Freq_B01ID frequency question (1 = at least once a day ... 10 =
+    never; -9 = not applicable, a declared non-user) and diary trips whose
+    main mode is bus in London (7) or other local bus (8), each with the W5
+    trip weight (which carries W2) and the short-walk multiplier.
     """
 
     households = _DONOR_ROWS
@@ -704,21 +706,28 @@ def _nts_donors() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
                 {
                     "IndividualID": index,
                     "HouseholdID": int(household_id),
-                    "Age_B01ID": 1 + (index % 10),
+                    "Age_B01ID": 1 + (index % 21),
                     "Sex_B01ID": 1 + (index % 2),
-                    # Frequent riders in the low-income, car-free households;
-                    # the never band elsewhere, with every band populated.
-                    "LocalBusFreq_B01ID": 1 + (index % 7),
+                    # Every frequency code populated, the not-applicable code
+                    # (-9, a declared non-user) on one person in eleven.
+                    "OrdBus2Freq_B01ID": (
+                        -9
+                        if index % 11 == 10
+                        else 1 + (int(household_id) + member) % 10
+                    ),
                 }
             )
     individual = pd.DataFrame(person_rows)
+    w2_by_household = dict(zip(household["HouseholdID"], household["W2"], strict=True))
     trip_rows = []
     trip_id = 1
     for _, person in individual.iterrows():
-        band = int(person["LocalBusFreq_B01ID"])
-        # More trips for the frequent bands, none for the never band.
-        trips = max(0, 7 - band) if band < 7 else 0
+        code = int(person["OrdBus2Freq_B01ID"])
+        # More trips for the frequent codes, none for the never / not-applicable
+        # codes (the NTS0313 bands fold codes 1-3 and 9-10 together).
+        trips = max(0, 9 - code) if 0 < code < 9 else 0
         london = (int(person["HouseholdID"]) - 1000) % 9 == 6
+        w2 = float(w2_by_household[int(person["HouseholdID"])])
         for t in range(trips):
             trip_rows.append(
                 {
@@ -726,7 +735,7 @@ def _nts_donors() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
                     "IndividualID": int(person["IndividualID"]),
                     "HouseholdID": int(person["HouseholdID"]),
                     "MainMode_B04ID": 7 if london else 8,
-                    "W5xHH": 1.0 + (t % 3) / 10.0,
+                    "W5": w2 * (1.0 + (t % 3) / 10.0),
                     "JJXSC": 1.0,
                 }
             )
@@ -738,7 +747,7 @@ def _nts_donors() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
                 "IndividualID": int(person["IndividualID"]),
                 "HouseholdID": int(person["HouseholdID"]),
                 "MainMode_B04ID": 3,
-                "W5xHH": 1.0,
+                "W5": w2,
                 "JJXSC": 1.0,
             }
         )

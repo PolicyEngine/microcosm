@@ -666,10 +666,11 @@
           "lcfs_consumption_support_bounds.json",
           "etb_vat_support_bounds.json",
           "etb_services_support_bounds.json",
-          "uc_deduction_support_bounds.json"
+          "uc_deduction_support_bounds.json",
+          "nts_bus_travel_support_bounds.json"
         ]
       },
-      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed."
+      "notes": "Every WAS/LCFS/ETB imputed output covered by support clipping must remain inside committed disclosure-safe donor support bounds. Exact donor ranges are used in-run for clipping; this release gate uses outward-rounded reviewed bounds so unit-record donor minima and maxima are never committed. The nts_bus_travel person outputs (band and annual trips) are bounded by the NTS donor's ranges since microcosm#930."
     },
     {
       "id": "uk_aggregate_admin",
