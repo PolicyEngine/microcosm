@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import inspect
 import json
+import os
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -42,6 +43,19 @@ def _installed_variable_metadata_index(builder):
         return builder.PolicyEngineUSVariableMetadataIndex()
     except ImportError:
         pytest.skip("requires the policyengine-us [us] extra")
+
+
+def _load_acs_local_release_module():
+    root = Path(__file__).resolve().parents[3]
+    tools_path = str(root / "tools")
+    if tools_path not in sys.path:
+        sys.path.insert(0, tools_path)
+    path = root / "tools" / "build_us_acs_local_release.py"
+    spec = importlib.util.spec_from_file_location("build_us_acs_local_release", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
 
 def _load_scorer_module():
@@ -2467,8 +2481,12 @@ def test_identity_ledger_filter_qualifiers_are_inert_not_unsupported() -> None:
     }
 
 
-_RESTATED_AGI_LOWER = "ledger_filter_us:statutes/26/62#adjusted_gross_income_lower_bound"
-_RESTATED_AGI_UPPER = "ledger_filter_us:statutes/26/62#adjusted_gross_income_upper_bound"
+_RESTATED_AGI_LOWER = (
+    "ledger_filter_us:statutes/26/62#adjusted_gross_income_lower_bound"
+)
+_RESTATED_AGI_UPPER = (
+    "ledger_filter_us:statutes/26/62#adjusted_gross_income_upper_bound"
+)
 _RESTATED_AGI_EXACT = "ledger_filter_us:statutes/26/62#adjusted_gross_income"
 _RESTATED_EITC_CHILDREN_LOWER = (
     "ledger_filter_us.tax.earned_income_credit_qualifying_children_lower_bound"
@@ -2582,9 +2600,7 @@ def test_disagreeing_restated_agi_bounds_are_refused_by_value() -> None:
         ),
         _spec(
             "no_compiled_lower",
-            _soi_band_metadata(
-                agi_lower_bound=None, **{_RESTATED_AGI_LOWER: "100000"}
-            ),
+            _soi_band_metadata(agi_lower_bound=None, **{_RESTATED_AGI_LOWER: "100000"}),
         ),
         _spec("exact_agi", _soi_band_metadata(**{_RESTATED_AGI_EXACT: "100000"})),
         _spec(
@@ -2763,6 +2779,127 @@ def test_restated_concept_rules_all_have_a_comparison() -> None:
         None,
     )
     assert builder._restated_ledger_filter_concept("not_a_filter_key") == ("", None)
+
+
+_COMPILED_LEDGER_FILTER_FIXTURE = (
+    Path(__file__).resolve().parent
+    / "fixtures"
+    / "us_compiled_ledger_filter_specs.json"
+)
+
+
+def _compiled_ledger_filter_fixture() -> dict:
+    return json.loads(_COMPILED_LEDGER_FILTER_FIXTURE.read_text())
+
+
+def test_pinned_chronicle_feed_compiles_no_unsupported_ledger_filters() -> None:
+    """The feed #955 pins carries no filter key the materializer would ignore.
+
+    The fixture is compiled target metadata from
+    ``compile_us_fiscal_target_registry`` over that feed — the sampled rows in
+    full, and a key census covering every one of its compiled targets. Both
+    guards must clear: no target refused, no ``irs_soi`` target dropped from
+    SOI materialization by the silent skip. The census arm generalises the
+    sample: any ``ledger_filter_*`` key the feed carries that is neither
+    supported nor a reviewed identity qualifier must be noop-valued on every
+    target that carries it, which is what makes "zero unsupported" a statement
+    about the whole registry and not only about the fifty rows kept here.
+    """
+
+    builder = _load_builder_module()
+    payload = _compiled_ledger_filter_fixture()
+    specs = tuple(_spec(row["name"], dict(row["metadata"])) for row in payload["specs"])
+    assert specs
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {}
+    builder._assert_supported_ledger_filter_metadata(specs)
+    for spec in specs:
+        if spec.metadata.get("family") == "irs_soi":
+            assert builder._unsupported_soi_ledger_filters(spec.metadata) == ()
+
+    classified = (
+        builder.SUPPORTED_LEDGER_FILTER_METADATA_KEYS
+        | builder.IDENTITY_LEDGER_FILTER_METADATA_KEYS
+    )
+    for key, census in payload["ledger_filter_key_census"].items():
+        if key in classified:
+            continue
+        for value in census["values"]:
+            assert builder._is_noop_ledger_filter_value(value), (key, value)
+
+
+def test_restated_bounds_track_each_compiled_band_in_the_fixture() -> None:
+    """Replay the rule over real compiled bands, agreeing and perturbed.
+
+    The feed #955 pins states its AGI band only as compiled metadata, so this
+    injects the restatement a labelled vocabulary would add onto real rows:
+    each banded target's own lower edge is accepted, and the same target with
+    that edge moved is refused. Guards the rule against a fixture that happens
+    to contain no band — if the sample ever loses its SOI rows, the assertion
+    on ``banded`` fails rather than the test passing vacuously.
+    """
+
+    builder = _load_builder_module()
+    payload = _compiled_ledger_filter_fixture()
+    banded = [
+        row
+        for row in payload["specs"]
+        if row["metadata"].get("agi_lower_bound") is not None
+    ]
+    assert len(banded) >= 4
+
+    agreeing = []
+    perturbed = []
+    for row in banded:
+        metadata = dict(row["metadata"])
+        compiled = metadata["agi_lower_bound"]
+        agreeing.append(_spec(row["name"], {**metadata, _RESTATED_AGI_LOWER: compiled}))
+        moved = "0" if compiled == "-inf" else str(builder._as_bound(compiled) + 1.0)
+        perturbed.append(_spec(row["name"], {**metadata, _RESTATED_AGI_LOWER: moved}))
+
+    assert builder._unsupported_ledger_filter_metadata(tuple(agreeing)) == {}
+    refused = builder._unsupported_ledger_filter_metadata(tuple(perturbed))
+    assert len(refused) == len({spec.name for spec in perturbed})
+    assert all(
+        entry.startswith(_RESTATED_AGI_LOWER)
+        and "disagrees with agi_lower_bound" in entry
+        for entries in refused.values()
+        for entry in entries
+    )
+
+
+def test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters() -> None:
+    """The same assertion against the real feed, when this machine has it.
+
+    The pinned consumer-facts feed is a 164 MB restricted-free public
+    aggregate export that no CI lane carries, and compiling it takes order ten
+    minutes, so this runs only when ``MICROCOSM_US_CHRONICLE_FACTS`` points at
+    it. It is the arm that proves the fixture above still describes the feed;
+    ``experiments/us-labelled-filter-support/census_compiled_ledger_filters.py``
+    regenerates the fixture from the same compile.
+    """
+
+    feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
+    if not feed or not Path(feed).exists():
+        pytest.skip(
+            "set MICROCOSM_US_CHRONICLE_FACTS to the pinned consumer-facts feed"
+        )
+
+    builder = _load_builder_module()
+    acs_release = _load_acs_local_release_module()
+    registry, _substitutions = acs_release.state_admin_specs(
+        feed, ["snap", "medicaid", "soi"], soi_mode="full"
+    )
+    specs = tuple(registry.specs)
+
+    assert specs
+    assert builder._unsupported_ledger_filter_metadata(specs) == {}
+    assert not [
+        spec
+        for spec in specs
+        if spec.family == "irs_soi"
+        and builder._unsupported_soi_ledger_filters(spec.metadata)
+    ]
 
 
 def test_eitc_child_count_mask_supports_soi_child_groups() -> None:
