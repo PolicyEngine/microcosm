@@ -170,6 +170,17 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _nested(payload: object, *keys: str) -> object:
+    """Walk mapping keys, returning None where the path is absent."""
+
+    current = payload
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
 def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
     measured = hashlib.sha256(args.candidate_h5.read_bytes()).hexdigest()
     if measured != args.candidate_sha256:
@@ -200,6 +211,34 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         raise SystemExit(
             "error: --diagnostics-json bytes do not match the build record's "
             f"binding ({diagnostics_sha} != {recorded_diagnostics})"
+        )
+    # The spine is stage evidence for the family build-state gates, so it
+    # must be the parent the calibration actually consumed: the build record
+    # and the signed diagnostics both carry that parent's digest. A spine
+    # regenerated at the same path after the solve pins fine on its own hash
+    # and would lend another build's receipts to this candidate.
+    recorded_parents = {
+        "build_record.input_posture.sha256": _nested(
+            build_record, "input_posture", "sha256"
+        ),
+        "build_record.source_pins.input_h5.sha256": _nested(
+            build_record, "source_pins", "input_h5", "sha256"
+        ),
+        "diagnostics.build.input_posture.sha256": _nested(
+            diagnostics, "build", "input_posture", "sha256"
+        ),
+    }
+    mismatched = {
+        key: value
+        for key, value in recorded_parents.items()
+        if value != args.spine_sha256
+    }
+    if mismatched:
+        raise SystemExit(
+            "error: --spine-h5 is not the candidate's recorded parent: the "
+            f"calibration recorded {mismatched}, the supplied spine measures "
+            f"{args.spine_sha256}; the family build-state evidence must come "
+            "from the spine this candidate was calibrated from."
         )
     append_phase(state, "inputs_bound")
 
@@ -270,6 +309,7 @@ def _run(args: argparse.Namespace, state: AttemptState) -> dict[str, object]:
         candidate_name=args.candidate_name,
         candidate_path=args.candidate_h5,
         candidate_sha256=args.candidate_sha256,
+        spine_sha256=args.spine_sha256,
         spine_report_path=spine_report_path,
         seam_report_path=args.seam_gate_report,
         release_cut_report_path=args.release_cut_gate_json,

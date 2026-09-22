@@ -95,6 +95,8 @@ uv run --no-sync python tools/certify_uk_release_cut.py \
   --release-id microcosm-uk-2024-25-national
 ```
 
+The spine is stage evidence for the family build-state gates, so `--spine-sha256` must be the parent the calibration recorded (`build_record.input_posture.sha256`, `source_pins.input_h5.sha256`, the signed diagnostics' `build.input_posture`); a spine that pins correctly but is not that parent is refused before any gate runs, and the certification records it as `parent_spine`.
+
 With the default paths, this writes
 `microcosm_uk_2024_25.release_cut_gates.json` and
 `microcosm_uk_2024_25.release_certification.json` next to the candidate. Continue

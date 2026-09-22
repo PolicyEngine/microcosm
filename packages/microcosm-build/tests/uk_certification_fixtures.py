@@ -106,6 +106,10 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+#: The parent spine the green fixture's calibration recorded.
+GREEN_PARENT_SPINE_SHA256 = "a" * 64
+
+
 def green_score_receipt(candidate_sha: str) -> dict:
     """A score receipt the certifier accepts: measured on the candidate's
     bytes, scored on a closed common surface, rule 1 passed."""
@@ -212,6 +216,16 @@ def green_certification_inputs(tmp_path: Path):
         "spine_provenance": {
             "spine_gate_report": {"sha256": sha256(spine_report)},
         },
+        # The parent the calibration consumed, recorded twice as the seam
+        # writes it; the certifier binds the supplied spine to it.
+        "input_posture": {
+            "tier": "staging_candidate",
+            "sha256": GREEN_PARENT_SPINE_SHA256,
+            "size_bytes": 1,
+        },
+        "source_pins": {
+            "input_h5": {"sha256": GREEN_PARENT_SPINE_SHA256, "size_bytes": 1}
+        },
         "artifacts": {
             "staging_h5": {"sha256": candidate_sha},
             "diagnostics_json": {"sha256": diagnostics_sha},
@@ -227,6 +241,7 @@ def green_certification_inputs(tmp_path: Path):
         "candidate_name": "microcosm_uk_2024",
         "candidate_path": candidate,
         "candidate_sha256": candidate_sha,
+        "spine_sha256": GREEN_PARENT_SPINE_SHA256,
         "spine_report_path": spine_report,
         "seam_report_path": seam_report,
         "release_cut_report_path": release_cut_report,

@@ -369,6 +369,7 @@ def test_an_unlisted_unresolvable_measure_refuses_instead_of_pruning(
     monkeypatch, tmp_path
 ):
     """Pruning is doctrine, not inference: no signed entry, no prune."""
+    pytest.importorskip("tables")
     candidate, incumbent = _twins(tmp_path)
     _intercept(
         monkeypatch,
@@ -384,6 +385,7 @@ def test_an_unlisted_unresolvable_measure_refuses_instead_of_pruning(
 
 
 def test_an_expired_or_premature_entry_refuses(monkeypatch, tmp_path):
+    pytest.importorskip("tables")
     candidate, incumbent = _twins(tmp_path)
     _intercept(
         monkeypatch,
@@ -398,6 +400,7 @@ def test_an_expired_or_premature_entry_refuses(monkeypatch, tmp_path):
 
 
 def test_pruned_rows_carry_the_register_entry_they_stand_on(monkeypatch, tmp_path):
+    pytest.importorskip("tables")
     candidate, incumbent = _twins(tmp_path)
     _intercept(
         monkeypatch,
@@ -423,6 +426,7 @@ def test_a_skip_reason_is_matched_exactly_never_by_substring(monkeypatch, tmp_pa
     """``measure_b`` must not claim a skip whose reason names ``measure_bb``:
     with no skip naming the measure and no binding, the loop refuses to
     prune blindly rather than dropping an unrelated row."""
+    pytest.importorskip("tables")
     candidate, incumbent = _twins(tmp_path)
     _intercept(
         monkeypatch,
@@ -440,3 +444,35 @@ def test_a_skip_reason_is_matched_exactly_never_by_substring(monkeypatch, tmp_pa
     )
     with pytest.raises(MeasureResolutionError, match="refusing to prune blindly"):
         _evaluate(candidate, incumbent, contract_targets={})
+
+
+def test_a_gap_shared_by_both_artifacts_still_refuses_on_the_candidate(
+    monkeypatch, tmp_path
+):
+    """Review A1: the candidate is validated on the full surface BEFORE the
+    incumbent's gaps are pruned, so an export missing a listed measure is a
+    defect even when the incumbent lacks it too; it never scores as a win."""
+    pytest.importorskip("tables")
+    candidate = tmp_path / "candidate.h5"
+    incumbent = tmp_path / "incumbent.h5"
+    _write(candidate, measure_a=[5.0, 5.0])
+    _write(incumbent, measure_a=[4.0, 4.0])
+    original = candidate_score._scored_frame
+    calls: list[tuple[Path, list[str]]] = []
+
+    def fake(h5_path, registry, calibration_year, factory, *, band_edge_registry=None):
+        calls.append((Path(h5_path), [spec.name for spec in registry.specs]))
+        if any(spec.name == "target_b" for spec in registry.specs):
+            raise MeasureResolutionError(
+                f"provider does not know {MEASURE_B}", receipt=_SKIP_RECEIPT
+            )
+        return original(h5_path, registry, calibration_year, None)
+
+    monkeypatch.setattr(candidate_score, "_scored_frame", fake)
+
+    with pytest.raises(MeasureResolutionError, match="does not know"):
+        _evaluate(candidate, incumbent, evaluated_on=date(2026, 9, 22))
+    # The first probe was the candidate on the full surface; the incumbent
+    # was never asked, so nothing was pruned.
+    assert calls[0] == (candidate, ["target_a", "target_b"])
+    assert all(path == candidate for path, _ in calls)

@@ -5568,6 +5568,7 @@ def _green_uk_certification(
             "sha256": "b" * 64,
             "size_bytes": 1,
         },
+        "parent_spine": {"sha256": "a" * 64},
         "parts": parts,
         "spec": {
             "gates_manifest_sha256": contract._UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
@@ -5658,6 +5659,20 @@ def test_uk_release_certification_refusals(monkeypatch) -> None:
     certification["diagnostics_sha256"] = "f" * 64
     assert any(
         "diagnostics_sha256" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    # The parent spine the release cut measured is named by digest.
+    certification = _green_uk_certification(key)
+    certification["parent_spine"] = {"sha256": "not-a-digest"}
+    assert any(
+        "parent_spine.sha256" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+    certification = _green_uk_certification(key)
+    del certification["parent_spine"]
+    assert any(
+        "must carry exactly the certification fields" in line
         for line in _certification_failures(certification, monkeypatch, key)
     )
 

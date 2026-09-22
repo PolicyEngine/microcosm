@@ -9,7 +9,10 @@ its battery stubbed, on the pins alone.
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
+
+import pytest
 
 from microcosm.build.logbook_adoption import role_pins_digest
 from tools import certify_uk_release_cut as certify
@@ -108,3 +111,80 @@ def test_certifier_pins_carry_the_byte_sizes_the_logbook_digest_requires(
     )
     assert state.build_id.startswith("uk-frs-release-certification-attempt-")
     assert '"shippable": true' in capsys.readouterr().out
+
+
+def test_certifier_refuses_a_spine_that_is_not_the_candidates_recorded_parent(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """Review C1: the supplied spine pins fine on its own hash but is not the
+    parent the build record and the signed diagnostics name; the certifier
+    refuses before any gate reads its receipts."""
+    candidate = tmp_path / "microcosm_uk_2024_25.h5"
+    candidate.write_bytes(b"candidate bytes")
+    spine = tmp_path / "spine.h5"
+    spine.write_bytes(b"spine B bytes")
+    (tmp_path / "spine.build.json").write_text('{"stages": ["frs_spine"]}')
+    parent_a = "3" * 64
+    diagnostics = tmp_path / "calibration_diagnostics.json"
+    diagnostics.write_text(
+        json.dumps({"build": {"input_posture": {"sha256": parent_a}}, "targets": []})
+    )
+    build_record = tmp_path / "build_record.json"
+    build_record.write_text(
+        json.dumps(
+            {
+                "artifacts": {
+                    "diagnostics_json": {
+                        "sha256": hashlib.sha256(diagnostics.read_bytes()).hexdigest()
+                    }
+                },
+                "input_posture": {"sha256": parent_a},
+                "source_pins": {"input_h5": {"sha256": parent_a}},
+            }
+        )
+    )
+    ledger = tmp_path / "ledger"
+    ledger.mkdir()
+    (ledger / "consumer_facts.jsonl").write_text('{"fact": 1}\n')
+    for name in ("terminal_gates.json", "input_mass_reference.json", "score.json"):
+        (tmp_path / name).write_text("{}")
+    monkeypatch.setattr(certify, "resolve_predecessor", lambda digest: None)
+    monkeypatch.setattr(certify, "record_terminal_attempt", lambda **kwargs: None)
+
+    with pytest.raises(SystemExit, match="not the candidate's recorded parent"):
+        certify.main(
+            [
+                "--candidate-h5",
+                str(candidate),
+                "--candidate-sha256",
+                hashlib.sha256(candidate.read_bytes()).hexdigest(),
+                "--candidate-name",
+                "microcosm_uk_2024_25",
+                "--spine-h5",
+                str(spine),
+                "--spine-sha256",
+                hashlib.sha256(spine.read_bytes()).hexdigest(),
+                "--diagnostics-json",
+                str(diagnostics),
+                "--build-record-json",
+                str(build_record),
+                "--seam-gate-report",
+                str(tmp_path / "terminal_gates.json"),
+                "--ledger-facts",
+                str(ledger),
+                "--ledger-facts-sha256",
+                "1" * 64,
+                "--ledger-manifest-sha256",
+                "2" * 64,
+                "--input-mass-reference",
+                str(tmp_path / "input_mass_reference.json"),
+                "--score-receipt",
+                str(tmp_path / "score.json"),
+                "--release-id",
+                "microcosm-uk-2024-25-national",
+                "--release-cut-gate-json",
+                str(tmp_path / "release_cut_gates.json"),
+                "--certification-json",
+                str(tmp_path / "release_certification.json"),
+            ]
+        )

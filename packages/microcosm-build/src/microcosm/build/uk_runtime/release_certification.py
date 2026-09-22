@@ -340,6 +340,7 @@ def compose_uk_release_certification(
     candidate_name: str,
     candidate_path: Path,
     candidate_sha256: str,
+    spine_sha256: str,
     spine_report_path: Path,
     seam_report_path: Path,
     release_cut_report_path: Path,
@@ -415,6 +416,7 @@ def compose_uk_release_certification(
         build_record=build_record,
         candidate_path=candidate_path,
         candidate_sha256=candidate_sha256,
+        spine_sha256=spine_sha256,
         release_id=release_id,
     )
     score_receipt_bytes = score_receipt_path.read_bytes()
@@ -423,6 +425,7 @@ def compose_uk_release_certification(
         score_receipt,
         candidate_sha256=candidate_sha256,
         reviewed_unresolvable_measures=reviewed_unresolvable_measures,
+        evaluated_on=exclusions_evaluated_on,
     )
 
     full_digests = _full_manifest_digests()
@@ -438,6 +441,9 @@ def compose_uk_release_certification(
             "sha256": candidate_sha256,
             "size_bytes": candidate_path.stat().st_size,
         },
+        # The spine whose stage receipts the release cut measured: bound to
+        # the parent the calibration recorded, never an operator's choice.
+        "parent_spine": {"sha256": spine_sha256},
         "parts": part_summaries,
         "spec": {
             "gates_manifest_sha256": full_digests["gates_manifest_sha256"],
@@ -674,8 +680,25 @@ def _verify_identity_join(
     build_record: Mapping[str, Any],
     candidate_path: Path,
     candidate_sha256: str,
+    spine_sha256: str,
     release_id: str,
 ) -> None:
+    # The spine supplied as stage evidence must be the parent the
+    # calibration consumed: the build record carries that parent's digest
+    # twice (input posture and source pins), and both must name it.
+    recorded_parents = {
+        "input_posture.sha256": (build_record.get("input_posture") or {}).get("sha256"),
+        "source_pins.input_h5.sha256": (
+            (build_record.get("source_pins") or {}).get("input_h5") or {}
+        ).get("sha256"),
+    }
+    if any(value != spine_sha256 for value in recorded_parents.values()):
+        raise UKReleaseCertificationError(
+            "the spine supplied as stage evidence is not the parent the "
+            f"calibration recorded: build record {recorded_parents}, supplied "
+            f"{spine_sha256!r}; the family build-state gates were measured on "
+            "another build's receipts."
+        )
     sidecar_binding = spine_sidecar.get("spine_gate_report")
     if not isinstance(sidecar_binding, Mapping):
         raise UKReleaseCertificationError(
@@ -751,6 +774,7 @@ def _verify_score_receipt(
     *,
     candidate_sha256: str,
     reviewed_unresolvable_measures: Mapping[str, Any] | None = None,
+    evaluated_on: date | None = None,
 ) -> None:
     artifacts = receipt.get("artifacts")
     scored = (
@@ -823,6 +847,27 @@ def _verify_score_receipt(
                 "from both arms stands only on a signed entry, so the cut "
                 "cannot be certified on this receipt."
             )
+        # An entry suppresses only inside its window, at the certification's
+        # own evaluation date: a receipt scored while an entry was in force
+        # does not outlive the entry.
+        if evaluated_on is not None:
+            out_of_window = {
+                str(m): (
+                    f"expired {reviewed[str(m)].expires_on}"
+                    if reviewed[str(m)].expired(evaluated_on)
+                    else f"takes force {reviewed[str(m)].approved_on}"
+                )
+                for m in measures
+                if reviewed[str(m)].expired(evaluated_on)
+                or reviewed[str(m)].premature(evaluated_on)
+            }
+            if out_of_window:
+                raise UKReleaseCertificationError(
+                    "the score receipt pruned targets through reviewed "
+                    "incumbent-unresolvable entries outside their window on "
+                    f"{evaluated_on.isoformat()}: {out_of_window}; renew the "
+                    "adjudication or re-score the candidate."
+                )
 
 
 def _score_receipt_summary(receipt: Mapping[str, Any]) -> dict[str, Any]:

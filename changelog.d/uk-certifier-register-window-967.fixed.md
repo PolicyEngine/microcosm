@@ -1,0 +1,1 @@
+The release-cut certifier re-checks each pruned measure's reviewed incumbent-unresolvable entry against its window at the certification's own evaluation date, so a score receipt does not outlive the entry it was pruned under.

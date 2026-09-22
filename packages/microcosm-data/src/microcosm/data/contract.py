@@ -793,6 +793,9 @@ _UK_CERTIFICATION_REQUIRED_FIELDS = frozenset(
         "country",
         "release_id",
         "candidate",
+        # The spine whose stage receipts the release cut measured, bound by
+        # the certifier to the parent the calibration recorded.
+        "parent_spine",
         "parts",
         "spec",
         "doctrine",
@@ -3095,6 +3098,15 @@ def _check_uk_release_certification(
         failures.append(
             f"{file} release_id {certification.get('release_id')!r} does not "
             f"match the release under validation ({release_id!r})."
+        )
+    parent_spine = certification.get("parent_spine")
+    parent_sha = (
+        parent_spine.get("sha256") if isinstance(parent_spine, Mapping) else None
+    )
+    if not isinstance(parent_sha, str) or not _SHA256_RE.match(parent_sha):
+        failures.append(
+            f"{file} parent_spine.sha256 must be the sha256 hex digest of the "
+            "spine the calibration recorded as its parent."
         )
 
     parts = certification.get("parts")

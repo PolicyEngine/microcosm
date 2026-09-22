@@ -614,6 +614,9 @@ def pruned_block(
         "pruned_targets": {name: asdict(row) for name, row in sorted(pruned.items())},
         "measures": measures,
         "families": dict(sorted(families.items())),
+        # The candidate materialized every target of the full surface before
+        # the incumbent's gaps were pruned; only the incumbent is pruned for.
+        "candidate_validated_on_full_surface": True,
         "reviewed_register": {
             **(
                 {"resource": UK_INCUMBENT_UNRESOLVABLE_REGISTER, "sha256": None}
@@ -727,6 +730,19 @@ def evaluate_uk_candidate_against_incumbent(
         else reviewed_measures
     )
     if prune_incumbent_unresolvable_measures:
+        # The candidate is validated on the FULL surface before any pruning:
+        # a measure the candidate cannot materialize is a defect and refuses
+        # whether or not the incumbent shares the gap (review finding A1),
+        # so pruning only ever removes rows the incumbent cannot express.
+        _scored_frame(
+            candidate_h5,
+            target_registry,
+            calibration_year,
+            measure_resolver_factory,
+            band_edge_registry=(
+                target_registry if band_edge_registry is None else band_edge_registry
+            ),
+        )
         surface, pruned = prune_incumbent_unresolvable(
             incumbent_h5,
             target_registry,
