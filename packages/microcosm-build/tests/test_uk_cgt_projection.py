@@ -52,6 +52,35 @@ def _projection(base_year: int = 2024, horizon_year: int = 2030, **reader_kwargs
     )
 
 
+def _manifest_entry():
+    return next(g for g in load_country_spec("uk").gates.gates if g.id == GATE_ID)
+
+
+class _PinnedReader:
+    """A reader that returns the manifest's pinned growth path and exempt amount."""
+
+    def __init__(self, *, growth_offset: float = 0.0) -> None:
+        parameters = _manifest_entry().parameters
+        self.growth = {
+            int(year): float(rate) + growth_offset
+            for year, rate in parameters["expected_yoy_growth_by_year"].items()
+        }
+        self.exempt = float(parameters["expected_exempt_amount"])
+
+    def __call__(self, path: str, year: int) -> float:
+        if path == UK_CGT_GAINS_GROWTH_PARAMETER:
+            return self.growth[year]
+        if path == UK_CGT_EXEMPT_AMOUNT_PARAMETER:
+            return self.exempt
+        raise AssertionError(path)
+
+
+def _pinned_projection(base_year: int = 2024, horizon_year: int = 2030, **kwargs):
+    return uk_cgt_projection(
+        base_year, horizon_year, parameter_reader=_PinnedReader(**kwargs)
+    )
+
+
 def _frame(gains: list[float], weights: list[float], *, time_period: str = "2024"):
     ids = np.arange(1, len(gains) + 1, dtype="int64")
     return uk_national_frame(
@@ -208,7 +237,7 @@ def _outcome(frame, artifacts):
 
 
 def test_binding_reads_the_vendored_bound_and_cross_checks_the_artifact() -> None:
-    projection = _projection(growth=0.05)
+    projection = _pinned_projection()
     heavy = _frame([3_000.0, 2_000.0], [80_000.0, 10.0])
     battery, outcome = _outcome(heavy, {UK_CGT_PROJECTION_ARTIFACT_KEY: projection})
     assert outcome.status is GateStatus.FAILED
@@ -221,13 +250,22 @@ def test_binding_reads_the_vendored_bound_and_cross_checks_the_artifact() -> Non
     _, outcome = _outcome(light, {UK_CGT_PROJECTION_ARTIFACT_KEY: projection})
     assert outcome.status is GateStatus.PASSED
 
-    mismatched = _projection(horizon_year=2029, growth=0.05)
+    mismatched = _pinned_projection(horizon_year=2029)
     _, outcome = _outcome(light, {UK_CGT_PROJECTION_ARTIFACT_KEY: mismatched})
     assert outcome.status is GateStatus.FAILED
     assert "disagrees with the declared projection" in "".join(outcome.result.failures)
 
     wrong_base = _frame([3_000.0], [1.0], time_period="2023")
     _, outcome = _outcome(wrong_base, {UK_CGT_PROJECTION_ARTIFACT_KEY: projection})
+    assert outcome.status is GateStatus.FAILED
+
+    # An engine whose growth path moved off the pinned one fails visibly.
+    drifted = _pinned_projection(growth_offset=0.001)
+    _, outcome = _outcome(light, {UK_CGT_PROJECTION_ARTIFACT_KEY: drifted})
+    assert outcome.status is GateStatus.FAILED
+    assert "drifted from the pinned path" in "".join(outcome.result.failures)
+    unpinned_year = _projection(growth=0.05, horizon_year=2031)
+    _, outcome = _outcome(light, {UK_CGT_PROJECTION_ARTIFACT_KEY: unpinned_year})
     assert outcome.status is GateStatus.FAILED
 
     battery, outcome = _outcome(light, {})
@@ -247,6 +285,19 @@ def test_manifest_entry_and_bound_are_the_reviewed_ones() -> None:
         "horizon_year": 2030,
         "gains_growth_parameter": UK_CGT_GAINS_GROWTH_PARAMETER,
         "exempt_amount_parameter": UK_CGT_EXEMPT_AMOUNT_PARAMETER,
+        # The OBR per-capita path as the engine carries it; 2030 is its last
+        # published year and later years repeat the 2030 rate.
+        "expected_yoy_growth_by_year": {
+            "2024": 0.0372,
+            "2025": 0.0438,
+            "2026": 0.0292,
+            "2027": 0.0323,
+            "2028": 0.031,
+            "2029": 0.0296,
+            "2030": 0.0315,
+        },
+        "expected_exempt_amount": 3_000.0,
+        "maximum_growth_drift": 0.0005,
         "bound_resource": HMRC_CGT_CONDITIONING_RESOURCE,
         "bound_size_band_lower_bound": 3_000,
     }
@@ -276,3 +327,12 @@ def test_engine_projection_matches_the_published_growth_path() -> None:
     assert projection.cumulative_gains_factor_by_year["2030"] == pytest.approx(
         1.2143, abs=5e-4
     )
+    pinned = _manifest_entry().parameters
+    for year, rate in projection.yoy_growth_by_year.items():
+        assert rate == pytest.approx(
+            float(pinned["expected_yoy_growth_by_year"][year]),
+            abs=float(pinned["maximum_growth_drift"]),
+        )
+    # Beyond the pinned horizon the engine repeats the 2030 rate.
+    beyond = uk_cgt_projection(2024, 2033)
+    assert beyond.yoy_growth_by_year["2033"] == projection.yoy_growth_by_year["2030"]

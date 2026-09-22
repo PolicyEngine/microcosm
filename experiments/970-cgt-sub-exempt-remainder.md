@@ -1,9 +1,10 @@
 # UK CGT sub-exempt gainers: remainder amounts, incidence anchor and projection fence (microcosm#970)
 
-*2026-09-22. Branch `uk-970-cgt-sub-exempt` (commits 0754a531, f44d2a84, 3aa6ed37, 98ac4757, 24509d78). Licensed
-receipts under `data/ukds/acceptance/970-cgt-sub-exempt/` and `runs/uk-623-first-calibrated/spine-assessment-v22/`;
-the v20 numbers come from the `uk-equalising-cgt` dashboard run of 2026-09-21 (PolicyEngine/uk-equalising-cgt PR #3)
-and the HMRC Capital Gains Tax statistics 2026 release.*
+*2026-09-22. Branch `uk-970-cgt-sub-exempt`. The licensed receipts live outside the tree, under
+`data/ukds/acceptance/970-cgt-sub-exempt/` and `runs/uk-623-first-calibrated/spine-assessment-v22/`; aggregate-only
+extracts of every number quoted below are committed under `docs/evidence/uk-cgt-970/`. The v20 numbers come from the
+`uk-equalising-cgt` dashboard run of 2026-09-21 (PolicyEngine/uk-equalising-cgt PR #3) and the HMRC Capital Gains Tax
+statistics 2026 release.*
 
 ## Question
 
@@ -25,14 +26,20 @@ Issue #970 fixes this in three parts, and this note records what each changed on
    households are trimmed to the reporter composition implied by the redrawn liable mass and the Advani-Summers
    crossings (sub-exempt = liable × (q_AEA − q_0) / (1 − q_AEA), losses = liable × q_0 / (1 − q_AEA)), with a factor
    rising in the band's incidence and capped at one; every unit of mass a clone loses goes to its paired original, so
-   pair mass, household mass and every non-CGT aggregate are conserved to rounding. Liable clones and band donors are
-   untouched. Gate: `uk_stage_cgt_incidence_anchor_composition`. The first licensed build was blocked by that gate:
+   pair mass, household mass and every non-CGT aggregate are conserved to rounding. Liable clones, zero-gain clone
+   carriers (no reporters) and band donors are untouched. The groups, targets and receipt are clone-side quantities,
+   not population counts: band donors and originals are outside the anchor. Gate:
+   `uk_stage_cgt_incidence_anchor_composition`, which certifies the anchor's arithmetic against its declared
+   composition. The first licensed build was blocked by that gate:
    a global exact-total correction borrowed from the clone stage had moved the summed rounding of 26,288 transfers
    onto one household (1.6e-13 relative on its pair); the fix conserves pairs arithmetically and records the total as
    realised.
-3. **Fence** (`uk_cgt_projection_entrants`, calibration seam): the weighted sub-exempt gainers whose uprated gains
-   cross the frozen exempt amount are counted year by year to 2030; the largest count must not exceed the vendored
-   HMRC Table 2.1a taxpayers in the £3,000–£5,999 band (73,000 in 2024-25).
+3. **Fence** (`uk_cgt_projection_entrants`, calibration seam): the cumulative stock of build-period sub-exempt gainers
+   whose uprated gains exceed each year's exempt amount is counted to 2030; the largest count must not exceed the
+   vendored HMRC Table 2.1a taxpayers in the £3,000–£5,999 band (73,000 in 2024-25), people already above the exempt
+   amount, so a plausibility ceiling rather than an entrant count. 2030 is the last year of the OBR per-capita growth
+   path in the engine's parameter tree (later years repeat the 2030 rate); the path and the exempt amount are pinned in
+   the gate's manifest entry and drift-checked, so an engine bump fails the gate visibly instead of moving its verdict.
 
 ## Measurements
 
@@ -48,15 +55,17 @@ calibrated as v22 with the v20 recipe (frozen register pin, 1,500 epochs, family
 the self-employment £20k–£30k band (90bdb809, not on main) was cherry-picked onto a measurement branch so the recipe
 matched v20; without it main's `uk_target_fit` fails that band at +25.3%.
 
-- Anchor receipt (spine): clone sub-exempt 11,291,667 → 40,729; loss-making 2,707,829 → 150,250; liable clone mass
+- Anchor receipt (spine, clone side only): clone sub-exempt 11,291,667 → 40,729; loss-making 2,707,829 → 150,250; liable clone mass
   486,720 untouched; liable mass 557,420; reporter composition q_0 = 0.2008, q_AEA = 0.2552 (implied reporters
   748,399); 25,436 of 26,288 clone households trimmed, none capped; largest pair error 2.2e-16.
 - Remainder receipt (spine): 20,642 persons placed in (£0.24, £2,999.76], all 61 Advani-Summers bands represented.
 - Calibration: 7/7 seam gates pass. Loss 0.3015 → 0.01038 (v20 0.01041); 96.6% of 638 targets within 10% (v20
   96.4%); CGT targets 61 of 65 within 10% (worst: tax by age 65–74 +14.0%, liability total +10.0%). ESS 4,907 (v20
   9,305). Calibrated liable mass 550,202 carrying £117.4bn of gains.
-- Fence (calibrated frame): PASSED. Entrants 12,711 in 2025, 22,331 in 2026, 43,377 in 2027, 50,416 in 2028, 54,321
-  in 2029, 67,611 in 2030, against 73,000. Sub-exempt weighted persons 326,532, median £2,116, none at exactly £3,000.
+- Fence (calibrated frame): PASSED. The stock of crossers is 12,711 by 2025, 22,331 by 2026, 43,377 by 2027, 50,416
+  by 2028, 54,321 by 2029 and 67,611 by 2030, against 73,000: about 13k a year, so the margin is one year of trend, and
+  the demoted-donor decision below is what would restore it. Sub-exempt weighted persons 326,532, median £2,116, none
+  at exactly £3,000.
 - Pass-2 head-to-head against the incumbent (scored from the deferral tree, whose scoring-prepare fix 1f45bdf3 the
   eval script needs): 500–24 on 524 common targets, candidate loss 0.0103 against the incumbent's 0.2171; the CGT family
   73–2 (v20: 493–26 on 519, loss 0.0096 vs 0.211, CGT 73–2).

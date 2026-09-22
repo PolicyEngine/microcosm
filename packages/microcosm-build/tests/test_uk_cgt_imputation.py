@@ -9,6 +9,7 @@ from microcosm.build.uk_runtime import cgt_imputation
 from microcosm.build.uk_runtime.advani_summers import (
     ADVANI_SUMMERS_RESOURCE,
     ADVANI_SUMMERS_VINTAGE,
+    CGT_PRIOR_PERCENTILE_COLUMNS,
     advani_summers_band_index,
     advani_summers_knots,
     advani_summers_rows,
@@ -442,6 +443,58 @@ class TestImputation:
         assert receipt["band_rows"][0]["exempt_quantile"] == pytest.approx(upper)
         assert len(receipt["resource_sha256"]) == 64
         assert report.evidence()["remainder"] == receipt
+
+    def test_remainder_mapping_leaves_the_liable_set_and_amounts_untouched(
+        self,
+    ) -> None:
+        # Review of PR #979: the remainder mapping must never reach the
+        # published cells. Two different within-band surfaces change the
+        # remainder amounts and nothing else.
+        distribution = _distribution(cell_people=10.0)
+        rows = 3_000
+        rng = np.random.default_rng(2)
+        gains = rng.lognormal(9, 1.5, rows)
+        frame = _frame(rows, gains=gains, incomes=np.full(rows, 20_000.0))
+        published = load_advani_summers_distribution()
+        halved = {
+            "rows": [
+                {
+                    **row,
+                    **{
+                        column: 0.5 * float(row[column])
+                        for column in CGT_PRIOR_PERCENTILE_COLUMNS
+                    },
+                }
+                for row in published["rows"]
+            ]
+        }
+
+        first, _ = impute_uk_capital_gains_with_report(
+            frame,
+            distribution,
+            PARAMETERS,
+            conditioning=load_hmrc_cgt_conditioning_facts(),
+        )
+        second, _ = impute_uk_capital_gains_with_report(
+            frame,
+            distribution,
+            PARAMETERS,
+            conditioning=load_hmrc_cgt_conditioning_facts(),
+            remainder_distribution=halved,
+        )
+
+        one = first.table("person")["capital_gains"].to_numpy()
+        two = second.table("person")["capital_gains"].to_numpy()
+        exempt = PARAMETERS.annual_exempt_amount
+        liable = one > exempt
+        np.testing.assert_array_equal(liable, two > exempt)
+        np.testing.assert_array_equal(one[liable], two[liable])
+        np.testing.assert_array_equal(one <= 0.0, two <= 0.0)
+        np.testing.assert_array_equal(one[one <= 0.0], two[two <= 0.0])
+        remainder = (one > 0.0) & (one <= exempt)
+        assert remainder.any()
+        assert not np.array_equal(one[remainder], two[remainder])
+        assert (two[remainder] > 0.0).all() and (two[remainder] <= exempt).all()
 
     def test_remainder_mapping_is_stable_under_row_permutation(self) -> None:
         surface = advani_summers_rows(load_advani_summers_distribution())

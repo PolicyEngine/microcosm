@@ -416,7 +416,7 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "16ecd6788a1f7abfc4b66a83538c99a0a46d29b959130a0931ccc74e87e5c117"
+    "bd4f9c0c843a7d6372c25b5f1e974534d23e3f44762f83d0de6512c3ac347b17"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
     "ee6b1eb9451866654bfeb0d2090a8412e08b8c2caa8bfb16fb9aa3c5b5002d84"
@@ -775,7 +775,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "0cf95a76753b896f41170e5702d3f0e18e0865aded6cbbdbdf159292083737fd"
+            "59b636f960c2a9e4e6cfb7f989949b89c64330bf9f3784d897926e0a9c8dcea3"
         ),
         "policy_sha256": (
             "a638c43c4b486962fba6bb6a6ffab557765dce26981b06f066ffdee36616482c"
@@ -783,10 +783,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "59323ffc470884c49f77105a80cb05eb6cc5321e9bfb109733ff51ea9f557d94"
+            "062a2afc22c0fba0e29d3476448f047402c3dc6adffad9e7a35c66229e9e0098"
         ),
         "policy_sha256": (
-            "daa0b7fd4abeea97ffeeca227b1524458d00cc5f1bf45278b437dacb79cf4032"
+            "df2e02eb31d29f13486ab14ae49d368c201861b24480bf4b504a3dadb950642a"
         ),
     },
     "release_cut": {

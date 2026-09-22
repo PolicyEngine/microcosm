@@ -608,6 +608,9 @@ _CGT_PROJECTION_PARAMETER_KEYS = frozenset(
         "horizon_year",
         "gains_growth_parameter",
         "exempt_amount_parameter",
+        "expected_yoy_growth_by_year",
+        "expected_exempt_amount",
+        "maximum_growth_drift",
         "bound_resource",
         "bound_size_band_lower_bound",
     }
@@ -665,6 +668,36 @@ def _evaluate_cgt_projection_entrants(
         raise ValueError(
             "cgt_projection_entrants artifact disagrees with the declared "
             f"projection: declared {declared}, supplied {actual}."
+        )
+    # The engine's growth path and exempt amount are pinned in the manifest:
+    # an engine bump that moves either fails the gate visibly instead of
+    # moving the verdict silently, and re-pinning is a reviewed change.
+    expected_growth = parameters["expected_yoy_growth_by_year"]
+    if not isinstance(expected_growth, Mapping):
+        raise ValueError(
+            "cgt_projection_entrants expected_yoy_growth_by_year must map years "
+            "to rates."
+        )
+    drift_tolerance = float(parameters["maximum_growth_drift"])
+    expected_exempt = float(parameters["expected_exempt_amount"])
+    drifts: list[str] = []
+    for year in projection.projected_years:
+        pinned = expected_growth.get(str(year))
+        if pinned is None:
+            drifts.append(f"no pinned growth rate for {year}")
+            continue
+        actual_rate = float(projection.yoy_growth_by_year[str(year)])
+        if abs(actual_rate - float(pinned)) > drift_tolerance:
+            drifts.append(f"growth {year}: engine {actual_rate} vs pinned {pinned}")
+    for year, amount in projection.exempt_amount_by_year.items():
+        if abs(float(amount) - expected_exempt) > 0.5:
+            drifts.append(
+                f"exempt amount {year}: engine {amount} vs pinned {expected_exempt}"
+            )
+    if drifts:
+        raise ValueError(
+            "cgt_projection_entrants projection drifted from the pinned path "
+            f"({projection.engine}): " + "; ".join(drifts) + "."
         )
     facts = load_hmrc_cgt_conditioning_facts(bound_resource)
     band = facts.size_band(lower_bound)

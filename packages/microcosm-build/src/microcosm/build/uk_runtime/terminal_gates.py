@@ -926,11 +926,13 @@ def uk_cgt_projection_entrants_gate(
     uprates ``capital_gains`` by per-capita GDP growth, so a gainer at or
     just below the exempt amount in the build period becomes a taxpayer in
     a later projected year without any change in behaviour. For every year
-    to the horizon the weighted persons whose uprated gains cross that
-    year's exempt amount are counted, and the largest count must not exceed
-    ``bound``: the published taxpayer count of the thinnest liable band,
-    the most any one year's entrants could plausibly be (microcosm#970). A
-    frame without ``capital_gains`` cannot be fenced and fails closed.
+    to the horizon the gate counts the cumulative stock of build-period
+    sub-exempt gainers whose uprated gains exceed that year's exempt amount
+    (non-decreasing in the year), and the largest count must not exceed
+    ``bound``: the published count of the thinnest liable band, people
+    already above the exempt amount, so a plausibility ceiling rather than
+    an entrant count (microcosm#970). A frame without ``capital_gains``
+    cannot be fenced and fails closed.
     """
 
     if "capital_gains" not in person.columns:

@@ -7944,6 +7944,7 @@
      "additionalProperties": false,
      "required": [
       "kind",
+      "population",
       "sub_exempt_group",
       "loss_group",
       "liable_clones",
@@ -7960,6 +7961,9 @@
      "properties": {
       "kind": {
        "const": "transfer_clone_mass_to_originals"
+      },
+      "population": {
+       "type": "string"
       },
       "sub_exempt_group": {
        "type": "string"

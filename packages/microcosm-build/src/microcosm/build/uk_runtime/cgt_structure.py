@@ -82,6 +82,14 @@ CGT_INCIDENCE_ANCHOR_STAGE_NAME = "cgt_incidence_anchor"
 CGT_ANCHOR_MAXIMUM_FACTOR = 1.0
 #: The non-liable clone groups the anchor moves mass out of.
 CGT_ANCHOR_GROUPS = ("sub_exempt", "loss")
+#: What the anchor's groups, targets and receipt describe: the clone side of
+#: the pairs. Band donors and originals are outside its reach, so the receipt
+#: certifies the anchor's own arithmetic, not a population count.
+CGT_ANCHOR_SCOPE = (
+    "clone households paired to their originals; band donors and originals are "
+    "outside the anchor, so the groups, targets and masses are clone-side "
+    "quantities, not population counts"
+)
 CGT_ANCHOR_MASS_CHANGE_REASON = (
     "Capital-gains incidence anchor moves the mass of non-liable clone "
     "households back to their paired originals until the sub-exempt and "
@@ -231,7 +239,10 @@ class UKCGTIncidenceAnchorResult:
 
     Group masses are household weights over clone households; each clone
     household carries exactly one gainer, so they equal the weighted gainer
-    persons of the group and are commensurate with ``liable_mass``.
+    persons of the group and are commensurate with ``liable_mass``. They are
+    clone-side quantities: band donors and originals are outside the anchor,
+    so ``after`` is what the anchor realised, not the population's sub-exempt
+    or loss-making mass.
     """
 
     frame: Frame
@@ -249,6 +260,7 @@ class UKCGTIncidenceAnchorResult:
     trimmed_households: int
     capped_households: int
     zero_gain_clone_households: int
+    zero_gain_clone_mass: float
     max_pair_relative_error: float
     original_mass: float
     clone_mass: float
@@ -263,6 +275,7 @@ class UKCGTIncidenceAnchorResult:
             "liable_mass": self.liable_mass,
             "liable_persons": self.liable_persons,
             "composition": {
+                "scope": CGT_ANCHOR_SCOPE,
                 "zero_quantile": self.zero_quantile,
                 "exempt_quantile": self.exempt_quantile,
                 "liable_share": liable_share,
@@ -277,6 +290,7 @@ class UKCGTIncidenceAnchorResult:
             "trimmed_households": self.trimmed_households,
             "capped_households": self.capped_households,
             "zero_gain_clone_households": self.zero_gain_clone_households,
+            "zero_gain_clone_mass": self.zero_gain_clone_mass,
             "max_pair_relative_error": self.max_pair_relative_error,
             "mass_by_clone_flag": {
                 "false": self.original_mass,
@@ -790,7 +804,10 @@ def anchor_cgt_incidence(
     if not all(value > 0.0 for value in targets.values()):
         raise ValueError("CGT incidence anchor derived a non-positive group target.")
     groups = {
-        "sub_exempt": (carrier_gains >= 0.0) & (carrier_gains <= annual_exempt_amount),
+        # A carrier with exactly zero gains is no reporter: it is neither in the
+        # (0, AEA] slice the sub-exempt target derives from nor a loss-maker, so
+        # it is left untouched and reported separately.
+        "sub_exempt": (carrier_gains > 0.0) & (carrier_gains <= annual_exempt_amount),
         "loss": carrier_gains < 0.0,
     }
     liable_clone = carrier_gains > annual_exempt_amount
@@ -903,6 +920,7 @@ def anchor_cgt_incidence(
         trimmed_households=int((factors < CGT_ANCHOR_MAXIMUM_FACTOR).sum()),
         capped_households=capped,
         zero_gain_clone_households=int((carrier_gains == 0.0).sum()),
+        zero_gain_clone_mass=float(clone_weights[carrier_gains == 0.0].sum()),
         max_pair_relative_error=float(pair_error.max()),
         original_mass=float(values[original_positions].sum()),
         clone_mass=float(values[clone_positions].sum()),
@@ -1216,9 +1234,11 @@ def cgt_incidence_anchor_operation_parameters() -> tuple[
         (
             "transfer_clone_mass_to_originals",
             {
+                "population": CGT_ANCHOR_SCOPE,
                 "sub_exempt_group": (
                     "clone households whose carrier's capital_gains lie in "
-                    "[0, annual exempt amount]"
+                    "(0, annual exempt amount]; a carrier with exactly zero gains is "
+                    "no reporter and is left untouched"
                 ),
                 "loss_group": (
                     "clone households whose carrier's capital_gains are negative"

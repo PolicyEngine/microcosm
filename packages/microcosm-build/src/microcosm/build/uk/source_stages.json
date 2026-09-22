@@ -3969,7 +3969,8 @@
     },
     {
      "kind": "transfer_clone_mass_to_originals",
-     "sub_exempt_group": "clone households whose carrier's capital_gains lie in [0, annual exempt amount]",
+     "population": "clone households paired to their originals; band donors and originals are outside the anchor, so the groups, targets and masses are clone-side quantities, not population counts",
+     "sub_exempt_group": "clone households whose carrier's capital_gains lie in (0, annual exempt amount]; a carrier with exactly zero gains is no reporter and is left untouched",
      "loss_group": "clone households whose carrier's capital_gains are negative",
      "liable_clones": "untouched",
      "donors": "untouched",
@@ -3985,7 +3986,7 @@
    ],
    "outputs": [],
    "rewrites": [],
-   "notes": "Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone's paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones and band donors are untouched, every pair's mass and the household total are conserved, and the receipt is gated at stage time."
+   "notes": "Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone's paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones, zero-gain clone carriers and band donors are untouched; the groups, targets and receipt are clone-side quantities (band donors and originals are outside the anchor), every pair's mass and the household total are conserved, and the receipt is gated at stage time."
   },
   {
    "stage": "salary_sacrifice",

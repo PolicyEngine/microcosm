@@ -565,7 +565,7 @@ def test_anchor_moves_non_liable_clone_mass_and_conserves_every_pair() -> None:
     assert result.liable_persons == 5  # three liable clones and two donors
     pattern = np.asarray(ANCHOR_PATTERN)
     for group, mask in (
-        ("sub_exempt", (pattern >= 0.0) & (pattern <= 50.0)),
+        ("sub_exempt", (pattern > 0.0) & (pattern <= 50.0)),
         ("loss", pattern < 0.0),
     ):
         assert result.before[group] == pytest.approx(
@@ -618,6 +618,7 @@ def test_anchor_moves_non_liable_clone_mass_and_conserves_every_pair() -> None:
         "trimmed_households",
         "capped_households",
         "zero_gain_clone_households",
+        "zero_gain_clone_mass",
         "max_pair_relative_error",
         "mass_by_clone_flag",
         "donor_mass",
@@ -630,7 +631,12 @@ def test_anchor_moves_non_liable_clone_mass_and_conserves_every_pair() -> None:
     )
     assert evidence["pair_count"] == len(ANCHOR_PATTERN)
     assert evidence["zero_gain_clone_households"] == 3
-    assert evidence["trimmed_households"] == 9
+    zero_gain = clone_positions[pattern == 0.0]
+    assert evidence["zero_gain_clone_mass"] == pytest.approx(before[zero_gain].sum())
+    # A zero-gain carrier is no reporter: untouched, outside both groups.
+    np.testing.assert_array_equal(after[zero_gain], before[zero_gain])
+    assert evidence["trimmed_households"] == 6
+    assert evidence["composition"]["scope"].startswith("clone households paired")
     assert evidence["capped_households"] == 0
     assert evidence["transferred_mass"] == pytest.approx(
         (result.before["sub_exempt"] - result.after["sub_exempt"])
@@ -665,7 +671,7 @@ def test_anchor_factor_rises_with_band_incidence() -> None:
     factors = after[clone_positions] / before[clone_positions]
     income = np.linspace(10_000.0, 120_000.0, len(ANCHOR_PATTERN))
     pattern = np.asarray(ANCHOR_PATTERN)
-    for mask in ((pattern >= 0.0) & (pattern <= 50.0), pattern < 0.0):
+    for mask in ((pattern > 0.0) & (pattern <= 50.0), pattern < 0.0):
         low_band = factors[mask & (income < 50_000.0)]
         high_band = factors[mask & (income >= 50_000.0)]
         assert low_band.size and high_band.size
@@ -675,6 +681,7 @@ def test_anchor_factor_rises_with_band_incidence() -> None:
         assert high_band[0] / low_band[0] == pytest.approx(2.5, rel=1e-9)
         assert (factors[mask] < 1.0).all()
     assert (factors[pattern > 50.0] == 1.0).all()
+    assert (factors[pattern == 0.0] == 1.0).all()
 
 
 def test_anchor_leaves_a_group_already_below_its_target_untouched() -> None:

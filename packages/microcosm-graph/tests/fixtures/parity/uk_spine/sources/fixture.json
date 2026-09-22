@@ -158,7 +158,7 @@
       ],
       "grain": "household",
       "nonnegative_outputs": [],
-      "notes": "Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone's paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones and band donors are untouched, every pair's mass and the household total are conserved, and the receipt is gated at stage time.",
+      "notes": "Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone's paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones, zero-gain clone carriers and band donors are untouched; the groups, targets and receipt are clone-side quantities (band donors and originals are outside the anchor), every pair's mass and the household total are conserved, and the receipt is gated at stage time.",
       "operations": [
         {
           "clone_flag_column": "household_is_capital_gains_clone",
@@ -210,8 +210,9 @@
           "loss_group": "clone households whose carrier's capital_gains are negative",
           "maximum_factor": 1,
           "pair_conservation": "to_rounding",
+          "population": "clone households paired to their originals; band donors and originals are outside the anchor, so the groups, targets and masses are clone-side quantities, not population counts",
           "reason": "Capital-gains incidence anchor moves the mass of non-liable clone households back to their paired originals until the sub-exempt and loss-making clone mass match the Advani-Summers reporter composition at the redrawn liable mass; every pair's mass and the total household mass are conserved.",
-          "sub_exempt_group": "clone households whose carrier's capital_gains lie in [0, annual exempt amount]",
+          "sub_exempt_group": "clone households whose carrier's capital_gains lie in (0, annual exempt amount]; a carrier with exactly zero gains is no reporter and is left untouched",
           "transfer": "each clone's removed mass is added to its paired original, so every pair's mass is conserved to rounding; no global exact-total correction is applied, so no household outside a trimmed pair moves",
           "weight_kind_out": "importance"
         }
