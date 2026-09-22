@@ -2868,12 +2868,489 @@ def test_restated_filters_clear_the_soi_skip_only_where_they_agree() -> None:
     ) == ("ledger_filter_new_dimension",)
 
 
+_RESTATED_AGE_LOWER = "ledger_filter_age_lower_bound"
+_RESTATED_AGE_UPPER = "ledger_filter_age_upper_bound"
+_RESTATED_AGE_EXACT = "ledger_filter_age"
+
+
+def _population_age_metadata(**overrides: str | None) -> dict[str, str]:
+    """A compiled Census population-by-age spec's metadata, as compiled.
+
+    Mirrors ``_population_age_reference_from_fact`` for a state 5-to-9 cell —
+    the half-open band the materializer slices on
+    (``age_lower_bound``/``age_upper_bound``) — plus the restatement
+    ``ledger_targets._constraint_bound_filters`` stamps from that fact's
+    ``age >= 5`` and ``age < 10`` rows. An override of ``None`` drops the key.
+    """
+
+    metadata = {
+        "materializer": "population_age",
+        "measure_mode": "indicator_sum",
+        "source_measure_id": "population",
+        "target_role": "population_age",
+        "geography_scope": "state",
+        "state_fips": "06",
+        "age_group": "5_to_9",
+        "age_lower_bound": "5",
+        "age_upper_bound": "10",
+        _RESTATED_AGE_LOWER: "5",
+        _RESTATED_AGE_UPPER: "10",
+    }
+    for key, value in overrides.items():
+        if value is None:
+            metadata.pop(key, None)
+        else:
+            metadata[key] = value
+    return metadata
+
+
+def _ssa_age_band_metadata(**overrides: str | None) -> dict[str, str]:
+    """A compiled SSA SSI recipients-by-age spec's metadata, as compiled.
+
+    Mirrors ``_ssa_ssi_reference_from_fact`` for the ``under_18`` row
+    (``age >= 0``, ``age < 18``): an age-banded ``policyengine_variable``
+    indicator count, plus the stamped restatement.
+    """
+
+    metadata = {
+        "materializer": "policyengine_variable",
+        "measure_mode": "indicator_sum",
+        "base_variable": "ssi",
+        "target_role": "ssa_ssi_age_band_recipients",
+        "source_measure_id": "recipient_count",
+        "age_lower_bound": "0",
+        "age_upper_bound": "18",
+        _RESTATED_AGE_LOWER: "0",
+        _RESTATED_AGE_UPPER: "18",
+    }
+    for key, value in overrides.items():
+        if value is None:
+            metadata.pop(key, None)
+        else:
+            metadata[key] = value
+    return metadata
+
+
+def test_restated_age_bounds_pass_the_guard_only_where_they_agree() -> None:
+    """A restated age bound equal to the compiled one is ignorable, so accepted.
+
+    The Ledger stamp restates a fact's ``age >= a`` / ``age < b`` rows as
+    ``ledger_filter_age_{lower,upper}_bound`` beside the compiled
+    ``age_lower_bound``/``age_upper_bound`` that both age paths in
+    ``_materialize_target_frame`` slice on as ``a <= age < b``. Where the two
+    name the same edge, dropping the restatement changes no population. Both
+    materializers are covered, one side at a time, an open top (``85+``: no
+    upper row, compiled ``inf``), and float spellings of the same edge. The
+    SOI checker must not list them either, so no listing turns an accepted
+    restatement into a silent drop.
+    """
+
+    builder = _load_builder_module()
+    specs = (
+        _spec(
+            "census_pep.v2024.cy2024.state_resident_population.06.5_to_9.population",
+            _population_age_metadata(),
+        ),
+        _spec("lower_only", _population_age_metadata(**{_RESTATED_AGE_UPPER: None})),
+        _spec("upper_only", _population_age_metadata(**{_RESTATED_AGE_LOWER: None})),
+        _spec(
+            "open_top",
+            _population_age_metadata(
+                age_group="85_plus",
+                age_lower_bound="85",
+                age_upper_bound="inf",
+                **{_RESTATED_AGE_LOWER: "85", _RESTATED_AGE_UPPER: None},
+            ),
+        ),
+        _spec(
+            "float_spelling",
+            _population_age_metadata(
+                **{_RESTATED_AGE_LOWER: "5.0", _RESTATED_AGE_UPPER: "10.0"}
+            ),
+        ),
+        _spec(
+            "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients."
+            "by_age.under_18.recipient_count",
+            _ssa_age_band_metadata(),
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {}
+    builder._assert_supported_ledger_filter_metadata(specs)
+    for spec in specs:
+        assert builder._unsupported_soi_ledger_filters(spec.metadata) == ()
+
+    # Non-vacuity: with the concept unnamed, the same specs get the bare-key
+    # refusal every one of them got before this rule.
+    del builder.RESTATED_LEDGER_FILTER_CONCEPTS["age"]
+    refused = builder._unsupported_ledger_filter_metadata(specs)
+    assert set(refused) == {spec.name for spec in specs}
+    assert refused[specs[0].name] == (_RESTATED_AGE_LOWER, _RESTATED_AGE_UPPER)
+
+
+def test_disagreeing_restated_age_bounds_are_refused_by_value() -> None:
+    """Negative control for the acceptance above: only an applied, equal edge.
+
+    Each spec carries an age restatement the materializer would ignore while
+    slicing a different population, or no population at all: an edge a year
+    off on either side, a finite upper edge over a compiled open top, a bound
+    with no compiled counterpart, an exact-age restatement (the materializer
+    has no exact-age filter), a bound on a fact whose dimensions include age
+    (so the bound came from the operator-less dimension stamp), and a bound on
+    specs whose materializer applies no age band. Every refusal names the
+    restated value and, where one exists, the compiled one. The unknown key is
+    the control that the ordinary path is untouched.
+    """
+
+    builder = _load_builder_module()
+    specs = (
+        _spec(
+            "disagreeing_lower",
+            _population_age_metadata(**{_RESTATED_AGE_LOWER: "4"}),
+        ),
+        _spec(
+            "disagreeing_upper",
+            _population_age_metadata(**{_RESTATED_AGE_UPPER: "9"}),
+        ),
+        _spec(
+            "ssa_disagreeing_upper",
+            _ssa_age_band_metadata(**{_RESTATED_AGE_UPPER: "65"}),
+        ),
+        _spec(
+            "finite_over_open_top",
+            _population_age_metadata(
+                age_lower_bound="85",
+                age_upper_bound="inf",
+                **{_RESTATED_AGE_LOWER: "85", _RESTATED_AGE_UPPER: "100"},
+            ),
+        ),
+        _spec(
+            "no_compiled_upper",
+            _population_age_metadata(age_upper_bound=None),
+        ),
+        _spec(
+            "exact_age",
+            _population_age_metadata(
+                **{
+                    _RESTATED_AGE_EXACT: "7",
+                    _RESTATED_AGE_LOWER: None,
+                    _RESTATED_AGE_UPPER: None,
+                }
+            ),
+        ),
+        _spec(
+            "age_dimension",
+            _population_age_metadata(
+                **{_RESTATED_AGE_EXACT: "all", _RESTATED_AGE_UPPER: None}
+            ),
+        ),
+        _spec(
+            "soi_materializer",
+            _soi_band_metadata(
+                age_lower_bound="5",
+                age_upper_bound="10",
+                **{_RESTATED_AGE_LOWER: "5"},
+            ),
+        ),
+        _spec(
+            "no_materializer",
+            _population_age_metadata(materializer=None, **{_RESTATED_AGE_UPPER: None}),
+        ),
+        _spec(
+            "unknown_key",
+            _population_age_metadata(ledger_filter_novel_dimension="specific_slice"),
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "disagreeing_lower": (
+            f"{_RESTATED_AGE_LOWER}=4 disagrees with age_lower_bound=5",
+        ),
+        "disagreeing_upper": (
+            f"{_RESTATED_AGE_UPPER}=9 disagrees with age_upper_bound=10",
+        ),
+        "ssa_disagreeing_upper": (
+            f"{_RESTATED_AGE_UPPER}=65 disagrees with age_upper_bound=18",
+        ),
+        "finite_over_open_top": (
+            f"{_RESTATED_AGE_UPPER}=100 disagrees with age_upper_bound=inf",
+        ),
+        "no_compiled_upper": (
+            f"{_RESTATED_AGE_UPPER}=10 restates a bound the spec does not "
+            "compile: no age_upper_bound",
+        ),
+        "exact_age": (
+            f"{_RESTATED_AGE_EXACT}=7 restates an exact age, but the "
+            "materializer slices a half-open age band and applies no "
+            "exact-age filter",
+        ),
+        "age_dimension": (
+            f"{_RESTATED_AGE_LOWER}=5 restates an age bound on a fact whose "
+            f"dimensions include age ({_RESTATED_AGE_EXACT}=all), so the bound "
+            "came from the dimension stamp, which carries no operator",
+        ),
+        "soi_materializer": (
+            f"{_RESTATED_AGE_LOWER}=5 restates an age bound on a spec whose "
+            "materializer ('irs_soi_slice') applies no age band",
+        ),
+        "no_materializer": (
+            f"{_RESTATED_AGE_LOWER}=5 restates an age bound on a spec whose "
+            "materializer (None) applies no age band",
+        ),
+        "unknown_key": ("ledger_filter_novel_dimension",),
+    }
+    with pytest.raises(RuntimeError) as excinfo:
+        builder._assert_supported_ledger_filter_metadata(specs)
+    message = str(excinfo.value)
+    assert "Unsupported Ledger target filter metadata would be ignored" in message
+    assert f"{_RESTATED_AGE_UPPER}=9 disagrees with age_upper_bound=10" in message
+    assert "ledger_filter_novel_dimension" in message
+    # The SOI loop's checker lists the same refusal, so the fatal guard (which
+    # runs first) is what stops it rather than a silent skip.
+    assert builder._unsupported_soi_ledger_filters(
+        _soi_band_metadata(
+            age_lower_bound="5", age_upper_bound="10", **{_RESTATED_AGE_LOWER: "5"}
+        )
+    ) == (_RESTATED_AGE_LOWER,)
+
+
+def test_operator_changed_age_bounds_stay_refused_by_bare_key() -> None:
+    """A ``>`` or ``<=`` age row is refused even when its value matches.
+
+    ``us_runtime.fiscal_targets._age_bounds`` drops the operator when it
+    compiles the band, so an ``age <= 9`` row compiles to
+    ``age_upper_bound=9`` and the materializer's ``age < 9`` leaves out the
+    nine-year-olds the published cell counts; ``age > 4`` compiles to
+    ``age_lower_bound=4`` and lets the four-year-olds in. The stamp keeps the
+    operator in the key (``_upper_bound_inclusive`` /
+    ``_lower_bound_exclusive``), which is not a restated concept, so those
+    keys keep the bare-key refusal whatever their value — the rule must not
+    swallow them by value agreement.
+    """
+
+    builder = _load_builder_module()
+    inclusive_upper = f"{_RESTATED_AGE_UPPER}_inclusive"
+    exclusive_lower = f"{_RESTATED_AGE_LOWER}_exclusive"
+    assert builder._restated_ledger_filter_concept(inclusive_upper) == (
+        "age_upper_bound_inclusive",
+        None,
+    )
+    specs = (
+        _spec(
+            "inclusive_upper",
+            _population_age_metadata(
+                age_upper_bound="9",
+                **{_RESTATED_AGE_UPPER: None, inclusive_upper: "9"},
+            ),
+        ),
+        _spec(
+            "exclusive_lower",
+            _population_age_metadata(
+                age_lower_bound="4",
+                **{_RESTATED_AGE_LOWER: None, exclusive_lower: "4"},
+            ),
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "inclusive_upper": (inclusive_upper,),
+        "exclusive_lower": (exclusive_lower,),
+    }
+
+
+def _census_age_fact(
+    groupby_value_id: str,
+    constraints: list[tuple[str, int]],
+    *,
+    dimensions: dict[str, str] | None = None,
+) -> dict[str, object]:
+    """A minimal Census PEP national population-by-age consumer fact."""
+
+    source_record_id = (
+        f"census_pep.cy2024.national_resident_population_age.{groupby_value_id}"
+        ".population"
+    )
+    fact_key = source_record_id.replace(".", "_")
+    dimensions = dict(dimensions or {})
+    return {
+        "label": source_record_id,
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{fact_key}",
+        "semantic_fact_key": f"ledger.semantic_fact.v2:{fact_key}",
+        "legacy_fact_key": f"ledger.fact.v1:{fact_key}",
+        "lineage": {"source_record_id": source_record_id},
+        "value": 1_000.0,
+        "period": {"type": "calendar_year", "value": 2024},
+        "entity": {"name": "person"},
+        "aggregation": {"method": "sum"},
+        "geography": {"level": "country", "id": "0100000US", "name": "United States"},
+        "dimensions": dimensions,
+        "dimension_labels": {key: f"Label {key}" for key in dimensions},
+        "dimension_value_labels": {
+            key: {str(value): f"Value {value}"} for key, value in dimensions.items()
+        },
+        "universe_constraints": {
+            "constraints": [
+                {
+                    "variable": "age",
+                    "operator": operator,
+                    "value": value,
+                    "role": "filter",
+                    "unit": "years",
+                }
+                for operator, value in constraints
+            ]
+        },
+        "layout": {
+            "record_set_id": "census_pep.cy2024.national_resident_population_age",
+            "groupby_value_id": groupby_value_id,
+            "measure_id": "population",
+        },
+        "observed_measure": {
+            "source_name": "census_pep",
+            "source_measure_id": "population",
+            "unit": "persons",
+        },
+        "source": {"source_name": "census_pep", "source_table": "PEP"},
+    }
+
+
+def test_restated_age_bounds_are_judged_on_the_real_compile() -> None:
+    """The rule meets the keys the production compile actually stamps.
+
+    Facts run through ``_dynamic_us_fiscal_target_references`` and
+    ``compile_ledger_target_references`` — the path
+    ``compile_us_fiscal_target_registry`` takes — so the compiled bounds and
+    the restated keys are the real compiler's, not hand-written metadata.
+    The ``>=``/``<`` band and the open-topped ``>=`` band are accepted, and
+    the test first checks they really carry the restated keys; the ``<=`` and
+    ``>`` rows compile to the same numeric edges but keep the operator in the
+    stamped key and stay refused; a fact with ``age`` as a dimension gets no
+    bound stamp at all, only the exact restatement, which is refused.
+    """
+
+    from microcosm.build.ledger_targets import compile_ledger_target_references
+    from microcosm.build.us_runtime.fiscal_targets import (
+        _dynamic_us_fiscal_target_references,
+    )
+
+    builder = _load_builder_module()
+    facts = [
+        _census_age_fact("0_to_4", [(">=", 0), ("<", 5)]),
+        _census_age_fact("85_plus", [(">=", 85)]),
+        _census_age_fact("5_to_9", [(">=", 5), ("<=", 9)]),
+        _census_age_fact("10_to_14", [(">", 9), ("<", 15)]),
+        _census_age_fact(
+            "15_to_19", [(">=", 15), ("<", 20)], dimensions={"age": "15_to_19"}
+        ),
+    ]
+    registry = compile_ledger_target_references(
+        facts,
+        _dynamic_us_fiscal_target_references(facts, target_period=2024),
+        country="us",
+    )
+    specs = {spec.name.split(".")[-2]: spec for spec in registry.specs}
+    assert set(specs) == {"0_to_4", "85_plus", "5_to_9", "10_to_14", "15_to_19"}
+
+    def age_keys(name: str) -> dict[str, str]:
+        return {
+            key: value
+            for key, value in specs[name].metadata.items()
+            if key.startswith(("age_", "ledger_filter_age")) and key != "age_group"
+        }
+
+    assert age_keys("0_to_4") == {
+        "age_lower_bound": "0",
+        "age_upper_bound": "5",
+        _RESTATED_AGE_LOWER: "0",
+        _RESTATED_AGE_UPPER: "5",
+    }
+    assert age_keys("85_plus") == {
+        "age_lower_bound": "85",
+        "age_upper_bound": "inf",
+        _RESTATED_AGE_LOWER: "85",
+    }
+    assert age_keys("5_to_9")["age_upper_bound"] == "9"
+    assert age_keys("10_to_14")["age_lower_bound"] == "9"
+
+    refused = builder._unsupported_ledger_filter_metadata(registry.specs)
+    assert {name.split(".")[-2]: entries for name, entries in refused.items()} == {
+        "5_to_9": (f"{_RESTATED_AGE_UPPER}_inclusive",),
+        "10_to_14": (f"{_RESTATED_AGE_LOWER}_exclusive",),
+        "15_to_19": (
+            f"{_RESTATED_AGE_EXACT}=15_to_19 restates an exact age, but the "
+            "materializer slices a half-open age band and applies no "
+            "exact-age filter",
+        ),
+    }
+
+
+def test_pinned_chronicle_feed_whole_registry_compiles_no_unsupported_filters() -> None:
+    """The whole compiled registry clears the guard, when this machine has the feed.
+
+    Before the age-band rule, ``compile_us_fiscal_target_registry(...,
+    age_targets=True)`` over the pinned feed left 939 of 32,866 targets
+    refused, every one a ``census_population``/``population_age`` or
+    ``ssa``/``ssa_ssi_age_band_recipients`` target carrying
+    ``ledger_filter_age_{lower,upper}_bound``
+    (``experiments/us-labelled-filter-support/REPORT.md`` section 7). This is
+    the whole-registry sibling of
+    :func:`test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters`
+    and runs only when ``MICROCOSM_US_CHRONICLE_FACTS`` points at the feed.
+    The non-vacuity arm requires restated age keys to be present.
+    """
+
+    feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
+    if not feed or not Path(feed).exists():
+        pytest.skip(
+            "set MICROCOSM_US_CHRONICLE_FACTS to the pinned consumer-facts feed"
+        )
+
+    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.us_runtime import (
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+    )
+    from microcosm.build.us_runtime.fiscal_targets import (
+        compile_us_fiscal_target_registry,
+    )
+
+    builder = _load_builder_module()
+    registry = compile_us_fiscal_target_registry(
+        load_ledger_consumer_artifact(feed).facts,
+        target_period=builder.PERIOD,
+        congressional_district_vintage_crosswalk=(
+            load_congressional_district_vintage_crosswalk(
+                default_congressional_district_vintage_crosswalk_path()
+            )
+        ),
+        age_targets=True,
+    )
+    specs = tuple(registry.specs)
+    restated_age = [
+        spec
+        for spec in specs
+        if _RESTATED_AGE_LOWER in spec.metadata or _RESTATED_AGE_UPPER in spec.metadata
+    ]
+
+    assert restated_age
+    assert {spec.metadata.get("materializer") for spec in restated_age} <= (
+        builder.RESTATED_AGE_BAND_MATERIALIZERS
+    )
+    assert builder._unsupported_ledger_filter_metadata(specs) == {}
+    assert not [
+        spec
+        for spec in specs
+        if spec.family == "irs_soi"
+        and builder._unsupported_soi_ledger_filters(spec.metadata)
+    ]
+
+
 def test_restated_concept_rules_all_have_a_comparison() -> None:
     """Every named restated concept must route to an implemented comparison.
 
     Adding a concept to ``RESTATED_LEDGER_FILTER_CONCEPTS`` without a rule
     would raise at compile time on the first spec carrying it; this pins the
-    two rules that exist instead.
+    three rules that exist instead.
     """
 
     builder = _load_builder_module()
@@ -2881,7 +3358,16 @@ def test_restated_concept_rules_all_have_a_comparison() -> None:
     assert set(builder.RESTATED_LEDGER_FILTER_CONCEPTS.values()) == {
         "agi_band",
         "eitc_child_count",
+        "age_band",
     }
+    assert builder._restated_ledger_filter_concept(_RESTATED_AGE_UPPER) == (
+        "age",
+        "upper",
+    )
+    assert builder._restated_ledger_filter_concept(_RESTATED_AGE_EXACT) == (
+        "age",
+        None,
+    )
     assert builder._restated_ledger_filter_concept(_RESTATED_AGI_LOWER) == (
         "us:statutes/26/62#adjusted_gross_income",
         "lower",
@@ -9321,9 +9807,23 @@ def test_soi_ctc_targets_materialize_nonrefundable_credit(
     assert compilation["dropped_target_names"] == []
 
 
+@pytest.mark.parametrize("restatement", ["none", "agreeing", "disagreeing"])
 def test_population_age_targets_materialize_person_age_counts(
     monkeypatch,
+    restatement,
 ) -> None:
+    """Age-banded targets materialize as ``lower <= age < upper`` person counts.
+
+    ``restatement`` adds the ``ledger_filter_age_{lower,upper}_bound`` keys
+    ``ledger_targets._constraint_bound_filters`` stamps from a fact's
+    ``age >=`` / ``age <`` rows. Agreeing restatements must change nothing —
+    same columns, same values, no target dropped — on both age paths: the
+    ``population_age`` materializer and the age-banded
+    ``policyengine_variable`` branch the SSA SSI by-age counts use. A
+    restated upper edge one year off must stop the build at the guard, naming
+    both values, before anything is materialized.
+    """
+
     builder = _load_builder_module()
     _installed_variable_metadata_index(builder)
     frame = Frame(
@@ -9391,6 +9891,7 @@ def test_population_age_targets_materialize_person_age_counts(
             ),
             "age_lower_bound": str(lower),
             "age_upper_bound": str(upper),
+            **restated_bounds(lower, upper),
         }
         if state_fips:
             metadata["state_fips"] = state_fips
@@ -9406,6 +9907,36 @@ def test_population_age_targets_materialize_person_age_counts(
             metadata=metadata,
         )
 
+    def restated_bounds(lower, upper):
+        if restatement == "none":
+            return {}
+        restated_upper = upper + 1 if restatement == "disagreeing" else upper
+        restated = {"ledger_filter_age_lower_bound": str(lower)}
+        if upper != "inf":
+            restated["ledger_filter_age_upper_bound"] = str(restated_upper)
+        return restated
+
+    def ssa_age_band_spec(name, lower, upper):
+        # The shape _ssa_ssi_reference_from_fact compiles for an SSA SSI
+        # by-age row (microcosm#470): an age-banded person indicator count.
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure=name,
+            value=1.0,
+            source="fixture",
+            family="ssa",
+            metadata={
+                "materializer": "policyengine_variable",
+                "measure_mode": "indicator_sum",
+                "base_variable": "ssi",
+                "target_role": builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
+                "age_lower_bound": str(lower),
+                "age_upper_bound": str(upper),
+                **restated_bounds(lower, upper),
+            },
+        )
+
     targets = (
         population_age_spec("national_age_0_to_4", 0, 5),
         population_age_spec("ca_age_0_to_4", 0, 5, state_fips="06"),
@@ -9417,6 +9948,8 @@ def test_population_age_targets_materialize_person_age_counts(
             state_fips="06",
             congressional_district_geoid="0601",
         ),
+        ssa_age_band_spec("ssi_under_18", 0, 18),
+        ssa_age_band_spec("ssi_age_8_to_64", 8, 65),
     )
 
     class FakeVariable:
@@ -9431,6 +9964,7 @@ def test_population_age_targets_materialize_person_age_counts(
             "filing_status": FakeVariable("tax_unit"),
             "state_income_tax": FakeVariable("tax_unit"),
             "age": FakeVariable("person"),
+            "ssi": FakeVariable("person"),
         }
 
         def __init__(self, reform=None):
@@ -9454,6 +9988,7 @@ def test_population_age_targets_materialize_person_age_counts(
                 "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
                 "state_income_tax": np.asarray([0.0, 0.0, 0.0]),
                 "age": np.asarray([2.0, 7.0, 4.0, 11.0]),
+                "ssi": np.asarray([0.0, 300.0, 0.0, 50.0]),
             }
             return arrays[variable]
 
@@ -9472,6 +10007,20 @@ def test_population_age_targets_materialize_person_age_counts(
     monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})
     monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
 
+    if restatement == "disagreeing":
+        with pytest.raises(RuntimeError) as excinfo:
+            builder._materialize_target_frame(frame, targets)
+        message = str(excinfo.value)
+        assert (
+            "ca_age_5_to_9: ledger_filter_age_upper_bound=11 disagrees with "
+            "age_upper_bound=10"
+        ) in message
+        assert (
+            "ssi_under_18: ledger_filter_age_upper_bound=19 disagrees with "
+            "age_upper_bound=18"
+        ) in message
+        return
+
     target_frame, registry, compilation = builder._materialize_target_frame(
         frame, targets
     )
@@ -9481,7 +10030,11 @@ def test_population_age_targets_materialize_person_age_counts(
     assert np.array_equal(household["ca_age_0_to_4"], np.asarray([1.0, 0.0]))
     assert np.array_equal(household["ca_age_5_to_9"], np.asarray([1.0, 0.0]))
     assert np.array_equal(household["ca_01_age_0_to_4"], np.asarray([1.0, 0.0]))
-    assert len(registry) == 4
+    # SSI recipients are the age-7 person in household 1 and the age-11 person
+    # in household 2; the 8-to-64 band keeps only the latter.
+    assert np.array_equal(household["ssi_under_18"], np.asarray([1.0, 1.0]))
+    assert np.array_equal(household["ssi_age_8_to_64"], np.asarray([0.0, 1.0]))
+    assert len(registry) == 6
     assert compilation["dropped_target_names"] == []
 
 
