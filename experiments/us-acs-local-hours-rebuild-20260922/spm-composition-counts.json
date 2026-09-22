@@ -1,0 +1,26 @@
+{
+ "source_h5": "/Users/maxghenis/PolicyEngine/_recovered/scratch-backup/893/local-hours-rebuild-20260921/full-release/populace_us_2024_acs_local.h5",
+ "rule": "adult = (age >= 18) | ((age >= 15) & role)",
+ "role_source": "household_structure_fallback",
+ "person_columns_read": [
+  "age",
+  "is_household_head",
+  "person_spm_unit_id"
+ ],
+ "role_column_present": false,
+ "fallback_columns_present": [
+  "is_household_head"
+ ],
+ "unit_columns_available": 14,
+ "every_membership_value_is_a_unit_id": true,
+ "n_persons": 3589209,
+ "n_spm_units": 1591514,
+ "n_units_without_classified_adult": 5274,
+ "n_units_without_member_aged_18_or_over": 5391,
+ "n_units_with_no_member_rows": 0,
+ "n_offending_single_member_units": 5273,
+ "n_offending_units_oldest_under_15": 1946,
+ "n_offending_units_oldest_15_to_17": 3328,
+ "ages_unreadable_as_numbers": 0,
+ "poverty_used": false
+}

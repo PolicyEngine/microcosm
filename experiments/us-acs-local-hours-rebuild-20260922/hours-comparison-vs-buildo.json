@@ -1,0 +1,179 @@
+{
+ "candidate": {
+  "path": "full-release/populace_us_2024_acs_local.h5",
+  "n_persons": 3589209,
+  "weekly_hours_worked_before_lsr": {
+   "acs_2024_1yr": {
+    "rows_16_plus": 2872990,
+    "missing_or_nonfinite": 0,
+    "distinct_values": 100,
+    "share_zero": 0.3849153669173927,
+    "share_exactly_40": 0.2874691523465101,
+    "share_positive": 0.6150846330826073,
+    "mean_among_positive": 37.4938131390298,
+    "histogram": {
+     "0": 1105858,
+     "1-9": 68291,
+     "10-19": 104642,
+     "20-29": 159315,
+     "30-39": 218846,
+     "40": 825896,
+     "41-49": 135853,
+     "50-59": 160246,
+     "60+": 94043
+    }
+   },
+   "asec_puf": {
+    "rows_16_plus": 126103,
+    "missing_or_nonfinite": 0,
+    "distinct_values": 94,
+    "share_zero": 0.3247821225506134,
+    "share_exactly_40": 0.3475412956075589,
+    "share_positive": 0.6752178774493867,
+    "mean_among_positive": 37.64670510998626,
+    "histogram": {
+     "0": 40956,
+     "1-9": 2476,
+     "10-19": 4620,
+     "20-29": 7667,
+     "30-39": 10259,
+     "40": 43826,
+     "41-49": 4938,
+     "50-59": 7406,
+     "60+": 3955
+    }
+   }
+  },
+  "hours_worked_last_week": {
+   "acs_2024_1yr": {
+    "rows_16_plus": 2872990,
+    "missing_or_nonfinite": 0,
+    "distinct_values": 81723,
+    "share_zero": 0.45174156540746746,
+    "share_exactly_40": 0.3492159736024142,
+    "share_positive": 0.5482584345925325,
+    "mean_among_positive": 37.47315401026081,
+    "histogram": {
+     "0": 1297849,
+     "1-9": 56152,
+     "10-19": 83471,
+     "20-29": 110597,
+     "30-39": 114649,
+     "40": 1006587,
+     "41-49": 63924,
+     "50-59": 79043,
+     "60+": 60718
+    }
+   },
+   "asec_puf": {
+    "rows_16_plus": 126103,
+    "missing_or_nonfinite": 0,
+    "distinct_values": 99,
+    "share_zero": 0.404217187537172,
+    "share_exactly_40": 0.2639350372314695,
+    "share_positive": 0.595782812462828,
+    "mean_among_positive": 37.438346865433246,
+    "histogram": {
+     "0": 50973,
+     "1-9": 2782,
+     "10-19": 4553,
+     "20-29": 7470,
+     "30-39": 10403,
+     "40": 33283,
+     "41-49": 6087,
+     "50-59": 6122,
+     "60+": 4430
+    }
+   }
+  }
+ },
+ "incumbent": {
+  "path": "/Users/maxghenis/.cache/huggingface/hub/datasets--policyengine--populace-us/snapshots/515b7398d7b4414694865b7a95e4c3f1faa2edb5/populace_us_2024_acs_local.h5",
+  "n_persons": 3589209,
+  "weekly_hours_worked_before_lsr": {
+   "acs_2024_1yr": {
+    "rows_16_plus": 2872990,
+    "missing_or_nonfinite": 0,
+    "distinct_values": 1,
+    "share_zero": 0.0,
+    "share_exactly_40": 1.0,
+    "share_positive": 1.0,
+    "mean_among_positive": 40.0,
+    "histogram": {
+     "0": 0,
+     "1-9": 0,
+     "10-19": 0,
+     "20-29": 0,
+     "30-39": 0,
+     "40": 2872990,
+     "41-49": 0,
+     "50-59": 0,
+     "60+": 0
+    }
+   },
+   "asec_puf": {
+    "rows_16_plus": 126103,
+    "missing_or_nonfinite": 0,
+    "distinct_values": 94,
+    "share_zero": 0.3247821225506134,
+    "share_exactly_40": 0.3475412956075589,
+    "share_positive": 0.6752178774493867,
+    "mean_among_positive": 37.64670510998626,
+    "histogram": {
+     "0": 40956,
+     "1-9": 2476,
+     "10-19": 4620,
+     "20-29": 7667,
+     "30-39": 10259,
+     "40": 43826,
+     "41-49": 4938,
+     "50-59": 7406,
+     "60+": 3955
+    }
+   }
+  },
+  "hours_worked_last_week": {
+   "acs_2024_1yr": {
+    "rows_16_plus": 2872990,
+    "missing_or_nonfinite": 0,
+    "distinct_values": 82213,
+    "share_zero": 0.45318257285963404,
+    "share_exactly_40": 0.3546378511585491,
+    "share_positive": 0.546817427140366,
+    "mean_among_positive": 37.41864620088155,
+    "histogram": {
+     "0": 1301989,
+     "1-9": 52186,
+     "10-19": 90039,
+     "20-29": 103027,
+     "30-39": 117259,
+     "40": 1022132,
+     "41-49": 58003,
+     "50-59": 73284,
+     "60+": 55071
+    }
+   },
+   "asec_puf": {
+    "rows_16_plus": 126103,
+    "missing_or_nonfinite": 0,
+    "distinct_values": 99,
+    "share_zero": 0.404217187537172,
+    "share_exactly_40": 0.2639350372314695,
+    "share_positive": 0.595782812462828,
+    "mean_among_positive": 37.438346865433246,
+    "histogram": {
+     "0": 50973,
+     "1-9": 2782,
+     "10-19": 4553,
+     "20-29": 7470,
+     "30-39": 10403,
+     "40": 33283,
+     "41-49": 6087,
+     "50-59": 6122,
+     "60+": 4430
+    }
+   }
+  }
+ },
+ "scope": "persons aged 16+, per spine, aggregates only; no poverty measure"
+}
