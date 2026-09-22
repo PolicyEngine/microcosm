@@ -402,20 +402,39 @@ script, the fixture, the changelog fragment, the test module, and
 its constants, one docstring and the two call sites. No `packages/*/src` file
 differs from `main`, so the compile measured below is `main`'s.
 
-### The counts at `b10e117a0`
+### The counts on this tree
 
-Same functions as section 7:
+Every count in this subsection is in
+`experiments/us-labelled-filter-support/restated_filter_arms_receipt.json`,
+written by the committed
+`experiments/us-labelled-filter-support/measure_restated_filter_arms.py`
+(the receipt's `script_sha256`, `00d09505…`, is the committed script's; it ran
+at `fb1a09646`, which is `b10e117a0` plus a `REPORT.md` edit, so the code it
+measured is `b10e117a0`'s; one process, 113 s wall, 3.0 GB peak RSS for both
+feeds). Regenerate with:
+
+```
+uv run python experiments/us-labelled-filter-support/measure_restated_filter_arms.py \
+    <consumer_facts_us_c5e5bf8.jsonl> <chronicle_us_b571381/artifact/consumer_facts.jsonl> \
+    > experiments/us-labelled-filter-support/restated_filter_arms_receipt.json
+```
+
+The script uses the same functions as section 7:
 `compile_us_fiscal_target_registry(..., age_targets=True)` for the whole
 registry, `state_admin_specs(feed, ["snap","medicaid","soi"], soi_mode=...)`
 for the state surface, refusals from `_unsupported_ledger_filter_metadata`,
 silent skips from `_unsupported_soi_ledger_filters` over `irs_soi` specs. The
 reverted arm replaces `_restated_ledger_filter_refusal` with a function that
 returns the bare key. That is the pre-rule behaviour of both call sites, and
-so `main`'s.
+so `main`'s: on `main` (`2b85b7b22`) both guards list every
+otherwise-unsupported, non-noop `ledger_filter_*` key by name, with no
+restatement check (`tools/build_us_fiscal_refresh_release.py` on `main`,
+`_unsupported_soi_ledger_filters` and `_unsupported_ledger_filter_metadata`,
+read 2026-09-22).
 
 Both US exports on this machine gave identical counts: the pinned
-`consumer_facts_us_c5e5bf8.jsonl` (facts sha256 `b8543739…`, equal to the
-`facts_sha256` in `packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json`)
+`consumer_facts_us_c5e5bf8.jsonl` (receipt `feed_sha256` `b8543739…`, equal to
+the `facts_sha256` in `packages/microcosm-build/src/microcosm/build/us/chronicle_feed.json`)
 and `chronicle_us_b571381/artifact/consumer_facts.jsonl` (`4d1dba8c…`).
 
 | Surface | Targets | Refused, rule | SOI skips, rule | Refused, reverted (`main`) | SOI skips, reverted |
@@ -437,6 +456,25 @@ targets, `ledger_filter_age_upper_bound` on 886).
 Every number equals section 7's, which stands unchanged. The only new
 observation is that the `b571381` export gives the pinned feed's counts on this
 tree too; section 5 had compared the two exports only on the pre-merge tree.
+
+### Provenance of the numbers in sections 3b–7
+
+Sections 3b–7 record runs made before this merge, at the heads they name
+(section 7: this branch re-levelled on `origin/main` before #955 merged), with
+`census_compiled_ledger_filters.py`, the test module and ad hoc calls to the
+same guard functions. Their outputs were not committed, so those sections are
+records of those runs rather than numbers regenerable from files on this
+branch. What the receipt above does regenerate on this tree: the target counts
+(32,866 / 31,066 / 760), section 7's state-surface counts with the rule (0)
+and reverted (1,988, carrying 2,702 entries split 1,076 / 816 / 810), and
+section 7's age-band entries (939 / 886). Section 4's whole-registry
+"Refused 0" is superseded by this tree's 939 (rule) and 3,208 (reverted).
+Section 4's family-by-role table and section 5's fact-level counts are not in
+the receipt and were not re-measured after the merge. Section 4's byte table
+is arithmetic (4 bytes × 1,588,854 households × specs), not a measurement; its
+historical rows cite `_buildp-runtime/logs/acs-local/release_chain.log`.
+
+### Tests
 
 `test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters`
 ran against the pinned feed rather than skipping, and the module passed:
