@@ -136,13 +136,17 @@ for known-excluded publications while preserving their scoring-only diagnostic
 path.
 
 `tools/build_us_acs_donor_receipt_qualification.py` is a third local,
-non-publishing lane. It takes the exact pinned Build P donor and appends the
-three reported-receipt inputs current main's ACS transfer families require
-(`person.receives_wic`, `spm_unit.receives_snap`, `spm_unit.receives_tanf`),
-derived only through the maintained `us_runtime.cps_carried` producers and the
-pinned `PAW_TYP` restore, leaving every other HDF object byte-identical. It
-writes a local H5 and an aggregate receipt and cannot publish, stage or
-calibrate; its receipt is build evidence, not certification. See
+non-publishing lane. It takes one of two exact pinned Build P lineage parents
+and appends the three reported-receipt inputs current main's ACS transfer
+families require (`person.receives_wic`, `spm_unit.receives_snap`,
+`spm_unit.receives_tanf`), derived only through the maintained
+`us_runtime.cps_carried` producers and the pinned `PAW_TYP` restore. It
+replaces `person/table` and `spm_unit/table` with wider record types that keep
+every existing field's bytes, adds five attributes per new column, and
+rewrites the four pandas column-registration attributes on those two groups;
+every other HDF object and attribute is proven exact. It writes a local H5 and
+an aggregate receipt and cannot publish, stage or calibrate; its receipt is
+build evidence, not certification. See
 [the qualification note](docs/us-acs-donor-receipt-qualification.md).
 
 The independent US annual static-aging candidate builder lives in
