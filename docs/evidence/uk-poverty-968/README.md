@@ -63,11 +63,11 @@ Basis swap (replace the engine's simulated means-tested benefits with the FRS-re
 
 So the FRS under-reporting that the DWP itself documents (FRS 2023/24 captures 67 % of UC families, 74 % of Housing Benefit, 71 % of Pension Credit, 61 % of ESA, table M.6a) costs the calibrated line about 0.6 points of measured poverty and nothing at design weights.
 
-Take-up allocation (`measure_968_takeup_probe.py`, v20 at 2024, calibrated weights, claimant count held near the file's):
+Take-up allocation (`measure_968_takeup_probe.py`, v20 at 2024, calibrated weights). **Caveat (adversarial review on PR #967, 2026-09-22): the probe holds the number of sampled benefit-unit records fixed, not the weighted caseload.** With unequal calibrated weights the arms represent different numbers of UC families (`outputs/takeup_probe.json`): baseline 6.37m, the three re-draws 6.57–6.66m, poorest-first 6.28m, richest-first 6.95m, so the poorest-to-richest arms differ by 0.67m families (10.7 %). The spans below are therefore a joint allocation-and-caseload sensitivity, not an allocation-only effect at a fixed caseload; a weighted-caseload-preserving rerun is the controlled version and has not been run.
 
 - Baseline draw: 15.30 % (6.37m UC families, £76.8bn).
 - Three alternative random draws of the same residual count: 15.40–15.59 %.
-- Residual given to the poorest entitled units: 14.05 %. To the richest: 16.66 %. **The allocation alone spans 2.6 points at a fixed claimant count.**
+- Residual given to the poorest entitled units: 14.05 % (6.28m families). To the richest: 16.66 % (6.95m families). **The two arms span 2.6 points, with the represented caseload moving by 10.7 % between them: a joint allocation-and-caseload sensitivity, not an allocation-only bound.**
 - Reported claimants only, no residual: 16.12 % (4.67m families, £63.6bn). Everyone entitled claims: 14.85 % (8.61m).
 - Child relative rate across the same runs: 17.6 % to 21.0 %.
 
@@ -79,7 +79,7 @@ Reading: the residual gap to HBAI (about 2 points at 2024) is entirely inside th
 - The zero-income spike: HBAI has 0.66m individuals (1.0 %) at £0–10/week. spine-s design 0.34 %, v20 0.16 %, eFRS 0.62 %. Half of v20's deep-tail deficit is this spike; the engine's imputation fills incomes that the FRS leaves at zero.
 - Quantile ratios to the median: HBAI p10 0.48, p30 0.765, p70 1.31, p90 1.96, mean/median 1.22. v20 calibrated: 0.52, 0.765, 1.27, 1.75, 1.13. spine-s design: 0.51, 0.77, 1.29, 1.85, 1.14. eFRS: 0.46, 0.73, 1.32, 1.87, 1.13. The engine files are compressed at both ends; calibration compresses the top further (p90 ratio 1.85 → 1.75). That is the scorecard's open Gini item, not a poverty item, but it shares a cause candidate (weights on the SPI-synthetic and top households).
 - Income sources by quintile (share of gross, state support): HBAI 47 / 36 / 22 / 10 / 3. v20 2024: 41 / 31 / 20 / 13 / 4.5. The bottom two quintiles carry less state support and more market income than HBAI's; the top two carry more. Not a benefits-too-high-at-the-bottom signature.
-- Groups, relative BHC, v20 2024 versus HBAI FYE 2024: children 18.8 vs 23 (the largest miss); pensioners 17.2 vs 19; working-age 13.6 vs 15. Children by family size: 1 child 9.9 vs 15, 2 children 15.3 vs 18, 3+ 32.3 vs 35. Tenure (household basis): social renters 20–22 vs 29, private renters 15.8 vs 22, owned outright 15.0 vs 18, mortgagors 12.5 vs 8. v20 has too few poor renters and too many poor mortgagors; the eFRS has the opposite renter error (social 31–44 %). Family typing here is household-level while HBAI's is benefit-unit-level, so single-adult categories are not comparable and are omitted.
+- Groups, relative BHC, v20 2024 versus HBAI FYE 2024: children 18.8 vs 23 (the largest group gap, but not on one definition: the probes count `age < 18`, while HBAI's dependent child is every under-16 plus 16–19-year-olds in full-time non-advanced education or training who are unmarried and living with their parents, so dependent 18–19-year-olds are missing from the file's child population and independent 16–17-year-olds are in it; the difference is not read as model error here, and a rerun on HBAI's definition is the fix, adversarial review on PR #967); pensioners 17.2 vs 19; working-age 13.6 vs 15. Children by family size: 1 child 9.9 vs 15, 2 children 15.3 vs 18, 3+ 32.3 vs 35. Tenure (household basis): social renters 20–22 vs 29, private renters 15.8 vs 22, owned outright 15.0 vs 18, mortgagors 12.5 vs 8. v20 has too few poor renters and too many poor mortgagors; the eFRS has the opposite renter error (social 31–44 %). Family typing here is household-level while HBAI's is benefit-unit-level, so single-adult categories are not comparable and are omitted.
 
 ## 5. Attribution
 
@@ -89,7 +89,7 @@ Against HBAI FYE 2024, relative BHC 17.3 %, v20 at 2024 measures 15.3 %:
 - Family-wide residual at design weights: about 1.1 points (16.2 vs 17.3), of which roughly half is the missing zero-income spike and the rest the year basis and the compressed bottom tail.
 - Calibration: −0.9 points (reweighting at a fixed line −1.2, line shift +0.3).
 - Simulated-versus-reported benefit basis: −0.6 points on the calibrated weights, ~0 at design weights.
-- Take-up allocation: ±1.3 points around the draw at a fixed claimant count, which brackets the whole residual.
+- Take-up allocation: ±1.3 points around the draw across the poorest-first and richest-first arms, which also move the represented caseload by 10.7 % between them (see the caveat in §3); the span brackets the whole residual but is not a controlled allocation-only bound.
 
 ## 6. Fix path as offered (rulings recorded below)
 
@@ -101,7 +101,7 @@ Against HBAI FYE 2024, relative BHC 17.3 %, v20 at 2024 measures 15.3 %:
 
 ## 7. After the review (2026-09-21)
 
-- **Direction of a realistic take-up allocation** (review point 3; `outputs/takeup_direction.json`). Ranking the drawn Universal Credit residual by entitlement size, largest first, which is DWP's finding that non-take-up concentrates in small entitlements, gives 14.9 % relative BHC at 2024 against the file's 15.3 % (children 18.7 % against 18.8 %; UC spend £84.3bn against £76.8bn at the same claimant count). Smallest first gives 15.9 %. So the correction the evidence favours moves measured poverty away from HBAI, not towards it, and the residual gap should be read as at least what the memo states.
+- **Direction of a realistic take-up allocation** (review point 3; `outputs/takeup_direction.json`). Ranking the drawn Universal Credit residual by entitlement size, largest first, which is DWP's finding that non-take-up concentrates in small entitlements, gives 14.9 % relative BHC at 2024 against the file's 15.3 % (children 18.7 % against 18.8 %; UC spend £84.3bn against £76.8bn at the same number of drawn records). Smallest first gives 15.9 %. So the correction the evidence favours moves measured poverty away from HBAI, not towards it, and the residual gap should be read as at least what the memo states. Same caveat: this arm represents 6.57m UC families against the baseline draw's 6.37m (+3.2 %, `outputs/takeup_direction.json`), so the 0.4-point move is allocation and caseload together, not allocation at a fixed claimant count.
 - **Year basis** (review point 4). The scorecard probe now carries an `hbai_basis` block measured at 2024, the closest engine year to HBAI FYE 2024, with the same pair plus the p10 and p90 ratios to the median and the under-£10 share; the evaluation reports show that block in its own table beside HBAI FYE 2024 and keep the 2026 rows file against file only.
 - **Position taken (2026-09-21).** The scorecard is made accurate on concept and year, and the evidence is filed here. Poverty is not chased as a benchmark: HBAI is a survey statistic from another producer, not an administrative total, and a poverty rate is not a calibration target. The income-level and tenure work the decomposition points at is already under way on its own merits and is not tied to moving a poverty rate; the residual 2-point relative gap and the children and tenure rows stay on record here rather than in a follow-up issue.
 
