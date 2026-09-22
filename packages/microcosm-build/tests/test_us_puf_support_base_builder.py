@@ -15,9 +15,8 @@ from microcosm.build.us_runtime import (
     clone_us_frame_for_puf_support,
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
-    PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION,
-    PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
-    puf_capital_gains_tail_support_contract_identity,
+    transfer_puf_capital_gains_tail,
+    validate_puf_capital_gains_tail_manifest,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -43,102 +42,34 @@ def _canonical_sha256(value: object) -> str:
     ).hexdigest()
 
 
-def _valid_capital_gains_tail_manifest() -> dict[str, object]:
-    """Return the smallest schema-current manifest for repair-path tests."""
+def _load_tail_fixture_module():
+    """Load the tail stage's own test fixtures by path (importlib test mode)."""
 
-    record = {
-        "donor_source_id": 1,
-        "donor_weight": 1.0,
-        "assigned_weight": 1.0,
-        "donor_filing_status_code": 1,
-        "donor_filing_status": "SINGLE",
-        "donor_agi_band_index": 0,
-        "donor_agi_band": "fixture",
-        "donor_is_synthetic": False,
-        "joint_vector": {},
-        "recipient_household_source_id": 1,
-        "recipient_tax_unit_source_id": 1,
-        "recipient_household_id": 1,
-        "recipient_tax_unit_id": 1,
-        "tail_household_id": 2,
-        "tail_tax_unit_id": 2,
-        "tail_person_id": 2,
-    }
-    records = [record]
-    strata = [
-        {
-            "filing_status_code": code,
-            "filing_status": name,
-            "status": "attached" if code == 1 else "not_applicable",
-            "observed_count": 1 if code == 1 else 0,
-            "required_minimum": 1 if code == 1 else 0,
-            "attached_donor_count": 1 if code == 1 else 0,
-            "skipped_donor_count": 0,
-        }
-        for code, name in (
-            (1, "SINGLE"),
-            (2, "JOINT"),
-            (3, "SEPARATE"),
-            (4, "HEAD_OF_HOUSEHOLD"),
-            (5, "SURVIVING_SPOUSE"),
-        )
-    ]
-    recipient_support: dict[str, object] = {
-        "contract": puf_capital_gains_tail_support_contract_identity(),
-        "candidate_count": 1,
-        "selected_donor_count": 1,
-        "attached_donor_count": 1,
-        "skipped_donor_count": 0,
-        "attached_stratum_count": 1,
-        "insufficient_support_stratum_count": 0,
-        "not_applicable_stratum_count": 4,
-        "insufficient_support_strata": [],
-        "strata": strata,
-    }
-    recipient_support["sha256"] = _canonical_sha256(recipient_support)
-    donor_projection = [
-        {
-            key: record[key]
-            for key in (
-                "donor_source_id",
-                "donor_weight",
-                "donor_filing_status_code",
-                "donor_filing_status",
-                "donor_agi_band_index",
-                "donor_agi_band",
-                "donor_is_synthetic",
-                "joint_vector",
-            )
-        }
-    ]
-    assignment_projection = [
-        {
-            key: record[key]
-            for key in (
-                "donor_source_id",
-                "assigned_weight",
-                "recipient_household_source_id",
-                "recipient_tax_unit_source_id",
-                "recipient_household_id",
-                "recipient_tax_unit_id",
-                "tail_household_id",
-                "tail_tax_unit_id",
-                "tail_person_id",
-            )
-        }
-    ]
-    manifest: dict[str, object] = {
-        "artifact_kind": "populace_puf_capital_gains_tail_transfer",
-        "schema_version": PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION,
-        "stage": PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
-        "boundary": {"tail_record_count": 1},
-        "recipient_support": recipient_support,
-        "donor_records_sha256": _canonical_sha256(donor_projection),
-        "assignment_sha256": _canonical_sha256(assignment_projection),
-        "record_count": 1,
-        "records": records,
-    }
-    manifest["manifest_sha256"] = _canonical_sha256(manifest)
+    path = Path(__file__).with_name("test_us_puf_capital_gains_tail.py")
+    spec = importlib.util.spec_from_file_location("_tail_fixtures", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _valid_capital_gains_tail_manifest() -> dict[str, object]:
+    """Return a schema-current manifest for repair-path tests.
+
+    Schema 3 (microcosm#958) binds arm-owned columns, the AGI-arm selection
+    receipt, per-record arm vectors and the vector-mass receipts, so the
+    manifest is produced by the real transfer on the stage's own fixtures
+    rather than assembled by hand; a hand copy would drift from the
+    validator the repair path calls.
+    """
+
+    fixtures = _load_tail_fixture_module()
+    _frame, manifest = transfer_puf_capital_gains_tail(
+        fixtures._expanded_recipient_frame(),
+        fixtures._donor(),
+        seed=567,
+    )
+    validate_puf_capital_gains_tail_manifest(manifest)
     return manifest
 
 
@@ -623,7 +554,7 @@ class TestBaseBuildWeightsAudit:
             "manifest_sha256": manifest["manifest_sha256"],
             "donor_records_sha256": manifest["donor_records_sha256"],
             "assignment_sha256": manifest["assignment_sha256"],
-            "record_count": 1,
+            "record_count": manifest["record_count"],
         }
         if damage == "missing":
             output.unlink()

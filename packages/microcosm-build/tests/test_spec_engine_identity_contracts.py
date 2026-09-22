@@ -91,7 +91,7 @@ def test_tail_artifact_manifest_schema_has_one_typed_bundle_home(
     assert (
         tail_support["manifest_schema_version"]
         == (PUF_CAPITAL_GAINS_TAIL_MANIFEST_SCHEMA_VERSION)
-        == 2
+        == 3
     )
 
 

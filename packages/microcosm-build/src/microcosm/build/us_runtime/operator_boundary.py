@@ -61,13 +61,13 @@ from microcosm.build.us_runtime.prior_year_income import (
 )
 from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
+    PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
     PUF_CAPITAL_GAINS_TAIL_DONOR_SYNTHETIC_COLUMN,
-    PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS,
-    PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
     PUF_CAPITAL_GAINS_TAIL_TRANSFER_WEIGHT_COLUMN,
+    puf_tail_owned_columns,
 )
 from microcosm.build.us_runtime.puf_support import (
     PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS,
@@ -191,6 +191,7 @@ _ACS_NATIVE_INPUT_CONTRACTS: Mapping[
 _CAPITAL_GAINS_TAIL_PROVENANCE_COLUMNS = frozenset(
     {
         PUF_CAPITAL_GAINS_TAIL_APPLIED_COLUMN,
+        PUF_CAPITAL_GAINS_TAIL_ARM_COLUMN,
         PUF_CAPITAL_GAINS_TAIL_DONOR_AGI_BAND_COLUMN,
         PUF_CAPITAL_GAINS_TAIL_DONOR_FILING_STATUS_COLUMN,
         PUF_CAPITAL_GAINS_TAIL_DONOR_SOURCE_ID_COLUMN,
@@ -310,10 +311,10 @@ PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES: OperatorOutputFamilies = {
         "tax_unit": frozenset(PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS),
     },
     "capital_gains_tail": {
-        "person": frozenset(PUF_CAPITAL_GAINS_TAIL_PERSON_COLUMNS),
+        "person": frozenset(puf_tail_owned_columns(3)["person"]),
         "tax_unit": frozenset(
             {
-                *PUF_CAPITAL_GAINS_TAIL_TAX_UNIT_COLUMNS,
+                *puf_tail_owned_columns(3)["tax_unit"],
                 *_CAPITAL_GAINS_TAIL_PROVENANCE_COLUMNS,
             }
         ),

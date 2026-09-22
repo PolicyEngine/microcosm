@@ -2504,7 +2504,7 @@ def test_constants_adapter_equals_live_constants_and_stays_out_of_identities(
             "country": "us",
             "schema_id": "country_spec",
             "schema_version": 1,
-            "spec_sha256": "e058159f89a01b6541e98ee57ffb0169eeff8ed2ea4fb1c664b3f3fb0c60a675",
+            "spec_sha256": "189916d646fc21847573c5472515d993996728bfd47e8103b67b4ec141010112",
         },
     }
 
@@ -3604,7 +3604,7 @@ def test_stacked_checkpoint_identity_binds_v13_semantic_contracts(
             stacked_spine_module._late_contract_available_input_keys(contract)
         )
     assert pool_code["primary_qrf_checkpoint_schema_version"] == 6
-    assert pool_code["puf_capital_gains_tail_manifest_schema_version"] == 2
+    assert pool_code["puf_capital_gains_tail_manifest_schema_version"] == 3
     assert pool_code["puf_capital_gains_tail_support_contract"] == (
         pool_tool.puf_capital_gains_tail_support_contract_identity()
     )
@@ -4532,7 +4532,9 @@ def test_legacy_entrypoint_publication_matches_origin_main_golden(
         # and the pool engine contracts it binds were re-derived for 2.2.1.
         # pool_h5 and agreement above are unchanged, so only the identity
         # surface moved, not the pool content.
-        "manifest": "e4692aa45f05826eb0097a7ae76dcbc712c13886a4d23a9c6a62b53752e323f1",
+        # microcosm#958: the tail manifest schema 3 and the AGI-arm support
+        # contract (version 2) are embedded in the publication manifest.
+        "manifest": "de6ba1149b8e958b12c0e9bf084cf0e3a911a0a39f6280901df1b53aa417f559",
     }
 
 

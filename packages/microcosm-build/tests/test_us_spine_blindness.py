@@ -261,6 +261,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Pinned-archive sidecar restore (PAW_TYP); no population treatment.
         "public_assistance_type_source.py",
         "puf_aggregate_records.py",
+        # AGI own-tail donor eligibility and thinning (microcosm#958); pure
+        # donor-table logic, reads no support-channel or spine columns.
+        "puf_agi_tail.py",
         "puf_capital_gains_tail.py",
         "puf_donor_io.py",  # Bounded donor artifact I/O; no population treatment.
         "puf_e01000_reconciliation.py",
@@ -3409,8 +3412,8 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 70, (
-            f"{tool.name} must reach the pinned 70-module runtime graph; "
+        assert len(runtime_graph) == 71, (
+            f"{tool.name} must reach the pinned 71-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (

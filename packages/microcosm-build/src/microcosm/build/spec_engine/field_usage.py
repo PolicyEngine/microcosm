@@ -26,9 +26,9 @@ from .resolver import (
 )
 from .schemas import load_schema_registry
 
-EXPECTED_AUTHORED_FIELD_COUNT = 32_384
-EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_772
-EXPECTED_CONFIGURATION_FIELD_COUNT = 42_156
+EXPECTED_AUTHORED_FIELD_COUNT = 32_555
+EXPECTED_RESOLVED_BINDING_FIELD_COUNT = 9_773
+EXPECTED_CONFIGURATION_FIELD_COUNT = 42_328
 
 
 class FieldUsageError(AssertionError):
@@ -421,8 +421,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "e1dd7dc5123ab0f39d08ea4939d98dd09a6fdb8e7449a7ca3125fb1ddbd5b4e9",
     ),
     "imputation_producer_graph": (
-        24_488,
-        "6382a3ed07016414c31462b8bedb24590d92b792405a89c927d85fa1bd2a8347",
+        24_528,
+        "4fab0013d4db01472a648d26b9068053fc1f02fc14bd2d2407f503511928f01f",
     ),
     "imputation_transfer_execution": (
         97,
@@ -453,8 +453,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "6a781915fd491d2c4b16d2b7d482f69cf362c904130093c59f9629f7a319269b",
     ),
     "resolved_seed_protocol": (
-        826,
-        "7ff2d5d1c2fd8026d17a57244f969dc0e9625a9e47304b693ad15df329041282",
+        827,
+        "525ed8621baa2c6e0c0970a6cec85b3b250f8aadfe93750a08deb0d9f240f15e",
     ),
     "resolved_seed_site_bindings": (
         277,
@@ -517,8 +517,8 @@ _PINS: dict[str, tuple[int, str]] = {
         "dfa7ae701f62f7b1f06954798d29cfba3fc53a0be21e1751646d1f5bafd6071f",
     ),
     "spine_support_roles": (
-        29,
-        "287f107f82a17a06c57cf50fbd81532ab616f7a1f8c0fdd2038a35065291addf",
+        160,
+        "9d5665956f63e69bc00187a06771f53286a55d59b1d803aac0e25d481f65672b",
     ),
     "spine_support_source_pool": (
         13,

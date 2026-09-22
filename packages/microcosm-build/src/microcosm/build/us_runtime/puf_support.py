@@ -9,8 +9,11 @@ incoming weights so the frame's aggregate population does not double.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
+import zlib
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -64,6 +67,9 @@ __all__ = [
     "PUF_CLONE_ATTACHMENT_MANIFEST_KEY",
     "PUF_TAX_DETAIL_CLONE_INDEX",
     "PUF_TAX_DETAIL_FORMULA_OWNED_OUTPUTS",
+    "PUF_TAX_DETAIL_PROXY_AGI_COMPONENTS",
+    "PUF_TAIL_PERSON_PROJECTION_ATTR",
+    "PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION",
     "PUF_TAX_DETAIL_SUPPORT_CHANNEL",
     "PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN",
     "US_PUF_DONOR_MORTGAGE_QUARANTINE_FIELDS",
@@ -71,6 +77,7 @@ __all__ = [
     "US_PUF_SUPPORT_FIT_NAME",
     "US_PUF_SUPPORT_STAGE_NAME",
     "assert_formula_owned_blocklist_current",
+    "attach_puf_tail_person_projection",
     "bind_puf_clone_attachment_tail_descendant",
     "clone_us_frame_for_puf_support",
     "finalize_us_puf_tax_detail_predictions",
@@ -81,6 +88,8 @@ __all__ = [
     "puf_recipient_predictor_universe_receipt",
     "puf_tax_detail_tail_bound_quantiles_identity",
     "puf_tax_unit_donor_from_arrays",
+    "puf_tail_person_projection",
+    "puf_tail_person_projection_identity",
     "prepare_us_puf_tax_detail_chain_inputs",
     "resolve_formula_owned_outputs",
     "spine_source_id_column",
@@ -273,6 +282,46 @@ PUF_TAX_DETAIL_DEFAULT_TAX_UNIT_OUTPUTS: tuple[str, ...] = (
     "first_home_mortgage_origination_year",
     "second_home_mortgage_origination_year",
     "health_savings_account_ald",
+)
+
+# Build-period income locator, not engine AGI: sum only additive income leaves.
+# Schedule-C SSTB/non-SSTB amounts are separate source pieces. Farm operations
+# duplicate farm income; collectibles and QBI allocations are subcomponents.
+# Gross Social Security is not taxable Social Security; unemployment is not in
+# this donor's declared tax-detail outputs. Neither enters this proxy.
+PUF_TAX_DETAIL_PROXY_AGI_COMPONENTS = (
+    "employment_income_before_lsr",
+    "self_employment_income_before_lsr",
+    "sstb_self_employment_income_before_lsr",
+    "taxable_interest_income",
+    "qualified_dividend_income",
+    "non_qualified_dividend_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains_before_response",
+    "non_sch_d_capital_gains",
+    "taxable_private_pension_income",
+    "taxable_ira_distributions",
+    "partnership_income",
+    "s_corp_income",
+    "rental_income",
+    "farm_income",
+    "farm_rent_income",
+    "miscellaneous_income",
+    "estate_income",
+    "alimony_income",
+    "salt_refund_income",
+)
+
+# A JSON-safe payload avoids DataFrame-valued attrs (whose equality is ambiguous
+# during pandas operations) and binds the physical types omitted by QRF's
+# tax-unit aggregation. Packed immutable strings avoid copying millions of
+# Python scalars whenever pandas propagates attrs. Only the AGI arm reads it.
+PUF_TAIL_PERSON_PROJECTION_ATTR = "puf_tail_person_projection"
+PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION = 1
+_PUF_TAIL_PERSON_ROLE_COLUMNS = (
+    "is_tax_unit_head",
+    "is_tax_unit_spouse",
+    "is_tax_unit_dependent",
 )
 
 _PUF_TAX_DETAIL_DISCRETE_TAX_UNIT_OUTPUTS = frozenset(
@@ -1267,7 +1316,9 @@ def puf_tax_unit_donor_from_arrays(
 
     Returns:
         A tax-unit donor DataFrame with numeric predictors, requested outputs,
-        and a ``weight`` column.
+        and a ``weight`` column. Complete source person IDs and role arrays also
+        attach a separately typed own-tail projection in attrs; the aggregate
+        columns and QRF inputs retain their existing values and dtypes.
     """
 
     _require_array_columns(
@@ -1425,7 +1476,249 @@ def puf_tax_unit_donor_from_arrays(
         donor_build_summary=donor_build_summary,
     )
     _add_predictor_aliases(tax_unit, PUF_TAX_DETAIL_DEFAULT_PREDICTORS)
+    _attach_puf_tail_person_projection_from_arrays(
+        tax_unit, arrays, person_outputs=person_outputs
+    )
     return tax_unit
+
+
+def attach_puf_tail_person_projection(
+    donor: pd.DataFrame,
+    persons: pd.DataFrame,
+) -> None:
+    """Attach a typed source-person surface without altering donor table values.
+
+    Role eligibility is deliberately the tail selector's responsibility: unknown
+    or repeated roles remain visible so it can skip and receipt their donor mass.
+    """
+
+    _validate_puf_tail_person_projection(persons, donor)
+    role_codes, role_values = pd.factorize(persons["role"], sort=True)
+    data = {}
+    for column in persons:
+        values = (
+            role_codes.astype("<u4")
+            if column == "role"
+            else persons[column].to_numpy(
+                dtype=getattr(
+                    persons[column].dtype, "numpy_dtype", persons[column].dtype
+                )
+            )
+        )
+        data[column] = base64.b64encode(
+            zlib.compress(np.ascontiguousarray(values).tobytes())
+        ).decode("ascii")
+    donor.attrs[PUF_TAIL_PERSON_PROJECTION_ATTR] = {
+        "schema_version": PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION,
+        "columns": list(persons.columns),
+        "dtypes": {column: str(persons[column].dtype) for column in persons},
+        "row_count": len(persons),
+        "role_values": role_values.tolist(),
+        "data": data,
+    }
+
+
+def puf_tail_person_projection(donor: pd.DataFrame) -> pd.DataFrame:
+    """Read the typed AGI-arm donor surface; absent or malformed data fails closed."""
+
+    payload = donor.attrs.get(PUF_TAIL_PERSON_PROJECTION_ATTR)
+    if payload is None:
+        raise ValueError("PUF donor is missing person projection for the AGI tail arm.")
+    if (
+        not isinstance(payload, dict)
+        or set(payload)
+        != {"schema_version", "columns", "dtypes", "row_count", "role_values", "data"}
+        or type(payload["schema_version"]) is not int
+        or payload["schema_version"] != PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION
+    ):
+        raise ValueError("PUF tail person projection schema is malformed.")
+    columns = payload["columns"]
+    dtypes = payload["dtypes"]
+    data = payload["data"]
+    row_count = payload["row_count"]
+    roles = payload["role_values"]
+    if (
+        not isinstance(columns, list)
+        or any(not isinstance(column, str) for column in columns)
+        or len(columns) != len(set(columns))
+        or not isinstance(dtypes, dict)
+        or not isinstance(data, dict)
+        or set(columns) != set(dtypes)
+        or set(columns) != set(data)
+        or any(not isinstance(data[column], str) for column in columns)
+        or isinstance(row_count, bool)
+        or not isinstance(row_count, int)
+        or row_count <= 0
+        or not isinstance(roles, list)
+        or any(not isinstance(role, str) for role in roles)
+        or len(roles) != len(set(roles))
+    ):
+        raise ValueError("PUF tail person projection columns are malformed.")
+    decoded = {}
+    try:
+        for column in columns:
+            declared_dtype = pd.api.types.pandas_dtype(dtypes[column])
+            physical_dtype = (
+                np.dtype("<u4")
+                if column == "role"
+                else np.dtype(getattr(declared_dtype, "numpy_dtype", declared_dtype))
+            )
+            if physical_dtype.kind not in "biuf":
+                raise ValueError("Non-numeric physical dtype")
+            values = np.frombuffer(
+                zlib.decompress(base64.b64decode(data[column], validate=True)),
+                dtype=physical_dtype,
+            )
+            if len(values) != row_count:
+                raise ValueError("Wrong encoded row count")
+            if column == "role":
+                values = np.asarray(roles, dtype=object)[values]
+            decoded[column] = pd.Series(values, dtype=declared_dtype)
+    except (TypeError, ValueError, IndexError, binascii.Error, zlib.error) as error:
+        raise ValueError(
+            "PUF tail person projection physical values are malformed."
+        ) from error
+    persons = pd.DataFrame(decoded)
+    _validate_puf_tail_person_projection(persons, donor)
+    return persons
+
+
+def puf_tail_person_projection_identity(donor: pd.DataFrame) -> dict[str, object]:
+    """Bind person IDs, membership, role, values and physical dtypes for replay."""
+
+    identity: dict[str, object] = {
+        "schema_version": PUF_TAIL_PERSON_PROJECTION_SCHEMA_VERSION,
+        "available": PUF_TAIL_PERSON_PROJECTION_ATTR in donor.attrs,
+    }
+    if not identity["available"]:
+        return identity
+    persons = puf_tail_person_projection(donor)
+    payload = donor.attrs[PUF_TAIL_PERSON_PROJECTION_ATTR]
+    identity.update(
+        {
+            "row_count": len(persons),
+            "columns": list(persons.columns),
+            "dtypes": {column: str(persons[column].dtype) for column in persons},
+            "sha256": hashlib.sha256(
+                json.dumps(
+                    payload, sort_keys=True, separators=(",", ":"), allow_nan=False
+                ).encode()
+            ).hexdigest(),
+        }
+    )
+    return identity
+
+
+def _validate_puf_tail_person_projection(
+    persons: pd.DataFrame,
+    donor: pd.DataFrame,
+) -> None:
+    required = {"tax_unit_id", "person_id", "role"}
+    if not persons.columns.is_unique or not required.issubset(persons.columns):
+        raise ValueError("PUF tail person projection is missing identity/role columns.")
+    if persons.empty or persons.isna().any().any():
+        raise ValueError("PUF tail person projection must be nonempty and complete.")
+    for column in ("tax_unit_id", "person_id"):
+        if not pd.api.types.is_integer_dtype(persons[column].dtype):
+            raise ValueError(
+                f"PUF tail person projection {column} must have integer dtype."
+            )
+    if persons["person_id"].duplicated().any():
+        raise ValueError("PUF tail person projection person IDs must be unique.")
+    if not persons["role"].map(lambda value: isinstance(value, str)).all():
+        raise ValueError("PUF tail person projection roles must be strings.")
+    if "tax_unit_id" not in donor or not set(donor["tax_unit_id"]).issubset(
+        persons["tax_unit_id"]
+    ):
+        raise ValueError(
+            "PUF tail person projection does not cover donor tax-unit IDs."
+        )
+    for column in persons.columns.difference(["role"]):
+        values = persons[column]
+        if (
+            values.dtype.kind not in "biuf"
+            or not np.isfinite(values.to_numpy(dtype=np.float64)).all()
+        ):
+            raise ValueError(
+                f"PUF tail person projection {column} must have finite numeric dtype."
+            )
+
+
+def _attach_puf_tail_person_projection_from_arrays(
+    donor: pd.DataFrame,
+    arrays: Mapping[str, Sequence[Any]],
+    *,
+    person_outputs: Sequence[str],
+) -> None:
+    required = {"person_id", *_PUF_TAIL_PERSON_ROLE_COLUMNS}
+    if not required.issubset(arrays):
+        # Historical array constructors and CG-only fixtures have no person-role
+        # surface. QRF remains unchanged; an AGI-arm consumer must fail closed.
+        return
+    membership = np.asarray(arrays["person_tax_unit_id"])
+    persons = pd.DataFrame(
+        {"tax_unit_id": membership, "person_id": np.asarray(arrays["person_id"])}
+    )
+    flags = np.column_stack(
+        [arrays[column] for column in _PUF_TAIL_PERSON_ROLE_COLUMNS]
+    )
+    if len(flags) != len(persons):
+        raise ValueError("PUF tail person roles must align with source person rows.")
+    valid_flags = np.isin(flags, [False, True]).all(axis=1)
+    active = flags == True  # noqa: E712
+    counts = active.sum(axis=1)
+    role = np.full(len(persons), "unclassified", dtype=object)
+    role[(counts > 1) | ~valid_flags] = "ambiguous"
+    for index, name in enumerate(("head", "spouse", "dependent")):
+        role[valid_flags & (counts == 1) & active[:, index]] = name
+    persons["role"] = role
+    donor_by_id = donor.set_index("tax_unit_id")
+    for output in person_outputs:
+        # Match the constructor's pre-aggregation numeric surface exactly.
+        # Boolean outputs alone retain their source bool dtype; aggregation
+        # represents them as person counts for QRF and cannot serve this arm.
+        values = _person_source_values(
+            arrays,
+            output,
+            preserve_dtype=output in _PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS,
+        )
+        if values is not None:
+            persons[output] = values
+            continue
+        source = _PERSON_OUTPUT_TAX_UNIT_GRAIN_SOURCES.get(output)
+        if source is None or source not in arrays:
+            raise ValueError(f"PUF tail person projection cannot derive {output!r}.")
+        # This fallback is only the late-owned pension desired-contribution
+        # field. The AGI arm never transfers it; keep its source total visible.
+        persons[output] = np.zeros(len(persons), dtype=np.asarray(arrays[source]).dtype)
+        heads = persons["role"].eq("head")
+        persons.loc[heads, output] = persons.loc[heads, "tax_unit_id"].map(
+            donor_by_id[output]
+        )
+    raw_mortgage = _person_source_values(arrays, "home_mortgage_interest")
+    if raw_mortgage is not None:
+        raw_totals = pd.Series(raw_mortgage).groupby(membership, sort=False).sum()
+        denominator = persons["tax_unit_id"].map(raw_totals).to_numpy(dtype=np.float64)
+        shares = np.divide(
+            raw_mortgage,
+            denominator,
+            out=np.zeros_like(raw_mortgage),
+            where=denominator != 0,
+        )
+        for output in ("home_mortgage_interest", "investment_interest_expense"):
+            if output in persons:
+                # Apply the existing tax-unit E19200 split and field quarantine
+                # proportionally to the same source persons, never moving any
+                # dependent money onto a head or spouse.
+                projected = shares * persons["tax_unit_id"].map(
+                    donor_by_id[output]
+                ).to_numpy(dtype=np.float64)
+                if output == "home_mortgage_interest":
+                    projected[denominator == 0] = raw_mortgage[denominator == 0]
+                persons[output] = projected
+    persons.sort_values(["tax_unit_id", "person_id"], kind="stable", inplace=True)
+    persons.reset_index(drop=True, inplace=True)
+    attach_puf_tail_person_projection(donor, persons)
 
 
 def _quarantine_us_puf_mortgage_fields(
@@ -3992,9 +4285,12 @@ def _reconcile_puf_social_security_components(
 def _person_source_values(
     arrays: Mapping[str, Sequence[Any]],
     output: str,
+    *,
+    preserve_dtype: bool = False,
 ) -> np.ndarray | None:
+    numeric_array = _projection_numeric_array if preserve_dtype else _numeric_array
     if output in arrays:
-        return _numeric_array(arrays[output])
+        return numeric_array(arrays[output])
     source_aliases = {
         "employment_income_before_lsr": ("employment_income",),
         "self_employment_income_before_lsr": ("self_employment_income",),
@@ -4007,47 +4303,47 @@ def _person_source_values(
     }
     for source in source_aliases.get(output, ()):
         if source in arrays:
-            return _numeric_array(arrays[source])
+            return numeric_array(arrays[source])
     if output == "partnership_income" and "partnership_s_corp_income" in arrays:
-        return _numeric_array(arrays["partnership_s_corp_income"])
+        return numeric_array(arrays["partnership_s_corp_income"])
     if output == "s_corp_income" and "partnership_s_corp_income" in arrays:
-        return np.zeros_like(_numeric_array(arrays["partnership_s_corp_income"]))
+        return np.zeros_like(numeric_array(arrays["partnership_s_corp_income"]))
     if output == "partnership_self_employment_net_earnings" and (
         "partnership_se_income" in arrays
     ):
-        return _numeric_array(arrays["partnership_se_income"])
+        return numeric_array(arrays["partnership_se_income"])
     if output == "partnership_income" and {"E25980", "E25960"}.issubset(arrays):
-        return _numeric_array(arrays["E25980"]) - _numeric_array(arrays["E25960"])
+        return numeric_array(arrays["E25980"]) - numeric_array(arrays["E25960"])
     if output == "s_corp_income" and {"E26190", "E26180"}.issubset(arrays):
-        return _numeric_array(arrays["E26190"]) - _numeric_array(arrays["E26180"])
+        return numeric_array(arrays["E26190"]) - numeric_array(arrays["E26180"])
     if output == "partnership_self_employment_net_earnings" and {
         "E25960",
         "E26180",
     }.issubset(arrays):
-        return _numeric_array(arrays["E25960"]) + _numeric_array(arrays["E26180"])
+        return numeric_array(arrays["E25960"]) + numeric_array(arrays["E26180"])
     if output in _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS and "E17500" in arrays:
         return (
-            _numeric_array(arrays["E17500"])
+            numeric_array(arrays["E17500"])
             * _PUF_MEDICAL_EXPENSE_CATEGORY_BREAKDOWNS[output]
         )
     if output == "unemployment_compensation" and (
         "taxable_unemployment_compensation" in arrays
     ):
-        return _numeric_array(arrays["taxable_unemployment_compensation"])
+        return numeric_array(arrays["taxable_unemployment_compensation"])
     if output == "qualified_tuition_expenses" and "E03230" in arrays:
-        tuition = _numeric_array(arrays["E03230"])
+        tuition = numeric_array(arrays["E03230"])
         if "E87530" in arrays:
-            tuition = np.maximum(tuition, _numeric_array(arrays["E87530"]))
+            tuition = np.maximum(tuition, numeric_array(arrays["E87530"]))
         return np.maximum(tuition, 0.0)
     if output in PUF_TAX_DETAIL_SOCIAL_SECURITY_COMPONENT_OUTPUTS:
         if output != "social_security_retirement":
             for source in ("social_security", "total_social_security", "E02400"):
                 if source in arrays:
-                    return np.zeros_like(_numeric_array(arrays[source]))
+                    return np.zeros_like(numeric_array(arrays[source]))
             return None
         for source in ("social_security", "total_social_security", "E02400"):
             if source in arrays:
-                return _numeric_array(arrays[source])
+                return numeric_array(arrays[source])
     return None
 
 
@@ -4143,6 +4439,19 @@ def _decode_status(value: Any) -> str:
     if isinstance(name, str):
         return name
     return str(value)
+
+
+def _projection_numeric_array(values: Any) -> np.ndarray:
+    """Keep source numeric dtypes; never convert boolean QBI flags to counts."""
+
+    array = np.asarray(values)
+    if array.ndim != 1 or array.dtype.kind not in "biuf":
+        raise ValueError(
+            "PUF tail person source must be a one-dimensional numeric array."
+        )
+    if not np.isfinite(array).all():
+        raise ValueError("PUF tail person source values must be finite.")
+    return array.copy()
 
 
 def _numeric_array(values: Any) -> np.ndarray:
