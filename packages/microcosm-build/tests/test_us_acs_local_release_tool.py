@@ -253,6 +253,118 @@ def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None
     assert seen == [(marker, audit)]
 
 
+def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report):
+    """Every package-stage input, with the finalize report's hours entry given.
+
+    ``hours_report`` is what ``gate_summary.json`` records under
+    ``acs_local_hours_signal`` (``None`` omits the key, as a report finalized
+    before the gate existed would). The staging frame and the hours gate are
+    stubbed: the test is about the binding, not the classification.
+    """
+    from microcosm.build.gates import GateResult
+
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    staging = tmp_path / "staging.h5"
+    staging.write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps({"reviewed_engine_input_nulls": [], "reviewed_limitations": []})
+    )
+    out_h5 = tmp_path / "out.h5"
+    out_h5.write_bytes(b"artifact")
+    artifact_sha = module._sha256(out_h5)
+    gates = {"us_puma_ladder_gate": {"passed": True, "failures": []}}
+    if hours_report is not None:
+        gates["acs_local_hours_signal"] = hours_report
+    evidence = {
+        "calibration_diagnostics.json": {"households": 1},
+        "gate_summary.json": {"gates": gates, "reviewed_limitations": []},
+        "run_identity.json": {
+            "staging_sha256": module._sha256(staging),
+            "population_cells_dropped": [],
+        },
+        "spine_qa.json": {
+            "plain_consumption": True,
+            "artifact_sha256": artifact_sha,
+            "per_spine": {},
+        },
+        "consumer_export.json": {"staging_sha256": module._sha256(staging)},
+        "held_back_columns.json": {"total": 0},
+        "reviewed_null_fills.json": {"columns_filled": []},
+        "materialize_rss.json": {"materialize_peak_rss_gb": 1.0, "hh_chunk": 1},
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, payload in evidence.items():
+        (ckpt / name).write_text(json.dumps(payload))
+    (tmp_path / "out.summary.json").write_text(json.dumps({"simulation_ready": True}))
+    monkeypatch.setattr(module, "_load_staging_frame", lambda *_a, **_k: object())
+    monkeypatch.setattr(
+        module,
+        "acs_local_hours_signal_gate",
+        lambda frame, *, source_null_audit: GateResult(
+            name="acs_local_hours_signal",
+            passed=True,
+            failures=(),
+            details={"per_spine": {"acs_2024_1yr": {"rows": 1}}},
+        ),
+    )
+    return module._parse_args(
+        [
+            "--stage",
+            "package",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(ckpt),
+            "--out-h5",
+            str(out_h5),
+            "--out",
+            str(tmp_path / "release"),
+            "--allow-dirty",
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "hours_report",
+    [None, {"passed": False, "failures": ["invented"]}, {"passed": "true"}],
+    ids=["finalized-before-the-gate", "finalize-failed", "truthy-not-true"],
+)
+def test_package_requires_a_passing_hours_gate_in_the_finalize_report(
+    tmp_path: Path, monkeypatch, hours_report
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module, tmp_path, monkeypatch, hours_report=hours_report
+    )
+    with pytest.raises(SystemExit, match="Re-run --stage finalize"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+
+
+def test_package_binds_the_hours_gate_to_the_packaged_bytes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    result = module.do_package(args)
+    release_dir = Path(result["release_dir"])
+    expected_sha = module._sha256(args.out_h5)
+    for name in ("build_manifest.json", "gate_summary.json"):
+        gate = json.loads((release_dir / name).read_text())["gates"][
+            "acs_local_hours_signal"
+        ]
+        assert gate["passed"] is True
+        assert gate["artifact_sha256"] == expected_sha
+        assert gate["checked_at_stage"] == "package"
+        assert gate["detail"] == {"per_spine": {"acs_2024_1yr": {"rows": 1}}}
+
+
 def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     """Absent evidence must refuse packaging, never read as vacuously green."""
 

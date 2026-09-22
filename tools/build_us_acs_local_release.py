@@ -1692,11 +1692,38 @@ def do_package(args) -> dict:
             "--stage qa and --stage finalize against the current artifact."
         )
     # Old summaries can say simulation_ready despite #765. Recheck the
-    # actual artifact and the source-null evidence before packaging it.
+    # actual artifact and the source-null evidence before packaging it, and
+    # bind that result to the bytes being packaged: the finalize-time report
+    # is copied into the release, so a checkpoint finalized before this gate
+    # existed must not ship as if it had passed it.
+    finalize_hours = gate_report.get("gates", {}).get("acs_local_hours_signal")
+    if not isinstance(finalize_hours, dict) or finalize_hours.get("passed") is not True:
+        raise SystemExit(
+            "The finalize gate report carries no passing acs_local_hours_signal; "
+            "an old simulation_ready summary is insufficient. Re-run --stage "
+            "finalize."
+        )
     hours_frame = _load_staging_frame(calibrated_h5)
-    _require_local_hours(hours_frame, staging_summary)
+    package_hours_gate = _local_hours_gate(hours_frame, staging_summary)
     del hours_frame
     gc.collect()
+    if not package_hours_gate.passed:
+        raise SystemExit(
+            "Local hours coverage failed: " + "; ".join(package_hours_gate.failures)
+        )
+    gate_report = {
+        **gate_report,
+        "gates": {
+            **gate_report.get("gates", {}),
+            "acs_local_hours_signal": {
+                "passed": True,
+                "failures": [],
+                "detail": dict(package_hours_gate.details),
+                "artifact_sha256": h5_sha,
+                "checked_at_stage": "package",
+            },
+        },
+    }
     dropped_cells = identity.get("population_cells_dropped") or []
     if dropped_cells:
         raise SystemExit(
