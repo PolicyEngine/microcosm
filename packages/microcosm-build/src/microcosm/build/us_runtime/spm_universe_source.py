@@ -69,9 +69,11 @@ Import weight
 -------------
 
 This producer is a leaf: a preflight or a release tool must be able to call it
-without dragging the ACS loader into the process. Measured at this head on
-this machine, ``import microcosm.build.us_runtime.acs_pums`` costs ~38 s and
-``...stacked_spine`` ~90 s (both pull the country engine), so the four channel
+without dragging the ACS loader into the process. Both
+``microcosm.build.us_runtime.acs_pums`` and ``...stacked_spine`` pull the
+country engine: re-measured in separate processes on 2026-09-22 after merging
+main, each import took ~36-38 s on a warm cache (the authoring lane measured
+~90 s for ``stacked_spine`` cold). So the four channel
 tag values below are named here rather than imported from those modules. They
 are not a second source of truth: :mod:`test_us_spm_universe_source` parses
 each canonical definition out of its defining module with :mod:`ast` — no
@@ -124,7 +126,8 @@ __all__ = [
 
 #: The engine input this producer supplies (policyengine-us#9462). The name
 #: and the three-state vocabulary below are deliberately identical to the
-#: graph-native line's ``spm_input_contract``; there is no reason for two
+#: graph-native line's ``spm_input_contract`` (unmerged native-SPM branches,
+#: first at commit 774a90091; not on main); there is no reason for two
 #: spellings of the same declaration.
 UNIVERSE_INPUT = "spm_unit_spm_universe_status"
 
@@ -163,12 +166,13 @@ SPM_UNIVERSE_METHODOLOGY = (
     "frame already equals the CPS SPM universe."
 )
 #: Named authority for the ACS exclusion; identical to the graph-native line's
-#: ``acs_spm_scope.ACS_SPM_OUTSIDE_AUTHORITY``.
+#: ``acs_spm_scope.ACS_SPM_OUTSIDE_AUTHORITY`` (same unmerged branches).
 ACS_SPM_OUTSIDE_AUTHORITY = "outside_acs_household_universe"
 #: Named authority for the ASEC ruling. This one has no upstream: it is this
 #: producer's own source-universe judgement, made on the Census quote above
 #: plus the zero-adult reconciliation ``spm_role_source`` already enforces
-#: against the pinned complete Census ASEC files.
+#: against the pinned complete Census ASEC files. Signed off as this named,
+#: cited constant by Max Ghenis on 2026-09-22 (microcosm#977).
 ASEC_SPM_INCLUDED_AUTHORITY = "asec_sample_frame_equals_cps_spm_universe"
 #: The named analysis scope a release declares when it carries this status.
 SPM_UNIVERSE_PROFILE_NAME = "us_acs_household_and_asec_frame_universe_v1"
@@ -392,30 +396,49 @@ def _assert_one_kind_per_household(
     )
 
 
+def _person_clone_copies(person: pd.DataFrame) -> np.ndarray:
+    """Each person's support-clone copy, with a missing index read as native.
+
+    A support clone deep-copies every column of a table and remaps only the
+    structural id and membership columns
+    (``puf_support._clone_entity_table``), so clone copy ``k`` carries the
+    native row's source fields under new ids. Reading an absent or missing
+    clone index as the native copy can only make the checks that use it
+    stricter: it merges rows *into* the native copy, where they can collide
+    with native rows, and never separates rows the truth would merge.
+    """
+    if _PERSON_CLONE_INDEX_COLUMN not in person.columns:
+        return np.full(len(person), _NATIVE_CLONE_INDEX, dtype=float)
+    return (
+        pd.to_numeric(person[_PERSON_CLONE_INDEX_COLUMN], errors="coerce")
+        .fillna(_NATIVE_CLONE_INDEX)
+        .to_numpy(dtype=float)
+    )
+
+
 def _assert_group_quarters_are_single_native_records(
     *,
     household_ids: pd.Series,
     arm: pd.Series,
     kind: pd.Series,
     person_household_ids: pd.Series,
-    clone_index: pd.Series | None,
+    clone_copies: np.ndarray,
 ) -> int:
     """Mirror the stacked spine's one-native-person-per-GQ-placeholder rule.
 
     ACS group-quarters rows are one-person ``WGTP == 0`` placeholders at the
     source (``acs_pums._occupied_households``), and the stacked assembly
     re-asserts it. Clones of such a placeholder are expected and are not
-    counted here; more than one *native* person in one is not.
+    counted here; more than one *native* person in one is not. A person
+    whose clone index is missing counts as native (see
+    :func:`_person_clone_copies`), so a pool that lost the index on one arm
+    cannot pass this check vacuously.
     """
     gq = (arm.eq(ACS_ARM) & kind.isin(ACS_GROUP_QUARTERS_KINDS)).to_numpy()
     gq_ids = pd.Index(household_ids.to_numpy()[gq]).unique()
     if len(gq_ids) == 0:
         return 0
-    native = (
-        clone_index.eq(_NATIVE_CLONE_INDEX).to_numpy()
-        if clone_index is not None
-        else np.ones(len(person_household_ids), dtype=bool)
-    )
+    native = clone_copies == _NATIVE_CLONE_INDEX
     counts = (
         pd.Series(1, index=person_household_ids.to_numpy()[native])
         .groupby(level=0)
@@ -461,6 +484,7 @@ def _assert_native_asec_partition(
     person: pd.DataFrame,
     asec_person: np.ndarray,
     unit_membership_column: str,
+    clone_copies: np.ndarray,
 ) -> None:
     """Refuse a silently degraded SPM partition on the ASEC arm.
 
@@ -471,6 +495,13 @@ def _assert_native_asec_partition(
     ``INCLUDED`` over a degraded partition would attest to a unit structure
     that does not exist, so the ASEC arm must prove its partition is the
     native one.
+
+    A support clone copies ``SPM_ID`` verbatim and gives each copy new unit
+    ids (see :func:`_person_clone_copies`), so every clone copy is its own
+    instance of the native partition. The native unit key is therefore
+    ``(clone copy, SPM_ID)``, and the frame's units must be a one-to-one
+    densification of that key. Keying on ``SPM_ID`` alone would read every
+    support-cloned ASEC frame as degraded.
 
     The check is deliberately ASEC-only. ACS PUMS supplies no ``SPM_ID`` at
     all, so the ACS arm reaches ``assign_us_unit_structure`` without one and
@@ -495,16 +526,21 @@ def _assert_native_asec_partition(
         f"{ASEC_NATIVE_UNIT_COLUMN}; any missing value silently converts every "
         "SPM unit in the frame into a household.",
     )
-    units = person.loc[asec_person, unit_membership_column]
-    pairs = pd.MultiIndex.from_arrays([native.to_numpy(), units.to_numpy()])
+    units = person.loc[asec_person, unit_membership_column].to_numpy()
+    copies = clone_copies[asec_person]
+    native_units = len(pd.MultiIndex.from_arrays([copies, native.to_numpy()]).unique())
+    frame_units = len(pd.unique(units))
+    pairings = len(
+        pd.MultiIndex.from_arrays([copies, native.to_numpy(), units]).unique()
+    )
     _require(
-        len(pairs.unique()) == native.nunique() == units.nunique(),
+        pairings == native_units == frame_units,
         "SPM_UNIVERSE_DEGRADED_PARTITION",
         f"the ASEC arm's {unit_membership_column!r} is not a one-to-one "
-        f"densification of {ASEC_NATIVE_UNIT_COLUMN} "
-        f"({native.nunique()} native unit(s), {units.nunique()} frame unit(s), "
-        f"{len(pairs.unique())} distinct pairing(s)), so the native partition "
-        "did not survive assembly.",
+        f"densification of (clone copy, {ASEC_NATIVE_UNIT_COLUMN}) "
+        f"({native_units} native unit(s), {frame_units} frame unit(s), "
+        f"{pairings} distinct pairing(s)), so the native partition did not "
+        "survive assembly.",
     )
 
 
@@ -598,17 +634,13 @@ def classify_spm_universe(
         person_units, unit_ids, column=unit_membership_column, owner="spm_unit"
     )
 
-    clone_index = (
-        pd.to_numeric(person[_PERSON_CLONE_INDEX_COLUMN], errors="coerce")
-        if _PERSON_CLONE_INDEX_COLUMN in person.columns
-        else None
-    )
+    clone_copies = _person_clone_copies(person)
     group_quarters_households = _assert_group_quarters_are_single_native_records(
         household_ids=household_ids,
         arm=arm,
         kind=kind,
         person_household_ids=person_household_ids,
-        clone_index=clone_index,
+        clone_copies=clone_copies,
     )
 
     kind_by_household = pd.Series(
@@ -628,6 +660,7 @@ def classify_spm_universe(
         person=person,
         asec_person=asec_person,
         unit_membership_column=unit_membership_column,
+        clone_copies=clone_copies,
     )
 
     by_unit = pd.DataFrame(
@@ -743,18 +776,25 @@ def attach_spm_universe_status(
 
     Raises:
         ValueError: Any of :data:`SPM_UNIVERSE_REFUSALS`, including
-            ``SPM_UNIVERSE_COLUMN_EXISTS`` when the unit table already carries
-            the declaration — a producer overwriting an existing declaration
-            would silently replace someone else's source ruling.
+            ``SPM_UNIVERSE_COLUMN_EXISTS`` when any entity table already
+            carries the declaration — a producer overwriting an existing
+            declaration would silently replace someone else's source ruling,
+            and a copy on another entity would collide with it under the
+            frame's global column-name rule.
     """
     from microcosm.frame import Frame
 
     schema = frame.schema
     unit_table = frame.table(unit_entity)
+    carriers = [
+        entity
+        for entity in frame.entities
+        if UNIVERSE_INPUT in frame.table(entity).columns
+    ]
     _require(
-        UNIVERSE_INPUT not in unit_table.columns,
+        not carriers,
         "SPM_UNIVERSE_COLUMN_EXISTS",
-        f"the {unit_entity} table already carries {UNIVERSE_INPUT!r}; this "
+        f"the {carriers} table(s) already carry {UNIVERSE_INPUT!r}; this "
         "producer never overwrites an existing universe declaration.",
     )
     classification = classify_spm_universe(

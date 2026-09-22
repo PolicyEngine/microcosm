@@ -69,7 +69,7 @@ Every refusal is a named, fail-closed `ValueError`:
 
 | Code | Condition |
 | --- | --- |
-| `SPM_UNIVERSE_COLUMN_EXISTS` | the SPM unit table already carries a declaration |
+| `SPM_UNIVERSE_COLUMN_EXISTS` | any entity table already carries a declaration |
 | `SPM_UNIVERSE_UNDECLARED_SPINE` | a provenance channel with no universe ruling, an untagged frame with no caller declaration, or a caller declaration over a frame that already declares |
 | `SPM_UNIVERSE_UNKNOWN_HOUSEHOLD_KIND` | an ACS household whose `TYPEHUGQ` ∉ {1, 2, 3}, missing included |
 | `SPM_UNIVERSE_OFF_ARM_HOUSEHOLD_KIND` | a non-ACS household carrying an ACS record type |
@@ -78,7 +78,7 @@ Every refusal is a named, fail-closed `ValueError`:
 | `SPM_UNIVERSE_ORPHAN_MEMBER` | a membership id matching no owning entity row |
 | `SPM_UNIVERSE_EMPTY_UNIT` | an SPM unit with no member |
 | `SPM_UNIVERSE_UNIT_SPANS_KINDS` | one SPM unit whose members sit in households of different kinds |
-| `SPM_UNIVERSE_DEGRADED_PARTITION` | the ASEC arm's SPM partition is not the native one |
+| `SPM_UNIVERSE_DEGRADED_PARTITION` | the ASEC arm's SPM partition is not the native one: `SPM_ID` absent, missing, or not one-to-one with the frame's units per support-clone copy |
 | `SPM_UNIVERSE_ASEC_RECORD_TYPE_UNREVIEWED` | the frame carries an ASEC record-type field the spine-level ruling was not derived against |
 
 `SPM_UNIVERSE_UNIT_SPANS_KINDS` is natively unreachable — ACS group-quarters
@@ -98,6 +98,16 @@ ACS arm reaches `assign_us_unit_structure` without one and takes the household
 fallback by construction — there, one SPM unit per household *is* the native
 partition and carries no information.
 
+The native unit key is `(support-clone copy, SPM_ID)`, not `SPM_ID` alone.
+The PUF support clone (`puf_support._clone_entity_table`) deep-copies the
+person table and remaps only the id and membership columns, so clone copy 1
+carries the native `SPM_ID` under new SPM unit ids; keyed on `SPM_ID` alone,
+every support-cloned ASEC frame would read as degraded.
+`test_the_real_support_clone_operator_output_is_accepted` runs the real clone
+operator on invented rows to pin that. A missing clone index is read as the
+native copy, which can only add collisions, so it never relaxes this check or
+the one-native-person group-quarters check.
+
 ## What is wired, and what is not
 
 **Wired.** The producer, its refusals, and its tests. It is classified in the
@@ -116,14 +126,17 @@ it must be blind to).
 - **No enrichment-lane carry.** `microcosm.data.h5_enrichment` writes one
   Boolean person column at the HDF type level; carrying an `spm_unit`-entity
   string column is a separate, larger piece of work (design note §3).
-- **No consumer change.** `check_spm_composition` still grades every SPM unit
-  with no universe predicate, and `reform_validation` still computes the 104
-  state SPM rates over every person. Making `_person_rate` nullable-safe is a
-  separate PR, numerically inert on the pinned engine.
+- **No consumer change here.** `check_spm_composition` still grades every SPM
+  unit with no universe predicate. `reform_validation._person_rate` already
+  reads the poverty indicator as nullable (#976, merged 2026-09-22), so a
+  person with a missing indicator leaves both numerator and denominator; on
+  the pinned engine, where `in_poverty` is Boolean, nothing is missing.
 - **No producer source pin.** The module is deliberately *not* added to
   `source_enrichment.PRODUCER_SOURCE_FILES`: that tuple is the SPM-role
-  enrichment producer's own reviewed source closure, and this module is not in
-  it until the enrichment lane carries the column. See "Open questions" below.
+  enrichment producer's own reviewed source closure, and
+  `validate_source_enrichment_candidate` refuses a recorded inventory whose key
+  set differs from it. This module is not in it until the enrichment lane
+  carries the column (ruled 2026-09-22; see "Rulings" below).
 
 ## Open questions
 
@@ -143,7 +156,19 @@ repository. The note states each in full.
 - **Q-D — the published-rate discontinuity.** The 104 state SPM rates move
   when outside persons leave the denominator, correctly but visibly.
 - **Q-E — the scope of the ASEC ruling.** Encoded here as a named, cited
-  constant with its own refusal, per the note's recommendation.
+  constant with its own refusal, per the note's recommendation; signed off
+  2026-09-22 (below).
+
+## Rulings (Max Ghenis, 2026-09-22)
+
+- `spm_universe_source.py` stays out of
+  `source_enrichment.PRODUCER_SOURCE_FILES`.
+- The missing-`SPM_ID` refusal on the ASEC arm stays strict: an absent or
+  partly missing `SPM_ID` refuses rather than falling back.
+- `puf_tax_detail` stays unruled: a household whose only provenance tag is
+  that clone-operator channel refuses with `SPM_UNIVERSE_UNDECLARED_SPINE`.
+- The ASEC spine judgement is signed off as the named, cited constant
+  `ASEC_SPM_INCLUDED_AUTHORITY` (Census SEHSD-WP2020-09, pages 6–7).
 
 ## Upstream
 

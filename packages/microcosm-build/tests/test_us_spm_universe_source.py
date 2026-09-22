@@ -20,6 +20,7 @@ from microcosm.build.us_runtime.spm_universe_source import (
     ACS_HOUSING_UNIT_KIND,
     ASEC_ARM,
     ASEC_NATIVE_UNIT_COLUMN,
+    ASEC_RECORD_TYPE_FIELDS,
     HOUSEHOLD_SPINE_COLUMN,
     HOUSEHOLD_SUPPORT_CHANNEL_COLUMN,
     INCLUDED,
@@ -48,6 +49,7 @@ def _tables(
     person_extra_columns: dict[str, list[object]] | None = None,
     extra_household_rows: list[dict[str, object]] | None = None,
     extra_unit_ids: list[int] | None = None,
+    without_support_metadata: bool = False,
 ) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray]:
     """Household, person and SPM unit ids from a list of invented persons.
 
@@ -66,7 +68,10 @@ def _tables(
             "person_tax_unit_id": hid,
             "person_family_id": hid,
             "person_marital_unit_id": index,
-            "person_support_clone_index": int(spec.get("clone", 0)),
+            # ``"clone": None`` models a pool that lost the index on one arm.
+            "person_support_clone_index": (
+                np.nan if spec.get("clone", 0) is None else int(spec.get("clone", 0))
+            ),
         }
         if "spm_id" in spec:
             row[ASEC_NATIVE_UNIT_COLUMN] = spec["spm_id"]
@@ -76,6 +81,8 @@ def _tables(
             household[ACS_HOUSEHOLD_KIND_COLUMN] = spec["kind"]
         households.setdefault(hid, household)
     person = pd.DataFrame(prows)
+    if without_support_metadata:
+        person = person.drop(columns=["person_support_clone_index"])
     if person_extra_columns:
         for name, values in person_extra_columns.items():
             person[name] = values
@@ -261,6 +268,57 @@ def test_the_support_channel_column_is_read_when_no_spine_tag_is_present():
     assert statuses == {1: INCLUDED, 2: INCLUDED}
 
 
+def test_the_spine_tag_takes_precedence_over_the_support_channel():
+    """A PUF clone's support channel names its operator role, not its spine."""
+    statuses = _classify(
+        [{"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 11}],
+        household_extra={1: {HOUSEHOLD_SUPPORT_CHANNEL_COLUMN: "puf_tax_detail"}},
+    )
+    assert statuses == {1: INCLUDED}
+
+
+def test_an_explicit_channel_column_overrides_the_default_order():
+    household, person, unit_ids = _tables(
+        [{"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 2}],
+        household_extra={1: {"operator_channel": _ACS_CHANNEL}},
+    )
+    result = classify_spm_universe(
+        household=household.drop(columns=[HOUSEHOLD_SPINE_COLUMN]).assign(
+            **{HOUSEHOLD_SUPPORT_CHANNEL_COLUMN: "puf_tax_detail"}
+        ),
+        person=person,
+        unit_ids=unit_ids,
+        channel_column="operator_channel",
+    )
+    assert result.status.tolist() == [OUTSIDE]
+    assert result.provenance["channel_source"] == "operator_channel"
+
+
+@pytest.mark.parametrize(
+    ("channel_column", "declared_channel", "reason"),
+    [
+        ("operator_channel", None, "no requested channel column"),
+        (HOUSEHOLD_SPINE_COLUMN, _ACS_CHANNEL, "mutually exclusive"),
+    ],
+)
+def test_refuses_a_bad_explicit_channel_column(
+    channel_column, declared_channel, reason
+):
+    household, person, unit_ids = _tables(
+        [{"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 1}]
+    )
+    with pytest.raises(
+        ValueError, match=rf"^SPM_UNIVERSE_UNDECLARED_SPINE: .*{reason}"
+    ):
+        classify_spm_universe(
+            household=household,
+            person=person,
+            unit_ids=unit_ids,
+            channel_column=channel_column,
+            declared_channel=declared_channel,
+        )
+
+
 def test_an_untagged_table_accepts_an_explicit_caller_declaration():
     household = pd.DataFrame(
         {"household_id": [1], ACS_HOUSEHOLD_KIND_COLUMN: [2]},
@@ -317,6 +375,15 @@ def test_refuses_a_preexisting_declaration():
     declared = attach_spm_universe_status(frame).frame
     with _refuses("SPM_UNIVERSE_COLUMN_EXISTS"):
         attach_spm_universe_status(declared)
+
+
+def test_refuses_a_declaration_already_on_another_entity_table():
+    frame = _frame(
+        [{"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 1}],
+        person_extra_columns={UNIVERSE_INPUT: [INCLUDED]},
+    )
+    with _refuses("SPM_UNIVERSE_COLUMN_EXISTS"):
+        attach_spm_universe_status(frame)
 
 
 def test_refuses_a_channel_with_no_universe_ruling():
@@ -470,6 +537,119 @@ def test_refuses_an_asec_partition_that_is_not_the_native_one():
         )
 
 
+def test_a_support_cloned_asec_frame_keeps_its_native_partition():
+    """Each support-clone copy is its own instance of the native partition.
+
+    ``puf_support._clone_entity_table`` deep-copies the person table and remaps
+    only the id and membership columns, so clone copy 1 carries the native
+    ``SPM_ID`` under new unit ids. Keying the check on ``SPM_ID`` alone read
+    every support-cloned ASEC frame as degraded.
+    """
+    statuses = _classify(
+        [
+            {"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 11, "clone": 0},
+            {"hid": 1, "unit": 2, "chan": _ASEC_CHANNEL, "spm_id": 12, "clone": 0},
+            {"hid": 2, "unit": 3, "chan": _ASEC_CHANNEL, "spm_id": 21, "clone": 0},
+            {"hid": 11, "unit": 11, "chan": _ASEC_CHANNEL, "spm_id": 11, "clone": 1},
+            {"hid": 11, "unit": 12, "chan": _ASEC_CHANNEL, "spm_id": 12, "clone": 1},
+            {"hid": 12, "unit": 13, "chan": _ASEC_CHANNEL, "spm_id": 21, "clone": 1},
+        ]
+    )
+    assert statuses == dict.fromkeys((1, 2, 3, 11, 12, 13), INCLUDED)
+
+
+@pytest.mark.parametrize(
+    "clone_rows",
+    [
+        pytest.param(
+            [
+                {"hid": 11, "unit": 11, "chan": _ASEC_CHANNEL, "spm_id": 11},
+                {"hid": 11, "unit": 11, "chan": _ASEC_CHANNEL, "spm_id": 12},
+            ],
+            id="two-native-units-collapsed-inside-the-clone-copy",
+        ),
+        pytest.param(
+            [
+                {"hid": 11, "unit": 11, "chan": _ASEC_CHANNEL, "spm_id": 11},
+                {"hid": 11, "unit": 12, "chan": _ASEC_CHANNEL, "spm_id": 11},
+            ],
+            id="one-native-unit-split-inside-the-clone-copy",
+        ),
+    ],
+)
+def test_the_clone_copy_key_still_refuses_a_degraded_clone_copy(clone_rows):
+    """Negative control: keying on the copy does not relax the check within it."""
+    native = [
+        {"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 11, "clone": 0},
+        {"hid": 1, "unit": 2, "chan": _ASEC_CHANNEL, "spm_id": 12, "clone": 0},
+    ]
+    with _refuses("SPM_UNIVERSE_DEGRADED_PARTITION"):
+        _classify(native + [dict(row, clone=1) for row in clone_rows])
+
+
+def test_a_missing_clone_index_is_read_as_native_on_the_asec_arm():
+    """A clone row that lost its index collides with its native row: refused."""
+    with _refuses("SPM_UNIVERSE_DEGRADED_PARTITION"):
+        _classify(
+            [
+                {"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 11, "clone": 0},
+                {
+                    "hid": 11,
+                    "unit": 11,
+                    "chan": _ASEC_CHANNEL,
+                    "spm_id": 11,
+                    "clone": None,
+                },
+            ]
+        )
+
+
+def test_a_missing_clone_index_counts_as_native_in_group_quarters():
+    """A lost clone index cannot make the one-person GQ check pass vacuously."""
+    with _refuses("SPM_UNIVERSE_GQ_MULTI_PERSON"):
+        _classify(
+            [
+                {"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 2, "clone": None},
+                {"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 2, "clone": None},
+            ]
+        )
+
+
+@pytest.mark.requires_us
+def test_the_real_support_clone_operator_output_is_accepted():
+    """The copy-key rule holds on ``clone_us_frame_for_puf_support`` itself.
+
+    Invented rows. Imported lazily: the operator's module pulls the country
+    engine, which the rest of this file never needs.
+    """
+    from microcosm.build.us_runtime.puf_support import (
+        clone_us_frame_for_puf_support,
+    )
+
+    frame = _frame(
+        [
+            {"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 11},
+            {"hid": 1, "unit": 2, "chan": _ASEC_CHANNEL, "spm_id": 12},
+            {"hid": 2, "unit": 3, "chan": _ASEC_CHANNEL, "spm_id": 21},
+        ],
+        without_support_metadata=True,
+    )
+    cloned = clone_us_frame_for_puf_support(frame)
+    person = cloned.table("person")
+    # The operator's shape this rule depends on: SPM_ID copied verbatim onto
+    # a second copy whose SPM units are new ids.
+    assert sorted(person["person_support_clone_index"].unique().tolist()) == [0, 1]
+    by_copy = person.groupby("person_support_clone_index")
+    assert by_copy[ASEC_NATIVE_UNIT_COLUMN].apply(sorted).tolist() == [
+        [11, 12, 21],
+        [11, 12, 21],
+    ]
+    assert person["person_spm_unit_id"].nunique() == 6
+
+    result = attach_spm_universe_status(cloned)
+    assert result.status.tolist() == [INCLUDED] * 6
+
+
 def test_the_degraded_partition_check_does_not_fire_on_the_acs_arm():
     """ACS PUMS supplies no ``SPM_ID``; one unit per household is native there."""
     assert _classify(
@@ -480,12 +660,20 @@ def test_the_degraded_partition_check_does_not_fire_on_the_acs_arm():
     ) == {1: INCLUDED, 2: INCLUDED}
 
 
-@pytest.mark.parametrize("field", ["H_TYPE", "HRHTYPE", "H_HHTYPE", "HUNITS"])
+@pytest.mark.parametrize("field", ASEC_RECORD_TYPE_FIELDS)
 def test_refuses_an_asec_vintage_carrying_a_record_type_field(field):
     with _refuses("SPM_UNIVERSE_ASEC_RECORD_TYPE_UNREVIEWED"):
         _classify(
             [{"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 11}],
             household_extra={1: {field: 1}},
+        )
+
+
+def test_refuses_an_asec_record_type_field_on_the_person_table():
+    with _refuses("SPM_UNIVERSE_ASEC_RECORD_TYPE_UNREVIEWED"):
+        _classify(
+            [{"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 11}],
+            person_extra_columns={"H_TYPE": [1]},
         )
 
 
