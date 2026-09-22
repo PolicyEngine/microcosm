@@ -702,17 +702,6 @@ class TestUKManifest:
         with pytest.raises(ValueError, match="candidate_evidence.tier"):
             load_uk_release_input_coverage_manifest(str(bad))
 
-    def test_pass_through_family_must_not_require_a_reason(self, tmp_path) -> None:
-        payload = json.loads(_SHIPPED_MANIFEST.read_text(encoding="utf-8"))
-        family = payload["family_coverage"]["was_wealth"]
-        assert family["mass_change_semantics"] == "weights_pass_through"
-        family["required_mass_change_reason"] = "invented receipt"
-        bad = tmp_path / "pass_through_with_reason.json"
-        bad.write_text(json.dumps(payload), encoding="utf-8")
-
-        with pytest.raises(ValueError, match="must not require a mass-change"):
-            load_uk_release_input_coverage_manifest(str(bad))
-
     def test_receipted_family_requires_a_reason(self, tmp_path) -> None:
         payload = json.loads(_SHIPPED_MANIFEST.read_text(encoding="utf-8"))
         family = payload["family_coverage"]["hmrc_spi_income"]

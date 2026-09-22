@@ -886,25 +886,30 @@ def _source_stage_family_coverage_contract(
         for operation in operations
         if isinstance(operation.get("reason"), str) and operation.get("reason")
     ]
-    # A stage that declares a mass-change reason on one of its operations
-    # records that receipt on the frame, and the terminal family gate looks
-    # for it by that exact string. A stage that declares none (the E5 fits
-    # and the regional uprating: column-writing transforms that pass the
-    # household weights through untouched) leaves no receipt to look for,
-    # so the contract requires none; inventing a generic reason here made
-    # every such family fail the first release cut on a record nothing ever
-    # wrote. The weight-kind check still covers those stages.
-    required_mass_change_reason = declared_reasons[-1] if declared_reasons else None
-    if any(
-        operation.get("kind") == "stack_band_donor_households"
-        for operation in operations
-    ):
-        mass_change_semantics = "mass_increasing_support"
-    elif declared_reasons:
-        mass_change_semantics = "mass_conserving"
-    else:
-        mass_change_semantics = "weights_pass_through"
-    contract: dict[str, Any] = {
+    # Every source stage records its household-mass receipt under its own
+    # reason (a column-writing stage records a conservation receipt: old and
+    # new totals agree, declared factor 1.0), so the terminal family gate
+    # asserts positively that the stage left household mass unchanged. A
+    # stage that declares none has no receipt to require, and the contract
+    # refuses it rather than inventing one (the first release cut failed
+    # five families on a reason the generator had invented).
+    if not declared_reasons:
+        raise ValueError(
+            f"source stage {stage_name!r} declares no "
+            "record_mass_conservation_receipt operation; every spine stage "
+            "records its household-mass receipt so the terminal family gate can "
+            "assert the mass was conserved."
+        )
+    required_mass_change_reason = declared_reasons[-1]
+    mass_change_semantics = (
+        "mass_increasing_support"
+        if any(
+            operation.get("kind") == "stack_band_donor_households"
+            for operation in operations
+        )
+        else "mass_conserving"
+    )
+    return {
         "status": "required_at_build",
         "stage": stage_name,
         "source_manifest": SOURCE_STAGES_PATH.name,
@@ -916,14 +921,12 @@ def _source_stage_family_coverage_contract(
             "source": str(stage.get("source", "")),
         },
         "output_weight_kind": "importance",
+        "required_mass_change_reason": required_mass_change_reason,
         "mass_change_semantics": mass_change_semantics,
         "outputs": list(stage.get("outputs", [])),
         "rewrites": list(stage.get("rewrites", [])),
         "effective_mass_requirements": {},
     }
-    if required_mass_change_reason is not None:
-        contract["required_mass_change_reason"] = required_mass_change_reason
-    return contract
 
 
 def _cgt_spine_family_coverage_contract(

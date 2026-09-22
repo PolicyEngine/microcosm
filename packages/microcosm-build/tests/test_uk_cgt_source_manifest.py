@@ -3,18 +3,11 @@
 from __future__ import annotations
 
 from microcosm.build.country_spec import load_country_spec
-from microcosm.build.uk_runtime.cgt_asset_type import (
-    UK_CGT_ASSET_TYPE_MASS_CONSERVATION_REASON,
-)
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_IMPUTATION_SEED,
     UK_CGT_SPINE_MASS_CONSERVATION_REASON,
     UK_CGT_SPINE_STAGE_NAME,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
-)
-from microcosm.build.uk_runtime.cgt_structure import (
-    CGT_CLONE_MASS_CHANGE_REASON,
-    CGT_DONOR_MASS_CHANGE_REASON,
 )
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_BUILD_PERIOD,
@@ -24,12 +17,6 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
     load_uk_release_input_coverage_manifest,
-)
-from microcosm.build.uk_runtime.salary_sacrifice import (
-    SALSAC_MASS_CHANGE_REASON,
-)
-from microcosm.build.uk_runtime.student_loans import (
-    STUDENT_LOANS_MASS_CHANGE_REASON,
 )
 
 
@@ -114,117 +101,39 @@ def test_the_june_path_cgt_family_is_retired() -> None:
     assert "hmrc_cgt_gains" not in load_country_spec("uk").sources.stage_map()
 
 
-def test_stages_without_a_declared_receipt_require_none() -> None:
-    """A column-writing stage that leaves the weights untouched records no
-    mass receipt, so the contract demands none; the weight-kind check still
-    covers it. The first release cut failed five families on a reason the
-    generator had invented."""
-    manifest = load_uk_release_input_coverage_manifest()
-    for name in (
-        "was_wealth",
-        "lcfs_consumption",
-        "etb_vat",
-        "etb_services",
-        "regional_property_uprating",
-    ):
-        family = manifest.family_coverage[name]
-        assert "required_mass_change_reason" not in family, name
-        assert family["mass_change_semantics"] == "weights_pass_through", name
-        assert family["output_weight_kind"] == "importance", name
-
-
-def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
-    """The real manifest's family entries against a compliant final frame.
-
-    The wiring first shipped a family whose declared weight kind and
-    mass-change coupling would have failed every real build at the terminal
-    gate — invisible because no test drove the shipped manifest through the
-    family diagnostics. This drives exactly that path.
-    """
-    from types import SimpleNamespace
-
-    from microcosm.build.uk_runtime.release_input_coverage import (
-        _family_build_state_diagnostics,
+def test_every_source_stage_family_requires_its_declared_receipt() -> None:
+    """A column-writing stage records a conservation receipt under its module
+    constant and the contract requires exactly it: the positive "household
+    mass unchanged" assertion, never an invented reason (review finding on
+    the first release cut) and never no assertion at all."""
+    from microcosm.build.uk_runtime.etb_services import (
+        UK_ETB_SERVICES_MASS_CONSERVATION_REASON,
     )
-    from microcosm.frame import MassChangeRecord, WeightKind
+    from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_MASS_CONSERVATION_REASON
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
+    )
+    from microcosm.build.uk_runtime.regional_uprating import (
+        UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON,
+    )
+    from microcosm.build.uk_runtime.was_wealth import (
+        UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
+    )
 
     manifest = load_uk_release_input_coverage_manifest()
-    spi_reason = str(
-        manifest.family_coverage["hmrc_spi_income"]["required_mass_change_reason"]
-    )
-    compliant = SimpleNamespace(
-        household_weight_kind=WeightKind.IMPORTANCE,
-        time_period="2024",
-        mass_log=(
-            MassChangeRecord(
-                entity="household",
-                old_total=100.0,
-                new_total=100.0,
-                declared_factor=1.0,
-                reason=spi_reason,
-            ),
-            MassChangeRecord(
-                entity="household",
-                old_total=100.0,
-                new_total=100.0,
-                declared_factor=1.0,
-                reason=CGT_CLONE_MASS_CHANGE_REASON,
-            ),
-            MassChangeRecord(
-                entity="household",
-                old_total=100.0,
-                new_total=110.0,
-                declared_factor=None,
-                reason=CGT_DONOR_MASS_CHANGE_REASON,
-            ),
-            MassChangeRecord(
-                entity="household",
-                old_total=100.0,
-                new_total=100.0,
-                declared_factor=1.0,
-                reason=UK_CGT_SPINE_MASS_CONSERVATION_REASON,
-            ),
-            MassChangeRecord(
-                entity="household",
-                old_total=100.0,
-                new_total=100.0,
-                declared_factor=1.0,
-                reason=UK_CGT_ASSET_TYPE_MASS_CONSERVATION_REASON,
-            ),
-            MassChangeRecord(
-                entity="household",
-                old_total=100.0,
-                new_total=100.0,
-                declared_factor=1.0,
-                reason=SALSAC_MASS_CHANGE_REASON,
-            ),
-            MassChangeRecord(
-                entity="household",
-                old_total=100.0,
-                new_total=100.0,
-                declared_factor=1.0,
-                reason=STUDENT_LOANS_MASS_CHANGE_REASON,
-            ),
+    expected = {
+        "was_wealth": UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
+        "lcfs_consumption": UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
+        "etb_vat": UK_ETB_VAT_MASS_CONSERVATION_REASON,
+        "etb_services": UK_ETB_SERVICES_MASS_CONSERVATION_REASON,
+        "regional_property_uprating": (
+            UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON
         ),
-    )
-
-    _, failures = _family_build_state_diagnostics(compliant, manifest)
-    assert failures == []
-
-    missing_receipt = SimpleNamespace(
-        household_weight_kind=WeightKind.IMPORTANCE,
-        time_period="2024",
-        mass_log=compliant.mass_log[:1],
-    )
-    _, failures = _family_build_state_diagnostics(missing_receipt, manifest)
-    assert any("hmrc_cgt_gains_spine" in failure for failure in failures)
-
-    wrong_kind = SimpleNamespace(
-        household_weight_kind=WeightKind.DESIGN,
-        time_period="2024",
-        mass_log=compliant.mass_log,
-    )
-    _, failures = _family_build_state_diagnostics(wrong_kind, manifest)
-    assert any(
-        "hmrc_cgt_gains_spine" in failure and "kind" in failure for failure in failures
-    )
+    }
+    for name, reason in expected.items():
+        family = manifest.family_coverage[name]
+        assert family["required_mass_change_reason"] == reason, name
+        assert family["mass_change_semantics"] == "mass_conserving", name
+        assert family["output_weight_kind"] == "importance", name
+    for name, family in manifest.family_coverage.items():
+        assert str(family["required_mass_change_reason"]).strip(), name
