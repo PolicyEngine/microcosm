@@ -36,16 +36,23 @@ digest mismatch, or doctrine constants that are not the ruled ones.
 ## 2. Run the release candidate
 
 ```bash
-uv run --no-sync python tools/build_uk_rowwise_candidate.py --release-candidate \
-  --input-h5 <spine.h5> --input-sha256 <spine> \
+uv run --no-sync python tools/build_uk_rowwise_candidate.py --release-role dense \
+  --release-candidate --input-h5 <spine.h5> --input-sha256 <spine> \
   --ladder build/uk/uk_oa_ladder_2021.npz --ladder-sha256 <ladder> \
   --ledger-facts <chronicle-uk-artifact-dir> --ledger-facts-sha256 <facts> \
   --ledger-manifest-sha256 <manifest> --seed 42 \
   --logbook-prev-row-digest <previous row> --out <candidate-dir>
 ```
 
-`--release-candidate` pins the doctrine (bound 10, `grain_equal`, K=15, 1500
-epochs), resolves the engine in a single block, and runs the rotated holdout.
+`--release-role dense` is required (microcosm#823): the role supplies the
+solve defaults (K=15, seed 42, 1,500 epochs, learning rate 0.15,
+`grain_equal`), names the outputs `microcosm_uk_2024_25_local.h5` and
+`microcosm_uk_2024_25_local.local_gates.json`, records itself in the
+manifest, and refuses the national role's flags. `--release-candidate` pins
+the doctrine (bound 10, `grain_equal`, K=15, 1500 epochs), resolves the
+engine in a single block, and runs the rotated holdout. Best-effort staging
+telemetry uploads every 300 s by default on this driver (the Hub allows about
+128 commits per hour per repository).
 Expect about 3.5 hours and 10 GB at K=15.
 
 ## 3. Pre-flight the finished run, then score it
@@ -66,7 +73,7 @@ Measure the full pinned incumbent surface before assembly:
 
 ```bash
 uv run --no-sync python tools/evaluate_uk_incumbent_surface.py \
-  --candidate-h5 <candidate-dir>/microcosm_uk_2025_local.h5 \
+  --candidate-h5 <candidate-dir>/microcosm_uk_2024_25_local.h5 \
   --candidate-manifest <candidate-dir>/rowwise_candidate_manifest.json \
   --ledger-facts <chronicle-uk-artifact-dir> --ledger-facts-sha256 <facts> \
   --ledger-manifest-sha256 <manifest> --engine-blocks 1 \
@@ -104,14 +111,17 @@ uv run --no-sync python tools/assemble_uk_dense_release_dir.py \
   --out-dir releases
 ```
 
-Assembly verifies the hash join (every manifest output against its bytes, the
-spine against its pin, the gate report against the Logbook build id), requires
+Assembly requires `release_role: "dense"` in the candidate manifest (as does
+the pre-flight; a candidate built before the role existed is rebuilt, never
+grandfathered), verifies the hash join (every manifest output against its
+bytes, the spine against its pin, the gate report against the Logbook build
+id), requires
 the manifest's `staging_delivery` receipt (the run's version 2 staging
 telemetry evidence, copied into `build_manifest.json` as `staging` so
 publication can apply its undelivered-staging refusal, as on the national
 lane), re-runs the candidate pre-flight, mints the cut tag
 `microcosm-uk-2024-25-dense-<YYYYMMDDTHHMMSSZ>-<uuid8>` from the run's attempt
-id, clones the H5 beside itself as `microcosm_uk_2025_dense.h5`, stages
+id, clones the H5 beside itself as `microcosm_uk_2024_25_dense.h5`, stages
 `build_manifest.json`, `release_manifest.json`, `calibration_diagnostics.json`,
 `gate_summary.json`, `uk_source_coverage.json`, the signed `uk_local_gates.json`,
 `score_vs_incumbent.json`, `incumbent_surface_evaluation.json`, the original

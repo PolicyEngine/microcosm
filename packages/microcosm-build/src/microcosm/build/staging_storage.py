@@ -166,9 +166,7 @@ class HuggingFaceDatasetStorage:
             entity = entity if isinstance(entity, Mapping) else {}
             name = str(entity.get("name") or "")
             kind = str(entity.get("type") or "")
-            covers = name == self.repo_id or (
-                kind in {"user", "org"} and name == owner
-            )
+            covers = name == self.repo_id or (kind in {"user", "org"} and name == owner)
             if covers and "repo.write" in (scope.get("permissions") or []):
                 return True
         return False
@@ -289,9 +287,7 @@ class BestEffortUploadSession:
             self.storage.upload(local_path, path_in_repo)
         except Exception as error:
             self.consecutive_failures += 1
-            became_disabled = (
-                self.consecutive_failures >= self.max_consecutive_failures
-            )
+            became_disabled = self.consecutive_failures >= self.max_consecutive_failures
             if became_disabled:
                 self.enabled = False
             return UploadResult(
@@ -310,3 +306,13 @@ class BestEffortUploadSession:
             disabled=False,
             became_disabled=False,
         )
+
+    def reopen(self) -> None:
+        """Re-enable writes after a pause, for a terminal flush of the run state.
+
+        The attempt and success counters are kept: the delivery summary
+        still reports every write the run made.
+        """
+
+        self.consecutive_failures = 0
+        self.enabled = True

@@ -243,7 +243,7 @@ def write_dense_bundle(
     for name, payload in payloads.items():
         (release_dir / name).write_bytes(payload)
     h5_bytes = b"dense-h5-stand-in"
-    (root / "microcosm_uk_2025_dense.h5").write_bytes(h5_bytes)
+    (root / "microcosm_uk_2024_25_dense.h5").write_bytes(h5_bytes)
 
     def artifact(kind, path, sha):
         return {
@@ -263,8 +263,8 @@ def write_dense_bundle(
         "namespace": namespace,
         "build": {"build_id": release_id},
         "artifacts": {
-            "microcosm_uk_2025_dense": artifact(
-                "microdata", "microcosm_uk_2025_dense.h5", _sha(h5_bytes)
+            "microcosm_uk_2024_25_dense": artifact(
+                "microdata", "microcosm_uk_2024_25_dense.h5", _sha(h5_bytes)
             ),
             **{
                 Path(name).stem: artifact("diagnostics", name, _sha(payload))
@@ -278,7 +278,7 @@ def write_dense_bundle(
     (release_dir / "release_manifest.json").write_text(manifest_text)
     ledger = {name: _sha(payload) for name, payload in payloads.items()}
     ledger["release_manifest.json"] = _sha(manifest_text.encode())
-    ledger["microcosm_uk_2025_dense.h5"] = _sha(h5_bytes)
+    ledger["microcosm_uk_2024_25_dense.h5"] = _sha(h5_bytes)
     (release_dir / "sha256sums.txt").write_text(
         "".join(f"{digest}  {name}\n" for name, digest in sorted(ledger.items()))
     )

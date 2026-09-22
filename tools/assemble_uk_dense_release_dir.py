@@ -43,7 +43,11 @@ from microcosm.data.contract import (
 
 _REPO_ID = "policyengine/populace-uk-private"
 _NAMESPACE = "uk_dense"
-_DATASET_KEY = "microcosm_uk_2025_dense"
+# The published dense artifact's key and filename (microcosm#823: every
+# 2024-25 line carries the FRS release vintage in its name). The contract
+# mirrors the filename as ``_UK_DENSE_DATASET_FILENAME``; a lockstep test
+# pins the two.
+_DATASET_KEY = "microcosm_uk_2024_25_dense"
 _DATASET_FILENAME = f"{_DATASET_KEY}.h5"
 _ATTEMPT_SUFFIX = re.compile(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}")
 _RUNTIME_PACKAGES = ("policyengine-core", "policyengine-uk", "microcosm-data")
@@ -195,6 +199,12 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
         candidate_dir / "rowwise_candidate_manifest.json",
         label="rowwise_candidate_manifest.json",
     )
+    if manifest.get("release_role") != "dense":
+        raise SystemExit(
+            f"error: manifest.release_role is {manifest.get('release_role')!r}, "
+            "not 'dense': this assembler covers the dense line only (a "
+            "candidate built before the release role existed is rebuilt)"
+        )
     outputs = _mapping(manifest.get("outputs"), "manifest.outputs")
     identity = _mapping(manifest.get("identity"), "manifest.identity")
     # The national assembler's rule: a release carries the staging telemetry

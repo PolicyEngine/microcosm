@@ -759,9 +759,30 @@ def test_version_2_cli_uses_country_owned_repository_configuration(monkeypatch):
 
     args = parser.parse_args([])
     assert args.staging_repo_id == "example/configured-staging"
+    assert args.staging_upload_interval_seconds == 30.0
     assert not hasattr(args, "staging_prefix")
     with pytest.raises(SystemExit):
         parser.parse_args(["--staging-prefix", "candidate-runs"])
+
+
+def test_version_2_cli_lets_a_long_running_command_slow_its_upload_cadence():
+    """A multi-hour solve at 30 s exhausts the Hub's commit budget (v20 run)."""
+
+    repository = StagingRepositoryConfig(
+        default_repo_id="example/default-staging",
+        repo_id_environment_variable="EXAMPLE_STAGING_REPO_ID",
+    )
+    parser = argparse.ArgumentParser()
+    add_staging_arguments(
+        parser, repository=repository, default_upload_interval_seconds=300
+    )
+    assert parser.parse_args([]).staging_upload_interval_seconds == 300.0
+    assert (
+        parser.parse_args(
+            ["--staging-upload-interval-seconds", "45"]
+        ).staging_upload_interval_seconds
+        == 45.0
+    )
 
 
 def test_typed_artifacts_reject_one_scalar_individual_record(tmp_path):
@@ -996,3 +1017,83 @@ def test_storage_reads_whether_the_credential_can_write_this_repository(
         ).credential_can_write()
         is None
     )
+
+
+class _RateLimitedApi(MemoryApi):
+    """Fail the next ``failures_left`` writes, as a rate-limited Hub does."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__(root)
+        self.failures_left = 0
+        self.calls = 0
+
+    def upload_file(self, **kwargs):
+        self.calls += 1
+        if self.failures_left > 0:
+            self.failures_left -= 1
+            raise RuntimeError("429 rate limited token=do-not-record")
+        super().upload_file(**kwargs)
+
+
+def _paused_remote_recorder(tmp_path):
+    api = _RateLimitedApi(tmp_path)
+    sleeps: list[float] = []
+    telemetry = _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        api=api,
+        upload_interval_seconds=0,
+        sleep=sleeps.append,
+    )
+    telemetry.set_sample(_sample())
+    # Three consecutive failures pause remote writes for the rest of the run.
+    api.failures_left = 3
+    telemetry.stage("calibrating", force_upload=True)
+    assert telemetry.delivery_summary["last_error_code"] == "UPLOAD_FAILED"
+    calls_paused = api.calls
+    telemetry.stage("diagnostics", force_upload=True)
+    assert api.calls == calls_paused
+    return telemetry, api, sleeps
+
+
+def test_completion_flushes_the_terminal_state_after_paused_uploads(tmp_path):
+    """The v20 last-mile gap: a paused run left its remote copy 'running'."""
+
+    telemetry, api, sleeps = _paused_remote_recorder(tmp_path)
+    # The first terminal attempt meets the limit again; the second, after a
+    # backed-off wait, lands.
+    api.failures_left = 3
+    telemetry.complete()
+    assert sleeps == [15.0]
+    prefix = telemetry.repo_run_prefix
+    assert json.loads(api.files[f"{prefix}/progress.json"])["status"] == "completed"
+    assert {f"{prefix}/run_manifest.json", f"{prefix}/events.ndjson"} <= set(api.files)
+    delivery = telemetry.delivery_summary
+    assert delivery["last_error_code"] is None
+    assert delivery["upload_successes"] >= 3
+    assert delivery["upload_attempts"] > delivery["upload_successes"]
+
+
+def test_failure_flushes_the_terminal_state_after_paused_uploads(tmp_path):
+    telemetry, api, sleeps = _paused_remote_recorder(tmp_path)
+    telemetry.fail(RuntimeError("solver exploded"))
+    assert sleeps == []
+    prefix = telemetry.repo_run_prefix
+    assert json.loads(api.files[f"{prefix}/progress.json"])["status"] == "failed"
+    assert telemetry.delivery_summary["last_error_code"] is None
+
+
+def test_terminal_flush_gives_up_after_bounded_attempts(tmp_path, capsys):
+    telemetry, api, sleeps = _paused_remote_recorder(tmp_path)
+    api.failures_left = 100
+    telemetry.complete()
+    assert sleeps == [15.0, 60.0]
+    assert telemetry.repo_run_prefix + "/progress.json" not in api.files
+    delivery = telemetry.delivery_summary
+    assert delivery["last_error_code"] == "UPLOAD_FAILED"
+    err = capsys.readouterr().err
+    assert "terminal state did not reach" in err
+    assert "do-not-record" not in err
+    # The local bundle is complete whatever the Hub did.
+    assert telemetry.validate_local_bundle()["progress"]["status"] == "completed"

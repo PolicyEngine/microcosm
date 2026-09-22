@@ -115,9 +115,9 @@ read-only credential.
 
 ## Command modes and files
 
-The three UK commands (`tools/build_uk_frs_spine.py`,
-`tools/calibrate_uk_national_dataset.py` and
-`tools/build_uk_rowwise_candidate.py`) support these staging modes:
+The two UK commands (`tools/build_uk_frs_spine.py` and
+`tools/build_uk_rowwise_candidate.py` in either release role, `national` or
+`dense`) support these staging modes:
 
 - Default: local version 2 files plus best-effort delivery to
   `policyengine/populace-uk-staging`.
@@ -200,7 +200,13 @@ code or Logbook disposition. The telemetry run declares two reviewed
 artifacts, `artifacts/staged_dataset.json` (the same block) and
 `artifacts/fit_summary.json` (loss, fit by family, gate verdicts, the size
 receipt without its per-row arrays), so a run in the dashboard points at its
-bundle.
+bundle. A national run given `--incumbent-h5` adds a third,
+`artifacts/score_vs_incumbent.json`: the rule-1 score receipt against the
+incumbent on the surface both can materialize, produced after the bundle is
+staged and before the telemetry completes, with the rows the incumbent cannot
+materialize pruned from both arms and listed; the manifest's `evaluation`
+block records its verdict, and the release-cut certifier requires that
+verdict to be `passed`.
 
 Re-stage a finished directory, including runs built before this lane existed
 or whose upload failed, with:
@@ -229,7 +235,10 @@ requires the manifest's `staging_delivery` receipt and copies it into
 `build_manifest.json` as `staging`, where publication reads it. A dense run
 built before this lane carries no receipt; `--allow-missing-staging` assembles
 it with a recorded disabled-staging opt-out naming the override, the same
-posture publication's `--allow-missing-staging` grants.
+posture publication's `--allow-missing-staging` grants. Since microcosm#823 the
+pre-flight and the assembler check the manifest's `release_role` before that
+override, so a run built before the release role existed is refused on the
+role and is rebuilt, never grandfathered.
 
 ## Smoke verification
 

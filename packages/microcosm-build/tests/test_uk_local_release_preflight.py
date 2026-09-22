@@ -28,11 +28,12 @@ def _good_candidate(tmp_path: Path) -> Path:
     candidate = tmp_path / "candidate"
     (candidate / "logbook-spool").mkdir(parents=True)
     (candidate / "logbook-spool" / "row.json").write_text("{}")
-    h5 = candidate / "microcosm_uk_2025_local.h5"
+    h5 = candidate / "microcosm_uk_2024_25_local.h5"
     h5.write_bytes(b"h5")
     import hashlib
 
     manifest = {
+        "release_role": "dense",
         "parameters": {
             "release_candidate": True,
             "epochs": 1500,
@@ -117,7 +118,7 @@ def _good_candidate(tmp_path: Path) -> Path:
         },
     }
     (candidate / "rowwise_candidate_manifest.json").write_text(json.dumps(manifest))
-    (candidate / "microcosm_uk_2025_local.local_gates.json").write_text(
+    (candidate / "microcosm_uk_2024_25_local.local_gates.json").write_text(
         json.dumps(_signed_report())
     )
     return candidate
@@ -206,6 +207,24 @@ def test_good_candidate_dir_passes(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.parametrize("role", ["national", None])
+def test_preflight_refuses_a_national_role_manifest(tmp_path: Path, role) -> None:
+    """This pre-flight is the dense line's; any other role is refused by name."""
+
+    module = _load()
+    candidate = _good_candidate(tmp_path)
+    manifest_path = candidate / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if role is None:
+        del manifest["release_role"]
+    else:
+        manifest["release_role"] = role
+    manifest_path.write_text(json.dumps(manifest))
+    failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))
+    assert len(failures) == 1
+    assert f"manifest.release_role is {role!r}" in failures[0]
+
+
 @pytest.mark.parametrize(
     ("mutate", "needle"),
     [
@@ -254,11 +273,11 @@ def test_each_missing_flag_is_named(tmp_path: Path, mutate, needle: str) -> None
     candidate = _good_candidate(tmp_path)
     manifest = json.loads((candidate / "rowwise_candidate_manifest.json").read_text())
     report = json.loads(
-        (candidate / "microcosm_uk_2025_local.local_gates.json").read_text()
+        (candidate / "microcosm_uk_2024_25_local.local_gates.json").read_text()
     )
     mutate(manifest, report)
     (candidate / "rowwise_candidate_manifest.json").write_text(json.dumps(manifest))
-    (candidate / "microcosm_uk_2025_local.local_gates.json").write_text(
+    (candidate / "microcosm_uk_2024_25_local.local_gates.json").write_text(
         json.dumps(report)
     )
     failures = module.check_candidate_dir(candidate, today=date(2026, 9, 4))

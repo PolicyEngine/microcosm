@@ -614,6 +614,10 @@ _UK_DENSE_RELEASE_ID = "microcosm-uk-2024-25-dense"
 _UK_DENSE_CUT_TAG_RE = re.compile(
     re.escape(_UK_DENSE_RELEASE_ID) + r"-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}"
 )
+#: The dense line's published microdata filename; mirrors
+#: ``tools/assemble_uk_dense_release_dir.py::_DATASET_FILENAME`` (lockstep test
+#: in the build shard's contract-pin suite).
+_UK_DENSE_DATASET_FILENAME = "microcosm_uk_2024_25_dense.h5"
 _UK_DENSE_GATE_REPORT_FILE = "uk_local_gates.json"
 _UK_DENSE_SCORE_RECEIPT_FILE = "score_vs_incumbent.json"
 _UK_DENSE_SOURCE_COVERAGE_FILE = "uk_source_coverage.json"
@@ -6200,7 +6204,7 @@ def _check_uk_dense_surface_files(
         )
         return
     try:
-        dataset = _artifact_by_path(release_manifest, "microcosm_uk_2025_dense.h5")
+        dataset = _artifact_by_path(release_manifest, _UK_DENSE_DATASET_FILENAME)
         expected = {
             "candidate_dataset_sha256": dataset["sha256"],
             "candidate_manifest_sha256": hashes["rowwise_candidate_manifest.json"],

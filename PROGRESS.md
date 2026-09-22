@@ -8,8 +8,9 @@ history; see "Root journals are history, not state" in `CLAUDE.md`.
 
 ## State
 
-In progress. Scope settled from data; build script, compile diff, re-pin,
-doc, tests and PR still to do.
+Done: merged as PR #955 (historicized 22 September 2026; this journal is
+history, not state). See `docs/us-chronicle-feed-repin.md` for the pin and the
+rebuild tool.
 
 ## Goal
 
@@ -26,7 +27,7 @@ row), as auditable as the UK pin (`docs/uk-chronicle-feed-repin.md`,
   `c5e5bf8` stays the export commit.
 - Pinned feed inventory: 37,405 rows, 586 record sets, 20 namespaces,
   37,399 distinct `source_record_id`s (six CBO ty2023 projection pairs are
-  ledger#119's known duplicate wart).
+  chronicle#119's known duplicate wart (the repository was renamed from ledger)).
 - Whole-bundle exports at `c5e5bf8` for 2022/2023/2024 (US-namespace
   filter): every one of the 37,334 pinned record ids they cover carries the
   identical `value`; the 65 pinned ids they lack are all in years still
@@ -43,6 +44,7 @@ row), as auditable as the UK pin (`docs/uk-chronicle-feed-repin.md`,
 
 ## Next
 
+All three completed in PR #955 (22 September 2026):
 1. `tools/build_us_chronicle_feed.py` + two-run sha equality.
 2. Compile the new artifact on this branch; diff targets vs the `05d254aa2`
    compile of the pinned feed.

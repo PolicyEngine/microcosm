@@ -284,9 +284,10 @@ def _with_person_column(frame: Frame, column: str, values: np.ndarray) -> Frame:
     )
 
 
-def _raw_stage_args(builder, tmp_path: Path):
+def _raw_stage_args(builder, tmp_path: Path, extra: tuple[str, ...] = ()):
     return builder._parse_args(
         [
+            *extra,
             "--asec-h5",
             f"2022={tmp_path / 'asec_2022.h5'}",
             "--target-year",
@@ -976,6 +977,45 @@ def test_completed_source_stage_repairs_raw_auxiliary_without_rewriting_legacy(
     repaired, _metadata = builder.load_asec_raw_stage_checkpoint(raw_path)
     assert repaired.table("person")["ED_VAL"].tolist() == [0.0, 500.0, 1_000.0]
     assert repaired.table("person")["PAW_TYP"].tolist() == [0, 1, 2]
+
+
+@pytest.mark.parametrize(
+    ("recorded_is_pinned", "refusal"),
+    [(True, None), (False, r"read bytes with sha256")],
+    ids=["receipt-equals-pin", "receipt-differs-from-pin"],
+)
+def test_completed_source_stage_reentry_holds_the_receipt_to_the_asec_pins(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    recorded_is_pinned: bool,
+    refusal: str | None,
+) -> None:
+    from microcosm.build.us_runtime.asec_sources import ASEC_SOURCE_ARTIFACTS
+
+    builder = _load_support_builder_module()
+    pin = ASEC_SOURCE_ARTIFACTS[2022].sha256
+    args = _raw_stage_args(builder, tmp_path, ("--asec-h5-sha256", f"2022={pin}"))
+    receipt = _pooled_source_receipt(tmp_path)
+    if recorded_is_pinned:
+        receipt["sources"][0]["sha256"] = pin
+    _patch_raw_stage_sources(
+        monkeypatch, builder, frame=_raw_asec_frame(), source_receipt=receipt
+    )
+
+    # The patched loader stands in for the fresh path, whose own receipt check
+    # lives inside the real loader; the second entry is the completed branch.
+    builder._run_outer_stage(args)
+    raw_path = args.checkpoint_dir / builder.ASEC_RAW_STAGE_CHECKPOINT_FILENAME
+    expected_raw = raw_path.read_bytes()
+    raw_path.unlink()
+
+    if refusal is not None:
+        with pytest.raises(SystemExit, match=refusal):
+            builder._run_outer_stage(args)
+        assert not raw_path.exists(), "a refused re-entry repairs nothing"
+        return
+    builder._run_outer_stage(args)
+    assert raw_path.read_bytes() == expected_raw
 
 
 def test_source_and_preclone_stages_round_trip_design_weight_kind(
