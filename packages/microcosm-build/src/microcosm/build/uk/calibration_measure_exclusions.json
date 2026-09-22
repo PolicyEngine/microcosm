@@ -425,6 +425,15 @@
       "expires_on": "2026-11-26"
     },
     {
+      "name": "dwp.uc.households_housing_element",
+      "reason": "Structural bias, not a weight question: DWP's any-tenure housing-entitlement count is social plus private plus 'Other or unknown' tenure, and the model has no other/unknown tenure (uc_housing_costs_element pays only council, housing-association and private renters), so the model's any-tenure count is identically the social plus private rows, which are bound and fit; the row overstates the reachable total by the other/unknown cell, 112,518 of 4,037,650 in calendar 2025 (2.8 percent; the published any-tenure mean, which the three tenure cells reproduce to the unit). Fitting all three housing rows would ask the solver to over-fill the tenure rows by that amount. Measured on every evaluation as the housing-element caseload diagnostic (Q50f -0.8 percent, D2 +0.6 percent at the baseline; v20 -2.8 percent unbound, the structural gap itself, docs/evidence/uk-a16-v20/).",
+      "tracking": "microcosm#882",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#882 (element sizing at the 10 September 2026 baseline, docs/uk-uc-baseline-2026-09-10.md; María's sign-off in review of microcosm#921 on 2026-09-15, setting the one-month window)",
+      "approved_on": "2026-09-15",
+      "expires_on": "2026-10-15"
+    },
+    {
       "name": "dwp.hb.households",
       "reason": "Housing Benefit caseload diagnostic (all client types and tenures, calendar-2025 mean of the Stat-Xplore Total items), measured on every evaluation but held out of the objective (#882, microcosm#867): the frame cannot reach the DWP caseload for the mechanisms signed on obr.housing_benefit (SPI-channel reporters in owner-occupied synthetic households, reporters drawn into Universal Credit, head-only rent, the means test). Q50f pays 235k GB units against a calendar-2025 published mean near 1.70m (-86 percent). Fitting it would move weight onto the few reporting units the engine pays. Retire when the row sits inside the 25 percent bound at the baseline.",
       "tracking": "microcosm#867",

@@ -592,10 +592,12 @@ _PACKAGED_EXCLUSION_CENSUS = {
     # microcosm#882 (2026-09-15): three UC element rows were held out of the
     # objective, signed by María in review of microcosm#921 with a one-month
     # window. The carer and childcare rows retired on 2026-09-16 with their
-    # repairs; the any-tenure housing row retired on 2026-09-21 on the v20
-    # measurement (the signed structural bias measures -2.8 % at calibrated
-    # weights that never solved toward the row, inside the 25 % fence).
-    "dwp.uc.households_": 0,
+    # repairs; the any-tenure housing row stays held out as the signed
+    # structural bias: the v20 measurement (-2.8 % unbound, at weights that
+    # never solved toward the row) reproduces the 2.79 % other/unknown-tenure
+    # gap the entry records, so it is a diagnostic, not a fit target
+    # (docs/evidence/uk-a16-v20/).
+    "dwp.uc.households_": 1,
     # microcosm#882 repairs (2026-09-16): the three Housing Benefit caseload
     # rows and the thirteen benefit-cap amount bands outside the 25 percent
     # bound are measured on every evaluation but held out of the objective;
@@ -608,9 +610,9 @@ _PACKAGED_EXCLUSION_CENSUS = {
 }
 
 # The carer and childcare rows were retired on 2026-09-16 with the repairs
-# (care hours and the childcare take-up draw on policyengine-uk 2.98.0); the
-# any-tenure housing row retired on 2026-09-21 on the v20 measurement.
-_UC_ELEMENT_REGISTER_ROWS = ()
+# (care hours and the childcare take-up draw on policyengine-uk 2.98.0);
+# only the any-tenure housing row remains held out (structural bias).
+_UC_ELEMENT_REGISTER_ROWS = ("dwp.uc.households_housing_element",)
 
 _A16_UNREACHABLE_ROWS = (
     "ons.savings_interest_income",
@@ -625,7 +627,7 @@ _A16_READJUDICATED_ROWS = ("obr.housing_benefit", "dwp.jsa_claimants")
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 61
+    assert len(names) == len(set(names)) == 62
     band_h_region_cells = [
         entry
         for entry in exclusions
@@ -742,13 +744,16 @@ def test_packaged_exclusions_load():
         assert "docs/uk-uc-baseline-2026-09-10.md" in entry["adjudication"], entry[
             "name"
         ]
-    # Every UC element row now rides in the objective; none is on the register
-    # (the any-tenure housing row retired 2026-09-21 on the v20 measurement).
+    housing = next(
+        e for e in elements if e["name"] == "dwp.uc.households_housing_element"
+    )
+    assert "112,518 of 4,037,650" in housing["reason"]
+    # The other UC element rows ride in the objective and are not on the
+    # register.
     for riding in (
         "dwp.uc.households_carer_element",
         "dwp.uc.households_childcare_element",
         "dwp.uc.households_lcwra_element",
-        "dwp.uc.households_housing_element",
         "dwp.uc.households_housing_element_social_rented",
         "dwp.uc.households_housing_element_private_rented",
         "dwp.uc.households_with_deduction",
