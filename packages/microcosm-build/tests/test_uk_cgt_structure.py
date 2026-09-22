@@ -586,9 +586,8 @@ def test_anchor_moves_non_liable_clone_mass_and_conserves_every_pair() -> None:
     )
     assert (after[original_positions] >= before[original_positions]).all()
     assert (after > 0.0).all()
-    assert (
-        result.frame.weights_for("household").total
-        == frame.weights_for("household").total
+    assert result.frame.weights_for("household").total == pytest.approx(
+        frame.weights_for("household").total, rel=1e-12
     )
     assert result.frame.weights_for("household").kind is WeightKind.IMPORTANCE
     for entity in ("person", "benunit", "household"):
@@ -599,7 +598,8 @@ def test_anchor_moves_non_liable_clone_mass_and_conserves_every_pair() -> None:
     record = result.frame.mass_log[-1]
     assert record.reason == CGT_ANCHOR_MASS_CHANGE_REASON
     assert record.declared_factor == 1.0
-    assert record.old_total == record.new_total
+    assert record.new_total == pytest.approx(record.old_total, rel=1e-12)
+    assert record.new_total == result.frame.weights_for("household").total
     assert result.frame.mass_log[:-1] == frame.mass_log
 
     assert evidence["stage"] == CGT_INCIDENCE_ANCHOR_STAGE_NAME
@@ -790,8 +790,8 @@ def test_anchor_transform_locks_the_manifest_and_reports_evidence() -> None:
         transform.checkpoint_metadata()
     frame = _anchor_input(ANCHOR_PATTERN)
     anchored = transform(frame)
-    assert (
-        anchored.weights_for("household").total == frame.weights_for("household").total
+    assert anchored.weights_for("household").total == pytest.approx(
+        frame.weights_for("household").total, rel=1e-12
     )
     evidence = transform.checkpoint_metadata()["evidence"]
     assert evidence["stage"] == CGT_INCIDENCE_ANCHOR_STAGE_NAME

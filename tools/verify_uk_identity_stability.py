@@ -680,9 +680,8 @@ def _e8_clone_pairs(frame, problems: dict[str, object]) -> dict[str, object]:
     frame's mass log carries the anchor's record) each pair still sums to
     its pre-clone weight, the clone side never exceeds the original, and the
     anchor is recomputed from the reconstructed pre-anchor state (both halves
-    at half the pair sum, the clone stage's split up to its exact-total
-    correction) in original and reversed person order and compared with the
-    stored weights.
+    at half the pair sum, the clone stage's split up to rounding) in original
+    and reversed person order and compared with the stored weights.
     """
 
     from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_policy_parameters
@@ -695,9 +694,6 @@ def _e8_clone_pairs(frame, problems: dict[str, object]) -> dict[str, object]:
     from microcosm.build.uk_runtime.national_frame import (
         uk_household_weight_kind,
         uk_national_frame,
-    )
-    from microcosm.build.uk_runtime.spi_support import (
-        _importance_weights_with_exact_total,
     )
 
     person = frame.table("person")
@@ -735,16 +731,13 @@ def _e8_clone_pairs(frame, problems: dict[str, object]) -> dict[str, object]:
     halves = 0.5 * (left + right)
     pre[original_positions] = halves
     pre[clone_positions] = halves
-    exact = _importance_weights_with_exact_total(
-        pre, frame.weights_for("household").total
-    )
     pre_frame = uk_national_frame(
         person=person.copy(),
         benunit=benunit.copy(),
         household=household.copy(),
         time_period=uk_time_period(frame),
         weight_kind=uk_household_weight_kind(frame),
-        household_weights=exact.values,
+        household_weights=pre,
         mass_log=tuple(frame.mass_log[: anchor_records[0]]),
     )
     distribution = load_advani_summers_distribution()

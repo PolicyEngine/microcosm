@@ -3975,10 +3975,10 @@
      "donors": "untouched",
      "factor": "min(maximum_factor, scale * percent_with_gains) with scale solved per group by bisection so the group's mass equals its target; a group at or below its target is untouched",
      "maximum_factor": 1.0,
-     "transfer": "each clone's removed mass is added to its paired original, so every pair's mass is conserved",
+     "transfer": "each clone's removed mass is added to its paired original, so every pair's mass is conserved to rounding; no global exact-total correction is applied, so no household outside a trimmed pair moves",
      "weight_kind_out": "importance",
-     "conservation": "exact_total",
-     "pair_conservation": "exact",
+     "conservation": "household_total_to_rounding",
+     "pair_conservation": "to_rounding",
      "declared_factor": 1.0,
      "reason": "Capital-gains incidence anchor moves the mass of non-liable clone households back to their paired originals until the sub-exempt and loss-making clone mass match the Advani-Summers reporter composition at the redrawn liable mass; every pair's mass and the total household mass are conserved."
     }

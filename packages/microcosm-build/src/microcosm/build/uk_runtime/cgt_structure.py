@@ -815,8 +815,12 @@ def anchor_cgt_incidence(
     new_weights = weights.copy()
     new_weights[clone_positions] = new_clone_weights
     new_weights[original_positions] = weights[original_positions] + delta
-    exact = _importance_weights_with_exact_total(new_weights, old_weights.total)
-    values = np.asarray(exact.values, dtype=float)
+    # Pairs are conserved arithmetically (three roundings per pair, so a few
+    # ulps); no global exact-total correction is applied, because it would move
+    # the summed rounding of every transfer onto one household, breaking that
+    # household's pair (1.6e-13 relative on the licensed spine) and possibly
+    # touching a liable clone or a donor. The total is recorded as realised.
+    values = new_weights
     if (values < 0.0).any() or not np.array_equal(values > 0.0, weights > 0.0):
         raise ValueError(
             "CGT incidence anchor must keep every household weight non-negative "
@@ -869,7 +873,7 @@ def anchor_cgt_incidence(
     receipt = MassChangeRecord(
         entity="household",
         old_total=old_weights.total,
-        new_total=exact.total,
+        new_total=float(values.sum()),
         declared_factor=1.0,
         reason=CGT_ANCHOR_MASS_CHANGE_REASON,
     )
@@ -1229,11 +1233,13 @@ def cgt_incidence_anchor_operation_parameters() -> tuple[
                 "maximum_factor": CGT_ANCHOR_MAXIMUM_FACTOR,
                 "transfer": (
                     "each clone's removed mass is added to its paired original, "
-                    "so every pair's mass is conserved"
+                    "so every pair's mass is conserved to rounding; no global "
+                    "exact-total correction is applied, so no household outside "
+                    "a trimmed pair moves"
                 ),
                 "weight_kind_out": WeightKind.IMPORTANCE.value,
-                "conservation": "exact_total",
-                "pair_conservation": "exact",
+                "conservation": "household_total_to_rounding",
+                "pair_conservation": "to_rounding",
                 "declared_factor": 1.0,
                 "reason": CGT_ANCHOR_MASS_CHANGE_REASON,
             },
