@@ -131,6 +131,45 @@ Feed-level, engine-free:
   compiles the real state surface when `MICROCOSM_US_CHRONICLE_FACTS` points
   at the 164 MB feed, skips otherwise.
 
+## 3b. Verbatim summaries, at `5b1326cad`
+
+```
+$ uv run python -m pytest packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py
+232 passed, 1 skipped in 54.95s
+PYTEST_EXIT=0
+
+$ MICROCOSM_US_CHRONICLE_FACTS=/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/\
+    consumer_facts_us_c5e5bf8.jsonl \
+  uv run python -m pytest packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py \
+    -k pinned_chronicle_feed_state_surface
+1 passed, 232 deselected in 768.45s (0:12:48)
+exit 0                       # the arm skipped in the run above
+
+$ uv run python tools/ci_test_groups.py --verify
+VERIFY_EXIT=0                # test_us_fiscal_refresh_builder.py in the us lane
+                             # group, never under [defaulted]
+
+$ uv run ruff check .
+All checks passed!
+RUFF_CHECK_EXIT=0
+
+$ uv run ruff format --check tools/build_us_fiscal_refresh_release.py \
+    packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py \
+    experiments/us-labelled-filter-support/census_compiled_ledger_filters.py
+3 files already formatted
+RUFF_FORMAT_EXIT=0
+```
+
+No attested spec-engine module was touched, so no identity pin moves.
+
+**PR CI does not run on this stack.** `.github/workflows/test.yml` and
+`.github/workflows/integration-tests.yml` are both
+`pull_request: branches: [main]`, so a PR based on `us-chronicle-feed-repin`
+gets no checks at all; `gh pr checks 969` reports none because nothing is
+triggered, not because a run is pending. CI first runs when #955 merges and
+#969 retargets to `main`. `gh pr view 969` reports
+`mergeable: MERGEABLE`, `mergeStateStatus: CLEAN` against its current base.
+
 ## 4. Counts, from the pinned feed
 
 `compile_us_fiscal_target_registry`, `age_targets=True`, CD vintage crosswalk,
