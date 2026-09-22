@@ -6,7 +6,8 @@ that integrates #923 (native ACS usual-hours recovery) and #941 (the
 Medicaid substitution-hierarchy fix from #955 and the package-stage refusals
 from #973. It answers #765 at full scale and records the receipts a later
 release decision needs. It is build evidence only: the artifact was not
-uploaded, published or certified, and `tools/publish_release.sh` was not run.
+uploaded, published or certified, and the one publish attempt (see Files)
+was refused by the release contract before any remote mutation.
 
 ## Inputs, by digest
 
