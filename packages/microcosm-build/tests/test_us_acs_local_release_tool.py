@@ -393,6 +393,49 @@ def test_package_binds_the_hours_gate_to_the_packaged_bytes(
     assert build_manifest["staging_orchestration"]["max_households"] is None
 
 
+def test_package_refuses_when_the_packaged_bytes_fail_the_hours_gate(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A passing finalize entry does not stand in for the package-time re-check.
+
+    The re-check runs on the calibrated H5 being packaged; if it fails, nothing
+    ships: no manifest, no package result, no artifact at the release root.
+    """
+    from microcosm.build.gates import GateResult
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    loaded = []
+
+    def load_frame(path, *_a, **_k):
+        loaded.append(Path(path))
+        return object()
+
+    monkeypatch.setattr(module, "_load_staging_frame", load_frame)
+    monkeypatch.setattr(
+        module,
+        "acs_local_hours_signal_gate",
+        lambda frame, *, source_null_audit: GateResult(
+            name="acs_local_hours_signal",
+            passed=False,
+            failures=("acs_2024_1yr: invented unresolved hours",),
+        ),
+    )
+    with pytest.raises(
+        SystemExit, match="Local hours coverage failed: acs_2024_1yr: invented"
+    ):
+        module.do_package(args)
+    assert loaded == [Path(args.out_h5)]
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
 _UNSET = object()
 
 
