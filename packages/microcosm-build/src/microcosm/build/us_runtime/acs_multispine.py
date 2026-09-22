@@ -13,7 +13,7 @@ same base :class:`~microcosm.frame.Frame` object.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, is_dataclass
 from enum import Enum
 from pathlib import Path
@@ -23,6 +23,11 @@ import numpy as np
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.us_runtime.acs_inputs import map_acs_native_inputs
+from microcosm.build.us_runtime.acs_local_hours import (
+    acs_local_hours_transfer_target_families,
+    complete_acs_local_under15_hours,
+    require_acs_local_hours_fallback_universe,
+)
 from microcosm.build.us_runtime.acs_pums import (
     DEFAULT_CHUNKSIZE,
     AcsPumsSource,
@@ -46,6 +51,7 @@ from microcosm.build.us_runtime.puma_ladder import (
     UsPumaLadder,
     us_puma_ladder_assignment_summary,
 )
+from microcosm.build.us_runtime.support_provenance import BASE_ASEC_SUPPORT_CHANNEL
 from microcosm.frame import Frame
 
 __all__ = ["AcsMultispineResult", "build_optional_acs_multispine"]
@@ -73,6 +79,10 @@ def build_optional_acs_multispine(
     chunksize: int = DEFAULT_CHUNKSIZE,
     acs_share: float = 0.5,
     target_families: TargetFamilies | None = None,
+    hours_donor: Frame | None = None,
+    hours_donor_factory: Callable[[Frame], tuple[Frame, Frame, dict[str, object]]]
+    | None = None,
+    hours_under15_policy: str | None = None,
     donor_spine: str = ASEC_PUF_DONOR_SPINE,
     donor_channel: str | None = ACS_DONOR_CHANNEL_AUTO,
     seed: int = 0,
@@ -88,6 +98,10 @@ def build_optional_acs_multispine(
 
     The already-built ``base`` is both the ASEC-by-PUF transfer donor and the
     pool being augmented.  Calibration is intentionally outside this seam.
+    When provided, ``hours_donor`` supplies a separately qualified ASEC-only
+    fallback for usual-hours cells unresolved by the native WKHP mapping.
+    Alternatively, ``hours_donor_factory`` qualifies that donor lazily: a
+    source-complete ACS spine never needs its raw ASEC fields opened.
 
     Large intermediate frames are released as soon as the next stage has
     materialized its own frame.  This cannot make the final dense pool small,
@@ -112,6 +126,11 @@ def build_optional_acs_multispine(
     native_provenance = _json_ready_mapping(mapped.native_inputs)
     mapped_frame = mapped.frame
     del mapped
+    modeled_hours = None
+    if hours_under15_policy is not None:
+        mapped_frame, modeled_hours = complete_acs_local_under15_hours(
+            mapped_frame, policy=hours_under15_policy
+        )
 
     # Geography preflight BEFORE the expensive transfer: an unmapped donor
     # tract, incoherent preserved geography, or an unknown ACS PUMA must
@@ -124,6 +143,40 @@ def build_optional_acs_multispine(
             puma_ladder,
         )
 
+    hours_fit_records = ()
+    hours_imputed_inputs = ()
+    hours_donor_channel = None
+    hours_source = None
+    usual_hours = "weekly_hours_worked_before_lsr"
+    needs_hours = (hours_donor is not None or hours_donor_factory is not None) and (
+        usual_hours not in mapped_frame.person
+        or mapped_frame.person[usual_hours].isna().any()
+    )
+    if hours_donor is not None and hours_donor_factory is not None:
+        raise ValueError("Supply a qualified hours donor or a donor factory, not both.")
+    if needs_hours:
+        require_acs_local_hours_fallback_universe(mapped_frame)
+    if needs_hours and hours_donor_factory is not None:
+        base, hours_donor, hours_source = hours_donor_factory(base)
+    if needs_hours and hours_donor is not None:
+        # Tax details retain the original donor role. Usual hours use only
+        # the separately qualified ASEC observations; existing ACS cells
+        # remain observed inputs through the shared null-only merge.
+        hours_transfer = transfer_acs_inputs(
+            mapped_frame,
+            hours_donor,
+            target_families=acs_local_hours_transfer_target_families(),
+            donor_spine=donor_spine,
+            donor_channel=BASE_ASEC_SUPPORT_CHANNEL,
+            seed=seed,
+            n_estimators=n_estimators,
+            max_targets_per_fit=max_targets_per_fit,
+        )
+        mapped_frame = hours_transfer.frame
+        hours_fit_records = tuple(hours_transfer.fit_records)
+        hours_imputed_inputs = tuple(hours_transfer.imputed_inputs)
+        hours_donor_channel = hours_transfer.resolved_donor_channel
+        del hours_transfer
     transferred = transfer_acs_inputs(
         mapped_frame,
         base,
@@ -136,8 +189,10 @@ def build_optional_acs_multispine(
     )
     del mapped_frame
     adult_care_gate = _require_recipient_adult_care_structure(transferred.frame)
-    fit_records = tuple(transferred.fit_records)
-    imputed_provenance = _json_ready_sequence(transferred.imputed_inputs)
+    fit_records = hours_fit_records + tuple(transferred.fit_records)
+    imputed_provenance = _json_ready_sequence(
+        hours_imputed_inputs + tuple(transferred.imputed_inputs)
+    )
     deferred_inputs = tuple(transferred.deferred_inputs)
     if puma_ladder is not None:
         deferred_inputs = tuple(
@@ -185,6 +240,11 @@ def build_optional_acs_multispine(
             "max_targets_per_fit": max_targets_per_fit,
         },
     }
+    if hours_donor is not None or hours_donor_factory is not None:
+        provenance["fit_configuration"]["hours_donor_channel"] = hours_donor_channel
+        provenance["local_hours_source"] = hours_source
+    if modeled_hours is not None:
+        provenance["hours_modeled_completion"] = modeled_hours
     if puma_ladder is not None:
         geography = us_puma_ladder_assignment_summary(
             pooled.table("household"),
