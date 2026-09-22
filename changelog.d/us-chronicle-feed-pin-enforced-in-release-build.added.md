@@ -1,0 +1,1 @@
+Hold the US release build's Chronicle feed to the committed pin in us/chronicle_feed.json (facts digest, and the manifest digest for an artifact pin), waivable only by --allow-unpinned-feed for a reviewed diagnostic run.

@@ -916,7 +916,6 @@ class TestUKCountryPackage:
             row.path for row in spec.resource_rows if row.kind == "legacy_json"
         )
         assert legacy_rows == (
-            "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
@@ -949,6 +948,7 @@ class TestUKCountryPackage:
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
             "input_mass_reviewed_exclusions.json",
+            "incumbent_unresolvable_measures.json",
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
@@ -1023,7 +1023,6 @@ class TestExistingPackagesGeneralize:
             "spec/sources.yaml",
             "spec/spine.yaml",
             "spec/vintages.yaml",
-            "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
@@ -1056,6 +1055,7 @@ class TestExistingPackagesGeneralize:
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
             "input_mass_reviewed_exclusions.json",
+            "incumbent_unresolvable_measures.json",
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",

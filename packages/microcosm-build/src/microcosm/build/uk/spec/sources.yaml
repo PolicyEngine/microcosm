@@ -1018,6 +1018,11 @@ stages:
     - 18 <= age <= 55
     - everyone
     keyed_by: entity_id
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'WAS wealth imputation on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
   outputs:
   - owned_land
   - property_wealth
@@ -1073,6 +1078,11 @@ stages:
     factor: avg_house_price / unweighted_mean(main_residence_value | region, >0)
     owner_rows: main_residence_value > 0
     skip_empty_or_nonpositive_regions: true
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'Regional property uprating on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
   outputs: []
   rewrites:
   - main_residence_value
@@ -1455,6 +1465,11 @@ stages:
     - petrol_spending
     - diesel_spending
     condition: has_fuel_consumption == false
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'LCFS consumption imputation on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
   outputs:
   - food_and_non_alcoholic_beverages_consumption
   - alcohol_and_tobacco_consumption
@@ -1545,6 +1560,11 @@ stages:
     n_estimators: 100
   - kind: support_clip
     range: donor_realized
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'ETB VAT expenditure-rate imputation on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
   outputs:
   - full_rate_vat_expenditure_rate
   nonnegative_outputs: []
@@ -1730,6 +1750,11 @@ stages:
     budget_resource: etb_services_anchors.json
     age_bands: half_open
     top_band_fold_in: none
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'ETB public-services imputation on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
   outputs:
   - dfe_education_spending
   - rail_subsidy_spending

@@ -1,0 +1,479 @@
+{
+ "v20_national|calibrated|2024": {
+  "median_week": 751.48046875,
+  "rel_bhc_pct": 15.301746413861888,
+  "abs_bhc_pct": 9.31103618296997,
+  "share_below_abs_week_pct": {
+   "10": 0.1570949869082417,
+   "50": 0.2551341267391073,
+   "100": 0.4812751817780037,
+   "150": 0.7673984333203583,
+   "200": 1.5403930912468216,
+   "260": 3.1462492073877795,
+   "325": 5.975847775079704,
+   "370": 8.550000053929296,
+   "390": 10.011772922162303,
+   "455": 15.658543878351837
+  },
+  "share_in_band_pct_of_median": {
+   "-1000-0": 0.12272392226015867,
+   "0-20": 0.6446745110601996,
+   "20-40": 4.098718375868806,
+   "40-50": 4.032966459447161,
+   "50-60": 6.402663145225563,
+   "60-70": 8.465930956051883,
+   "70-80": 9.055212026816069
+  },
+  "by_family_type": {
+   "couple_wa_no_children": {
+    "pop_share_pct": 14.647785354337602,
+    "rel_rate_pct": 12.118022704191924,
+    "share_of_poor_pct": 11.600126592687051
+   },
+   "couple_with_children": {
+    "pop_share_pct": 29.11331168610235,
+    "rel_rate_pct": 16.844081745166154,
+    "share_of_poor_pct": 32.04777994941586
+   },
+   "lone_parent": {
+    "pop_share_pct": 5.645372157324529,
+    "rel_rate_pct": 26.76304228588916,
+    "share_of_poor_pct": 9.873862086041846
+   },
+   "other_3plus_adults": {
+    "pop_share_pct": 26.13077878375383,
+    "rel_rate_pct": 6.768883889523009,
+    "share_of_poor_pct": 11.559217016549717
+   },
+   "pensioner_couple_or_mixed": {
+    "pop_share_pct": 12.084163343042189,
+    "rel_rate_pct": 11.721410564555232,
+    "share_of_poor_pct": 9.256684566712636
+   },
+   "single_pensioner": {
+    "pop_share_pct": 5.90000929983278,
+    "rel_rate_pct": 31.83565700269337,
+    "share_of_poor_pct": 12.275113395685423
+   },
+   "single_wa_no_children": {
+    "pop_share_pct": 6.478579375606723,
+    "rel_rate_pct": 31.61924529366143,
+    "share_of_poor_pct": 13.387216392907463
+   }
+  },
+  "by_n_children": {
+   "0": {
+    "pop_share_pct": 53.355506925128516,
+    "rel_rate_pct": 14.805766067180816,
+    "share_of_poor_pct": 51.626078002028834
+   },
+   "1": {
+    "pop_share_pct": 17.626600950950934,
+    "rel_rate_pct": 9.06709883955612,
+    "share_of_poor_pct": 10.444698840578274
+   },
+   "2": {
+    "pop_share_pct": 19.659957663754515,
+    "rel_rate_pct": 14.644645552262636,
+    "share_of_poor_pct": 18.815702715956206
+   },
+   "3": {
+    "pop_share_pct": 9.357934460166037,
+    "rel_rate_pct": 31.253717806636622,
+    "share_of_poor_pct": 19.113520441436687
+   }
+  },
+  "children_rel_rate_by_family_children": {
+   "1": {
+    "rate": 9.941021956134142,
+    "children_m": 3.746010797958374
+   },
+   "2": {
+    "rate": 15.282912976286513,
+    "children_m": 6.694207773974418
+   },
+   "3": {
+    "rate": 32.29961753425295,
+    "children_m": 4.158434082217694
+   }
+  },
+  "by_work": {
+   "workless_hh": {
+    "pop_share_pct": 21.412543667608492,
+    "rel_rate_pct": 28.916518281929026,
+    "share_of_poor_pct": 40.464414562908416
+   },
+   "working_hh": {
+    "pop_share_pct": 78.58745633239151,
+    "rel_rate_pct": 11.592160803704454,
+    "share_of_poor_pct": 59.535585437091584
+   },
+   "any_ft_earner": {
+    "pop_share_pct": 72.31334086160223,
+    "rel_rate_pct": 8.782801101409499,
+    "share_of_poor_pct": 41.50596099217339
+   },
+   "working_no_ft": {
+    "pop_share_pct": 6.274115470789274,
+    "rel_rate_pct": 43.97189412240729,
+    "share_of_poor_pct": 18.029624444918188
+   }
+  },
+  "by_tenure": {
+   "OWNED_OUTRIGHT": {
+    "pop_share_pct": 31.02199025160368,
+    "rel_rate_pct": 15.04080978049108,
+    "share_of_poor_pct": 30.492980459010173
+   },
+   "OWNED_WITH_MORTGAGE": {
+    "pop_share_pct": 33.31314630912093,
+    "rel_rate_pct": 12.47052289309537,
+    "share_of_poor_pct": 27.14934246411161
+   },
+   "RENT_FROM_COUNCIL": {
+    "pop_share_pct": 9.030729940440967,
+    "rel_rate_pct": 21.925029562667692,
+    "share_of_poor_pct": 12.939635487441398
+   },
+   "RENT_FROM_HA": {
+    "pop_share_pct": 8.847695317940182,
+    "rel_rate_pct": 19.154885290697564,
+    "share_of_poor_pct": 11.075637010207991
+   },
+   "RENT_PRIVATELY": {
+    "pop_share_pct": 17.786438180894244,
+    "rel_rate_pct": 15.780046608393372,
+    "share_of_poor_pct": 18.342404579228827
+   }
+  },
+  "children": {
+   "rel_rate_pct": 18.759402482558862,
+   "in_workless_hh_rate": 42.66198787542584,
+   "share_children_in_workless_hh": 9.243876076543387
+  },
+  "uc": {
+   "hh_with_uc_m": 5.899447441967964,
+   "persons_in_uc_hh_rel_poor_pct": 26.51749661703434,
+   "share_of_rel_poor_in_uc_hh_pct": 42.52589356650309,
+   "would_claim_false_eligible_hh_m": null
+  }
+ },
+ "v20_national|spine_s_design|2024": {
+  "median_week": 745.38671875,
+  "rel_bhc_pct": 16.163689191086075,
+  "abs_bhc_pct": 10.36196031429083,
+  "share_below_abs_week_pct": {
+   "10": 0.33553979878860196,
+   "50": 0.5510786812655849,
+   "100": 0.9149299757858308,
+   "150": 1.3805037551782011,
+   "200": 2.1209895120244466,
+   "260": 3.674056351547778,
+   "325": 6.440320827761611,
+   "370": 9.51290886415279,
+   "390": 11.009116240639742,
+   "455": 16.867538927810777
+  },
+  "share_in_band_pct_of_median": {
+   "-1000-0": 0.25573012699728276,
+   "0-20": 1.115600352237792,
+   "20-40": 3.733286901657891,
+   "40-50": 4.669304656809421,
+   "50-60": 6.389767153383688,
+   "60-70": 7.836574853416804,
+   "70-80": 8.707365976127592
+  },
+  "by_family_type": {
+   "couple_wa_no_children": {
+    "pop_share_pct": 15.865273291311711,
+    "rel_rate_pct": 13.254902153766942,
+    "share_of_poor_pct": 13.010188616784378
+   },
+   "couple_with_children": {
+    "pop_share_pct": 30.156317016120095,
+    "rel_rate_pct": 15.06041642894951,
+    "share_of_poor_pct": 28.097959992737792
+   },
+   "lone_parent": {
+    "pop_share_pct": 6.1981205065012235,
+    "rel_rate_pct": 27.43353879612035,
+    "share_of_poor_pct": 10.519651631998826
+   },
+   "other_3plus_adults": {
+    "pop_share_pct": 19.15260122085622,
+    "rel_rate_pct": 11.258995319514508,
+    "share_of_poor_pct": 13.34095483728234
+   },
+   "pensioner_couple_or_mixed": {
+    "pop_share_pct": 14.432487218035021,
+    "rel_rate_pct": 9.787615865730485,
+    "share_of_poor_pct": 8.739319298164533
+   },
+   "single_pensioner": {
+    "pop_share_pct": 6.953419462753164,
+    "rel_rate_pct": 29.56232637059488,
+    "share_of_poor_pct": 12.717347699491588
+   },
+   "single_wa_no_children": {
+    "pop_share_pct": 7.241781284422556,
+    "rel_rate_pct": 30.29852046598832,
+    "share_of_poor_pct": 13.574577923540547
+   }
+  },
+  "by_n_children": {
+   "0": {
+    "pop_share_pct": 55.649196751672896,
+    "rel_rate_pct": 15.605646167257866,
+    "share_of_poor_pct": 53.72793696612589
+   },
+   "1": {
+    "pop_share_pct": 15.080928301391449,
+    "rel_rate_pct": 13.900647870982548,
+    "share_of_poor_pct": 12.969481868086557
+   },
+   "2": {
+    "pop_share_pct": 19.88373384645115,
+    "rel_rate_pct": 13.908729486507251,
+    "share_of_poor_pct": 17.109799129552233
+   },
+   "3": {
+    "pop_share_pct": 9.3861411004845,
+    "rel_rate_pct": 27.885271824775707,
+    "share_of_poor_pct": 16.19278203623532
+   }
+  },
+  "children_rel_rate_by_family_children": {
+   "1": {
+    "rate": 13.639135841317946,
+    "children_m": 3.192228549816739
+   },
+   "2": {
+    "rate": 14.440696754940682,
+    "children_m": 6.57995780342556
+   },
+   "3": {
+    "rate": 29.104764571986596,
+    "children_m": 3.913224613094256
+   }
+  },
+  "by_work": {
+   "workless_hh": {
+    "pop_share_pct": 22.00594460681432,
+    "rel_rate_pct": 29.58400255964338,
+    "share_of_poor_pct": 40.2769388769484
+   },
+   "working_hh": {
+    "pop_share_pct": 77.99405539318566,
+    "rel_rate_pct": 12.377161216540411,
+    "share_of_poor_pct": 59.72306112305161
+   },
+   "any_ft_earner": {
+    "pop_share_pct": 71.12734579092692,
+    "rel_rate_pct": 8.800893768300087,
+    "share_of_poor_pct": 38.727805696258436
+   },
+   "working_no_ft": {
+    "pop_share_pct": 6.866709602258747,
+    "rel_rate_pct": 49.42116426396102,
+    "share_of_poor_pct": 20.995255426793165
+   }
+  },
+  "by_tenure": {
+   "OWNED_OUTRIGHT": {
+    "pop_share_pct": 32.94218866348762,
+    "rel_rate_pct": 15.79331334274209,
+    "share_of_poor_pct": 32.187349163154025
+   },
+   "OWNED_WITH_MORTGAGE": {
+    "pop_share_pct": 33.0559172136907,
+    "rel_rate_pct": 12.562272449240586,
+    "share_of_poor_pct": 25.69075866213326
+   },
+   "RENT_FROM_COUNCIL": {
+    "pop_share_pct": 8.178926153998212,
+    "rel_rate_pct": 24.57754721780149,
+    "share_of_poor_pct": 12.436390069394534
+   },
+   "RENT_FROM_HA": {
+    "pop_share_pct": 7.935741928199471,
+    "rel_rate_pct": 19.12714121519747,
+    "share_of_poor_pct": 9.390681465945445
+   },
+   "RENT_PRIVATELY": {
+    "pop_share_pct": 17.887226040623993,
+    "rel_rate_pct": 18.33929823767218,
+    "share_of_poor_pct": 20.294820639372727
+   }
+  },
+  "children": {
+   "rel_rate_pct": 18.446789492069488,
+   "in_workless_hh_rate": 55.38332509394963,
+   "share_children_in_workless_hh": 7.758305095634709
+  },
+  "uc": {
+   "hh_with_uc_m": 4.894761128126905,
+   "persons_in_uc_hh_rel_poor_pct": 31.304910105215566,
+   "share_of_rel_poor_in_uc_hh_pct": 43.30216121380436,
+   "would_claim_false_eligible_hh_m": null
+  }
+ },
+ "efrs_1_57_3|calibrated|2024": {
+  "median_week": 780.1297325721154,
+  "rel_bhc_pct": 19.67636083543157,
+  "abs_bhc_pct": 11.248234644883526,
+  "share_below_abs_week_pct": {
+   "10": 0.6179569441376033,
+   "50": 0.786336544701641,
+   "100": 1.1635474640343062,
+   "150": 1.736853790820671,
+   "200": 2.338498637813447,
+   "260": 4.252136285450512,
+   "325": 7.783945755077334,
+   "370": 10.660510343808868,
+   "390": 11.772593754364621,
+   "455": 18.45029639107173
+  },
+  "share_in_band_pct_of_median": {
+   "-1000-0": 0.5761874143119385,
+   "0-20": 1.232787796567757,
+   "20-40": 5.337362599088925,
+   "40-50": 4.628753995911311,
+   "50-60": 7.901269029551639,
+   "60-70": 7.390741908324446,
+   "70-80": 7.752056665085738
+  },
+  "by_family_type": {
+   "couple_wa_no_children": {
+    "pop_share_pct": 21.271520323545918,
+    "rel_rate_pct": 11.490883666260077,
+    "share_of_poor_pct": 12.422447803569764
+   },
+   "couple_with_children": {
+    "pop_share_pct": 29.306545654837908,
+    "rel_rate_pct": 18.36859798423391,
+    "share_of_poor_pct": 27.35872552565473
+   },
+   "lone_parent": {
+    "pop_share_pct": 8.804561431987969,
+    "rel_rate_pct": 37.8868674455644,
+    "share_of_poor_pct": 16.953198545199392
+   },
+   "other_3plus_adults": {
+    "pop_share_pct": 14.84584058934961,
+    "rel_rate_pct": 11.826591871624919,
+    "share_of_poor_pct": 8.923179398361059
+   },
+   "pensioner_couple_or_mixed": {
+    "pop_share_pct": 11.593695395825643,
+    "rel_rate_pct": 14.116832610247318,
+    "share_of_poor_pct": 8.317912982280182
+   },
+   "single_pensioner": {
+    "pop_share_pct": 6.0026127946652315,
+    "rel_rate_pct": 35.65255732077882,
+    "share_of_poor_pct": 10.876426719664218
+   },
+   "single_wa_no_children": {
+    "pop_share_pct": 8.175223809787722,
+    "rel_rate_pct": 36.45889899660404,
+    "share_of_poor_pct": 15.148109025270655
+   }
+  },
+  "by_n_children": {
+   "0": {
+    "pop_share_pct": 51.99199639250276,
+    "rel_rate_pct": 18.961277044407733,
+    "share_of_poor_pct": 50.10248876483717
+   },
+   "1": {
+    "pop_share_pct": 20.439674009909893,
+    "rel_rate_pct": 12.269472141511116,
+    "share_of_poor_pct": 12.745446830521985
+   },
+   "2": {
+    "pop_share_pct": 17.641048299520516,
+    "rel_rate_pct": 16.262193657893885,
+    "share_of_poor_pct": 14.580040799946529
+   },
+   "3": {
+    "pop_share_pct": 9.927281298066822,
+    "rel_rate_pct": 44.73886332991615,
+    "share_of_poor_pct": 22.572023604694316
+   }
+  },
+  "children_rel_rate_by_family_children": {
+   "1": {
+    "rate": 13.77486331475688,
+    "children_m": 4.521870235350698
+   },
+   "2": {
+    "rate": 17.619101768950316,
+    "children_m": 6.26379436050281
+   },
+   "3": {
+    "rate": 45.917796640548744,
+    "children_m": 4.462300509260222
+   }
+  },
+  "by_work": {
+   "workless_hh": {
+    "pop_share_pct": 25.7404989185242,
+    "rel_rate_pct": 38.35850233071385,
+    "share_of_poor_pct": 50.1803659740768
+   },
+   "working_hh": {
+    "pop_share_pct": 74.2595010814758,
+    "rel_rate_pct": 13.200588227864348,
+    "share_of_poor_pct": 49.8196340259232
+   },
+   "any_ft_earner": {
+    "pop_share_pct": 67.51475193552405,
+    "rel_rate_pct": 9.521934075861637,
+    "share_of_poor_pct": 32.6722518688813
+   },
+   "working_no_ft": {
+    "pop_share_pct": 6.744749145951758,
+    "rel_rate_pct": 50.0238142892988,
+    "share_of_poor_pct": 17.1473821570419
+   }
+  },
+  "by_tenure": {
+   "OWNED_OUTRIGHT": {
+    "pop_share_pct": 31.12760611012155,
+    "rel_rate_pct": 20.552162137366263,
+    "share_of_poor_pct": 32.5131061111311
+   },
+   "OWNED_WITH_MORTGAGE": {
+    "pop_share_pct": 31.901579246685017,
+    "rel_rate_pct": 9.353240521323821,
+    "share_of_poor_pct": 15.164549288352832
+   },
+   "RENT_FROM_COUNCIL": {
+    "pop_share_pct": 9.208246869580119,
+    "rel_rate_pct": 43.72553272597473,
+    "share_of_poor_pct": 20.462904863975
+   },
+   "RENT_FROM_HA": {
+    "pop_share_pct": 6.847437604355351,
+    "rel_rate_pct": 30.678994638281825,
+    "share_of_poor_pct": 10.676389974090426
+   },
+   "RENT_PRIVATELY": {
+    "pop_share_pct": 20.91513016925796,
+    "rel_rate_pct": 19.928411984426557,
+    "share_of_poor_pct": 21.18304976245064
+   }
+  },
+  "children": {
+   "rel_rate_pct": 24.760653598499392,
+   "in_workless_hh_rate": 62.51705849828974,
+   "share_children_in_workless_hh": 16.46014725389038
+  },
+  "uc": {
+   "hh_with_uc_m": 6.239545211998403,
+   "persons_in_uc_hh_rel_poor_pct": 42.32590334869225,
+   "share_of_rel_poor_in_uc_hh_pct": 44.298514411532,
+   "would_claim_false_eligible_hh_m": null
+  }
+ }
+}

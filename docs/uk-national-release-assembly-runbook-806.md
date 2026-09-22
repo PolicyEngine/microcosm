@@ -68,10 +68,14 @@ per-cut tag from that suffix.
 
 ## 2. Score and certify the cut
 
-First create the rule-1 score receipt against the pinned incumbent, following
-the scoring section of
-`docs/uk-national-calibration-runbook-623.md`. Then run the release-cut battery
-and compose the signed certification:
+The rule-1 score receipt is the build's own when the national role was given
+`--incumbent-h5` (`score_vs_incumbent.json` beside the candidate); otherwise
+create it against the pinned incumbent following the scoring section of
+`docs/uk-national-calibration-runbook-623.md`. Its `evaluation.verdict` must
+be `passed`: the certifier refuses a receipt whose verdict is anything else,
+whose scored surface does not close over its pruned rows, or which carries no
+evaluation block. Then run the release-cut battery and compose the signed
+certification:
 
 ```bash
 uv run --no-sync python tools/certify_uk_release_cut.py \
@@ -79,6 +83,7 @@ uv run --no-sync python tools/certify_uk_release_cut.py \
   --candidate-sha256 <candidate-sha256-from-build-record> \
   --candidate-name microcosm_uk_2024_25 \
   --spine-h5 <spine-h5> \
+  --spine-sha256 <spine-h5-sha256> \
   --diagnostics-json <candidate-dir>/calibration_diagnostics.json \
   --build-record-json <candidate-dir>/build_record.json \
   --seam-gate-report <candidate-dir>/microcosm_uk_2024_25.terminal_gates.json \
@@ -86,9 +91,11 @@ uv run --no-sync python tools/certify_uk_release_cut.py \
   --ledger-facts-sha256 <ledger-facts-sha256> \
   --ledger-manifest-sha256 <ledger-manifest-sha256> \
   --input-mass-reference <licensed-input-mass-reference> \
-  --score-receipt <candidate-dir>/score_vs_enhanced_frs.json \
+  --score-receipt <candidate-dir>/score_vs_incumbent.json \
   --release-id microcosm-uk-2024-25-national
 ```
+
+The spine is stage evidence for the family build-state gates, so `--spine-sha256` must be the parent the calibration recorded (`build_record.input_posture.sha256`, `source_pins.input_h5.sha256`, the signed diagnostics' `build.input_posture`); a spine that pins correctly but is not that parent is refused before any gate runs, and the certification records it as `parent_spine`.
 
 With the default paths, this writes
 `microcosm_uk_2024_25.release_cut_gates.json` and
@@ -110,7 +117,7 @@ uv run --no-sync python tools/assemble_uk_release_dir.py \
   --diagnostics-json <candidate-dir>/calibration_diagnostics.json \
   --seam-gate-report <candidate-dir>/microcosm_uk_2024_25.terminal_gates.json \
   --release-cut-gate-json <candidate-dir>/microcosm_uk_2024_25.release_cut_gates.json \
-  --score-receipt <candidate-dir>/score_vs_enhanced_frs.json \
+  --score-receipt <candidate-dir>/score_vs_incumbent.json \
   --out-dir releases
 ```
 

@@ -1,3 +1,4 @@
+import dataclasses
 import hashlib
 import importlib.util
 import inspect
@@ -4617,6 +4618,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "load_ledger_consumer_artifact",
         lambda path, **kwargs: SimpleNamespace(
             facts=({"fact": 1},),
+            facts_sha256="facts-sha",
+            manifest_sha256=None,
             provenance=lambda: {
                 "path_name": "facts.jsonl",
                 "fact_row_count": 1,
@@ -4625,6 +4628,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "manifest_sha256": None,
             },
         ),
+    )
+    # The invented feed is not the committed pin; this test is about the
+    # corridor contract, not the pin, which has its own tests.
+    monkeypatch.setattr(
+        builder, "_check_committed_us_ledger_feed_pin", lambda *a, **k: None
     )
     monkeypatch.setattr(
         builder,
@@ -12322,6 +12330,103 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
 
 
 # ---------------------------------------------------------------------------
+# The committed US Chronicle feed pin holds the release build's feed
+# ---------------------------------------------------------------------------
+
+
+def _feed_pin(*, bare: bool):
+    from microcosm.build.us_runtime.chronicle_feed import USChronicleFeed
+
+    fields = {f.name for f in dataclasses.fields(USChronicleFeed)}
+    values = {
+        "facts_sha256": "a" * 64,
+        "manifest_sha256": None if bare else "b" * 64,
+    }
+    committed = load_us_chronicle_feed_for_test()
+    for name in fields:
+        if name not in values:
+            values[name] = getattr(committed, name)
+    if bare:
+        values["artifact_schema_version"] = None
+    return USChronicleFeed(**values)
+
+
+def load_us_chronicle_feed_for_test():
+    from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
+
+    return load_us_chronicle_feed()
+
+
+def test_committed_feed_pin_accepts_the_pinned_feed_and_refuses_another() -> None:
+    builder = _load_builder_module()
+    bare = _feed_pin(bare=True)
+    builder._check_committed_us_ledger_feed_pin(
+        "a" * 64, manifest_sha256=None, allow_unpinned_feed=False, pin=bare
+    )
+    # A bare pin says nothing about a manifest, so an artifact feed with the
+    # pinned facts passes too.
+    builder._check_committed_us_ledger_feed_pin(
+        "a" * 64, manifest_sha256="c" * 64, allow_unpinned_feed=False, pin=bare
+    )
+    with pytest.raises(SystemExit, match=r"facts: loaded " + "f" * 64) as excinfo:
+        builder._check_committed_us_ledger_feed_pin(
+            "f" * 64, manifest_sha256=None, allow_unpinned_feed=False, pin=bare
+        )
+    assert "committed " + "a" * 64 in str(excinfo.value)
+    assert "--allow-unpinned-feed" in str(excinfo.value)
+
+
+def test_committed_feed_pin_holds_the_manifest_when_the_pin_is_an_artifact() -> None:
+    builder = _load_builder_module()
+    artifact = _feed_pin(bare=False)
+    builder._check_committed_us_ledger_feed_pin(
+        "a" * 64, manifest_sha256="b" * 64, allow_unpinned_feed=False, pin=artifact
+    )
+    with pytest.raises(SystemExit, match="manifest: loaded None"):
+        builder._check_committed_us_ledger_feed_pin(
+            "a" * 64, manifest_sha256=None, allow_unpinned_feed=False, pin=artifact
+        )
+
+
+def test_committed_feed_pin_is_waived_only_by_the_flag() -> None:
+    builder = _load_builder_module()
+    bare = _feed_pin(bare=True)
+    builder._check_committed_us_ledger_feed_pin(
+        "f" * 64, manifest_sha256=None, allow_unpinned_feed=True, pin=bare
+    )
+    assert builder._parse_args(_minimal_pin_argv()).allow_unpinned_feed is False
+    assert (
+        builder._parse_args(
+            [*_minimal_pin_argv(), "--allow-unpinned-feed"]
+        ).allow_unpinned_feed
+        is True
+    )
+
+
+def _minimal_pin_argv() -> list[str]:
+    return [
+        "--base-h5",
+        "base.h5",
+        "--ledger-facts",
+        "facts.jsonl",
+        "--release-id",
+        "populace-us-2024-pin-test",
+        "--out",
+        "out",
+    ]
+
+
+def test_main_checks_the_committed_feed_pin_before_compiling_targets() -> None:
+    """The pin check sits between loading the feed and compiling on it."""
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    loaded = source.index("ledger_artifact = load_ledger_consumer_artifact(")
+    checked = source.index("_check_committed_us_ledger_feed_pin(")
+    compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
+    assert loaded < checked < compiled
+    assert source.count("_check_committed_us_ledger_feed_pin(") == 1
+
+
 # SPM measurement composition refusal
 # ---------------------------------------------------------------------------
 

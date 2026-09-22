@@ -136,6 +136,8 @@ FROZEN_LEGACY_RESOURCE_SHA256 = {
 # The three projections above are byte-frozen and equality-attested during the
 # F0 bridge; their existing direct consumers retire with the constants adapter.
 LEGACY_RESOURCE_PATHS = (
+    "chronicle_feed.json",
+    "chronicle_feed_scope.json",
     "ecps_parity_known_gaps.json",
     "ecps_parity_reference.json",
     "federal_eitc_by_state.json",

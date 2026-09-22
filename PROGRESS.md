@@ -1,3 +1,58 @@
+# US Chronicle feed re-pin (dimension labels)
+
+Lane: `us-chronicle-feed-repin`, off `origin/main` at
+`8c44daa52354b4e28af315a486df0b0c006f26ff`, in the worktree
+`~/PolicyEngine/_worktrees/microcosm-us-feed-repin`. Started 2026-09-18.
+Everything below the `---` rule at the end of this section is prior-lane
+history; see "Root journals are history, not state" in `CLAUDE.md`.
+
+## State
+
+Done: merged as PR #955 (historicized 22 September 2026; this journal is
+history, not state). See `docs/us-chronicle-feed-repin.md` for the pin and the
+rebuild tool.
+
+## Goal
+
+Re-pin the US release's Chronicle consumer feed from the accumulated
+`consumer_facts_buildn_v9_4.jsonl` (sha `b3c08356…`, arch-era rows without
+dimension labels; main's `_validate_chronicle_hierarchy_labels` refuses it)
+to one reproducible artifact built from Chronicle `c5e5bf8` (labels on every
+row), as auditable as the UK pin (`docs/uk-chronicle-feed-repin.md`,
+`uk/chronicle_feed.json`).
+
+## Done
+
+- Chronicle `origin/main` is `fea61df` (MIT relicense, LICENSE/README only);
+  `c5e5bf8` stays the export commit.
+- Pinned feed inventory: 37,405 rows, 586 record sets, 20 namespaces,
+  37,399 distinct `source_record_id`s (six CBO ty2023 projection pairs are
+  chronicle#119's known duplicate wart (the repository was renamed from ledger)).
+- Whole-bundle exports at `c5e5bf8` for 2022/2023/2024 (US-namespace
+  filter): every one of the 37,334 pinned record ids they cover carries the
+  identical `value`; the 65 pinned ids they lack are all in years still
+  exporting (2020, 2021, 2025, 2026) or in JCT OBBBA fy2027–fy2029.
+- Period rule derived from the package declarations + cross-year value
+  identity: no `artifact_year` → every manifest file year; `artifact_year`
+  and un-templated periods → one build at that year; `artifact_year` and
+  `{year}`-templated periods → genuine per-year columns (CBO, NIPA, NHE, Z1,
+  popproj, OBBBA) at the pinned surface's years, restamping packages (CD,
+  state_2022, BEA regional, IRA, W-2) at the pinned surface's single year.
+- The pinned feed compiles at `05d254aa2` (the last manifest regeneration):
+  32,843 targets; it fails at `6f7571e1a` (observed_only CBO assertion) and
+  on main (labels).
+
+## Next
+
+All three completed in PR #955 (22 September 2026):
+1. `tools/build_us_chronicle_feed.py` + two-run sha equality.
+2. Compile the new artifact on this branch; diff targets vs the `05d254aa2`
+   compile of the pinned feed.
+3. Regenerate the parity manifest/inventory; `us/chronicle_feed.json`;
+   fences for new families; doc; tests; changelog; draft PR.
+
+---
+
 # US engine lock → policyengine-us 2.2.1
 
 Lane: `engine-lock-pe-us-2.2.1`, off `origin/main` at `51c3143829b88382270f5af0714ae28fba14f803`,

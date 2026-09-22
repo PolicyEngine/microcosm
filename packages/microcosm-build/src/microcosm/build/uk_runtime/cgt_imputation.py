@@ -101,7 +101,6 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
     load_hmrc_cgt_joint_distribution,
 )
 from microcosm.build.uk_runtime.national_frame import (
-    UKNationalStage,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
@@ -112,9 +111,8 @@ from microcosm.frame import Frame, MassChangeRecord
 
 __all__ = [
     "UK_CGT_IMPUTATION_SEED",
-    "UK_CGT_MASS_CONSERVATION_REASON",
     "UK_CGT_SPINE_MASS_CONSERVATION_REASON",
-    "UK_CGT_IMPUTATION_STAGE_NAME",
+    "UK_CGT_SPINE_STAGE_NAME",
     "UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS",
     "UKCGTImputationSummary",
     "UKCGTPolicyParameters",
@@ -129,31 +127,25 @@ __all__ = [
     "impute_uk_capital_gains",
     "impute_uk_capital_gains_with_report",
     "summarize_uk_cgt_imputation",
-    "uk_capital_gains_imputation_stage",
     "uk_cgt_spine_stage_transform",
     "uk_cgt_policy_parameters",
     "uk_cgt_taxable_income_proxy",
 ]
 
-UK_CGT_IMPUTATION_STAGE_NAME = "hmrc_cgt_gains"
-
-#: The reviewed mass-conservation receipt this stage records. The terminal
-#: family gate requires a valid mass-conserving MassChangeRecord carrying
-#: exactly this reason, so a build whose CGT stage silently moved household
-#: mass — or never ran — fails by name.
-UK_CGT_MASS_CONSERVATION_REASON = (
-    "Amounts-only capital gains redraw: household weights pass through "
-    "unchanged and total household mass is conserved."
-)
+#: The FRS spine's capital-gains amounts stage: since microcosm#823 the only
+#: CGT gains stage. The June-path wrapper (``hmrc_cgt_gains``, driven from
+#: the certified June H5) is retired; its family left the release contract.
+UK_CGT_SPINE_STAGE_NAME = "hmrc_cgt_gains_spine"
 
 #: Base seed for the stage's draws. Combined with the build period so two
 #: periods draw differently while each build is reproducible.
 UK_CGT_IMPUTATION_SEED = 552
 
-#: The spine projection records the same conservation invariant under its
-#: own reason so the terminal family validator can never satisfy the
-#: certified and spine families with one shared record (adversarial-review
-#: finding on the E8 PR: reason strings are the receipt identity).
+#: The reviewed mass-conservation receipt the spine stage records. The
+#: terminal family gate requires a valid mass-conserving MassChangeRecord
+#: carrying exactly this reason, so a build whose CGT stage silently moved
+#: household mass, or never ran, fails by name (reason strings are the
+#: receipt identity: adversarial-review finding on the E8 PR).
 UK_CGT_SPINE_MASS_CONSERVATION_REASON = (
     "Amounts-only capital gains redraw on the source spine: household "
     "weights pass through unchanged and total household mass is conserved."
@@ -608,7 +600,7 @@ class UKCGTImputationSummary:
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
-            "stage": UK_CGT_IMPUTATION_STAGE_NAME,
+            "stage": UK_CGT_SPINE_STAGE_NAME,
             "rows": self.rows.to_dict(orient="records"),
             "taxpayer_mass": self.taxpayer_mass,
             "published_taxpayer_mass": self.published_taxpayer_mass,
@@ -1218,7 +1210,7 @@ def impute_uk_capital_gains_with_report(
     *,
     conditioning: HMRCCGTConditioningFacts,
     seed: int = UK_CGT_IMPUTATION_SEED,
-    mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
+    mass_change_reason: str = UK_CGT_SPINE_MASS_CONSERVATION_REASON,
 ) -> tuple[Frame, UKCGTAllocationReport]:
     """Redraw gainers' amounts, conditioned on income, age and region."""
 
@@ -1520,7 +1512,7 @@ def impute_uk_capital_gains(
     *,
     conditioning: HMRCCGTConditioningFacts | None = None,
     seed: int = UK_CGT_IMPUTATION_SEED,
-    mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
+    mass_change_reason: str = UK_CGT_SPINE_MASS_CONSERVATION_REASON,
 ) -> Frame:
     """Redraw gainers' amounts from the published joint distribution.
 
@@ -1639,37 +1631,6 @@ def summarize_uk_cgt_imputation(
         age_by_band_rows=pd.DataFrame(age_by_band_rows),
         allocation=report,
     )
-
-
-def uk_capital_gains_imputation_stage(
-    *,
-    parameters: UKCGTPolicyParameters | None = None,
-    distribution: HMRCCapitalGainsJointDistribution | None = None,
-    conditioning: HMRCCGTConditioningFacts | None = None,
-    seed: int = UK_CGT_IMPUTATION_SEED,
-    mass_change_reason: str = UK_CGT_MASS_CONSERVATION_REASON,
-) -> UKNationalStage:
-    """Build the national stage that redraws capital gains amounts.
-
-    The joint and the conditioning facts default to the committed vendored
-    2024-25 resource, which is checked against the pinned Chronicle feed
-    before a row is read. Parameters default to the policyengine-uk tree at
-    the dataset's build period, resolved when the stage runs.
-    """
-
-    def transform(frame: Frame) -> Frame:
-        joint = distribution or load_hmrc_cgt_joint_distribution()
-        resolved = parameters or uk_cgt_policy_parameters(uk_time_period(frame))
-        return impute_uk_capital_gains(
-            frame,
-            joint,
-            resolved,
-            conditioning=conditioning or load_hmrc_cgt_conditioning_facts(),
-            seed=seed,
-            mass_change_reason=mass_change_reason,
-        )
-
-    return UKNationalStage(name=UK_CGT_IMPUTATION_STAGE_NAME, transform=transform)
 
 
 def uk_cgt_spine_stage_transform(

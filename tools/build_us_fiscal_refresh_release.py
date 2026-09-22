@@ -212,6 +212,10 @@ from microcosm.build.us_runtime import (
 from microcosm.build.us_runtime.acs_release_predictors import (
     join_acs_release_predictors,
 )
+from microcosm.build.us_runtime.chronicle_feed import (
+    USChronicleFeed,
+    load_us_chronicle_feed,
+)
 from microcosm.build.us_runtime.demographics import (
     CENSUS_NATIONAL_AGE_BENCHMARK,
     demographics_payload,
@@ -924,6 +928,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help=(
             "Pin: expected SHA-256 of the Ledger consumer artifact "
             "manifest.json. Requires an artifact directory feed."
+        ),
+    )
+    parser.add_argument(
+        "--allow-unpinned-feed",
+        action="store_true",
+        help=(
+            "Build from a Chronicle feed whose facts (and, for an artifact "
+            "pin, manifest) digest differs from the committed US pin in "
+            "us/chronicle_feed.json. Only for an explicitly reviewed "
+            "diagnostic run; a release build must use the pinned feed."
         ),
     )
     parser.add_argument(
@@ -8715,6 +8729,44 @@ def main(argv: Sequence[str] | None = None) -> None:
         raise
 
 
+def _check_committed_us_ledger_feed_pin(
+    facts_sha256: str,
+    *,
+    manifest_sha256: str | None,
+    allow_unpinned_feed: bool,
+    pin: USChronicleFeed | None = None,
+) -> None:
+    """Hold the loaded Chronicle feed to the committed US pin.
+
+    ``us/chronicle_feed.json`` names the feed the release's target registry
+    compiles from; ``--ledger-facts-sha256`` only says what the operator
+    expected. Without this check a build could compile any feed that matched
+    the operator's flags and record it as the release's target identity while
+    the pin, the parity manifests and the release rule name another. The
+    facts digest always has to match; the manifest digest only when the pin
+    describes an artifact rather than a bare feed. ``--allow-unpinned-feed``
+    is for a reviewed diagnostic run and never for a release.
+    """
+
+    pin = pin or load_us_chronicle_feed()
+    comparisons = [("facts", facts_sha256, pin.facts_sha256)]
+    if not pin.is_bare_feed:
+        comparisons.append(("manifest", manifest_sha256, pin.manifest_sha256))
+    mismatches = [
+        f"{label}: loaded {loaded}, committed {committed}"
+        for label, loaded, committed in comparisons
+        if loaded != committed
+    ]
+    if mismatches and not allow_unpinned_feed:
+        raise SystemExit(
+            "error: Chronicle feed differs from the committed US pin "
+            "(us/chronicle_feed.json): "
+            + "; ".join(mismatches)
+            + "; pass --allow-unpinned-feed only for an explicitly reviewed "
+            "diagnostic run"
+        )
+
+
 def _main(argv: Sequence[str] | None = None) -> None:
     args = _parse_args(argv)
     if _git_dirty():
@@ -8909,6 +8961,11 @@ def _main(argv: Sequence[str] | None = None) -> None:
         args.ledger_facts,
         expected_facts_sha256=args.ledger_facts_sha256,
         expected_manifest_sha256=args.ledger_manifest_sha256,
+    )
+    _check_committed_us_ledger_feed_pin(
+        ledger_artifact.facts_sha256,
+        manifest_sha256=ledger_artifact.manifest_sha256,
+        allow_unpinned_feed=args.allow_unpinned_feed,
     )
     target_registry = compile_us_fiscal_target_registry(
         ledger_artifact.facts,
