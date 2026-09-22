@@ -2642,9 +2642,9 @@ def test_restated_eitc_child_bounds_pass_the_guard_only_where_they_agree() -> No
     ``_soi_eitc_child_count_filter`` is what the materializer applies, and
     ``_eitc_child_count_mask`` resolves it to ``== 0``, ``== 1``, ``== 2`` or
     ``>= 3``. A lower bound of three therefore agrees with ``3plus`` and only
-    with it; an upper bound is read half-open, the way the compiler reads a
-    ``<`` constraint into one exclusive edge, so "under one child" agrees with
-    ``0``; and a suffix-free key restates an exact count.
+    with it, and a suffix-free key restates an exact count. Upper bounds are
+    not compared at all; see
+    :func:`test_restated_eitc_child_upper_bounds_are_refused_outright`.
     """
 
     builder = _load_builder_module()
@@ -2655,13 +2655,6 @@ def test_restated_eitc_child_bounds_pass_the_guard_only_where_they_agree() -> No
             **{_RESTATED_EITC_CHILDREN_LOWER: "3"},
         ),
     )
-    under_one = _spec(
-        "under_one",
-        _soi_band_metadata(
-            ledger_filter_eitc_child_count="0",
-            **{_RESTATED_EITC_CHILDREN_UPPER: "1"},
-        ),
-    )
     exactly_two = _spec(
         "exactly_two",
         _soi_band_metadata(
@@ -2670,13 +2663,97 @@ def test_restated_eitc_child_bounds_pass_the_guard_only_where_they_agree() -> No
         ),
     )
 
-    assert (
-        builder._unsupported_ledger_filter_metadata(
-            (three_plus, under_one, exactly_two)
-        )
-        == {}
-    )
+    assert builder._unsupported_ledger_filter_metadata((three_plus, exactly_two)) == {}
     assert builder._unsupported_soi_ledger_filters(three_plus.metadata) == ()
+    assert builder._unsupported_soi_ledger_filters(exactly_two.metadata) == ()
+
+
+def test_restated_eitc_child_upper_bounds_are_refused_outright() -> None:
+    """A qualifying-child upper bound is refused whatever it would agree with.
+
+    Max's ruling (2026-09-22): until the Ledger confirms whether a count upper
+    bound means ``<`` or ``<=``, none is compared. ``< 1`` would agree with a
+    compiled ``0`` and ``<= 0`` would too, so both specs below are ones an
+    agreement rule could accept under one reading — and each is refused, with
+    the operator named as the reason, as is an upper bound on a spec with no
+    child-count filter. The refusal is per key: an exact restatement on the
+    same spec is still accepted, and a restated AGI upper bound is untouched.
+    The fatal guard raises, and the SOI skip keeps the key listed, so the
+    refusal cannot turn into a silent drop. ``_upper_bound_inclusive`` names
+    no restated concept and stays refused by its bare key.
+    """
+
+    builder = _load_builder_module()
+    reason = (
+        "restates a qualifying-child upper bound, refused outright: the "
+        "Ledger's operator for it (< or <=) is unconfirmed, and the two "
+        "readings select different returns"
+    )
+    inclusive_upper = f"{_RESTATED_EITC_CHILDREN_UPPER}_inclusive"
+    exclusive_reading = _soi_band_metadata(
+        ledger_filter_eitc_child_count="0",
+        **{
+            _RESTATED_EITC_CHILDREN_UPPER: "1",
+            _RESTATED_EITC_CHILDREN_EXACT: "0",
+            _RESTATED_AGI_UPPER: "200000",
+        },
+    )
+    specs = (
+        _spec("exclusive_reading", exclusive_reading),
+        _spec(
+            "inclusive_reading",
+            _soi_band_metadata(
+                ledger_filter_eitc_child_count="0",
+                **{_RESTATED_EITC_CHILDREN_UPPER: "0"},
+            ),
+        ),
+        _spec(
+            "no_child_filter",
+            _soi_band_metadata(**{_RESTATED_EITC_CHILDREN_UPPER: "1"}),
+        ),
+        _spec(
+            "inclusive_key",
+            _soi_band_metadata(
+                ledger_filter_eitc_child_count="0", **{inclusive_upper: "0"}
+            ),
+        ),
+    )
+
+    assert builder.RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES == frozenset({"upper"})
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "exclusive_reading": (f"{_RESTATED_EITC_CHILDREN_UPPER}=1 {reason}",),
+        "inclusive_reading": (f"{_RESTATED_EITC_CHILDREN_UPPER}=0 {reason}",),
+        "no_child_filter": (f"{_RESTATED_EITC_CHILDREN_UPPER}=1 {reason}",),
+        "inclusive_key": (inclusive_upper,),
+    }
+    assert builder._unsupported_soi_ledger_filters(exclusive_reading) == (
+        _RESTATED_EITC_CHILDREN_UPPER,
+    )
+    with pytest.raises(RuntimeError, match=r"operator for it \(< or <=\)"):
+        builder._assert_supported_ledger_filter_metadata(specs[:1])
+
+
+def test_restated_eitc_child_comparison_never_guesses_an_upper_reading() -> None:
+    """Dropping ``upper`` from the refused sides must not reopen a guess.
+
+    The comparison reads only lower and exact restatements. If a later edit
+    empties :data:`RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES` without choosing
+    an operator, an upper bound must fail loudly rather than fall through to
+    an exact-count comparison that happens to accept it (``== 0`` against a
+    compiled ``0``).
+    """
+
+    builder = _load_builder_module()
+    builder.RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES = frozenset()
+    metadata = _soi_band_metadata(
+        ledger_filter_eitc_child_count="0",
+        **{_RESTATED_EITC_CHILDREN_UPPER: "0"},
+    )
+
+    with pytest.raises(ValueError, match="reads only lower and exact"):
+        builder._unsupported_ledger_filter_metadata(
+            (_spec("unguarded_upper", metadata),)
+        )
 
 
 def test_disagreeing_restated_eitc_child_bounds_are_refused_by_value() -> None:
@@ -2725,6 +2802,40 @@ def test_disagreeing_restated_eitc_child_bounds_are_refused_by_value() -> None:
             f"count in 0..{builder.RESTATED_EITC_CHILD_COUNT_PROBE_MAX}",
         ),
     }
+
+
+def test_legacy_agi_usd_dimensions_stay_refused_by_bare_key() -> None:
+    """``agi_lower_usd``/``agi_upper_usd`` are not restated concepts (2026-09-22).
+
+    Max ruled against adding them to ``RESTATED_LEDGER_FILTER_CONCEPTS``: no
+    compiled target carries them today, and the guard already refuses an
+    unknown ``ledger_filter_*`` key loudly. This pins that second half — even
+    where the legacy key equals the compiled edge, it is refused by its bare
+    name and the fatal guard raises, so a future compile that picks those
+    facts up stops rather than being accepted or silently dropped.
+    """
+
+    builder = _load_builder_module()
+    metadata = _soi_band_metadata(
+        ledger_filter_agi_lower_usd="100000", ledger_filter_agi_upper_usd="200000"
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(
+        (_spec("legacy_agi_usd", metadata),)
+    ) == {
+        "legacy_agi_usd": (
+            "ledger_filter_agi_lower_usd",
+            "ledger_filter_agi_upper_usd",
+        )
+    }
+    assert builder._unsupported_soi_ledger_filters(metadata) == (
+        "ledger_filter_agi_lower_usd",
+        "ledger_filter_agi_upper_usd",
+    )
+    with pytest.raises(RuntimeError, match="ledger_filter_agi_lower_usd"):
+        builder._assert_supported_ledger_filter_metadata(
+            (_spec("legacy_agi_usd", metadata),)
+        )
 
 
 def test_restated_filters_clear_the_soi_skip_only_where_they_agree() -> None:

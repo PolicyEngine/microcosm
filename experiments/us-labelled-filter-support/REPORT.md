@@ -86,6 +86,11 @@ restates a constraint the materializer already applies to that spec.
    population equality, not string equality: `>= 3` agrees with `3plus`,
    `< 1` agrees with `0`, `== 2` agrees with `2`, and nothing else agrees.
    A value outside `0..16` or non-integral refuses rather than being compared.
+   (2026-09-22, superseded for upper bounds by Max's ruling on question 6.4:
+   a restated qualifying-child `_upper_bound` is no longer read as `< n` or
+   compared at all; it is refused outright, naming the unconfirmed operator.
+   Lower and exact restatements are compared as described. See section 6,
+   "Rulings".)
 4. Both call sites use it. `_unsupported_ledger_filter_metadata` collects the
    returned entries per spec, so the existing refusal text gains the
    disagreeing values. `_unsupported_soi_ledger_filters` drops a key from its
@@ -112,8 +117,11 @@ Unit, on invented specs (`packages/microcosm-build/tests/test_us_fiscal_refresh_
 |---|---|---|
 | `test_restated_agi_bounds_pass_the_guard_only_where_they_agree` | both bounds; lower only; upper only; `-inf`/`inf` ends | — |
 | `test_disagreeing_restated_agi_bounds_are_refused_by_value` | — | lower `50000` vs `100000.0`; upper `250000` vs `200000.0`; labelled lower with **no** `agi_lower_bound`; exact-value AGI restatement; unknown `ledger_filter_novel_dimension` still refused by bare name |
-| `test_restated_eitc_child_bounds_pass_the_guard_only_where_they_agree` | lower `3` with `3plus`; upper `1` with `0`; exact `2` with `2` | — |
+| `test_restated_eitc_child_bounds_pass_the_guard_only_where_they_agree` | lower `3` with `3plus`; exact `2` with `2` (the upper `1` with `0` case moved to the next row, 2026-09-22) | — |
+| `test_restated_eitc_child_upper_bounds_are_refused_outright` (added 2026-09-22) | exact `0` and AGI upper `200000` on the same spec, still | upper `1` with `0` (agrees if read `<`); upper `0` with `0` (agrees if read `<=`); upper with no child-count filter; `_upper_bound_inclusive` by bare key; fatal guard raises and SOI skip keeps the key |
+| `test_restated_eitc_child_comparison_never_guesses_an_upper_reading` (added 2026-09-22) | — | with `RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES` emptied, upper `0` with `0` raises `ValueError` instead of being compared as an exact count |
 | `test_disagreeing_restated_eitc_child_bounds_are_refused_by_value` | — | `3` with `2`; `3` with no child-count filter; `three` (not a count) |
+| `test_legacy_agi_usd_dimensions_stay_refused_by_bare_key` (added 2026-09-22) | — | `ledger_filter_agi_{lower,upper}_usd` equal to the compiled band, refused by bare name at both call sites; fatal guard raises |
 | `test_restated_filters_clear_the_soi_skip_only_where_they_agree` | agreeing restatement clears the SOI skip | disagreeing stays listed **and** the fatal guard refuses it first; unknown SOI filter unchanged |
 | `test_restated_concept_rules_all_have_a_comparison` | the two rules that exist | a concept with no rule would raise |
 
@@ -282,6 +290,88 @@ same pattern in the legacy vocabulary.
    exclusive to match `_agi_bounds`, which folds both `<` and `<=` into one
    edge the materializer applies as `<`. If the Ledger means `<=` for count
    dimensions, one line changes and one test flips.
+
+### Rulings (Max, 2026-09-22)
+
+Max ruled on all four questions on 2026-09-22. The questions above are kept as
+asked; these are the answers, and what this branch did about each.
+
+1. **The premise: merge.** Answer (a), with the premise no longer in doubt.
+   Section 7 found the refusal on `origin/main`, and section 8's committed
+   receipt regenerates it on this tree: on the state surface with
+   `soi_mode="full"`, 1,988 specs are refused with the rule reverted (which is
+   `main`'s behaviour) and 0 with it. The rule merges as the fix for a
+   refusal `main` makes today, not as forward-compatibility scaffolding.
+2. **`agi_lower_usd` / `agi_upper_usd`: do not add them.** Answer (b). No
+   concept is added for them. Nothing slips through meanwhile: a concept not
+   in `RESTATED_LEDGER_FILTER_CONCEPTS` comes back from
+   `_restated_ledger_filter_refusal` as its bare key
+   (`tools/build_us_fiscal_refresh_release.py:4634-4635`), so a
+   `ledger_filter_agi_lower_usd` that reaches the guard is refused by name and
+   `_assert_supported_ledger_filter_metadata` raises (`:4675-4687`). The new
+   `test_legacy_agi_usd_dimensions_stay_refused_by_bare_key` pins that at both
+   call sites, including where the legacy value equals the compiled edge.
+3. **Full mode: `totals` becomes the ACS local default, and the AGI-band
+   distribution becomes an opt-in.** Answer (b). That change is made in a
+   separate PR, not here; this branch still changes no default or selection.
+4. **EITC upper bounds: refuse them until the Ledger confirms its operator.**
+   Neither reading is adopted. Done on this branch, in the commit that adds
+   this block: `_restated_eitc_child_count_refusal` now refuses any key on a
+   side in `RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES` (`{"upper"}`) before it
+   reads the compiled filter or parses the value, with
+   `<key>=<value> restates a qualifying-child upper bound, refused outright:
+   the Ledger's operator for it (< or <=) is unconfirmed, and the two readings
+   select different returns`. Lower and exact restatements stay under the
+   agreement rule. The comparison raises if any other side reaches it, so
+   taking `"upper"` out of the set cannot quietly fall back to an exact-count
+   comparison. `test_restated_eitc_child_upper_bounds_are_refused_outright`
+   and `test_restated_eitc_child_comparison_never_guesses_an_upper_reading`
+   are new; the upper-`1`-with-`0` case left the acceptance test.
+
+   Why the key name alone does not settle the operator, read at this head:
+   `_constraint_bound_filters` stamps a `<` constraint row as `_upper_bound`
+   and a `<=` row as `_upper_bound_inclusive`
+   (`packages/microcosm-build/src/microcosm/build/ledger_targets.py:3470-3478`),
+   and `_upper_bound_inclusive` names no restated concept, so it is refused by
+   bare key. But the dimension stamp runs first (`:3459-3461`) and wins through
+   `setdefault` (`:3463-3464`), and a dimension of the same name carries no
+   operator at all.
+
+   **The receipt's counts do not change.** This is deduced from the committed
+   receipt, not re-measured. In `restated_filter_arms_receipt.json`'s reverted
+   arm, `_unsupported_ledger_filter_metadata` lists every otherwise-unsupported,
+   non-noop `ledger_filter_*` key by bare name. On every surface of both feeds,
+   the only qualifying-child key it lists is
+   `…earned_income_credit_qualifying_children_lower_bound` (1,137 entries over
+   the whole registry, 1,076 on the state surface); no `…_upper_bound` or
+   `…_upper_bound_inclusive` key appears. Noop values are skipped before the
+   rule in both arms, and the new refusal sits inside the rule. The compile
+   those specs come from is in `packages/*/src`, which this change does not
+   touch. So no spec in these compiles carries a key the new refusal can fire
+   on, and every count in section 8's table stands. The full measurement was
+   not re-run.
+5. **The 939 age-band refusals** (section 7, "Still open") get a follow-up PR
+   of their own. This PR adds no `age` concept.
+
+Tests at the commit that adds this block (its parent is `235dc701c`):
+
+```
+$ MICROCOSM_US_CHRONICLE_FACTS=<consumer_facts_us_c5e5bf8.jsonl> \
+    .venv/bin/python -m pytest packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py -rs
+248 passed in 80.37s, no skips, exit 0   # the pinned-feed state-surface arm ran
+
+$ .venv/bin/python tools/ci_test_groups.py --verify          verification=ok, exit 0
+$ ruff check .                                              All checks passed!
+$ ruff format --check <the two changed .py files>           2 files already formatted
+```
+
+The other modules that import `tools/build_us_fiscal_refresh_release.py` were
+not re-run for this change: it touches only `_restated_eitc_child_count_refusal`
+and its constants. That function is called only from
+`_restated_ledger_filter_refusal` (`tools/build_us_fiscal_refresh_release.py:4639`),
+which outside the tests is called only from the two guards (`:4424`, `:4665`)
+and swapped out by `measure_restated_filter_arms.py` (grep over `tools`,
+`packages`, `experiments`, 2026-09-22).
 
 ## 7. 2026-09-22: re-levelled on `origin/main` — the premise does reproduce
 

@@ -694,11 +694,26 @@ RESTATED_AGI_BAND_COMPILED_KEYS = {
 #: Qualifying-child counts probed when deciding whether a restated EITC
 #: child-count bound selects the same returns as the compiled filter.
 #: :func:`_eitc_child_count_mask` resolves every compiled value to ``== 0``,
-#: ``== 1``, ``== 2`` or ``>= 3``, and a restatement is ``>= n``, ``< n`` or
-#: ``== n``; evaluating both over 0..16 separates every such pair, so equal
-#: masks over the probe mean equal populations. Counts above the probe are
-#: refused rather than compared.
+#: ``== 1``, ``== 2`` or ``>= 3``, and a compared restatement is ``>= n`` or
+#: ``== n`` (an upper bound is refused before any comparison; see
+#: :data:`RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES`); evaluating both over
+#: 0..16 separates every such pair, so equal masks over the probe mean equal
+#: populations. Counts above the probe are refused rather than compared.
 RESTATED_EITC_CHILD_COUNT_PROBE_MAX = 16
+
+#: Bound sides on which a restated EITC qualifying-child key is refused
+#: outright, whatever its value and whatever the spec compiles. What an upper
+#: bound selects turns on the Ledger's operator — ``< 1`` is the childless
+#: returns, ``<= 1`` adds the one-child returns — and that operator is
+#: unconfirmed for count constraints. The metadata key does not settle it:
+#: :func:`microcosm.build.ledger_targets._constraint_bound_filters` stamps a
+#: ``<`` row as ``_upper_bound`` (``<=`` becomes ``_upper_bound_inclusive``,
+#: which no restated concept names, so it is refused by bare key), but the
+#: dimension stamp in ``_ledger_metadata`` runs first and wins through
+#: ``setdefault``, and can carry the same key with no operator at all. So no
+#: reading is guessed until the Ledger confirms one (Max, 2026-09-22). Lower
+#: and exact restatements stay under the agreement rule.
+RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES = frozenset({"upper"})
 
 FISCAL_TARGET_SOURCE_KEYS = {
     "cbo": "Congressional Budget Office revenue projections",
@@ -4542,6 +4557,12 @@ def _restated_eitc_child_count_refusal(
     *,
     side: str | None,
 ) -> str | None:
+    if side in RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES:
+        return (
+            f"{key}={value} restates a qualifying-child {side} bound, refused "
+            "outright: the Ledger's operator for it (< or <=) is unconfirmed, "
+            "and the two readings select different returns"
+        )
     compiled = _soi_eitc_child_count_filter(metadata)
     if compiled is None:
         return (
@@ -4557,13 +4578,13 @@ def _restated_eitc_child_count_refusal(
     counts = np.arange(RESTATED_EITC_CHILD_COUNT_PROBE_MAX + 1, dtype=np.float64)
     if side == "lower":
         restated_mask = counts >= bound
-    elif side == "upper":
-        # The compiler reads a ``<`` or ``<=`` constraint into one exclusive
-        # upper edge (``_agi_bounds``) and the materializer applies ``<``; a
-        # restated upper bound is read the same half-open way.
-        restated_mask = counts < bound
-    else:
+    elif side is None:
         restated_mask = counts == bound
+    else:
+        raise ValueError(
+            f"{key}: bound side {side!r} reached the qualifying-child "
+            "comparison, which reads only lower and exact restatements"
+        )
     try:
         applied_mask = _eitc_child_count_mask(counts, compiled)
     except ValueError:
@@ -4592,7 +4613,10 @@ def _restated_ledger_filter_refusal(
     changes nothing. Every other key returns the entry to refuse with: the
     bare key for a filter the materializer does not model (unchanged from
     before this rule existed), or the key with both values when a restatement
-    disagrees with its compiled counterpart, or has none.
+    disagrees with its compiled counterpart, or has none, or — for a
+    qualifying-child upper bound, whose operator is unconfirmed (see
+    :data:`RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES`) — the key with that
+    reason, whatever the spec compiles.
 
     Both compiled counterparts — the AGI band in
     :data:`RESTATED_AGI_BAND_COMPILED_KEYS` and
