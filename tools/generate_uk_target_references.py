@@ -22,7 +22,14 @@ from microcosm.build.target_reference_authoring import (
     target_references_resource,
 )
 from microcosm.build.uk_runtime.ledger_targets import UK_UPRATING_APPLIERS
-from microcosm.build.uk_runtime.uc_source_periods import uc_source_month_metadata
+from microcosm.build.uk_runtime.uc_source_periods import (
+    SOURCE_MONTH_FAMILIES,
+    uc_source_month_metadata,
+)
+from microcosm.calibrate.geography_constants import (
+    UK_REGION_TIER,
+    UK_REGION_TIER_ENUM,
+)
 
 UK_GEOGRAPHY_IDS = {
     "uk": "K02000001",
@@ -107,6 +114,10 @@ def main() -> None:
     config = TargetReferenceAuthoringConfig(
         target_period=args.period,
         geography_pins=_geography_pins(contract),
+        geography_fanout_by_target_id=_geography_fanout(contract),
+        geography_fanout_metadata=_geography_fanout_metadata,
+        geography_composition_by_target_id=_geography_composition(contract),
+        geography_composition_aliases=_geography_composition_aliases(),
         fanout_name=lambda target, fact: _fanout_name(
             target,
             fact,
@@ -116,6 +127,7 @@ def main() -> None:
         value_operation_by_target_id=_value_operation_by_target_id(contract),
         selector_pins_by_target_id=_selector_pins(contract),
         signed_exclusions_by_target_id=_signed_exclusions(contract),
+        signed_row_exclusions_by_target_id=_signed_row_exclusions(contract),
         reference_metadata_by_target_id=_reference_metadata(contract),
         binding_vocabulary=POLICYENGINE_BINDING_KEYS,
         source_fact_feed=args.source_fact_feed or str(args.ledger_facts),
@@ -197,17 +209,194 @@ def _geography_pins(contract: Mapping[str, Any]) -> dict[str, dict[str, str]]:
     exists. Every other national target pins at country level.
     """
 
+    fanned_out = _geography_fanout(contract)
     pins: dict[str, dict[str, str]] = {}
     for target in contract.get("targets", ()):
+        target_id = str(target["target_id"])
+        if target_id in fanned_out:
+            # A two-level target takes its geographies from the region tier
+            # roster (microcosm#905); a single pin would collapse it back to
+            # the country row the roster replaces.
+            continue
         levels = tuple(str(level) for level in target.get("geography_levels") or ())
         level = "region" if levels == ("region",) else "country"
-        pins[str(target["target_id"])] = {
+        pins[target_id] = {
             "geography_level": level,
             "geography_id": _geography_id_for_target(target),
         }
     return pins
 
 
+#: The declared level set that fans out over the region tier instead of
+#: pinning one country: a target that is published both nationally and by
+#: region (ONS mid-year population by age band, VOA council-tax stock by band).
+REGION_TIER_FANOUT_LEVELS = frozenset({"country", "region"})
+
+
+def _geography_fanout(
+    contract: Mapping[str, Any],
+) -> dict[str, tuple[tuple[str, str], ...]]:
+    """Region-tier cells for every two-level (country + region) target.
+
+    The nine English regions are always in; the three nations join only when
+    the binding does not already pin a country itself (the VOA stock bindings
+    filter ``country == ENGLAND`` because the Welsh, Scottish and Northern
+    Irish stocks are separate publications and contract families), so a
+    nation cell is never a row the binding would measure as zero.
+    """
+
+    fanout: dict[str, tuple[tuple[str, str], ...]] = {}
+    for target in contract.get("targets", ()):
+        levels = {str(level) for level in target.get("geography_levels") or ()}
+        if levels != REGION_TIER_FANOUT_LEVELS:
+            continue
+        cells = [(level, code) for level, code in UK_REGION_TIER if level == "region"]
+        if not _binding_pins_country(target["bindings"]["policyengine"]):
+            cells.extend(
+                (level, code) for level, code in UK_REGION_TIER if level == "country"
+            )
+        fanout[str(target["target_id"])] = tuple(cells)
+    return fanout
+
+
+def _binding_pins_country(binding: Mapping[str, Any]) -> bool:
+    predicates = [
+        *binding.get("filters", ()),
+        *binding.get("household_conditions", ()),
+    ]
+    return any(
+        str(predicate.get("variable") or predicate.get("concept") or "") == "country"
+        for predicate in predicates
+        if isinstance(predicate, Mapping)
+    )
+
+
+def _geography_fanout_metadata(
+    target: Mapping[str, Any],
+    geography_level: str,
+    geography_id: str,
+    entity: str,
+) -> dict[str, str]:
+    """Scope one region-tier row to its area on the spine.
+
+    The predicate compares the household's ``region`` enum (FRS ``gvtregno``
+    through ``REGION_MAP``) with the tier code's enum name and projects the
+    household match to the binding's own entity, the way the incumbent's
+    ``compute_regional_age`` masks persons by their household's region. The
+    ``cross_grain_grain`` stamp places every tier row, the three nation rows
+    included, at the ``region`` grain of the cross-grain rule; Chronicle's
+    ``country`` stamp on those three stays on the selector and the ledger
+    metadata untouched.
+    """
+
+    del target, geography_level
+    predicate = {
+        "entity": "household",
+        "variable": "region",
+        "operator": "==",
+        "value": UK_REGION_TIER_ENUM[geography_id],
+        "reduce": "any",
+        "map_to": entity,
+    }
+    return {
+        "geography_predicate": json.dumps(
+            predicate, sort_keys=True, separators=(",", ":")
+        ),
+        "cross_grain_grain": "region",
+    }
+
+
+def _local_area_crosswalk() -> dict[str, Any]:
+    return json.loads(
+        Path(__file__)
+        .resolve()
+        .parents[1]
+        .joinpath(
+            "packages/microcosm-build/src/microcosm/build/uk/local_area_crosswalk.json"
+        )
+        .read_text()
+    )
+
+
+def _geography_composition_aliases() -> dict[str, dict[str, tuple[str, ...]]]:
+    aliases: dict[str, dict[str, tuple[str, ...]]] = {}
+    for level, payload in _local_area_crosswalk()["levels"].items():
+        for area_id, alias in (payload.get("code_aliases") or {}).items():
+            codes = tuple(str(code) for code in alias.get("alias_codes", ()))
+            if codes:
+                aliases.setdefault(str(level), {})[str(area_id)] = codes
+    return aliases
+
+
+def _geography_composition(
+    contract: Mapping[str, Any],
+) -> dict[str, dict[str, tuple[str, tuple[str, ...]]]]:
+    """Region cells composed from the authorities the crosswalk places in them.
+
+    A two-level target that declares ``region_composition`` binds no region
+    fact of its own: the publisher prints the England row and the billing
+    authorities (MHCLG Council Taxbase), so each English region cell is the
+    signed combination of its authorities' rows, the consumer rollup Chronicle's
+    doctrine leaves to the consumer (microcosm#929). Membership comes from the
+    sha-pinned OA ladder through ``region_code_by_area`` in the local-area
+    crosswalk, the same map the cross-grain legs read, so the cell's members
+    are exactly the authorities the cross-grain rule reconciles beneath it.
+    """
+
+    composition: dict[str, dict[str, tuple[str, tuple[str, ...]]]] = {}
+    crosswalk: Mapping[str, Any] | None = None
+    for target in contract.get("targets", ()):
+        declaration = target.get("region_composition")
+        if declaration is None:
+            continue
+        levels = {str(level) for level in target.get("geography_levels") or ()}
+        if levels != REGION_TIER_FANOUT_LEVELS:
+            raise ValueError(
+                f"{target['target_id']}: region_composition needs the two-level "
+                "(country + region) declaration."
+            )
+        from_level = str(declaration.get("from_level") or "")
+        if from_level != "local_authority":
+            raise ValueError(
+                f"{target['target_id']}: region_composition.from_level must be "
+                f"'local_authority', got {from_level!r}."
+            )
+        if crosswalk is None:
+            crosswalk = _local_area_crosswalk()
+        level_payload = crosswalk["levels"][from_level]
+        region_by_area = level_payload["region_code_by_area"]
+        code_aliases = level_payload.get("code_aliases") or {}
+        members: dict[str, list[str]] = {}
+        for area_id, region_code in sorted(region_by_area.items()):
+            if str(region_code).startswith("E12"):
+                codes = members.setdefault(str(region_code), [])
+                codes.append(str(area_id))
+                # A recoded authority's facts carry the alias code; the member
+                # count stays one per authority (the resolver takes the latest
+                # period, where only one spelling has a row).
+                codes.extend(
+                    str(code)
+                    for code in (code_aliases.get(str(area_id)) or {}).get(
+                        "alias_codes", ()
+                    )
+                )
+        cells = {
+            code: (from_level, tuple(members[code]))
+            for level, code in UK_REGION_TIER
+            if level == "region"
+        }
+        missing = [code for code, (_, ids) in cells.items() if not ids]
+        if missing:
+            raise ValueError(
+                f"{target['target_id']}: no {from_level} member for region(s) "
+                f"{missing!r} in the crosswalk."
+            )
+        composition[str(target["target_id"])] = cells
+    return composition
+
+
+MHCLG_COUNCIL_TAX_STOCK_PREFIX = "mhclg.council_tax_stock."
+WELSHGOV_COUNCIL_TAX_STOCK_PREFIX = "welshgov.council_tax_stock."
 SCOTGOV_COUNCIL_TAX_STOCK_PREFIX = "scotgov.council_tax_stock."
 
 # Target-id prefixes whose geography pins cannot come from the nation-substring
@@ -221,6 +410,10 @@ TARGET_PREFIX_GEOGRAPHY_PINS: tuple[tuple[str, str], ...] = (
     # "scotgov" or "scottish_child_payment" and would fall through to the UK
     # pin, which never matches a Scotland-stamped fact.
     ("scotgov.", "scotland"),
+    # MHCLG's council taxbase return is England-only (facts stamped E92000001
+    # and the 296 English billing authorities); the substring rule sees no
+    # nation in "mhclg".
+    ("mhclg.", "england"),
     # The SLC borrower-plan forecasts Chronicle carries are England-scoped
     # (facts stamped E92000001) and the contract bindings already filter
     # country == ENGLAND explicitly, so the GB default could never match.
@@ -352,12 +545,57 @@ def _signed_exclusions(contract: Mapping[str, Any]) -> dict[str, str]:
     exclusions = {
         str(entry["target_id"]): str(entry["rationale"])
         for entry in resource["exclusions"]
+        if "row" not in entry
     }
     return {
         target_id: rationale
         for target_id, rationale in exclusions.items()
         if target_id in target_ids
     }
+
+
+def _signed_row_exclusions(
+    contract: Mapping[str, Any],
+) -> dict[str, dict[tuple[str, str], str]]:
+    """Row-level sign-outs from the same register: one fan-out row of a target.
+
+    An entry carrying ``row: {dimension, value}`` signs out the fan-out row
+    whose selector pins that dimension value (the HMRC CGT age band 0-15,
+    which the frame cannot carry; the size-of-gain band below the annual
+    exempt amount) and leaves the target's other rows active.
+    """
+
+    target_ids = {str(target["target_id"]) for target in contract.get("targets", ())}
+    resource = _signed_exclusion_register()
+    rows: dict[str, dict[tuple[str, str], str]] = {}
+    for entry in resource["exclusions"]:
+        row = entry.get("row")
+        if row is None:
+            continue
+        target_id = str(entry["target_id"])
+        if target_id not in target_ids:
+            continue
+        if not isinstance(row, Mapping) or set(row) != {"dimension", "value"}:
+            raise ValueError(
+                f"Signed exclusion for {target_id!r} declares a malformed row "
+                f"{row!r}; expected exactly dimension and value."
+            )
+        key = (str(row["dimension"]), json.dumps(row["value"], sort_keys=True))
+        rows.setdefault(target_id, {})[key] = str(entry["rationale"])
+    return rows
+
+
+def _signed_exclusion_register() -> dict[str, Any]:
+    return json.loads(
+        Path(__file__)
+        .resolve()
+        .parents[1]
+        .joinpath(
+            "packages/microcosm-build/src/microcosm/build/uk/"
+            "target_reference_signed_exclusions.json"
+        )
+        .read_text()
+    )
 
 
 def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]]:
@@ -373,8 +611,11 @@ def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]
         if binding.get("require_matching_fact_period"):
             metadata["source_period_policy"] = "exact_observation"
         if "source_months" in measurement:
-            if target.get("family") != "dwp_universal_credit":
-                raise ValueError("source_months is currently a UK UC-only declaration.")
+            if target.get("family") not in SOURCE_MONTH_FAMILIES:
+                raise ValueError(
+                    "source_months is declared only by the UK DWP monthly families "
+                    f"{sorted(SOURCE_MONTH_FAMILIES)}."
+                )
             metadata.update(
                 uc_source_month_metadata(
                     measurement["source_months"],
@@ -388,6 +629,33 @@ def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]
     return result
 
 
+#: Contract-level naming rule for fan-out rows whose publisher band carries
+#: no incumbent registry name: the row takes ``<metric_name>_<lower edge>``,
+#: the same form as the incumbent banded names, so a published band the
+#: incumbent never carried is authored rather than silently dropped.
+FANOUT_ROW_NAMING_METRIC_BAND_LOWER = "metric_name_band_lower"
+
+_CGT_GAIN_BAND_VALUE = re.compile(r"^gain_(\d+)_(?:to_\d+|plus)$")
+
+
+def _cgt_gain_band_lower(fact: Mapping[str, Any]) -> int | None:
+    """Lower edge of an HMRC CGT size-of-gain band value id, if the fact has one."""
+
+    dimensions = fact.get("dimensions") or {}
+    if not isinstance(dimensions, Mapping):
+        return None
+    value = dimensions.get("cgt_gain_band")
+    if not isinstance(value, str):
+        return None
+    match = _CGT_GAIN_BAND_VALUE.match(value)
+    if match is None:
+        raise ValueError(
+            f"Unrecognised HMRC CGT gain band value {value!r}; expected "
+            "gain_<lower>_to_<upper> or gain_<lower>_plus."
+        )
+    return int(match.group(1))
+
+
 def _fanout_name(
     target: Mapping[str, Any],
     fact: Mapping[str, Any],
@@ -396,7 +664,29 @@ def _fanout_name(
     target_id = str(target["target_id"])
     value_id = str(fact.get("layout", {}).get("groupby_value_id") or "")
     preferred_tokens, fallback_tokens = _dimension_tokens(fact)
+    band_lower = _cgt_gain_band_lower(fact)
     candidates = inverse_mapping.get(target_id, ())
+    if band_lower is not None:
+        # Incumbent banded names end in the band's lower edge; a substring
+        # match would let ``_band_50000`` claim ``_band_500000``.
+        suffix = f"_band_{band_lower}"
+        for candidate in candidates:
+            if candidate.endswith(suffix):
+                return candidate
+        naming = target.get("fanout_row_naming")
+        if naming == FANOUT_ROW_NAMING_METRIC_BAND_LOWER:
+            metric_name = str(target["bindings"]["policyengine"]["metric_name"])
+            return f"{metric_name}_{band_lower}"
+        if naming is not None:
+            raise ValueError(
+                f"Unsupported fanout_row_naming {naming!r} on {target_id!r}."
+            )
+        return None if candidates else f"{target_id}.{value_id or 'detail'}"
+    if target.get("fanout_row_naming") is not None:
+        raise ValueError(
+            f"{target_id!r} declares fanout_row_naming but its fact carries no "
+            "recognised band dimension; the row would otherwise be dropped."
+        )
     for candidate in candidates:
         if value_id and value_id not in _GEOGRAPHY_VALUE_IDS and value_id in candidate:
             return candidate
@@ -470,7 +760,11 @@ def _add_uk_membership_accounting(
         1
         for reference in references
         if reference["metadata"]["contract_target_id"].startswith(
-            ("voa.council_tax_stock.", SCOTGOV_COUNCIL_TAX_STOCK_PREFIX)
+            (
+                MHCLG_COUNCIL_TAX_STOCK_PREFIX,
+                WELSHGOV_COUNCIL_TAX_STOCK_PREFIX,
+                SCOTGOV_COUNCIL_TAX_STOCK_PREFIX,
+            )
         )
     )
     report["fanout_family_outcomes"] = [
@@ -508,10 +802,58 @@ def _add_uk_membership_accounting(
             "status": "active_declared_rows",
             "active_reference_count": council_tax_count,
             "signed_rationale": (
-                "VOA (England and Wales) and Scottish Government CTAXBASE "
-                "(Scotland) council-tax stock bands are declared as nine "
-                "explicit target rows each, including total, and each resolves "
-                "with its country-level geography and band pin."
+                "MHCLG council taxbase (England), Welsh Government CT1 "
+                "(Wales) and Scottish Government CTAXBASE (Scotland) "
+                "council-tax stock bands are declared as explicit target rows "
+                "per band plus total (England and Scotland A-H, Wales A-I). "
+                "The Welsh and Scottish rows resolve with their country-level "
+                "geography and band pin; the English rows fan out over the "
+                "nine English regions of the region tier (microcosm#905), each "
+                "cell composed as the linear combination of the billing-"
+                "authority facts the crosswalk places in that region "
+                "(microcosm#929)."
+            ),
+        },
+        {
+            "family": "hmrc_cgt",
+            "status": "active_with_row_level_signed_exclusions",
+            "active_reference_count": fanout_counts.get("hmrc_cgt", 0),
+            "signed_rationale": (
+                "The FY2024-25 individual CGT observations fan out three ways "
+                "(microcosm#725, #467): Table 6 age bands as dimension rows "
+                "(the 0-15 band and the all-ages total are signed out row by "
+                "row), Table 5 country/region cells over the twelve-area "
+                "region tier restated on the individuals basis by the Table 1 "
+                "share through the scaled_by_ratio operation, and Table 2.1a "
+                "size-of-gain bands under the incumbent banded names (the "
+                "0-2,999 band below the 2024 annual exempt amount is signed "
+                "out). Chronicle's Table 2.1a package emits taxpayers and gains "
+                "only, although the published sheet also carries an amounts-of-"
+                "tax column, so liability binds nationally and by age band; a "
+                "liability-by-size-of-gain family becomes possible once Chronicle "
+                "emits that column."
+            ),
+        },
+        {
+            "family": "ons_population",
+            "status": "active_region_tier_fanout",
+            "active_reference_count": sum(
+                1
+                for reference in references
+                if reference["metadata"]["contract_target_id"].startswith(
+                    "ons.population."
+                )
+                and reference["metadata"]["contract_target_id"].endswith("_by_region")
+            ),
+            "signed_rationale": (
+                "The nine ONS population-by-age-band targets fan out over the "
+                "twelve-area region tier (nine English regions at Chronicle's "
+                "region level, Wales, Scotland and Northern Ireland at country "
+                "level), one reference per area, each scoped on the spine by "
+                "a household-region predicate and placed at the region grain "
+                "of the cross-grain rule (microcosm#905). The former single "
+                "UK-wide row per band is retired: the tier sums to it within "
+                "the same publication."
             ),
         },
     ]
@@ -533,6 +875,21 @@ def _add_uk_membership_accounting(
             ]["candidates"][0]["signed_rationale"],
         },
     ]
+    for target_id, entry in sorted(report["targets"].items()):
+        if not str(target_id).startswith("hmrc.cgt."):
+            continue
+        for candidate in entry["candidates"]:
+            if candidate.get("status") != "signed_excluded":
+                continue
+            report["signed_exclusion_rationales"].append(
+                {
+                    "family": "hmrc_cgt",
+                    "target_id": target_id,
+                    "row": candidate["name"],
+                    "status": "signed_excluded",
+                    "signed_rationale": candidate["signed_rationale"],
+                }
+            )
     report["multi_fact_rationales"] = []
 
 

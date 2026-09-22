@@ -19,8 +19,11 @@ regeneration tests accept a `CHRONICLE_UK_FACTS` override and skip only when
 neither is present.
 
 Verify both SHA-256 digests and the manifest's `facts_sha256`, row count, and
-schema version, then update `uk/chronicle_feed.json` and regenerate, in this
-order:
+schema version, then update `uk/chronicle_feed.json` and regenerate. Vendor
+the per-concern fact resources (step 5) before the national generator: the
+generator refuses to compile against a vendored resource whose feed identity
+differs from the pin, so on a fresh pin step 5 has to run first. The rest go in
+this order:
 
 1. the national references and membership with
    `tools/generate_uk_target_references.py` (pass the stable
@@ -41,6 +44,14 @@ Verify the complete compiled target diff on both surfaces, including targets
 outside the intended policy area, and record the value moves in the changelog
 fragment.
 
+Two-level (country + region) contract targets fan out over the region tier
+(`UK_REGION_TIER` in `microcosm.calibrate.geography_constants`), one reference per area
+(microcosm#905); their cells resolve Chronicle's region- and country-stamped
+facts, so a re-pin must carry all twelve areas or the national generator
+refuses. The cross-grain legs of English constituencies and authorities come
+from `region_code_by_area` in `local_area_crosswalk.json`, regenerated from
+the sha-pinned ladder with `tools/generate_uk_local_area_crosswalk.py`.
+
 The national calibration runner refuses a feed whose facts or manifest digest
 differs from the committed pin. `--allow-unpinned-feed` is an explicit
 diagnostic override recorded in the run manifest; it is not a re-pin procedure.
@@ -52,4 +63,11 @@ and energy packages and unified the national and local pins into this one
 declaration; the `474a0ae` re-pin (#904, chronicle #263) moved the rows to
 `chronicle.consumer_fact.v2`, which carries the dimension and value labels the
 schema-8 target hierarchy completes from (141,400 rows, including chronicle #260's
-Universal Credit packages).
+Universal Credit packages); the `df35af7` re-pin (#929, chronicle #264 and #267)
+moved the rows to `chronicle.consumer_fact.v3`, which adds the publisher's
+`geography.name` to every fact (the label the hierarchy needs for constituencies
+and local authorities, microcosm#920) and brought the council taxbase packages
+for England, Wales and Scotland (266,390 rows); the `ec20085` re-pin (#890 PR-S, chronicle #269/#270 via PR #271) brought the domestic energy facts the energy stage levels and prices against (DESNZ Energy Trends domestic consumption, subnational consumption and meter counts, QEP average prices paid, NEED 2024, ONS 04.5 sub-classes) and the census central-heating tables (275,698 rows).
+The `c5e5bf8` re-pin (microcosm#725, chronicle #273, on top of `ec20085`) then brought the HMRC CGT
+Tables 7, 8 and 9 (asset type, residential property, carried interest), 276,205 rows, with no
+compiled value moving on either surface.

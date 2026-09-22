@@ -5,7 +5,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from microcosm.build import DonorSpec, Stage, StagePlan
+from microcosm.build import (
+    DonorSpec,
+    ObservedTransform,
+    Stage,
+    StageEventRun,
+    StagePlan,
+)
 from microcosm.frame import Frame
 
 
@@ -112,6 +118,47 @@ class TestExecution:
         assert len(lines) == 2 and "Fed SCF 2022" in lines[0]
         assert plan.donors() == (("wealth", SCF),)
 
+    def test_observer_reports_ordered_aggregate_stage_lifecycle(
+        self, small_frame
+    ) -> None:
+        observations = []
+        plan = StagePlan(
+            [
+                Stage(
+                    name="wealth",
+                    transform=_add_column("net_worth", np.asarray([1, 0, 2, 0])),
+                    produces=("net_worth",),
+                )
+            ]
+        )
+
+        result, _records = plan.run(small_frame, observer=observations.append)
+
+        assert [item.status for item in observations] == ["started", "completed"]
+        assert [item.stage_id for item in observations] == ["wealth", "wealth"]
+        assert observations[0].produced_column_count == 0
+        assert observations[1].produced_column_count == 1
+        assert observations[1].elapsed_seconds >= 0.0
+        assert observations[1].entity_row_counts == {
+            entity: len(result.table(entity)) for entity in result.entities
+        }
+        assert not hasattr(observations[1], "source_values")
+
+    def test_observer_reports_failure_without_source_values(self, small_frame) -> None:
+        observations = []
+        plan = StagePlan(
+            [Stage(name="x", transform=lambda frame: frame, consumes=("absent",))]
+        )
+
+        with pytest.raises(ValueError, match="consumes 'absent'"):
+            plan.run(small_frame, observer=observations.append)
+
+        assert [item.status for item in observations] == ["started", "failed"]
+        assert observations[-1].produced_column_count == 0
+        assert observations[-1].entity_row_counts == {
+            entity: len(small_frame.table(entity)) for entity in small_frame.entities
+        }
+
     def test_missing_consumed_column_aborts_before_running(self, small_frame) -> None:
         ran = []
 
@@ -163,3 +210,107 @@ class TestExecution:
         plan = StagePlan([Stage(name="x", transform=lambda frame: frame.person)])
         with pytest.raises(TypeError, match="must return a Frame"):
             plan.run(small_frame)
+
+
+class TestObservedTransform:
+    def test_callable_emits_shared_lifecycle(self, small_frame) -> None:
+        observations = []
+        clock = iter((10.0, 12.5)).__next__
+        transform = ObservedTransform(
+            lambda frame: frame,
+            stage_id="shared",
+            produced_column_count=3,
+            observer=observations.append,
+            clock=clock,
+        )
+
+        assert transform(small_frame) is small_frame
+        assert [item.status for item in observations] == ["started", "completed"]
+        assert observations[-1].elapsed_seconds == 2.5
+        assert observations[-1].produced_column_count == 3
+
+    def test_failure_emits_failed_observation(self, small_frame) -> None:
+        observations = []
+        clock = iter((5.0, 6.0)).__next__
+
+        def fail(frame: Frame) -> Frame:
+            raise RuntimeError("transform failed")
+
+        transform = ObservedTransform(
+            fail,
+            stage_id="shared",
+            produced_column_count=1,
+            observer=observations.append,
+            clock=clock,
+        )
+
+        with pytest.raises(RuntimeError, match="transform failed"):
+            transform(small_frame)
+
+        assert [item.status for item in observations] == ["started", "failed"]
+        assert observations[-1].elapsed_seconds == 1.0
+        assert observations[-1].produced_column_count == 0
+
+    def test_source_aware_call_and_attributes_are_preserved(self, small_frame) -> None:
+        class SourceAwareTransform:
+            evidence = "available"
+
+            def run_with_sources(self, frame: Frame, sources: object) -> Frame:
+                self.sources = sources
+                return frame
+
+        implementation = SourceAwareTransform()
+        transform = ObservedTransform(
+            implementation,
+            stage_id="shared",
+            produced_column_count=0,
+            observer=None,
+        )
+        sources = {"survey": "source.tab"}
+
+        assert transform.run_with_sources(small_frame, sources) is small_frame
+        assert implementation.sources == sources
+        assert transform.evidence == "available"
+
+
+class TestStageEventRun:
+    def test_completion_emits_elapsed_time_and_details(self) -> None:
+        events = []
+        clock = iter((10.0, 12.5)).__next__
+
+        with StageEventRun(
+            stage_id="solver_execution",
+            observer=lambda stage_id, status, details: events.append(
+                (stage_id, status, dict(details))
+            ),
+            clock=clock,
+        ) as operation:
+            operation.complete(target_count=3)
+
+        assert events == [
+            ("solver_execution", "started", {"elapsed_seconds": 0.0}),
+            (
+                "solver_execution",
+                "completed",
+                {"target_count": 3, "elapsed_seconds": 2.5},
+            ),
+        ]
+
+    def test_exception_emits_failed_operation(self) -> None:
+        events = []
+        clock = iter((5.0, 6.0)).__next__
+
+        with pytest.raises(RuntimeError, match="solver failed"):
+            with StageEventRun(
+                stage_id="solver_execution",
+                observer=lambda stage_id, status, details: events.append(
+                    (stage_id, status, dict(details))
+                ),
+                clock=clock,
+            ):
+                raise RuntimeError("solver failed")
+
+        assert events == [
+            ("solver_execution", "started", {"elapsed_seconds": 0.0}),
+            ("solver_execution", "failed", {"elapsed_seconds": 1.0}),
+        ]

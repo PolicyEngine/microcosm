@@ -190,8 +190,10 @@ def test_band_donors_are_band_exact_positive_and_permutation_stable() -> None:
     assert [row["realized_max_gain"] for row in first.band_rows] == [
         row["mean_gain"] for row in first.band_rows
     ]
+    # HMRC Table 2.1a 2024-25 individuals from GBP 12,300 (the vendored
+    # conditioning facts), not the retired 2023-24 hand copy.
     assert [row["weighted_taxpayers"] for row in first.band_rows] == pytest.approx(
-        [79_000, 74_000, 53_000, 37_000, 14_000, 8_000, 5_000, 3_000, 2_000]
+        [97_000, 98_000, 78_000, 61_000, 25_000, 16_000, 9_000, 5_000, 3_000]
     )
     second_donors = second.frame.table("household").loc[
         lambda table: table[HOUSEHOLD_IS_CGT_BAND_DONOR]
@@ -202,7 +204,7 @@ def test_band_donors_are_band_exact_positive_and_permutation_stable() -> None:
 def test_never_zero_band_weight_assertion_fires() -> None:
     resource = copy.deepcopy(load_hmrc_cgt_size_bands())
     retained = next(row for row in resource["rows"] if row["lower_limit"] == 12_300)
-    retained["taxpayers_thousands"] = 0
+    retained["taxpayers"] = 0
 
     with pytest.raises(ValueError, match="zero initial weight"):
         _assert_cgt_donor_stage_parameters(

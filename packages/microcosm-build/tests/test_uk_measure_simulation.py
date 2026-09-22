@@ -128,7 +128,7 @@ def test_cgt_period_measures_bypass_stored_inputs_without_mutation(
     monkeypatch.setitem(
         sys.modules,
         "policyengine_uk",
-        SimpleNamespace(__version__="2.97.0", Microsimulation=lambda **kw: sim),
+        SimpleNamespace(__version__="2.98.0", Microsimulation=lambda **kw: sim),
     )
     resolver = UKMeasureResolver(
         simulation_source=tmp_path / "input.h5",
@@ -235,7 +235,7 @@ def test_resolver_refuses_persisted_cgt_measure_aliases(monkeypatch, tmp_path):
         sys.modules,
         "policyengine_uk",
         SimpleNamespace(
-            __version__="2.97.0", Microsimulation=lambda **kw: SimulationStub({})
+            __version__="2.98.0", Microsimulation=lambda **kw: SimulationStub({})
         ),
     )
     with pytest.raises(ValueError, match="must not be persisted"):
@@ -589,21 +589,53 @@ _PACKAGED_EXCLUSION_CENSUS = {
     "ons.savings_interest_income": 1,
     "obr.housing_benefit": 1,
     "dwp.jsa_claimants": 1,
+    # microcosm#882 (2026-09-15): three UC element rows were held out of the
+    # objective, signed by María in review of microcosm#921 with a one-month
+    # window. The carer and childcare rows retired on 2026-09-16 with their
+    # repairs (care hours and the childcare take-up draw on policyengine-uk
+    # 2.98.0); the any-tenure housing row stays held out as a structural bias.
+    "dwp.uc.households_": 1,
+    # microcosm#882 repairs (2026-09-16): the three Housing Benefit caseload
+    # rows and the thirteen benefit-cap amount bands outside the 25 percent
+    # bound are measured on every evaluation but held out of the objective;
+    # the A16 rows obr.housing_benefit and dwp.jsa_claimants were
+    # re-adjudicated the same day on the mechanism receipts.
+    "dwp.hb.": 3,
+    "dwp.benefit_cap.capped_households_": 13,
 }
+
+# The carer and childcare rows were retired on 2026-09-16 with the repairs
+# (care hours and the childcare take-up draw on policyengine-uk 2.98.0);
+# only the any-tenure housing row remains held out.
+_UC_ELEMENT_REGISTER_ROWS = ("dwp.uc.households_housing_element",)
 
 _A16_UNREACHABLE_ROWS = (
     "ons.savings_interest_income",
-    "obr.housing_benefit",
     "slc.borrowers.plan_2_liable",
     "slc.borrowers.plan_2_above_threshold",
+    "obr.housing_benefit",
     "dwp.jsa_claimants",
 )
+_A16_READJUDICATED_ROWS = ("obr.housing_benefit", "dwp.jsa_claimants")
 
 
 def test_packaged_exclusions_load():
     exclusions = load_uk_calibration_measure_exclusions()
     names = [entry["name"] for entry in exclusions]
-    assert len(names) == len(set(names)) == 47
+    assert len(names) == len(set(names)) == 67
+    band_h_region_cells = [
+        entry
+        for entry in exclusions
+        if entry["name"].startswith("mhclg.council_tax_stock.band_h@E12")
+    ]
+    assert [entry["name"] for entry in band_h_region_cells] == [
+        "mhclg.council_tax_stock.band_h@E12000001",
+        "mhclg.council_tax_stock.band_h@E12000002",
+        "mhclg.council_tax_stock.band_h@E12000003",
+    ]
+    assert {entry["approved_on"] for entry in band_h_region_cells} == {"2026-09-14"}
+    assert {entry["tracking"] for entry in band_h_region_cells} == {"microcosm#796"}
+    assert {entry["expires_on"] for entry in band_h_region_cells} == {"2026-11-26"}
 
     for marker, expected in _PACKAGED_EXCLUSION_CENSUS.items():
         matched = [name for name in names if marker in name]
@@ -638,11 +670,10 @@ def test_packaged_exclusions_load():
     assert not [n for n in names if n.startswith("ons.household_composition.")]
 
     # The 2026-09-03 tranche is #762's A16: five unreachable national rows,
-    # a one-month window, each row tracked on its spine-defect issue.
-    a16 = [e for e in exclusions if e["approved_on"] == "2026-09-03"]
-    assert sorted(e["name"] for e in a16) == sorted(_A16_UNREACHABLE_ROWS)
-    # Each row points at its own spine-defect issue (the October expiry follows
-    # the pointer); #736 carries the tranche as a whole.
+    # a one-month window, each row tracked on its spine-defect issue. Two of
+    # them (housing benefit, JSA) were re-adjudicated on 2026-09-16 with the
+    # mechanism receipts (#882) and moved to the 2026-12-08 clock; the other
+    # three still lapse on 2026-10-03.
     a16_issues = {
         "ons.savings_interest_income": "microcosm#866",
         "obr.housing_benefit": "microcosm#867",
@@ -650,10 +681,78 @@ def test_packaged_exclusions_load():
         "slc.borrowers.plan_2_above_threshold": "microcosm#868",
         "dwp.jsa_claimants": "microcosm#869",
     }
+    a16 = [e for e in exclusions if e["approved_on"] == "2026-09-03"]
+    assert sorted(e["name"] for e in a16) == sorted(_A16_UNREACHABLE_ROWS[:3])
     for entry in a16:
         assert entry["expires_on"] == "2026-10-03", entry["name"]
         assert entry["tracking"] == a16_issues[entry["name"]], entry["name"]
         assert "A16" in entry["adjudication"], entry["name"]
+    for name in _A16_READJUDICATED_ROWS:
+        entry = next(e for e in exclusions if e["name"] == name)
+        assert entry["approved_on"] == "2026-09-16", name
+        assert entry["expires_on"] == "2026-12-08", name
+        assert entry["tracking"] == a16_issues[name], name
+        assert "tools/diagnose_uk_legacy_benefits.py" in entry["adjudication"], name
+        assert "issuecomment-5694598278" in entry["adjudication"], name
+        assert "SPI support channel" in entry["reason"], name
+
+    # The 2026-09-16 tranche also carries the Housing Benefit caseload rows
+    # (tracked on #867 like the spend row) and the benefit-cap amount bands
+    # outside the bound (tracked on #882); every entry names its tool.
+    repairs = [
+        e
+        for e in exclusions
+        if e["approved_on"] == "2026-09-16" and e["name"] not in _A16_READJUDICATED_ROWS
+    ]
+    assert len(repairs) == 16
+    for entry in repairs:
+        assert entry["expires_on"] == "2026-12-08", entry["name"]
+        # Every entry of the tranche points at the ruling that exists (the
+        # 2026-09-16 status comment) and explains the shared expiry.
+        assert "issuecomment-5694598278" in entry["adjudication"], entry["name"]
+        assert "zero-band clock" in entry["adjudication"], entry["name"]
+        if entry["name"].startswith("dwp.hb."):
+            assert entry["tracking"] == "microcosm#867", entry["name"]
+            assert "tools/diagnose_uk_legacy_benefits.py" in entry["adjudication"]
+        else:
+            assert entry["name"].startswith("dwp.benefit_cap.capped_households_")
+            assert entry["tracking"] == "microcosm#882", entry["name"]
+            assert "tools/diagnose_uk_benefit_cap.py" in entry["adjudication"]
+            assert "tools/diagnose_uk_benefit_cap.py" in entry["reason"], entry["name"]
+    assert "dwp.benefit_cap.capped_households_up_to_100" not in names
+    assert "dwp.benefit_cap.capped_households" not in names
+
+    # The 2026-09-15 tranche was #882's element rows. Carer and childcare
+    # retired on 2026-09-16 with their repairs; the any-tenure housing row (a
+    # structural bias: DWP's 'Yes' includes an other/unknown tenure the model
+    # cannot carry) remains, adjudicated to microcosm#882 and the committed
+    # baseline doc, signed in review of microcosm#921, windowed to one month.
+    elements = [e for e in exclusions if e["approved_on"] == "2026-09-15"]
+    assert sorted(e["name"] for e in elements) == sorted(_UC_ELEMENT_REGISTER_ROWS)
+    for entry in elements:
+        assert entry["expires_on"] == "2026-10-15", entry["name"]
+        assert entry["tracking"] == "microcosm#882", entry["name"]
+        assert entry["approved_by"] == "juaristi22", entry["name"]
+        assert "microcosm#882" in entry["adjudication"], entry["name"]
+        assert "microcosm#921" in entry["adjudication"], entry["name"]
+        assert "docs/uk-uc-baseline-2026-09-10.md" in entry["adjudication"], entry[
+            "name"
+        ]
+    housing = next(
+        e for e in elements if e["name"] == "dwp.uc.households_housing_element"
+    )
+    assert "112,518 of 4,037,650" in housing["reason"]
+    # The four element rows that stay in the objective are not on the register.
+    for riding in (
+        "dwp.uc.households_carer_element",
+        "dwp.uc.households_childcare_element",
+        "dwp.uc.households_lcwra_element",
+        "dwp.uc.households_housing_element_social_rented",
+        "dwp.uc.households_housing_element_private_rented",
+        "dwp.uc.households_with_deduction",
+        "obr.universal_credit",
+    ):
+        assert riding not in names, riding
 
     # The lever targets are deliberately NOT excluded: the six UC
     # caseload / two-child-limit cells ride the would_claim_uc lever run.
@@ -781,3 +880,26 @@ def test_exclusion_loader_requires_tracking(tmp_path: Path):
                 {"schema_version": 2, "exclusions": [_entry(tracking="")]},
             )
         )
+
+
+def test_packaged_exclusion_names_resolve_to_committed_references():
+    """Every register name must be a committed reference name, not a metric.
+
+    The applier matches ``spec.name``, which is the reference name
+    (``dwp.uc.households_carer_element``), so an entry keyed by the binding's
+    metric name (``dwp/uc/elements/carer``) matches nothing and the
+    calibration run refuses with "matched zero registry specs". The three
+    #882 element rows shipped that way in microcosm#921; this pins the
+    identity so a register edit cannot drift off the reference surface again.
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+
+    reference_names = {
+        reference.name for reference in load_country_spec("uk").target_references
+    }
+    exclusions = load_uk_calibration_measure_exclusions()
+    unresolved = sorted(
+        entry["name"] for entry in exclusions if entry["name"] not in reference_names
+    )
+    assert unresolved == [], unresolved

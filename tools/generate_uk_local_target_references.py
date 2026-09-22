@@ -57,6 +57,8 @@ def main() -> None:
         areas_by_geography_level=_areas_by_geography_level(crosswalk),
         area_signed_deferrals=tuple(_area_signed_deferrals(contract, crosswalk)),
         value_operation_by_target_id=_value_operation_by_target_id(contract),
+        area_scope_by_target_id=_area_scope_by_target_id(contract, crosswalk),
+        area_id_aliases=_area_id_aliases(crosswalk),
         reference_metadata_by_target_id={
             "ons.rent.private_rent": {
                 "fact_aggregation": "time_mean",
@@ -161,10 +163,67 @@ def _read_jsonl(path: Path):
                 yield json.loads(line)
 
 
+def _area_id_aliases(
+    crosswalk: Mapping[str, Any],
+) -> dict[str, dict[str, tuple[str, ...]]]:
+    """Publisher recodings declared on the crosswalk (``code_aliases``)."""
+
+    aliases: dict[str, dict[str, tuple[str, ...]]] = {}
+    for level, payload in (crosswalk.get("levels") or {}).items():
+        declared = payload.get("code_aliases") or {}
+        for area_id, alias in declared.items():
+            codes = tuple(str(code) for code in alias.get("alias_codes", ()))
+            if codes:
+                aliases.setdefault(str(level), {})[str(area_id)] = codes
+    return aliases
+
+
+def _area_scope_by_target_id(
+    contract: Mapping[str, Any],
+    crosswalk: Mapping[str, Any],
+) -> dict[str, dict[str, frozenset[str]]]:
+    """Nation-scoped rosters for targets whose publication covers one nation.
+
+    ``area_scope: {"<level>": {"gss_prefixes": ["E"]}}`` on a contract target
+    keeps the target's cells to the roster areas whose GSS code starts with
+    one of the prefixes (the MHCLG, StatsWales and CTAXBASE council-tax
+    families each cover one nation, microcosm#929). The other nations' areas
+    are not candidates of that target at all, so they are neither absences to
+    sign nor cells to compile.
+    """
+
+    areas = _areas_by_geography_level(crosswalk)
+    scopes: dict[str, dict[str, frozenset[str]]] = {}
+    for target in contract.get("targets", ()):
+        declaration = target.get("area_scope")
+        if not declaration:
+            continue
+        target_id = str(target["target_id"])
+        for level, rule in declaration.items():
+            prefixes = tuple(str(prefix) for prefix in rule.get("gss_prefixes", ()))
+            if not prefixes:
+                raise ValueError(
+                    f"{target_id}: area_scope for {level!r} declares no gss_prefixes."
+                )
+            roster = areas.get(str(level))
+            if roster is None:
+                raise ValueError(
+                    f"{target_id}: area_scope names level {level!r}, which the "
+                    "crosswalk does not carry."
+                )
+            scopes.setdefault(target_id, {})[str(level)] = frozenset(
+                area_id for area_id in roster if area_id.startswith(prefixes)
+            )
+    return scopes
+
+
 def _value_operation_by_target_id(contract: Mapping[str, Any]) -> dict[str, str]:
     operations: dict[str, str] = {}
     for target in contract.get("targets", ()):
         target_id = str(target["target_id"])
+        declared = target.get("value_operation")
+        if declared is not None:
+            operations[target_id] = str(declared)
         if target_id.startswith("ons.age."):
             operations[target_id] = "sum"
         if target_id in {
@@ -227,16 +286,15 @@ def _area_signed_deferrals(
             "English council-tax Band H deferral mask expected 296 crosswalk "
             f"local authorities; measured {len(english_local_authorities)}."
         )
-    council_tax_ni_area_ids = ni_local_authorities
-    council_tax_scotland_area_ids = scottish_local_authorities
-    council_tax_city_band_a_area_ids = ("E09000001",)
     support_floor_excluded_area_ids, support_floor_binding_families = (
         _support_floor_register_scope()
     )
+    # Barnsley (E08000016) and Sheffield (E08000019) left this mask on
+    # microcosm#929: PIPR files them under the April 2025 codes E08000038 and
+    # E08000039, which the crosswalk now declares as aliases of the roster
+    # codes, so their cells select the published rows.
     pipr_lad_absent_area_ids = (
         "E06000053",
-        "E08000016",
-        "E08000019",
         "E09000001",
     )
     spi_la_measure_gap_area_ids = ("E06000027", "E06000053")
@@ -353,51 +411,8 @@ def _area_signed_deferrals(
             rationale="ONS equivalised-income facts in the pinned feed are MSOA-grain mean-valued targets, with no local-authority rows; local-authority aggregation is deferred pending the signed mean-aggregation design.",
             area_ids=local_authority_ids,
         )
-    for band in "abcdefgh":
-        target_id = f"voa.council_tax_stock.by_area.band_{band}"
-        add(
-            target_id=target_id,
-            geography_level="local_authority",
-            reason_id="council_tax_voa_scotland_absent",
-            rationale=(
-                "The pinned 2025 VOA local-authority council-tax stock feed "
-                "contains no Scottish band-count rows; all 32 Scottish "
-                "crosswalk authorities are absent for bands A-H. Scottish "
-                "Band D equivalents and rates are different measures and "
-                "cannot fill these cells."
-            ),
-            area_ids=council_tax_scotland_area_ids,
-        )
-        add(
-            target_id=target_id,
-            geography_level="local_authority",
-            reason_id="council_tax_ni_domestic_rates",
-            rationale=(
-                "Northern Ireland uses domestic rates rather than council "
-                "tax; the pinned feed has no council-tax band-count rows for "
-                "the 11 Northern Ireland local-government districts."
-            ),
-            area_ids=council_tax_ni_area_ids,
-        )
-        add(
-            target_id=target_id,
-            geography_level="local_authority",
-            reason_id="council_tax_wales_country_control_absent",
-            rationale=(
-                "The pinned feed carries no Wales country-level council-tax "
-                "stock-by-band fact, so the Welsh local-authority leg has no "
-                "parent control under the standing UK_CROSS_GRAIN_RULE "
-                "(country > constituency > la; unparented legs fail closed). "
-                "Bands A-H cannot bind for Wales until a Wales country control "
-                "is supplied; the Chronicle ask is filed under microcosm#762 / "
-                "A13. For Band H, this mask subsumes the prior two-cell absence "
-                "for W06000019 and W06000024."
-            ),
-            area_ids=welsh_local_authorities,
-            defer_if_compiles=True,
-        )
     add(
-        target_id="voa.council_tax_stock.by_area.band_h",
+        target_id="mhclg.council_tax_stock.by_area.band_h",
         geography_level="local_authority",
         reason_id="council_tax_band_h_spine_support_absent",
         rationale=(
@@ -407,27 +422,32 @@ def _area_signed_deferrals(
             "K=15, 76 of the 296 authorities draw no band-H household and the "
             "median of the rest draws five (84 of 296 at K=10), so the family "
             "cannot bind at local-authority grain until a spine vintage "
-            "carries broader band-H support (microcosm#762 A14)."
+            "carries broader band-H support (microcosm#762 A14; carried onto "
+            "the MHCLG taxbase basis by microcosm#929)."
         ),
         area_ids=english_local_authorities,
         defer_if_compiles=True,
     )
     add(
-        target_id="voa.council_tax_stock.by_area.band_a",
+        target_id="scotgov.council_tax_stock.by_area.band_h",
         geography_level="local_authority",
-        reason_id="council_tax_city_of_london_band_a_suppressed",
+        reason_id="council_tax_band_h_spine_support_absent",
         rationale=(
-            "The pinned 2025 VOA local-authority record set publishes bands "
-            "B-H and all-properties for E09000001 but suppresses its Band A "
-            "cell; 317/318 England/Wales Band A cells compile."
+            "Scotland's six raw FRS band-H households leave Shetland "
+            "(S12000027) with no band-H household at the ruled K=15: the "
+            "rowwise driver's support check refuses the cell (nonzero target, "
+            "zero household support) while the other 31 council cells draw at "
+            "least one band-H clone and bind (microcosm#929; the English "
+            "authorities stay under microcosm#762 A14)."
         ),
-        area_ids=council_tax_city_band_a_area_ids,
+        area_ids=("S12000027",),
+        defer_if_compiles=True,
     )
     add(
         target_id="ons.rent.private_rent",
         geography_level="local_authority",
         reason_id="private_rent_pipr_english_lad_absent",
-        rationale="The pinned PIPR monthly series carries 294 English LA ids, of which 292 overlap the crosswalk and two (E08000038, E08000039) do not. It omits four English crosswalk authorities: E06000053, E08000016, E08000019, and E09000001.",
+        rationale="The pinned PIPR monthly series carries 294 English LA ids: 292 overlap the crosswalk directly and two, E08000038 and E08000039, are the April 2025 codes of Barnsley and Sheffield, which the crosswalk declares as aliases of E08000016 and E08000019 (microcosm#929), so those cells bind. It omits two English crosswalk authorities: E06000053 and E09000001.",
         area_ids=pipr_lad_absent_area_ids,
     )
     add(

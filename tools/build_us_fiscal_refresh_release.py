@@ -263,6 +263,9 @@ from microcosm.build.us_runtime.reform_validation import (
     reform_validation_payload,
     write_reform_validation,
 )
+from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: TC001
+    CheckResult,
+)
 from microcosm.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_AGE_TARGETS,
     US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
@@ -3460,7 +3463,7 @@ def _ssi_person_uncapped_amount(
     """December person-level potential federal SSI, batched like Medicaid.
 
     SSA's age-band recipient counts are December 2024 point-in-time stocks.
-    ``uncapped_ssi > 0`` is the PolicyEngine-US 1.819.0 current-benefit
+    ``uncapped_ssi > 0`` is the PolicyEngine-US 2.2.1 current-benefit
     candidate mask and does not depend on the take-up input being assigned.
     """
 
@@ -5072,6 +5075,73 @@ def _with_calibrated_weights(
             factor=calibrated_weights.sum() / base_frame.weights_for("household").total,
             reason="US fiscal target refresh calibration",
         ),
+    )
+
+
+def _spm_composition_report(frame: Frame) -> CheckResult:
+    """The engine's SPM measurement classification of ``frame``, without a solve.
+
+    ``check_spm_composition`` reproduces spm-calculator 1.0.0's rule
+    (``adult = (age >= 18) | ((age >= 15) & role)``) over frame columns. The
+    role resolution it mirrors is exactly what this export can produce:
+    ``is_spm_independent_minor_role`` is formula-owned in the engine adapter
+    (``microcosm.frame.adapters.policyengine_us._GENERATED_VARIABLE_GROUPS``)
+    and therefore *cannot* be written by ``write_dataset``, while
+    ``is_household_head`` and ``is_household_spouse`` can — so a frame check
+    here and the engine's own reading of the written H5 agree.
+    """
+
+    from microcosm.build.us_runtime.release_gate_preflight import (
+        check_spm_composition,
+    )
+
+    return check_spm_composition(frame)
+
+
+def _spm_composition_gate_failures(
+    frame: Frame, *, stage: str
+) -> tuple[list[str], dict[str, object]]:
+    """The SPM measurement composition as one more batched pre-export gate.
+
+    ``reform_validation`` measures the release's 104 state SPM poverty levels on
+    one whole-dataset ``Microsimulation``, and one SPM unit with no classified
+    adult raises ``SPMInputError("SPM_COMPOSITION_REQUIRED")`` for the *whole
+    population* — a traceback naming neither the unit nor a remedy. This
+    classifies the same composition off the export frame, which exists as soon
+    as the calibrated weights are attached, so the refusal joins the batched
+    pre-export report: named, with every other failing gate, and before the H5
+    and NPZ writes rather than after them.
+
+    Returns the gate's failure lines (empty when the engine would accept this
+    export) and the detail keys its telemetry stage records. It never raises on
+    a frame it cannot classify: an unevaluable export frame is itself one of
+    those failure lines, so the run dies in the tool's ``Release gates failed:``
+    report naming the reason instead of with a bare ``ValueError`` traceback out
+    of the check.
+    """
+
+    try:
+        report = _spm_composition_report(frame)
+    except (KeyError, ValueError) as error:
+        return (
+            [
+                f"SPM measurement composition failed ({stage}): the export "
+                "frame cannot be classified, so the rule the engine applies to "
+                f"it cannot be checked: {error}"
+            ],
+            {"evaluated": False, "error": str(error)},
+        )
+    details = {"evaluated": True, **report.details}
+    if report.status != "FAIL":
+        return [], details
+    return (
+        [
+            f"SPM measurement composition failed ({stage}): "
+            + report.summary
+            + ". "
+            + " ".join(report.failures)
+        ],
+        details,
     )
 
 
@@ -10548,6 +10618,63 @@ def _main(argv: Sequence[str] | None = None) -> None:
                     for failure in ecps_parity_gate.failures
                 )
             )
+    # SPM measurement composition, hours before the engine would say so.
+    #
+    # Advisory, never a raise: the L0/refit export path *selects* a subset of
+    # this pool (``attach_l0_refit_entity_weights`` calls ``base_frame.select``),
+    # so a pool unit with no classified adult may simply not ship, and a hard
+    # refusal here would reject a run that would have succeeded. The exact,
+    # blocking answer is the batched pre-export gate taken on the export frame
+    # below. What this buys the operator is the pool-level number now rather
+    # than after the solve: a pool that carries the defect needs the SPM
+    # independence role whether or not today's selection happens to dodge it.
+    # Advisory means advisory: a pool that cannot be classified at all (no age
+    # column, no spm_unit table) must not abort the build from here. The export
+    # frame below is the graded point, and it fails with the same diagnosis.
+    try:
+        base_frame_spm_composition = _spm_composition_report(base_frame)
+    except (KeyError, ValueError) as error:
+        base_frame_spm_composition = None
+        print(
+            "BASE-POOL SPM COMPOSITION: not classifiable on the base frame "
+            f"({error}); the export frame below is still graded."
+        )
+        if telemetry is not None:
+            telemetry.stage(
+                "base_frame_spm_composition",
+                status="skipped",
+                message="Base pool carries no readable SPM composition inputs.",
+                error=str(error),
+            )
+    if base_frame_spm_composition is not None:
+        if base_frame_spm_composition.status != "PASS":
+            print(
+                "\n"
+                + "!" * 72
+                + f"\nBASE-POOL SPM COMPOSITION: {base_frame_spm_composition.summary}\n"
+                + "\n".join(base_frame_spm_composition.failures)
+                + "\nThis is advisory here — the export frame below is graded. "
+                "Preflight it next time: tools/preflight_us_release_gates.py\n"
+                + "!"
+                * 72
+            )
+        if telemetry is not None:
+            telemetry.stage(
+                "base_frame_spm_composition",
+                message="Classified the base pool's SPM measurement composition.",
+                status=base_frame_spm_composition.status,
+                **{
+                    key: value
+                    for key, value in base_frame_spm_composition.details.items()
+                    if key
+                    in (
+                        "n_units",
+                        "n_units_without_classified_adult",
+                        "n_units_without_member_aged_18_or_over",
+                        "role_source",
+                    )
+                },
+            )
     if telemetry is not None:
         telemetry.stage("target_compilation", message="Materializing target frame.")
     target_compilation_started = time.perf_counter()
@@ -11299,6 +11426,55 @@ def _main(argv: Sequence[str] | None = None) -> None:
             force_upload=True,
         )
 
+    # SPM measurement composition, as a batched pre-export gate.
+    #
+    # The export frame exists here — it is the calibrated/refit weights attached
+    # to the base support, built before any of this batch's gates — so the
+    # cheapest of them (pure pandas; the #893 lane journal measured the check at
+    # 0.05 s on the 907k-person phase-2 base pool) runs first and its failure
+    # joins the same list. That keeps BOTH properties the batch
+    # exists for: the run refuses by name rather than through the engine's
+    # anonymous population-wide SPM_COMPOSITION_REQUIRED, and it refuses with
+    # every other failing pre-export gate on record, before the H5 write and
+    # before the NPZ write, instead of after them.
+    #
+    # It rides the batch like every other pre-export gate, which also means
+    # --evidence-release can convert it into an owned known failure and export
+    # anyway (microcosm#506) — the conversion contract
+    # test_evidence_mode_conversion_is_pinned_structurally enforces on every
+    # terminal raise past the accumulator. Such an export still cannot be
+    # SPM-measured, so reform validation below reaches the engine's own
+    # refusal; that is the declared, owner-checked, manifest-recorded choice an
+    # evidence release makes about any pre-export gate, not a hole here.
+    spm_composition_failures, export_frame_spm_composition = (
+        _spm_composition_gate_failures(export_frame, stage="export frame")
+    )
+    terminal_gate_failures.extend(spm_composition_failures)
+    terminal_batch_telemetry.stage(
+        "export_frame_spm_composition",
+        message="Classified the export frame's SPM measurement composition.",
+        **{
+            key: value
+            for key, value in export_frame_spm_composition.items()
+            if key
+            in (
+                "evaluated",
+                "n_units",
+                "n_units_without_classified_adult",
+                "n_units_without_member_aged_18_or_over",
+                "role_source",
+            )
+        },
+    )
+    if spm_composition_failures:
+        terminal_batch_telemetry.stage(
+            "export_frame_spm_composition",
+            status="failed",
+            message="SPM measurement composition gate failed.",
+            failures=spm_composition_failures,
+            force_upload=True,
+        )
+
     terminal_batch_telemetry.stage(
         "export_dataset",
         message="Writing PolicyEngine-US H5.",
@@ -11551,7 +11727,8 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 failures=list(qrf_tail_gate.failures),
                 force_upload=True,
             )
-    # Batched pre-export raise: the calibration battery, input coverage,
+    # Batched pre-export raise: the calibration battery, SPM measurement
+    # composition, input coverage,
     # export-mass parity, and QRF tail concentration have ALL been evaluated
     # at this point, so one failed
     # run reports every failing pre-export group at once (Build M attempts 9

@@ -4,7 +4,9 @@
   "kind": "uk_vendored_ledger_facts",
   "resource": "orr_rail_facts.json",
   "purpose": "ORR rail industry finance: total government support to the rail industry (table 7270), government support by funding source (7271), franchised operator fare income (7223) and the rail fares index (7180). Consumed by the rail support target diagnostics and the fare-index lockstep check.",
-  "consumers": [],
+  "consumers": [
+    "uk_runtime.etb_services"
+  ],
   "planned_consumers": [
     "uk_aggregate_admin"
   ],
@@ -15,12 +17,12 @@
   },
   "source_fact_feed": {
     "source_repo": "PolicyEngine/chronicle",
-    "source_commit": "474a0ae100e9dbfa43c167e9e200ec07dcfc6643",
+    "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
     "build": "build-bundle --suite uk -> build-consumer-artifact",
     "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
-    "fact_row_count": 141400,
-    "facts_sha256": "bb12d77a661ef1649c2907211bfd58bc031dcf7d41d2e5d39a09d63eb7266d3d",
-    "manifest_sha256": "c649b7fea9178e309574ed10851d30623bd7e6ca1335006fe7f5ae44d801e78d"
+    "fact_row_count": 276205,
+    "facts_sha256": "6d039dd869dc1704b0c98fd1d2db72965b1c38de92c165fe4e12c3f530951e2d",
+    "manifest_sha256": "20ac5d22e7d8f3cdb83dbd7fd617e37e290f5c4c480097057f959aa14033391d"
   },
   "selections": [
     {

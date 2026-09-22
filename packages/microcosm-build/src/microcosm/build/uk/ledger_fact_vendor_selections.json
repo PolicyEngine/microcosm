@@ -8,12 +8,11 @@
       "resource": "dft_bus_value_anchors.json",
       "purpose": "DfT BUS05i passenger fare receipts and total estimated net support for England, London and England outside London (year-ending-March labels 2023 to 2025); BUS0415 local bus fares index quarter-end months for the same three areas; NTS0705a local bus trips per person by household income quintile, both series, 2023 and 2024. Consumed by the LCFS and ETB bus-fare and bus-support rakes and by the BUS0415 period-alignment pass.",
       "consumers": [
-        "uk_runtime.ledger_targets"
+        "uk_runtime.ledger_targets",
+        "uk_runtime.lcfs_consumption",
+        "uk_runtime.etb_services"
       ],
-      "planned_consumers": [
-        "lcfs_consumption",
-        "etb_services"
-      ],
+      "planned_consumers": [],
       "selections": [
         {
           "label": "bus05ai_fare_receipts",
@@ -74,9 +73,10 @@
     {
       "resource": "road_fuel_anchors.json",
       "purpose": "HMRC Hydrocarbon Oils Bulletin petrol and diesel quantities released for consumption by fiscal year; DESNZ annual average ULSP and ULSD pump prices; OBR fuel duty receipts by vehicle category; ONS mid-year UK population totals. Consumed by the LCFS donor litre-proxy uprating and the household-incidence fuel diagnostics.",
-      "consumers": [],
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
+      ],
       "planned_consumers": [
-        "lcfs_consumption",
         "uk_aggregate_admin"
       ],
       "selections": [
@@ -128,10 +128,10 @@
     {
       "resource": "licensed_cars_fuel_type.json",
       "purpose": "DfT VEH1103a licensed cars by fuel type, Great Britain, end-year stock 2023 to 2025. Consumed by the LCFS stage's ICE share in place of the nts_ice_share anchor.",
-      "consumers": [],
-      "planned_consumers": [
-        "lcfs_consumption"
+      "consumers": [
+        "uk_runtime.lcfs_consumption"
       ],
+      "planned_consumers": [],
       "selections": [
         {
           "label": "veh1103_licensed_cars_by_fuel_type",
@@ -159,10 +159,11 @@
     },
     {
       "resource": "need_energy_facts.json",
-      "purpose": "DESNZ NEED 2023 mean and median household gas and electricity consumption (kWh) by property type, tenure, household income band and region for England and Wales, and by property type, tenure and income band for Scotland. Consumed by the LCFS energy rake in place of need_energy_targets.json.",
-      "consumers": [],
+      "purpose": "DESNZ NEED 2023 and 2024 mean and median household gas and electricity consumption (kWh) by property type, tenure, household income band and region for England and Wales, and by property type, tenure and income band for Scotland. Consumed by the LCFS energy rake in place of need_energy_targets.json.",
+      "consumers": [
+        "uk_runtime.energy_pricing"
+      ],
       "planned_consumers": [
-        "lcfs_consumption",
         "uk_aggregate_admin"
       ],
       "selections": [
@@ -176,17 +177,16 @@
             ],
             "period_type": "calendar_year"
           },
-          "expected_row_count": 228
+          "expected_row_count": 456
         }
       ]
     },
     {
       "resource": "ofgem_price_cap_facts.json",
-      "purpose": "Ofgem default tariff cap levels at nil and benchmark consumption for the four charge restriction periods of FY2024-25 (2024-Q2 to 2025-Q1), direct debit, single-rate electricity and gas, every charge restriction region excluding VAT plus the GB average including and excluding VAT; and the benchmark consumption each level is set at. Consumed by the LCFS energy pricing (unit rate = (benchmark - nil) / benchmark consumption; nil = annual standing charge; VAT added from the engine parameter).",
+      "purpose": "Ofgem default tariff cap levels at nil and benchmark consumption for the four charge restriction periods of FY2024-25 (2024-Q2 to 2025-Q1), direct debit, single-rate electricity and gas, every charge restriction region excluding VAT plus the GB average including and excluding VAT; and the benchmark consumption each level is set at. Consumed by the LCFS energy pricing (unit rate = (benchmark - nil) / benchmark consumption; nil = annual standing charge; VAT added from the engine parameter). Since chronicle #271 the stage prices at the DESNZ QEP average prices paid (qep_energy_prices.json); the cap levels stay vendored as the regional maximum that the QEP-versus-cap lockstep test and the receipts compare against.",
       "consumers": [],
       "planned_consumers": [
-        "lcfs_consumption",
-        "uk_aggregate_admin"
+        "uk_runtime.energy_pricing"
       ],
       "selections": [
         {
@@ -233,10 +233,11 @@
     {
       "resource": "nts_bus_use_frequency.json",
       "purpose": "DfT NTS0313 shares of people by frequency of local bus use (all ages, England) and NTS0621 the same bands for people aged 60 and over, 2023 to 2025, with the unweighted sample sizes. Consumed by the LCFS bus-use incidence calibration.",
-      "consumers": [],
-      "planned_consumers": [
-        "lcfs_consumption"
+      "consumers": [
+        "uk_runtime.lcfs_consumption",
+        "uk_runtime.bus_use_incidence"
       ],
+      "planned_consumers": [],
       "selections": [
         {
           "label": "nts0313_local_bus_all_ages",
@@ -280,11 +281,11 @@
     {
       "resource": "devolved_bus_finance.json",
       "purpose": "Scotland bus and coach statistics (2024 and 2025 editions: journeys, passenger revenue, operator revenue, government support components, fare index); Welsh local authority roads and transport revenue outturn public transport lines for the Wales total; Northern Ireland Transport Holding Company transactions with DfI; DfI Translink bus journeys and passenger receipts by service. Consumed by the devolved cells of the bus-fare and bus-support rakes and the country-leg bus targets.",
-      "consumers": [],
-      "planned_consumers": [
-        "lcfs_consumption",
-        "etb_services"
+      "consumers": [
+        "uk_runtime.lcfs_consumption",
+        "uk_runtime.etb_services"
       ],
+      "planned_consumers": [],
       "selections": [
         {
           "label": "scotland_bus_and_coach_statistics",
@@ -340,7 +341,9 @@
     {
       "resource": "orr_rail_facts.json",
       "purpose": "ORR rail industry finance: total government support to the rail industry (table 7270), government support by funding source (7271), franchised operator fare income (7223) and the rail fares index (7180). Consumed by the rail support target diagnostics and the fare-index lockstep check.",
-      "consumers": [],
+      "consumers": [
+        "uk_runtime.etb_services"
+      ],
       "planned_consumers": [
         "uk_aggregate_admin"
       ],
@@ -362,7 +365,7 @@
     },
     {
       "resource": "ons_household_expenditure_facts.json",
-      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual, for COICOP 04.5 electricity, gas and other fuels, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, 2020 to 2025. Consumed by the domestic energy spend target and the motor-fuel spend diagnostic.",
+      "purpose": "ONS Consumer Trends household final consumption expenditure, current prices, annual, for COICOP 04.5 electricity, gas and other fuels and its sub-classes 04.5.1 electricity, 04.5.2 gas, 04.5.3 liquid fuels and 04.5.4 solid fuels, 07.2.2 fuels and lubricants for personal transport and 07.3.2 passenger transport by road, 2020 to 2025. Consumed by the domestic energy spend targets (04.5.1 and 04.5.2 bound per fuel) and the motor-fuel spend diagnostic.",
       "consumers": [],
       "planned_consumers": [
         "uk_aggregate_admin"
@@ -374,12 +377,197 @@
             "source_name": "ons",
             "source_concept": [
               "ons.household_expenditure.electricity_gas_other_fuels",
+              "ons.household_expenditure.electricity",
+              "ons.household_expenditure.gas",
+              "ons.household_expenditure.liquid_fuels",
+              "ons.household_expenditure.solid_fuels",
               "ons.household_expenditure.personal_transport_fuels_lubricants",
               "ons.household_expenditure.road_transport_services"
             ],
             "period_type": "calendar_year"
           },
-          "expected_row_count": 18
+          "expected_row_count": 42
+        }
+      ]
+    },
+    {
+      "resource": "desnz_domestic_energy_facts.json",
+      "purpose": "DESNZ domestic energy volumes: Energy Trends domestic electricity (table 5.5) and gas (table 4.1) consumption at actual temperature, annual and quarterly, United Kingdom, 2022 to the latest quarter (the published level the LCFS kWh rake scales to over FY2024-25), and the subnational electricity and gas statistics' domestic consumption and meter counts for Great Britain, England and Wales, the countries and the English regions, 2023 and 2024 (the published gas-connected share by region: gas meters over electricity meters).",
+      "consumers": [
+        "uk_runtime.energy_pricing"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "energy_trends_domestic_consumption",
+          "selector": {
+            "source_name": "desnz",
+            "source_concept": [
+              "desnz.energy_trends.domestic_electricity_consumption",
+              "desnz.energy_trends.domestic_gas_consumption"
+            ]
+          },
+          "expected_row_count": 43
+        },
+        {
+          "label": "subnational_domestic_consumption_and_meters_regions",
+          "selector": {
+            "source_name": "desnz",
+            "source_concept": [
+              "desnz.subnational.domestic_electricity_consumption",
+              "desnz.subnational.domestic_electricity_meter_count",
+              "desnz.subnational.domestic_gas_consumption",
+              "desnz.subnational.domestic_gas_meter_count"
+            ],
+            "geography_level": [
+              "country",
+              "region"
+            ]
+          },
+          "expected_row_count": 112
+        }
+      ]
+    },
+    {
+      "resource": "qep_energy_prices.json",
+      "purpose": "DESNZ Quarterly Energy Prices average domestic prices paid: standard electricity (table 2.2.4) and gas (table 2.3.4) average variable unit costs (GBP per kWh) and fixed costs (GBP per year) by QEP price region and payment method (standard credit, direct debit, prepayment, all), including VAT, calendar and fiscal years 2023 to 2025. Consumed by the LCFS energy pricing step in place of the Ofgem cap levels (the cap stays vendored as the regional maximum).",
+      "consumers": [
+        "uk_runtime.energy_pricing"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "qep_average_unit_and_fixed_costs",
+          "selector": {
+            "source_name": "desnz",
+            "source_concept": [
+              "desnz.qep.domestic_electricity_variable_unit_cost",
+              "desnz.qep.domestic_electricity_fixed_cost",
+              "desnz.qep.domestic_gas_variable_unit_cost",
+              "desnz.qep.domestic_gas_fixed_cost"
+            ]
+          },
+          "expected_row_count": 1465
+        }
+      ]
+    },
+    {
+      "resource": "hmrc_cgt_conditioning_facts.json",
+      "purpose": "HMRC Capital Gains Tax statistics 2026 release, tax year 2024-25 individual observations the CGT amounts imputation draws from and conditions on and the size-band donor stage weights by: Table 3 individuals by size of gain crossed with taxable income (the joint the amounts are drawn from: 10 gain bands x 6 income bands, the all-incomes row totals, the all-gains column totals and the grand total; cells too small to publish are absent), Table 2.1a individuals by size of gain (taxpayers and gains, 13 bands), Table 6 individuals by age band (taxpayers, gains and tax, 9 bands plus the all-ages total), Table 5 taxpayers, gains and tax by UK country and region (all taxpayers including trusts; 12 region-tier areas plus the England and UK totals) and Table 1 individuals, trusts and total lines (the individuals/total shares that translate Table 5 onto the individuals basis). The stage rakes its allocation targets to these margins and reports achieved versus published at the same grain; no value is derived here.",
+      "consumers": [
+        "uk_runtime.hmrc_capital_gains",
+        "uk_runtime.cgt_structure"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "table3_ty2024_individuals_by_size_of_gain_and_taxable_income",
+          "selector": {
+            "source_name": "hmrc",
+            "source_table": "Capital Gains Tax statistics Table 3: individual taxpayers and gains by size of gain and taxable income",
+            "entity_name": "person",
+            "period_type": "tax_year",
+            "period_value": 2024
+          },
+          "expected_row_count": 147
+        },
+        {
+          "label": "table2_1a_ty2024_individuals_by_size_of_gain",
+          "selector": {
+            "source_name": "hmrc",
+            "source_table": "Capital Gains Tax statistics Table 2: estimated number of taxpayers, amounts of gains and tax liabilities by size of gain",
+            "groupby_dimension": "cgt_gain_band",
+            "entity_name": "person",
+            "source_concept": [
+              "hmrc.cgt_taxpayers_individuals",
+              "hmrc.cgt_gains_individuals"
+            ],
+            "period_type": "tax_year",
+            "period_value": 2024
+          },
+          "expected_row_count": 26
+        },
+        {
+          "label": "table6_ty2024_individuals_by_age_band",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table6_2026.age.ty2024"
+          },
+          "expected_row_count": 30
+        },
+        {
+          "label": "table5_ty2024_all_taxpayers_by_country_region",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table5_2026.country_region.ty2024"
+          },
+          "expected_row_count": 42
+        },
+        {
+          "label": "table1_ty2024_individuals_trusts_total",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_statistics_2026.table1.ty2024"
+          },
+          "expected_row_count": 9
+        }
+      ]
+    },
+    {
+      "resource": "hmrc_cgt_asset_type_facts.json",
+      "purpose": "HMRC Capital Gains Tax statistics 2026 release rows the CGT asset-type stage assigns from and reports against: Table 8a tax year 2024-25 UK residents reporting residential property disposals (taxpayers, disposals, gains and tax by reporting channel: the CGT on UK Property service, the Self Assessment component and their total), Table 8b tax year 2024-25 UK Property service returns by taxpayer type (individuals, trusts and all; the individuals/all shares that restate Table 8a on the individuals basis of the national targets) and Table 7 tax year 2023-24 disposals, disposal proceeds and gains by asset category and asset type (sample-based; the composition prior for the non-residential asset-type draw, fenced from calibration). No value is derived here.",
+      "consumers": [
+        "uk_runtime.cgt_asset_type"
+      ],
+      "planned_consumers": [],
+      "selections": [
+        {
+          "label": "table8a_ty2024_residential_property_by_channel",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table8_2026.table8a.ty2024"
+          },
+          "expected_row_count": 12
+        },
+        {
+          "label": "table8b_ty2024_uk_property_service_by_taxpayer_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table8_2026.table8b.ty2024"
+          },
+          "expected_row_count": 15
+        },
+        {
+          "label": "table7_ty2023_by_asset_category",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table7_2026.asset_category.ty2023"
+          },
+          "expected_row_count": 6
+        },
+        {
+          "label": "table7_ty2023_asset_category_total",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table7_2026.asset_category_total.ty2023"
+          },
+          "expected_row_count": 3
+        },
+        {
+          "label": "table7_ty2023_by_financial_asset_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table7_2026.financial_asset_type.ty2023"
+          },
+          "expected_row_count": 12
+        },
+        {
+          "label": "table7_ty2023_by_non_financial_asset_type",
+          "selector": {
+            "source_name": "hmrc",
+            "record_set_id": "hmrc.cgt_table7_2026.non_financial_asset_type.ty2023"
+          },
+          "expected_row_count": 12
         }
       ]
     }

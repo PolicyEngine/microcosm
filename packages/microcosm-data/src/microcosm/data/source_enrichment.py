@@ -12,10 +12,16 @@ import csv
 import hashlib
 import json
 import re
+import warnings
 from collections.abc import Mapping
 from pathlib import Path
 
-from microcosm.data.contract import ReleaseContractError
+from microcosm.data.contract import (
+    COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS,
+    PUBLISHER_CLAIM_BASIS,
+    ReleaseContractError,
+    compatibility_claim_declarer_error,
+)
 
 SOURCE_ENRICHMENT_RELEASE_TYPE = "source_enrichment"
 SOURCE_ENRICHMENT_FILE = "source_enrichment.json"
@@ -27,6 +33,14 @@ SOURCE_EVIDENCE_SHA256 = (
 )
 SOURCE_PROVENANCE_FILE = "source_spm_independence_provenance.json"
 COMPATIBILITY_FILE = "source_enrichment_compatibility.json"
+#: The compatibility field a publisher may widen. Core stays pinned exactly to
+#: the tested version, as it always has: no producer can declare a Core range,
+#: so the validator must not honour one either.
+CLAIM_FIELD = "model"
+#: Second boundedness probe for a publisher claim. A claim may exclude the next
+#: major version by name, so the guard also asks whether it still admits a
+#: version no release will reach.
+_FAR_FUTURE_PROBE_MAJOR = 99999
 COMPATIBILITY_PACKAGES = (
     "policyengine-us",
     "policyengine-core",
@@ -235,11 +249,20 @@ def validate_source_enrichment_candidate(
     as measurements of the enriched model. Both actual H5 files are mandatory:
     a hand-written preservation receipt is not sufficient evidence.
     """
+    from microcosm.data.annual_projections import validate_annual_projection_extension
     from microcosm.data.h5_enrichment import compare_h5_enrichment
 
     release_dir = Path(release_dir)
     failures: list[str] = []
     manifest = _json(release_dir / "release_manifest.json", failures)
+    try:
+        annual_extension = validate_annual_projection_extension(
+            release_dir, manifest, artifact_root=artifact_root
+        )
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ReleaseContractError(
+            release_dir, [f"annual projection extension: {exc}"]
+        ) from exc
     build = _json(release_dir / "build_manifest.json", failures)
     report = _json(release_dir / SOURCE_ENRICHMENT_FILE, failures)
     if manifest.get("release_type") != SOURCE_ENRICHMENT_RELEASE_TYPE:
@@ -407,11 +430,15 @@ def validate_source_enrichment_candidate(
         SOURCE_PROVENANCE_FILE,
     }
     artifacts = _mapping(manifest.get("artifacts"))
+    annual_artifacts = annual_extension.additional_artifacts if annual_extension else {}
+    revision = annual_extension.revision if annual_extension else release_dir.name
     by_path = {}
     for key, raw in artifacts.items():
         entry = _mapping(raw)
         path = entry.get("path")
-        if not isinstance(path, str) or Path(path).name != path:
+        if not isinstance(path, str) or (
+            key not in annual_artifacts and Path(path).name != path
+        ):
             failures.append(
                 f"source enrichment artifact {key} must use a bare filename"
             )
@@ -421,12 +448,18 @@ def validate_source_enrichment_candidate(
         by_path[path] = entry
         if (
             entry.get("repo_id") != "policyengine/populace-us"
-            or entry.get("revision") != release_dir.name
+            or entry.get("revision") != revision
         ):
             failures.append(
                 f"source enrichment artifact {key} must pin the new repo/tag"
             )
-        local = candidate if path == filename else release_dir / path
+        local = (
+            annual_artifacts[key]
+            if key in annual_artifacts
+            else candidate
+            if path == filename
+            else release_dir / path
+        )
         if (
             local is None
             or not local.is_file()
@@ -447,7 +480,17 @@ def validate_source_enrichment_candidate(
     ):
         failures.append("default_datasets.national must select the enriched native H5")
     if (
-        len([entry for entry in by_path.values() if entry.get("kind") == "microdata"])
+        len(
+            [
+                entry
+                for key, entry in artifacts.items()
+                if _mapping(entry).get("kind") == "microdata"
+                and (
+                    annual_extension is None
+                    or key not in annual_extension.projected_artifacts
+                )
+            ]
+        )
         != 1
     ):
         failures.append(
@@ -472,6 +515,12 @@ def validate_source_enrichment_candidate(
             failures.append(
                 "pending source enrichment must not copy built-with package claims"
             )
+        if compatibility.get("publisher_claims") is not None:
+            failures.append(
+                "pending source enrichment must not declare a publisher "
+                "compatibility claim; a claim is made at certification, "
+                "against the measured runtime"
+            )
     elif compatibility.get("status") == "passed":
         if COMPATIBILITY_FILE not in by_path:
             failures.append(
@@ -485,6 +534,7 @@ def validate_source_enrichment_candidate(
             require_compatibility,
             compatibility_wheels,
             failures,
+            annual_revision=annual_extension.revision if annual_extension else None,
         )
     else:
         failures.append(
@@ -564,6 +614,322 @@ def _check_producer_source_identity(code: Mapping) -> None:
             )
 
 
+def _claim_specifier_set(specifier: object):
+    """Return the PEP 440 set ``specifier`` denotes, or raise ``ValueError``.
+
+    One copy of the specifier rules for both callers, so the requirement parser
+    refuses at the door exactly what the entry builder would refuse after a
+    qualification run.
+    """
+    from packaging.specifiers import InvalidSpecifier, SpecifierSet
+
+    if not isinstance(specifier, str) or not specifier.strip():
+        raise ValueError("publisher compatibility claim needs a PEP 440 specifier")
+    try:
+        specifier_set = SpecifierSet(specifier)
+    except InvalidSpecifier as exc:
+        raise ValueError(
+            f"publisher compatibility claim {specifier!r} is not a valid PEP 440 "
+            "specifier set"
+        ) from exc
+    if not tuple(specifier_set):
+        raise ValueError(
+            "publisher compatibility claim must constrain the version; an empty "
+            "specifier claims every release"
+        )
+    return specifier_set
+
+
+def parse_compatibility_claim_requirement(requirement: str, *, package: str) -> str:
+    """Return the specifier of ``<package><specifier>`` as written, or raise.
+
+    Spelling the package name into the claim is deliberate: the operator states
+    which package the range is about, and a claim naming the wrong one is a
+    typo the tooling must refuse rather than silently retarget. The specifier
+    is returned as declared, not re-rendered, so the published claim reads back
+    as the publisher wrote it.
+
+    A bare name, or anything else that does not constrain the version, is
+    refused here rather than after qualification: ``policyengine-us`` used to
+    parse to ``""`` and cost the caller a whole native-loader run before the
+    entry builder rejected it.
+    """
+    from packaging.requirements import InvalidRequirement, Requirement
+    from packaging.utils import canonicalize_name
+
+    if not isinstance(requirement, str) or not requirement.strip():
+        raise ValueError("publisher compatibility claim must not be empty")
+    try:
+        parsed = Requirement(requirement)
+    except InvalidRequirement as exc:
+        raise ValueError(
+            f"publisher compatibility claim {requirement!r} is not a PEP 508 "
+            "requirement such as 'policyengine-us>=2.0.1,<2.1'"
+        ) from exc
+    if canonicalize_name(parsed.name) != canonicalize_name(package):
+        raise ValueError(
+            f"publisher compatibility claim names {parsed.name!r}; this claim "
+            f"declares compatibility for the built-with package {package!r}"
+        )
+    if parsed.url or parsed.extras or parsed.marker:
+        raise ValueError(
+            "publisher compatibility claim must be a bare name and specifier, "
+            "with no URL, extras or environment marker"
+        )
+    specifier = requirement.strip()[len(parsed.name) :].strip()
+    # PEP 508 also allows ``name (>=1,<2)``; the parentheses are grammar, not
+    # part of the specifier the manifest records.
+    if specifier.startswith("(") and specifier.endswith(")"):
+        specifier = specifier[1:-1].strip()
+    _claim_specifier_set(specifier)
+    return specifier
+
+
+def check_compatibility_claim_declarer(declared_by: object) -> None:
+    """Raise unless a claim names someone accountable for it.
+
+    The rule itself lives in :func:`microcosm.data.contract` beside the release
+    contract that re-checks it, so the producer cannot drift from the layer that
+    reads a published bundle.
+    """
+    reason = compatibility_claim_declarer_error(declared_by)
+    if reason is not None:
+        raise ValueError(
+            "publisher compatibility claim must record who declared it, as "
+            f"trimmed printable text of at most "
+            f"{COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS} characters: declared_by "
+            f"{reason}"
+        )
+
+
+def compatibility_claim_entry(
+    specifier: object, *, package: str, version: str, declared_by: object
+) -> dict:
+    """Validate one publisher claim and return its manifest entry, or raise.
+
+    Containment uses the same PEP 440 semantics the consumers apply
+    (``microcosm.data.loader._package_certification`` and the wrapper's
+    ``policyengine.provenance.manifest._specifier_matches``), so a claim this
+    function accepts is a claim they will honour, and one they would refuse for
+    the tested version is refused here instead of at load time.
+    """
+    from packaging.version import InvalidVersion, Version
+
+    specifier_set = _claim_specifier_set(specifier)
+    check_compatibility_claim_declarer(declared_by)
+    try:
+        tested = Version(version)
+    except InvalidVersion as exc:
+        raise ValueError(
+            f"tested {package} version {version!r} is not a valid PEP 440 version"
+        ) from exc
+    if tested not in specifier_set:
+        raise ValueError(
+            f"publisher compatibility claim {specifier!r} excludes the tested "
+            f"{package} version {version}; a claim must cover what was measured"
+        )
+    next_major = Version(f"{tested.epoch}!{tested.major + 1}.0.0")
+    if next_major in specifier_set:
+        raise ValueError(
+            f"publisher compatibility claim {specifier!r} reaches "
+            f"{next_major} and beyond; a claim measured against {package} "
+            f"{version} must stop below the next major version, as "
+            "'>=2.0.1,<2.1' or '~=2.0.1' do"
+        )
+    # A range that punches a hole at exactly the next major ('>=2.0.1,!=3.0.0')
+    # passes the probe above while still certifying 4.x and 5.x, so probe far
+    # past any version this package will plausibly reach as well. Two probes are
+    # a bound check, not a proof of boundedness: a claim contrived to exclude
+    # both while admitting versions between them would still pass.
+    far_future = Version(f"{tested.epoch}!{_FAR_FUTURE_PROBE_MAJOR}.0.0")
+    if far_future in specifier_set:
+        raise ValueError(
+            f"publisher compatibility claim {specifier!r} still admits "
+            f"{far_future}; a claim measured against {package} {version} must "
+            f"stop below {next_major} with an upper bound, not by excluding "
+            "single versions from an open range"
+        )
+    # Bounding a claim above says nothing about how far below it reaches. A
+    # bare '<2.1' contains the tested version and neither probe above, yet
+    # certifies every release the package ever made — including ones predating
+    # the native-input loader path this qualification measures. The probe sits
+    # at the floor of the tested version's own epoch because a claim may mix
+    # epochs: '>=2.0.1,<1!2.1' over a 1!2.0.1 build is open below within epoch
+    # 1, admitting 1!0, while excluding the epoch-0 floor — which sorts under
+    # every epoch-1 release, so a probe at a bare Version('0') would pass it.
+    no_lower_bound = Version(f"{tested.epoch}!0")
+    if no_lower_bound in specifier_set:
+        raise ValueError(
+            f"publisher compatibility claim {specifier!r} admits "
+            f"{no_lower_bound}, far below the tested {package} version "
+            f"{version}; a claim must also state a lower bound, as "
+            "'>=2.0.1,<2.1' does"
+        )
+    return {
+        "name": package,
+        "specifier": specifier,
+        "basis": PUBLISHER_CLAIM_BASIS,
+        "declared_by": declared_by,
+    }
+
+
+def _claim_probe_versions(specifier_sets, tested):
+    """Return versions to compare two claims over, lowest first.
+
+    A finite search set, not an enumeration of PEP 440: every version the
+    specifiers name, each of those and the tested version bumped by one micro,
+    one minor and one major, plus one far-future release. A version found in
+    here that one claim covers and the other does not is a real difference; not
+    finding one is not proof that none exists.
+    """
+    from packaging.version import InvalidVersion, Version
+
+    named = [tested]
+    for specifier_set in specifier_sets:
+        for specifier in specifier_set:
+            try:
+                named.append(Version(specifier.version.split("*")[0].rstrip(".")))
+            except InvalidVersion:
+                continue
+    probes = {Version(f"{tested.epoch}!{_FAR_FUTURE_PROBE_MAJOR}.0.0")}
+    for version in named:
+        epoch, major, minor, micro = (
+            version.epoch,
+            version.major,
+            version.minor,
+            version.micro,
+        )
+        probes.update(
+            {
+                version,
+                Version(f"{epoch}!{major}.{minor}.{micro + 1}"),
+                Version(f"{epoch}!{major}.{minor + 1}.0"),
+                Version(f"{epoch}!{major + 1}.0.0"),
+            }
+        )
+    return sorted(probes)
+
+
+def _claim_coverage_lost(previous, *, package, specifier, version):
+    """Return what re-emitting ``specifier`` stops covering, or ``None``.
+
+    ``previous`` is the ``compatible_*_packages`` list the bundle being
+    certified already carried. Re-certifying without the claim flags rewrites
+    that list from the flags, which turns a declared range back into an exact
+    pin; this names the lowest probe version the old entries covered and the new
+    one does not, so the caller can say what is being given up.
+    """
+    from packaging.specifiers import InvalidSpecifier, SpecifierSet
+    from packaging.utils import canonicalize_name
+    from packaging.version import InvalidVersion, Version
+
+    if not isinstance(previous, list):
+        return None
+    declared = []
+    for entry in previous:
+        if not isinstance(entry, Mapping):
+            continue
+        name = entry.get("name")
+        if not isinstance(name, str) or canonicalize_name(name) != canonicalize_name(
+            package
+        ):
+            continue
+        text = entry.get("specifier")
+        if not isinstance(text, str):
+            continue
+        try:
+            declared.append((text, SpecifierSet(text)))
+        except InvalidSpecifier:
+            continue
+    if not declared:
+        return None
+    try:
+        emitted = SpecifierSet(specifier)
+        tested = Version(version)
+    except (InvalidSpecifier, InvalidVersion):
+        return None
+    sets = [candidate for _, candidate in declared] + [emitted]
+    for probe in _claim_probe_versions(sets, tested):
+        if probe not in emitted and any(
+            probe in candidate for _, candidate in declared
+        ):
+            return {
+                "previous_specifiers": [text for text, _ in declared],
+                "emitted_specifier": specifier,
+                "first_version_no_longer_covered": str(probe),
+            }
+    return None
+
+
+def _narrowing_notice(field, package, lost, *, offer_flags):
+    """Say what re-emitting a compatibility entry takes away.
+
+    ``model`` is the only field a publisher can declare a range for (see
+    :data:`CLAIM_FIELD`), so it is the only one with a claim to narrow. Core's
+    entry is always the exact tested pin; if it ever moved, the bundle would
+    drop every consumer on the old Core, which is worth saying — but saying it
+    narrows a Core *claim* would name a thing no producer can declare.
+
+    Core's wording is defence in depth rather than a path anyone walks today:
+    re-certification validates the input bundle first, and that gate requires
+    its recorded receipt to equal the current runtime, so a moved Core version
+    is refused before the emitted pin could differ from the carried one.
+    """
+    change = (
+        f"narrows the {package} compatibility claim"
+        if field == CLAIM_FIELD
+        else f"moves the {package} compatibility pin"
+    )
+    notice = (
+        f"certification {change} this bundle already carried: "
+        f"{', '.join(lost['previous_specifiers'])} covered "
+        f"{lost['first_version_no_longer_covered']} and the "
+        f"{lost['emitted_specifier']} this run emits does not."
+    )
+    if offer_flags:
+        notice += (
+            " Pass --compatible-model-specifier with "
+            "--compatibility-claim-declared-by to keep a declared range."
+        )
+    return notice
+
+
+def _narrowed_claims(report) -> dict:
+    """Return the narrowing ``report`` records, or ``{}``.
+
+    One tolerance for every verdict that reports the record: certification and
+    validation have the report in hand, publication reads it off disk, and a
+    bundle they disagreed about would be reported by some of them and not
+    others. Anything missing or unexpected reads as no record.
+    """
+    compatibility = report.get("compatibility") if isinstance(report, Mapping) else None
+    narrowed = (
+        compatibility.get("narrowed_claims")
+        if isinstance(compatibility, Mapping)
+        else None
+    )
+    return dict(narrowed) if isinstance(narrowed, Mapping) else {}
+
+
+def recorded_narrowed_claims(release_dir) -> dict:
+    """Return the compatibility narrowing ``release_dir`` records, or ``{}``.
+
+    Certification warns when re-emitting a bundle takes coverage away, and
+    records the same under ``compatibility.narrowed_claims``. That warning
+    reaches one terminal; this is how a later gate reads the record back and
+    reports it to whoever is standing in front of the next one.
+
+    This surfaces something the validators have already accepted or refused on
+    their own terms; it is a reporting path, not a gate, and must not turn a
+    valid bundle into an error — an unreadable bundle reads as no record.
+    """
+    try:
+        report = json.loads((Path(release_dir) / SOURCE_ENRICHMENT_FILE).read_text())
+    except (OSError, ValueError):
+        return {}
+    return _narrowed_claims(report)
+
+
 def _check_compatibility(
     release_dir,
     manifest,
@@ -572,6 +938,8 @@ def _check_compatibility(
     require_wheel_proof,
     wheels,
     failures,
+    *,
+    annual_revision: str | None = None,
 ):
     receipt_path = release_dir / COMPATIBILITY_FILE
     receipt = _json(receipt_path, failures)
@@ -595,7 +963,22 @@ def _check_compatibility(
             )
         from microcosm.data.contract import _check_release_manifest
 
-        _check_release_manifest(manifest, release_dir.name, failures)
+        _check_release_manifest(
+            manifest, release_dir.name, failures, annual_revision=annual_revision
+        )
+        raw_claims = compatibility.get("publisher_claims")
+        claims = _mapping(raw_claims)
+        malformed_claims = raw_claims is not None and (
+            not isinstance(raw_claims, Mapping) or set(claims) != {CLAIM_FIELD}
+        )
+        if malformed_claims:
+            # Say only this. Falling through to the per-package branch below
+            # would add "no publisher compatibility claim was declared", which
+            # is the opposite of what happened.
+            failures.append(
+                f"publisher_claims must map {CLAIM_FIELD!r} to one declared "
+                "compatibility claim; Core stays pinned to the tested version"
+            )
         for package, field in (
             ("policyengine-us", "model"),
             ("policyengine-core", "core"),
@@ -607,11 +990,42 @@ def _check_compatibility(
                 failures.append(
                     f"compatibility built-with {package} must match tested runtime"
                 )
-            if manifest.get(f"compatible_{field}_packages") != [
-                {"name": package, "specifier": f"=={version}"}
-            ]:
+            if malformed_claims:
+                continue
+            declared = claims.get(field) if field == CLAIM_FIELD else None
+            if declared is None:
+                if manifest.get(f"compatible_{field}_packages") != [
+                    {"name": package, "specifier": f"=={version}"}
+                ]:
+                    failures.append(
+                        f"compatibility {package} must pin exactly the tested "
+                        "version unless the certified report declares a "
+                        "publisher compatibility claim"
+                    )
+                continue
+            # A claim widens the binding, so the report must carry it and the
+            # manifest must say exactly what the report says. The report is
+            # hash-bound by the manifest's own artifact entry, so a manifest
+            # widened after certification has no declaration to stand on.
+            try:
+                entry = compatibility_claim_entry(
+                    _mapping(declared).get("specifier"),
+                    package=package,
+                    version=version,
+                    declared_by=_mapping(declared).get("declared_by"),
+                )
+            except ValueError as exc:
+                failures.append(f"declared {package} compatibility claim: {exc}")
+                continue
+            if declared != entry:
                 failures.append(
-                    f"compatibility {package} must pin exactly the tested version"
+                    f"declared {package} compatibility claim must record only "
+                    "the validated name, specifier, basis and declarer"
+                )
+            if manifest.get(f"compatible_{field}_packages") != [entry]:
+                failures.append(
+                    f"compatibility {package} must match the declared publisher "
+                    "compatibility claim"
                 )
     except (ValueError, OSError, ImportError, KeyError, TypeError) as exc:
         failures.append(f"native loader compatibility failed: {exc}")
@@ -886,11 +1300,25 @@ def certify_source_enrichment(
     parent_h5: Path | str,
     artifact_root: Path | str,
     compatibility_wheels: tuple[Path | str, ...],
+    compatible_model_specifier: str | None = None,
+    compatibility_claim_declared_by: str | None = None,
 ) -> Path:
     """Create a separate certified bundle only after measured loader checks pass.
 
     H5 and source evidence are never modified. The caller still owns canonical
     model acceptance, package publication proof, and publisher authorization.
+
+    By default the bundle pins the exact model and Core versions the loader
+    checks ran against. ``compatible_model_specifier`` lets the publisher
+    declare a wider model range instead — ``"policyengine-us>=2.0.1,<2.1"`` —
+    which the bundle records as a publisher claim attributed to
+    ``compatibility_claim_declared_by``. The claim never replaces the measured
+    runtime: ``build.built_with_model_package`` still names the exact version
+    certification tested, and the range must contain it.
+
+    Certifying a bundle that already declares a wider range, without passing
+    the flags again, warns and records ``compatibility.narrowed_claims`` rather
+    than quietly reverting it to the exact pin.
     """
     import shutil
     import tempfile
@@ -901,12 +1329,39 @@ def certify_source_enrichment(
         raise ValueError(
             "output_dir must be new and keep the candidate release id as its basename"
         )
+    if (compatible_model_specifier is None) != (
+        compatibility_claim_declared_by is None
+    ):
+        raise ValueError(
+            "a publisher compatibility claim needs both its specifier and the "
+            "declarer who is accountable for it"
+        )
+    claim_specifier = None
+    if compatible_model_specifier is not None:
+        # Everything checkable without the tested version is checked here, so a
+        # malformed claim costs nothing rather than a whole qualification run.
+        claim_specifier = parse_compatibility_claim_requirement(
+            compatible_model_specifier, package="policyengine-us"
+        )
+        check_compatibility_claim_declarer(compatibility_claim_declared_by)
     report = validate_source_enrichment_candidate(
         release_dir, parent_h5=parent_h5, artifact_root=artifact_root
     )
     candidate = Path(artifact_root) / report["dataset"]["filename"]
     receipt = run_native_loader_compatibility(
         candidate, require_wheels=True, compatibility_wheels=compatibility_wheels
+    )
+    claims = (
+        {
+            CLAIM_FIELD: compatibility_claim_entry(
+                claim_specifier,
+                package="policyengine-us",
+                version=receipt["packages"]["policyengine-us"]["version"],
+                declared_by=compatibility_claim_declared_by,
+            )
+        }
+        if claim_specifier is not None
+        else {}
     )
     output_dir.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(
@@ -920,26 +1375,59 @@ def certify_source_enrichment(
                 json.dumps(value, indent=2, sort_keys=True) + "\n"
             )
 
+        manifest = json.loads((staged / "release_manifest.json").read_text())
+        emitted, narrowed = {}, {}
+        for package, field in (
+            ("policyengine-us", "model"),
+            ("policyengine-core", "core"),
+        ):
+            version = receipt["packages"][package]["version"]
+            entry = claims.get(field, {"name": package, "specifier": f"=={version}"})
+            emitted[field] = (package, version, entry)
+            # The compatible list below is rewritten from the flags, so
+            # re-certifying a declared bundle without them silently reverts it
+            # to an exact pin. Say so, in the terminal and in the bundle.
+            lost = _claim_coverage_lost(
+                manifest.get(f"compatible_{field}_packages"),
+                package=package,
+                specifier=entry["specifier"],
+                version=version,
+            )
+            if lost is None:
+                continue
+            narrowed[field] = lost
+            warnings.warn(
+                _narrowing_notice(
+                    field,
+                    package,
+                    lost,
+                    # Only the run that forgot them needs telling. Re-certifying
+                    # with a tighter range is a deliberate narrowing, still
+                    # worth naming, but its operator already passed the flags.
+                    offer_flags=field == CLAIM_FIELD and claim_specifier is None,
+                ),
+                RuntimeWarning,
+                stacklevel=2,
+            )
         write(COMPATIBILITY_FILE, receipt)
         report["compatibility"] = {
             "status": "passed",
             "filename": COMPATIBILITY_FILE,
             "sha256": sha256_file(staged / COMPATIBILITY_FILE),
         }
+        if claims:
+            # Absent by default, so an undeclared bundle keeps the bytes it
+            # has always had.
+            report["compatibility"]["publisher_claims"] = claims
+        if narrowed:
+            report["compatibility"]["narrowed_claims"] = narrowed
         write(SOURCE_ENRICHMENT_FILE, report)
-        manifest = json.loads((staged / "release_manifest.json").read_text())
-        for package, field in (
-            ("policyengine-us", "model"),
-            ("policyengine-core", "core"),
-        ):
-            version = receipt["packages"][package]["version"]
+        for field, (package, version, entry) in emitted.items():
             manifest["build"][f"built_with_{field}_package"] = {
                 "name": package,
                 "version": version,
             }
-            manifest[f"compatible_{field}_packages"] = [
-                {"name": package, "specifier": f"=={version}"}
-            ]
+            manifest[f"compatible_{field}_packages"] = [entry]
         manifest["data_package"] = {
             "name": "microcosm-data",
             "version": metadata.version("microcosm-data"),
@@ -978,10 +1466,40 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--require-compatibility", action="store_true")
     parser.add_argument("--compatibility-wheel", action="append", type=Path, default=[])
+    parser.add_argument(
+        "--compatible-model-specifier",
+        help=(
+            "declare a publisher model compatibility range instead of the "
+            "default exact pin, as a PEP 508 requirement naming the built-with "
+            "package, e.g. 'policyengine-us>=2.0.1,<2.1'. The range must "
+            "contain the version certification tested and be bounded above "
+            "and below. "
+            "Requires --compatibility-claim-declared-by."
+        ),
+    )
+    parser.add_argument(
+        "--compatibility-claim-declared-by",
+        help=(
+            "who declares the compatibility range, recorded in the bundle "
+            "(e.g. 'PolicyEngine data release owner, microcosm#912')"
+        ),
+    )
     args = parser.parse_args(argv)
     if args.certify and args.output_dir is None:
         parser.error(
             "--certify requires a new --output-dir ending in the same release id"
+        )
+    if (args.compatible_model_specifier is None) != (
+        args.compatibility_claim_declared_by is None
+    ):
+        parser.error(
+            "--compatible-model-specifier and --compatibility-claim-declared-by "
+            "are declared together; a claim records who is accountable for it"
+        )
+    if args.compatible_model_specifier is not None and not args.certify:
+        parser.error(
+            "--compatible-model-specifier applies to --certify; validation "
+            "reads the claim the certified bundle already records"
         )
     try:
         if args.certify:
@@ -991,8 +1509,17 @@ def main(argv: list[str] | None = None) -> int:
                 parent_h5=args.parent_h5,
                 artifact_root=args.artifact_root,
                 compatibility_wheels=tuple(args.compatibility_wheel),
+                compatible_model_specifier=args.compatible_model_specifier,
+                compatibility_claim_declared_by=(args.compatibility_claim_declared_by),
             )
-            print(json.dumps({"certified_bundle": str(result), "published": False}))
+            certified = {"certified_bundle": str(result), "published": False}
+            # The run that narrowed a claim already warned about it. Say it in
+            # the verdict too: the warning is the signal this reporting path
+            # exists because it cannot be relied on.
+            narrowed = recorded_narrowed_claims(result)
+            if narrowed:
+                certified["narrowed_claims"] = narrowed
+            print(json.dumps(certified))
         else:
             report = validate_source_enrichment_candidate(
                 args.release_dir,
@@ -1001,11 +1528,17 @@ def main(argv: list[str] | None = None) -> int:
                 require_compatibility=args.require_compatibility,
                 compatibility_wheels=tuple(args.compatibility_wheel),
             )
-            print(
-                json.dumps(
-                    {"valid": True, "compatibility": report["compatibility"]["status"]}
-                )
-            )
+            validated = {
+                "valid": True,
+                "compatibility": report["compatibility"]["status"],
+            }
+            # Certification's narrowing warning reaches one terminal. The
+            # record it leaves behind reaches every later gate, so say so here
+            # rather than reporting only that the bundle is valid.
+            narrowed = _narrowed_claims(report)
+            if narrowed:
+                validated["narrowed_claims"] = narrowed
+            print(json.dumps(validated))
     except (ValueError, OSError, ImportError, KeyError, TypeError) as exc:
         print(str(exc), file=sys.stderr)
         return 1

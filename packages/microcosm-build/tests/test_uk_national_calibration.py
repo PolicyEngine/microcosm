@@ -41,7 +41,7 @@ from microcosm.build.uk_runtime.national_frame import (
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
-ACTIVE_REFERENCE_COUNT = 424
+ACTIVE_REFERENCE_COUNT = 705
 
 
 def _uc_reference(**overrides) -> LedgerTargetReference:
@@ -403,6 +403,44 @@ def test_uc_calibration_compiles_and_moves_weighted_count_towards_fact() -> None
     assert stage.manifest["weights"]["mass_log_records"] == 1
     assert stage.manifest["solve"]["n_targets"] == 1
     assert stage.manifest["solve"]["n_households"] == 4
+
+
+def test_stage_forwards_solver_progress_and_complete_lifecycle() -> None:
+    progress: list[dict[str, object]] = []
+    stages: list[tuple[str, str, dict[str, object]]] = []
+    stage = UKNationalCalibrationStage(
+        _registry(),
+        band_edge_registry=_registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
+        progress_callback=progress.append,
+        stage_callback=lambda stage_id, status, details: stages.append(
+            (stage_id, status, dict(details))
+        ),
+    )
+
+    stage(_frame())
+
+    assert progress
+    assert all(event["kind"] == "calibration_epoch" for event in progress)
+    assert [(stage_id, status) for stage_id, status, _details in stages] == [
+        ("calibration_input_validation", "started"),
+        ("calibration_input_validation", "completed"),
+        ("measure_resolution", "started"),
+        ("measure_resolution", "completed"),
+        ("target_materialization", "started"),
+        ("target_materialization", "completed"),
+        ("solver_preparation", "started"),
+        ("solver_preparation", "completed"),
+        ("solver_execution", "started"),
+        ("solver_execution", "completed"),
+        ("calibration_result_validation", "started"),
+        ("calibration_result_validation", "completed"),
+        ("calibration_evidence_construction", "started"),
+        ("calibration_evidence_construction", "completed"),
+    ]
+    assert stages[-1][2]["diagnostic_count"] == 1
+    assert all(details["elapsed_seconds"] >= 0 for _, _, details in stages)
 
 
 def test_uc_calibration_stage_accepts_benunit_grain_reference_on_nested_frame() -> None:
@@ -824,20 +862,23 @@ def test_post_solve_fence_requires_calibrated_kind_and_mass_record() -> None:
 
 
 def test_national_doctrine_constants_are_the_declared_contract() -> None:
-    assert UK_NATIONAL_SOLVE_EPOCHS == 256
+    # María's ruling (2026-09-20, microcosm#965): the certified-cut posture every
+    # campaign national run overrode to — 1,500 epochs, family_equal — is
+    # the doctrine, so a certified national cut records no overrides.
+    assert UK_NATIONAL_SOLVE_EPOCHS == 1500
     assert UK_NATIONAL_LEARNING_RATE == 0.02
     assert UK_NATIONAL_MAX_WEIGHT_RATIO == 10.0
     assert UK_NATIONAL_SEED == 0
     assert UK_NATIONAL_TARGET_LOSS_CAP == 10.0
     assert UK_NATIONAL_L0_LAMBDA == 0.0
     assert UK_NATIONAL_MASS_RULE == "free"
-    # María's ruling (2026-08-24): family_equal is vocabulary, never the
-    # default — she passes it as an explicit per-run override.
-    assert UK_NATIONAL_TARGET_WEIGHT_RULE == "uniform"
+    # "uniform" (the 2026-08-24 default) stays vocabulary: an explicit,
+    # receipted per-run override, never silently reachable.
+    assert UK_NATIONAL_TARGET_WEIGHT_RULE == "family_equal"
     assert UK_NATIONAL_SOLVE_DOCTRINE == UKNationalSolveDoctrine()
     assert UK_NATIONAL_SOLVE_DOCTRINE.scale_rule == "default_target_loss_scales"
-    assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "uniform"
-    assert UKNationalSolveDoctrine(target_weight_rule="family_equal")
+    assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "family_equal"
+    assert UKNationalSolveDoctrine(target_weight_rule="uniform")
 
 
 def test_uk_doctrine_with_overrides_receipts_effective_diffs_only() -> None:
@@ -855,18 +896,18 @@ def test_uk_doctrine_with_overrides_receipts_effective_diffs_only() -> None:
     doctrine, receipt = uk_doctrine_with_overrides(
         epochs=128,
         learning_rate=0.01,
-        target_weight_rule="family_equal",
+        target_weight_rule="uniform",
         target_loss_cap=5.0,
     )
     assert doctrine.epochs == 128
     assert doctrine.learning_rate == 0.01
-    assert doctrine.target_weight_rule == "family_equal"
+    assert doctrine.target_weight_rule == "uniform"
     assert doctrine.target_loss_cap == 5.0
     assert receipt == {
-        "epochs": {"default": 256, "effective": 128},
+        "epochs": {"default": 1500, "effective": 128},
         "learning_rate": {"default": 0.02, "effective": 0.01},
         "target_loss_cap": {"default": 10.0, "effective": 5.0},
-        "target_weight_rule": {"default": "uniform", "effective": "family_equal"},
+        "target_weight_rule": {"default": "family_equal", "effective": "uniform"},
     }
 
 
@@ -1098,3 +1139,38 @@ def test_packaged_uc_headline_refuses_incomplete_month_cell_fixture(defect) -> N
 
     with pytest.raises(ValueError, match="monthly window"):
         compile_ledger_target_references(facts, [reference], country="uk")
+
+
+def test_stage_attributes_failure_to_the_operation_actually_executing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stages: list[tuple[str, str]] = []
+    stage = UKNationalCalibrationStage(
+        _registry(),
+        band_edge_registry=_registry(),
+        period=2025,
+        doctrine=UKNationalSolveDoctrine(epochs=5),
+        stage_callback=lambda stage_id, status, details: stages.append(
+            (stage_id, status)
+        ),
+    )
+
+    def fail_materialization(*args, **kwargs):
+        raise RuntimeError("materialization failed")
+
+    monkeypatch.setattr(
+        "microcosm.build.uk_runtime.national_calibration.materialize_uk_ledger_targets",
+        fail_materialization,
+    )
+
+    with pytest.raises(RuntimeError, match="materialization failed"):
+        stage(_frame())
+
+    assert stages == [
+        ("calibration_input_validation", "started"),
+        ("calibration_input_validation", "completed"),
+        ("measure_resolution", "started"),
+        ("measure_resolution", "completed"),
+        ("target_materialization", "started"),
+        ("target_materialization", "failed"),
+    ]

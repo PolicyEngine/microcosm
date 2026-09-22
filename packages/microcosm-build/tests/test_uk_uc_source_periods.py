@@ -442,7 +442,9 @@ def test_generator_preserves_observation_basis_and_explicit_months():
         "uc": {"observation_basis": "monthly_stock", **uc_source_month_metadata(MONTHS)}
     }
     contract["targets"][0]["family"] = "other"
-    with pytest.raises(ValueError, match="UK UC-only"):
+    with pytest.raises(
+        ValueError, match="declared only by the UK DWP monthly families"
+    ):
         _reference_metadata(contract)
 
 
@@ -453,7 +455,8 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         for reference in references
         if reference.family == "dwp_universal_credit"
     ]
-    assert len(monthly) == 111
+    assert len(monthly) == 118
+    calendar_2025 = [f"2025-{month:02}" for month in range(1, 13)]
     new_paid = {
         "dwp.uc.households",
         *{
@@ -471,9 +474,23 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         },
     }
     assert len(new_paid) == 10
+    # The #882 element rows bind the chronicle#260 Payment Indicator crosses on
+    # the same calendar-2025 paid basis; the deductions statistics start in
+    # March 2025, so that row declares the ten published months.
+    element_windows = {
+        "dwp.uc.households_lcwra_element": calendar_2025,
+        "dwp.uc.households_carer_element": calendar_2025,
+        "dwp.uc.households_housing_element": calendar_2025,
+        "dwp.uc.households_housing_element_social_rented": calendar_2025,
+        "dwp.uc.households_housing_element_private_rented": calendar_2025,
+        "dwp.uc.households_childcare_element": calendar_2025,
+        "dwp.uc.households_with_deduction": [
+            f"2025-{month:02}" for month in range(3, 13)
+        ],
+    }
     for reference in monthly:
-        if reference.name in new_paid:
-            expected_months = [f"2025-{month:02}" for month in range(1, 13)]
+        if reference.name in new_paid or reference.name in element_windows:
+            expected_months = element_windows.get(reference.name, calendar_2025)
             assert reference.ledger_selector["period_value"] == expected_months
             if reference.value_operation == "monthly_window_sum_average":
                 assert reference.period_match_policy == "source_window"
@@ -484,7 +501,10 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
                 assert reference.value_operation == "monthly_window_average"
                 assert reference.period_match_policy == "source_window"
                 assert not reference.value_operands
-                assert reference.name.startswith("dwp.uc.households_children_")
+                assert (
+                    reference.name.startswith("dwp.uc.households_children_")
+                    or reference.name in element_windows
+                )
             assert reference.uprating_from_period is None
             assert reference.uprating_to_period is None
         else:
@@ -492,8 +512,27 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
             assert reference.value_operation == "calendar_year_average"
         assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == expected_months
     assert new_paid <= {reference.name for reference in monthly}
+    assert set(element_windows) <= {reference.name for reference in monthly}
+    # The #882 Housing Benefit caseload rows bind the Stat-Xplore client-type
+    # by tenure cube on the same calendar-2025 window; no other family
+    # declares source months.
+    housing_benefit = [
+        reference
+        for reference in references
+        if reference.family == "dwp_housing_benefit"
+    ]
+    assert sorted(reference.name for reference in housing_benefit) == [
+        "dwp.hb.households",
+        "dwp.hb.households_private_rented",
+        "dwp.hb.households_social_rented",
+    ]
+    for reference in housing_benefit:
+        assert reference.ledger_selector["period_value"] == calendar_2025
+        assert reference.value_operation == "monthly_window_average"
+        assert reference.period_match_policy == "source_window"
+        assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == calendar_2025
     assert not any(
         EXPECTED_SOURCE_MONTHS in reference.metadata
         for reference in references
-        if reference.family != "dwp_universal_credit"
+        if reference.family not in {"dwp_universal_credit", "dwp_housing_benefit"}
     )

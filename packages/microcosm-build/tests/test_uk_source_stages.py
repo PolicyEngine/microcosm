@@ -66,6 +66,7 @@ E8_STAGE_NAMES = [
     "cgt_incidence_clone",
     "cgt_band_donors",
     "hmrc_cgt_gains_spine",
+    "hmrc_cgt_asset_type_spine",
     "salary_sacrifice",
     "student_loans",
 ]
@@ -322,6 +323,7 @@ class TestUKSourceStagesManifest:
                     "cgt_incidence_clone": _identity,
                     "cgt_band_donors": _identity,
                     "hmrc_cgt_gains_spine": _identity,
+                    "hmrc_cgt_asset_type_spine": _identity,
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "age_tail": _identity,
@@ -593,6 +595,7 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["frs_take_up"].operations] == [
             "aggregate_person_to_benunit",
+            "aggregate_person_to_benunit",
             "assign_binary_with_anchored_residual",
             "assign_binary_from_rate",
             "assign_binary_with_anchored_residual",
@@ -601,6 +604,7 @@ class TestE3ManifestLockstep:
             "assign_binary_from_rate",
             "assign_binary_from_rate",
             "assign_binary_from_rate",
+            "assign_binary_from_banded_rates",
             "assign_clipped_normal",
         ]
         assert [op.kind for op in stages["frs_person_draws"].operations] == [
@@ -632,13 +636,16 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["lcfs_consumption"].operations] == [
             "derive",
+            "uprate_donor_columns",
             "iterative_proportional_fit",
-            "bridge_donor_column_via_qrf",
             "assign_binary_from_rate",
+            "assign_bus_use_incidence",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
             "iterative_proportional_fit",
+            "price_domestic_energy",
+            "rake_to_vendored_facts",
             "fold_into",
             "zero_when_false",
         ]
@@ -650,9 +657,11 @@ class TestE3ManifestLockstep:
         ]
         assert [op.kind for op in stages["etb_services"].operations] == [
             "derive",
+            "uprate_donor_columns",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
+            "rake_to_vendored_facts",
             "compute_ratio",
             "allocate_per_capita_from_cell_table",
         ]
@@ -700,8 +709,9 @@ class TestE3ManifestLockstep:
             "stack_band_donor_households"
         ]
         assert [op.kind for op in stages["hmrc_cgt_gains_spine"].operations] == [
-            "verify_pinned_cgt_ods",
+            "verify_vendored_fact_resource",
             "taxable_income_proxy",
+            "rake_allocation_targets",
             "rank_preserving_allocation",
             "within_band_draws",
             "sub_aea_remainder",
@@ -739,7 +749,6 @@ class TestE3ManifestLockstep:
             UK_LCFS_CONSUMPTION_ENGINE_PREDICTORS,
             UK_LCFS_CONSUMPTION_OUTPUT_COLUMNS,
             UK_LCFS_CONSUMPTION_PREDICTORS,
-            UK_LCFS_HAS_FUEL_PREDICTORS,
         )
         from microcosm.build.uk_runtime.uc_reporter_redraw import (
             UC_REPORTER_AGGREGATES,
@@ -799,10 +808,7 @@ class TestE3ManifestLockstep:
         )
         lcfs = stages["lcfs_consumption"]
         lcfs_ops = {op.kind: op for op in lcfs.operations}
-        assert (
-            tuple(lcfs_ops["bridge_donor_column_via_qrf"].parameters["predictors"])
-            == UK_LCFS_HAS_FUEL_PREDICTORS
-        )
+        assert "bridge_donor_column_via_qrf" not in lcfs_ops
         assert (
             tuple(
                 lcfs_ops["materialize_rules_engine_predictors"].parameters["predictors"]
@@ -827,14 +833,14 @@ class TestE3ManifestLockstep:
         )
 
         assert (
-            tuple(stages["etb_services"].operations[1].parameters["predictors"])
+            tuple(stages["etb_services"].operations[2].parameters["predictors"])
             == UK_ETB_SERVICES_ENGINE_VARIABLES
         )
         assert set(
-            stages["etb_services"].operations[1].parameters["derived_predictors"]
+            stages["etb_services"].operations[2].parameters["derived_predictors"]
         ) == set(UK_ETB_SERVICES_EDUCATION_COUNTS)
         assert (
-            tuple(stages["etb_services"].operations[2].parameters["targets"])
+            tuple(stages["etb_services"].operations[3].parameters["targets"])
             == UK_ETB_SERVICES_OUTPUT_COLUMNS[:3]
         )
         rate_keys = [
@@ -923,12 +929,12 @@ class TestE3ManifestLockstep:
             if "seed" in op.parameters
         }
         assert lcfs_seeded == {
-            "bridge_donor_column_via_qrf": 0,
             "assign_binary_from_rate": 0,
+            "assign_bus_use_incidence": 0,
             "fit_weighted_qrf_chain": 0,
         }
         assert stages["etb_vat"].operations[2].parameters["seed"] == 0
-        assert stages["etb_services"].operations[2].parameters["seed"] == 0
+        assert stages["etb_services"].operations[3].parameters["seed"] == 0
 
     def test_e7_declared_seed_lockstep(self) -> None:
         spec = load_country_spec("uk")
@@ -946,7 +952,7 @@ class TestE3ManifestLockstep:
         assert stages["cgt_incidence_clone"].operations[1].parameters["seed"] == 0
         assert stages["cgt_band_donors"].operations[0].parameters["seed"] == 1
         assert (
-            stages["hmrc_cgt_gains_spine"].operations[3].parameters["seed_base"] == 552
+            stages["hmrc_cgt_gains_spine"].operations[4].parameters["seed_base"] == 552
         )
         assert stages["salary_sacrifice"].operations[0].parameters["seed"] == 42
         assert stages["salary_sacrifice"].operations[1].parameters["seed"] == 2024

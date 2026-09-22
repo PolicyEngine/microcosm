@@ -140,6 +140,8 @@ __all__ = [
     "POOL_OPERATOR_ORDER",
     "POOL_RANDOM_SEED",
     "POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256",
+    "POOL_PROJECTION_INPUT_PROVISION_COUNTS",
+    "POOL_SSI_INPUT_PROVISION_COUNTS",
     "POOL_SSI_DEPENDENCY_CONTRACT",
     "POOL_SIMULATION_HOUSEHOLD_BATCH_SIZE",
     "POOL_POST_CLONE_SOURCE_OPERATOR_ORDER",
@@ -326,26 +328,57 @@ class PoolEngineInputProjectionContract:
 
 
 POOL_SSI_DEPENDENCY_CONTRACT = PoolSsiDependencyContract(
-    engine_version="1.819.0",
+    engine_version="2.2.1",
     root="ssi",
-    input_leaf_count=55,
+    input_leaf_count=54,
     formula_node_count=63,
     edge_count=187,
-    sha256="e0a23d961c36526a10e56d80d51ca46760e92b4ea3653734014469da2394f702",
+    sha256="200ca39e784511e9ede685261f5e0840198ec2b9c4292a522c0fc504c535b31c",
 )
 """Exact static graph consumed by the terminal SSI agreement simulation."""
 
 POOL_ENGINE_INPUT_PROJECTION_CONTRACT = PoolEngineInputProjectionContract(
-    engine_version="1.819.0",
-    input_count=924,
-    default_count=924,
-    sha256="b4b2041d221b6322a3143dd2d54dc95eb1b20d5f33f4a60908055d735ba07930",
-    defaults_sha256="8718854d455ca536dba2e712aed3b2010becf909b8c61210f0456bcf732ec68c",
+    engine_version="2.2.1",
+    input_count=925,
+    default_count=925,
+    sha256="d0f660fdbe3ae839dc5e68b3b4887ff07013ccfe321a3bf7ea99fc6de3a9af4f",
+    defaults_sha256="5a209930880c1dd03caba90feee358b1057aeed55b99b26b6ebee47d530689ee",
 )
 """Exact installed input registry scanned by the disposable projection."""
 
+POOL_SSI_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
+    ("assembled_native_person_input", 1),
+    ("declared_absent_engine_input", 18),
+    ("declared_deferred_null_input", 3),
+    ("materialized_pool_input_surface", 31),
+    ("seed_stage_program_contract", 1),
+)
+"""How each SSI input leaf is provisioned, by count.
+
+Hoisted out of the manifest builder so that every engine-pinned quantity this
+module carries is re-derived by one tool
+(``tools/repin_us_pool_engine_contracts.py``) rather than hand-edited where it
+is asserted.
+"""
+
+POOL_PROJECTION_INPUT_PROVISION_COUNTS: tuple[tuple[str, int], ...] = (
+    ("assembled_native_engine_input", 5),
+    ("declared_absent_engine_input", 763),
+    ("declared_deferred_null_input", 3),
+    ("derived_schedule_d_input", 1),
+    ("frame_structural_engine_input", 10),
+    ("materialized_pool_input_surface", 122),
+    ("preserved_stacked_engine_input", 4),
+    ("seed_stage_program_contract", 17),
+)
+"""How every installed engine input is provisioned, by count.
+
+Hoisted for the same reason as :data:`POOL_SSI_INPUT_PROVISION_COUNTS`: one
+tool re-derives every engine-pinned quantity this module carries.
+"""
+
 POOL_REMAINING_STAGE_INPUT_MANIFEST_SHA256 = (
-    "98231086a18676778346fc3219bb9450f7eb85eb77791640598cba7a5ae66ef6"
+    "df42a6d95e4b98ce158334014dc9524de8f7791757eeaf3c6392d8d9b8469edf"
 )
 """Pinned content digest of all 1,058 post-transfer consumer/input rows."""
 
@@ -1457,17 +1490,11 @@ def pool_remaining_stage_input_manifest(
             fallback=fallback,
         )
 
-    expected_ssi_provisions = {
-        "assembled_native_person_input": 1,
-        "materialized_pool_input_surface": 32,
-        "seed_stage_program_contract": 1,
-        "declared_deferred_null_input": 3,
-        "declared_absent_engine_input": 18,
-    }
-    if ssi_provisions != expected_ssi_provisions:
+    if ssi_provisions != dict(POOL_SSI_INPUT_PROVISION_COUNTS):
         raise ValueError(
             "SSI input-leaf provisioning drifted; "
-            f"expected={expected_ssi_provisions}, observed={ssi_provisions}."
+            f"expected={dict(POOL_SSI_INPUT_PROVISION_COUNTS)}, "
+            f"observed={ssi_provisions}."
         )
 
     for group in US_SCHEMA.group_entities:
@@ -1568,20 +1595,10 @@ def pool_remaining_stage_input_manifest(
             fallback=fallback,
         )
 
-    expected_projection_provisions = {
-        "materialized_pool_input_surface": 122,
-        "seed_stage_program_contract": 17,
-        "declared_deferred_null_input": 3,
-        "assembled_native_engine_input": 5,
-        "frame_structural_engine_input": 10,
-        "preserved_stacked_engine_input": 4,
-        "derived_schedule_d_input": 1,
-        "declared_absent_engine_input": 762,
-    }
-    if projection_provisions != expected_projection_provisions:
+    if projection_provisions != dict(POOL_PROJECTION_INPUT_PROVISION_COUNTS):
         raise ValueError(
             "Simulation input-projection provisioning drifted; "
-            f"expected={expected_projection_provisions}, "
+            f"expected={dict(POOL_PROJECTION_INPUT_PROVISION_COUNTS)}, "
             f"observed={projection_provisions}."
         )
 

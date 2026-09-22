@@ -391,6 +391,29 @@ class TestDenseLineMirrors:
         )
         assert data_contract._UK_DENSE_CUT_TAG_RE.fullmatch(UK_DENSE_RELEASE_ID) is None
 
+    def test_dataset_filename_mirrors_the_assembler(self) -> None:
+        import importlib.util
+        from pathlib import Path
+
+        spec = importlib.util.spec_from_file_location(
+            "assemble_uk_dense_release_dir",
+            Path(__file__).resolve().parents[3]
+            / "tools"
+            / "assemble_uk_dense_release_dir.py",
+        )
+        assembler = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(assembler)
+        from microcosm.data.registry import REGISTRY
+
+        assert data_contract._UK_DENSE_DATASET_FILENAME == assembler._DATASET_FILENAME
+        # The reader's leg: the registry's dense variant must name the file
+        # the assembler mints and the contract reads (the #900 class).
+        assert REGISTRY[("uk", 2025, "dense")].filename == assembler._DATASET_FILENAME
+        assert (
+            data_contract._UK_DENSE_DATASET_FILENAME == "microcosm_uk_2024_25_dense.h5"
+        )
+
     def test_entry_ids_mirror_the_local_battery_scope(self) -> None:
         from microcosm.build.uk_runtime.calibration_run import UK_LOCAL_GATE_SCOPE
 

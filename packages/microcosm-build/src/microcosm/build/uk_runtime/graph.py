@@ -107,12 +107,11 @@ _SPLIT_STAGE_SOURCES: Mapping[str, tuple[str, ...]] = {
     "frs_education": ("frs",),
     "frs_legacy_proxies": ("frs",),
     "was_wealth": ("was",),
-    "lcfs_consumption": ("lcfs_household", "lcfs_person", "was"),
+    "lcfs_consumption": ("lcfs_household", "lcfs_person"),
     "etb_vat": ("etb",),
     "etb_services": ("etb",),
     "frs_hmrc_spine_leaves": ("frs",),
     "hmrc_spi_income_spine": ("spi", "hmrc_income"),
-    "hmrc_cgt_gains_spine": ("hmrc_cgt",),
 }
 
 _SPLIT_SOURCE_DESCRIPTIONS = {
@@ -123,7 +122,6 @@ _SPLIT_SOURCE_DESCRIPTIONS = {
     "etb": "Pinned local ETB household donor table.",
     "spi": "Pinned local SPI donor table.",
     "hmrc_income": "Pinned local HMRC income facts workbook.",
-    "hmrc_cgt": "Pinned local HMRC capital-gains facts workbook.",
 }
 
 # ``None`` means the implementation genuinely has an open formula/model
@@ -175,8 +173,12 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
             "child_benefit_reported",
             "pension_credit_reported",
             "universal_credit_reported",
+            # The Universal Credit draw's population: units with an adult
+            # under State Pension age (#882).
+            "age",
         )
-    ),
+    )
+    | frozenset({("benunit", "is_married")}),
     "frs_person_draws": frozenset({("person", "age")}),
     "frs_household_draws": frozenset(),
     "frs_brma": None,
@@ -213,21 +215,33 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     "uc_deduction_attributes": frozenset({("household", "region")}),
     "cgt_incidence_clone": None,
     "cgt_band_donors": None,
+    # The amounts redraw conditions on age and household region as well as
+    # the income proxy (microcosm#725); both are context carriers, declared
+    # here so the ownership record names them.
     "hmrc_cgt_gains_spine": frozenset(
-        ("person", column)
-        for column in (
-            "capital_gains",
-            "employment_income",
-            "self_employment_income",
-            "savings_interest_income",
-            "dividend_income",
-            "miscellaneous_income",
-            "private_pension_income",
-            "property_income",
-            "state_pension_reported",
-            "tax_free_savings_income",
-        )
+        {
+            *(
+                ("person", column)
+                for column in (
+                    "capital_gains",
+                    "employment_income",
+                    "self_employment_income",
+                    "savings_interest_income",
+                    "dividend_income",
+                    "miscellaneous_income",
+                    "private_pension_income",
+                    "property_income",
+                    "state_pension_reported",
+                    "tax_free_savings_income",
+                    "age",
+                )
+            ),
+            ("household", "region"),
+        }
     ),
+    # The asset-type stage classifies the redrawn net gains; the AEA it
+    # gates on is a policy parameter, not a frame column (microcosm#725).
+    "hmrc_cgt_asset_type_spine": frozenset({("person", "capital_gains")}),
     "salary_sacrifice": None,
     "student_loans": frozenset(
         {
@@ -278,6 +292,7 @@ _ROOT_PERSON_BOOL = {
     "is_benunit_head",
     "is_parent",
     "is_uc_claimant",
+    "would_claim_carers_allowance",
 }
 _ROOT_PERSON_INT = {"age"}
 _ROOT_PERSON_FLOAT: set[str] = set()
@@ -436,6 +451,7 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
                 "would_claim_extended_childcare",
                 "would_claim_universal_childcare",
                 "would_claim_targeted_childcare",
+                "would_claim_uc_childcare",
             ),
             "bool",
         ),
@@ -579,6 +595,10 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "capital_gains", "float64"),
     ),
     "hmrc_cgt_gains_spine": (_Cell("person", "capital_gains", "float64"),),
+    "hmrc_cgt_asset_type_spine": (
+        _Cell("person", "capital_gains_asset_type", "string"),
+        _Cell("person", "capital_gains_residential_property", "float64"),
+    ),
     "salary_sacrifice": _cells(
         "person",
         (
@@ -655,6 +675,9 @@ _HMRC_SPI_HIDDEN_BOOL = (
     "is_disabled_for_benefits",
     "is_enhanced_disabled_for_benefits",
     "is_severely_disabled_for_benefits",
+    # #882: the carer take-up flag follows the refilled Carer's Allowance
+    # receipt on the SPI-redrawn rows.
+    "would_claim_carers_allowance",
 )
 _STAGE_CELLS = {
     **_STAGE_CELLS,

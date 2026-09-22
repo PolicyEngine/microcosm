@@ -56,6 +56,79 @@
       "tracking": "microcosm#890",
       "approved_by": "juaristi22",
       "approved_on": "2026-09-11"
+    },
+    {
+      "target_id": "ons.household_energy_expenditure",
+      "reason_id": "superseded_by_component_targets",
+      "rationale": "ONS Consumer Trends COICOP 04.5 (electricity, gas and other fuels) carries liquid and solid fuels the frame does not model; chronicle #271 (chronicle#270) published the 04.5.1 electricity and 04.5.2 gas sub-classes, which ons.household_electricity_expenditure and ons.household_gas_expenditure bind per fuel on the frame's own columns. The total row is retained in the contract for registry parity and signed out here (microcosm#890 F1).",
+      "tracking": "microcosm#890",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-16"
+    },
+    {
+      "target_id": "hmrc.cgt.taxpayers_by_age_band",
+      "reason_id": "no_under_16_gainers_on_frame",
+      "rationale": "HMRC Table 6's 15-and-below row (1,000 taxpayers, GBP 54m of gains, GBP 9m of tax in 2024-25) has no support: the CGT incidence clone and the size-band donors place gains on the oldest adult of a household, so the frame carries no gainer under 16 and the row would always measure zero. Signed out of the age-band fan-out; the eight adult bands stay bound.",
+      "tracking": "microcosm#725",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-16",
+      "adjudication": "https://github.com/PolicyEngine/microcosm/pull/939#issuecomment-5728012221",
+      "row": {
+        "dimension": "age_band",
+        "value": "age_0_to_15"
+      }
+    },
+    {
+      "target_id": "hmrc.cgt.gains_by_age_band",
+      "reason_id": "no_under_16_gainers_on_frame",
+      "rationale": "HMRC Table 6's 15-and-below row (1,000 taxpayers, GBP 54m of gains, GBP 9m of tax in 2024-25) has no support: the CGT incidence clone and the size-band donors place gains on the oldest adult of a household, so the frame carries no gainer under 16 and the row would always measure zero. Signed out of the age-band fan-out; the eight adult bands stay bound.",
+      "tracking": "microcosm#725",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-16",
+      "adjudication": "https://github.com/PolicyEngine/microcosm/pull/939#issuecomment-5728012221",
+      "row": {
+        "dimension": "age_band",
+        "value": "age_0_to_15"
+      }
+    },
+    {
+      "target_id": "hmrc.cgt.tax_by_age_band",
+      "reason_id": "no_under_16_gainers_on_frame",
+      "rationale": "HMRC Table 6's 15-and-below row (1,000 taxpayers, GBP 54m of gains, GBP 9m of tax in 2024-25) has no support: the CGT incidence clone and the size-band donors place gains on the oldest adult of a household, so the frame carries no gainer under 16 and the row would always measure zero. Signed out of the age-band fan-out; the eight adult bands stay bound.",
+      "tracking": "microcosm#725",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-16",
+      "adjudication": "https://github.com/PolicyEngine/microcosm/pull/939#issuecomment-5728012221",
+      "row": {
+        "dimension": "age_band",
+        "value": "age_0_to_15"
+      }
+    },
+    {
+      "target_id": "hmrc.cgt.taxpayers_by_gain_band",
+      "reason_id": "below_annual_exempt_amount_2024",
+      "rationale": "HMRC Table 2.1a's 0-2,999 row (3,000 taxpayers with a liability on gains at or below the 2024-25 annual exempt amount of GBP 3,000, from attributed gains and prior-year adjustments) lies below the AEA gate the taxpayer proxy measures, so the model cannot place anyone in it. Signed out; the twelve bands from 3,000 stay bound.",
+      "tracking": "microcosm#467",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-16",
+      "adjudication": "https://github.com/PolicyEngine/microcosm/pull/939#issuecomment-5728012221",
+      "row": {
+        "dimension": "cgt_gain_band",
+        "value": "gain_0_to_2999"
+      }
+    },
+    {
+      "target_id": "hmrc.cgt.gains_by_gain_band",
+      "reason_id": "below_annual_exempt_amount_2024",
+      "rationale": "HMRC Table 2.1a's 0-2,999 row (3,000 taxpayers with a liability on gains at or below the 2024-25 annual exempt amount of GBP 3,000, from attributed gains and prior-year adjustments) lies below the AEA gate the taxpayer proxy measures, so the model cannot place anyone in it. Signed out; the twelve bands from 3,000 stay bound.",
+      "tracking": "microcosm#467",
+      "approved_by": "juaristi22",
+      "approved_on": "2026-09-16",
+      "adjudication": "https://github.com/PolicyEngine/microcosm/pull/939#issuecomment-5728012221",
+      "row": {
+        "dimension": "cgt_gain_band",
+        "value": "gain_0_to_2999"
+      }
     }
   ]
 }

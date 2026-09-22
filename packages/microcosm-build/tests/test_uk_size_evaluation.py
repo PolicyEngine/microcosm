@@ -571,6 +571,57 @@ def test_area_support_and_gate_tables(tmp_path: Path) -> None:
     assert gate_table(run)[-1]["status"] == "absent"
 
 
+def test_run_acceptance_ignores_staging_evidence_and_sidecars(tmp_path: Path) -> None:
+    """The staging lane appends manifest blocks and two sidecars; acceptance is unmoved."""
+
+    path = _write_run_dir(tmp_path, "candidate", size_run=True)
+    before = run_acceptance(
+        load_run(path, label="candidate"),
+        expected_households=6,
+        expected_pool=30,
+        expected_epochs=10,
+    )
+    manifest_path = path / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["staging_delivery"] = {
+        "contract_version": 2,
+        "enabled": True,
+        "mode": "local_only",
+        "run_id": "uk-local-candidate-f100-s7-20260917T180000Z-0badcafe",
+        "configured_repository": None,
+        "upload_attempts": 0,
+        "upload_successes": 0,
+        "read_back": "not_requested",
+        "last_error_code": None,
+        "opt_out_reason": None,
+    }
+    manifest["staged_dataset"] = {
+        "contract_version": 1,
+        "mode": "local_only",
+        "repository": None,
+        "prefix": "staged/uk-local-candidate-f100-s7-20260917T180000Z-0badcafe",
+        "run_id": "uk-local-candidate-f100-s7-20260917T180000Z-0badcafe",
+        "revision": None,
+        "status": "skipped",
+        "error_code": None,
+        "opt_out_reason": None,
+        "files": {"microcosm_uk_2025_local.h5": {"sha256": "0" * 64, "bytes": 1}},
+    }
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (path / "sha256sums.txt").write_text(f"{'0' * 64}  microcosm_uk_2025_local.h5\n")
+    (path / "staged_manifest.json").write_text("{}")
+    after = run_acceptance(
+        load_run(path, label="candidate"),
+        expected_households=6,
+        expected_pool=30,
+        expected_epochs=10,
+    )
+    assert after["passed"] == before["passed"]
+    assert [(row["id"], row["status"]) for row in after["checks"]] == [
+        (row["id"], row["status"]) for row in before["checks"]
+    ]
+
+
 def test_run_acceptance_statuses_and_bad_digest(tmp_path: Path) -> None:
     path = _write_run_dir(tmp_path, "candidate", size_run=True)
     run = load_run(path, label="candidate")
@@ -582,6 +633,24 @@ def test_run_acceptance_statuses_and_bad_digest(tmp_path: Path) -> None:
         "pass",
         "not_applicable",
     }
+
+    # A refit whose baseline was trimmed (--baseline-pi-floor) names its stretch
+    # reference with the _floored suffix; the acceptance accepts either name.
+    manifest_path = path / "rowwise_candidate_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    floored_name = "normalized_horvitz_thompson_w_over_q_floored"
+    manifest["weights"]["stretch_reference"] = floored_name
+    manifest["solve"]["dataset_size"]["stretch_reference"] = floored_name
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    floored = run_acceptance(
+        load_run(path, label="candidate"),
+        expected_households=6,
+        expected_pool=30,
+        expected_epochs=10,
+    )
+    stretch = next(row for row in floored["checks"] if row["id"] == "stretch_reference")
+    assert stretch["status"] == "pass"
+    assert stretch["observed"] == floored_name
 
     (path / "solve_diagnostics.csv").write_text("wrong\n", encoding="utf-8")
     bad = run_acceptance(run)
@@ -641,6 +710,43 @@ def test_dense_deltas_and_frozen_surface(tmp_path: Path) -> None:
     assert surface["n_rows"] == surface["n_matched"] == 2
     assert surface["max_abs_rel_divergence"] == pytest.approx(0.02)
     assert [row["name"] for row in surface["rows_over_1pct"]] == ["national/a@2025"]
+
+    # A rolled-up incumbent row (a region cell measured on the frame for
+    # comparison, pointing at our contract id) is not a recomputed row of ours:
+    # summing it into the England-pinned target inflated the VOA rows by the
+    # Wales rollup in the 2026-09-10 report (microcosm#929).
+    surface_path.write_text(
+        json.dumps(
+            {
+                "national_rows": [
+                    {"our_name": "national/a@2025", "candidate_estimate": 107.1},
+                    {
+                        "contract_target_id": "national/a@2025",
+                        "status": "rolled_up:council_tax_band_by_region",
+                        "candidate_estimate": 50.0,
+                    },
+                    {"our_name": "national/b@2025", "candidate_estimate": 131.3},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    surface = frozen_vs_recomputed(run, surface_path)
+    assert surface["max_abs_rel_divergence"] == pytest.approx(0.02)
+
+    surface_path.write_text(
+        json.dumps(
+            {
+                "national_rows": [
+                    {"our_name": "national/a@2025", "candidate_estimate": 107.1},
+                    {"our_name": "national/a@2025", "candidate_estimate": 1.0},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="appears more than once"):
+        frozen_vs_recomputed(run, surface_path)
 
 
 def test_summarize_outcome_flags(tmp_path: Path) -> None:

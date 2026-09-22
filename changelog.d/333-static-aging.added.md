@@ -1,0 +1,1 @@
+Add static aging in microcosm-calibrate: fit each year's weights to projected demographics, adjust monetary inputs to preserve their projected aggregate growth, scale positive income and losses separately to preserve record signs, score program counts as predictions, and export projected years through the PolicyEngine-US adapter (#333).

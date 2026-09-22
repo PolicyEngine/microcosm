@@ -96,6 +96,15 @@ def _check_size_inputs(frame: Frame, dense: CalibrationResult, households: int) 
     return n
 
 
+def _check_baseline_pi_floor(value: object) -> float:
+    if not isinstance(value, float | int) or isinstance(value, bool):
+        raise ValueError("baseline_pi_floor must be a number in [0, 1].")
+    floor = float(value)
+    if not (0.0 <= floor <= 1.0):
+        raise ValueError("baseline_pi_floor must be a number in [0, 1].")
+    return floor
+
+
 def _check_pi_hi(pi_hi: object) -> float:
     if not isinstance(pi_hi, float | int) or isinstance(pi_hi, bool):
         raise ValueError("pi_hi must be a number in (0, 1].")
@@ -203,6 +212,7 @@ def refit_uk_dataset_size(
     learning_rate: float,
     seed: int,
     pi_hi: float = 1.0,
+    baseline_pi_floor: float = 0.0,
     selection: UKSizeSelection | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> UKDatasetSize:
@@ -220,6 +230,18 @@ def refit_uk_dataset_size(
     promotes learned near-certain gates and is a reviewed candidate-run
     setting recorded in the size receipt, never a release default.
 
+    ``baseline_pi_floor`` trims the Horvitz–Thompson baseline the refit starts
+    from and stretches against: each selected row's dense weight is divided by
+    ``max(q, baseline_pi_floor)`` instead of its inclusion probability ``q``
+    before the baseline is normalised to the pool mass. ``0.0`` (default) is
+    the untrimmed baseline. A boundary row drawn at ``q`` of a few in a
+    million otherwise starts at millions of households and, after the
+    normalisation, leaves the certainties too little mass to reach the
+    targets under the stretch bound (microcosm#355, Q50 2026-09-10: 24 such
+    rows held 92 % of the baseline; the refit ended 24 % short of the pool
+    mass at 10× the dense loss). Candidate-only, recorded in the size receipt
+    with the number of rows it trimmed and the certainties' baseline share.
+
     ``selection`` skips the informed L0 search and draws from an existing
     :class:`UKSizeSelection` (a checkpoint restored by
     :mod:`microcosm.build.uk_runtime.size_checkpoint`); it must have been
@@ -227,6 +249,7 @@ def refit_uk_dataset_size(
     """
     n = _check_size_inputs(frame, dense, households)
     pi_hi = _check_pi_hi(pi_hi)
+    baseline_pi_floor = _check_baseline_pi_floor(baseline_pi_floor)
     if households == n:
         return UKDatasetSize(
             dense,
@@ -312,13 +335,16 @@ def refit_uk_dataset_size(
     if not np.isin(np.flatnonzero(init_protected), support).all():
         raise RuntimeError("exact-count selection lost a protected carrier.")
     frozen = _frozen_targets(frame, dense, support)
+    q = np.asarray(q, dtype=np.float64)
+    baseline_q = q if baseline_pi_floor == 0.0 else np.maximum(q, baseline_pi_floor)
+    baseline_floored_rows = int(np.count_nonzero(q < baseline_pi_floor))
     refit = refit_l0_selection(
         frame,
         frozen,
         search_result,
         support=support,
         k=households,
-        support_inclusion_probabilities=q,
+        support_inclusion_probabilities=baseline_q,
         mass_reason=dense.options["mass_reason"],
         progress_callback=_phased(progress_callback, "size_refit"),
         **common,
@@ -333,6 +359,12 @@ def refit_uk_dataset_size(
         raise RuntimeError("compact refit changed target values.")
     errors_dense = np.asarray([d.final_estimate for d in dense.diagnostics])
     errors_small = np.asarray([d.final_estimate for d in refit.diagnostics])
+    baseline = np.asarray(refit.initial_weights, dtype=np.float64)
+    baseline_total = float(baseline.sum())
+    certainty_rows = q >= 1.0
+    baseline_name = "normalized_horvitz_thompson_w_over_q" + (
+        "_floored" if baseline_pi_floor > 0.0 else ""
+    )
     return UKDatasetSize(
         refit,
         support,
@@ -362,8 +394,18 @@ def refit_uk_dataset_size(
             "refit_epochs": epochs,
             "pool_row_indices": support.tolist(),
             "inclusion_probabilities": q.tolist(),
-            "refit_baseline": "normalized_horvitz_thompson_w_over_q",
-            "stretch_reference": "normalized_horvitz_thompson_w_over_q",
+            "refit_baseline": baseline_name,
+            "stretch_reference": baseline_name,
+            "baseline_pi_floor": baseline_pi_floor,
+            "baseline_floored_rows": baseline_floored_rows,
+            # How the normalised baseline splits between the certainties and
+            # the boundary draws: the certainties' 10x ceiling has to cover
+            # the pool mass for the refit to reach the targets at all.
+            "baseline_mass_share_certainties": (
+                float(baseline[certainty_rows].sum() / baseline_total)
+                if baseline_total > 0.0
+                else None
+            ),
             "dense_loss": dense.final_loss,
             "compact_loss": refit.final_loss,
             "max_target_scaled_change": float(

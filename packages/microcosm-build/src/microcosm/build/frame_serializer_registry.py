@@ -112,6 +112,17 @@ FRAME_TABLE_SERIALIZERS = (
         nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
     ),
     FrameSerializerSpec(
+        serializer_id="us_annual_static_aging",
+        writer=HdfWriteSite(
+            "packages/microcosm-build/src/microcosm/build/us_annual_static_aging.py",
+            "_write_year",
+        ),
+        backend="pandas.HDFStore table with direct fields",
+        routes=("US annual static-aging candidate",),
+        version_owner="schema-1 annual static-aging candidate native layout",
+        nullable_boolean_storage="numpy_bool_missing_rejected_v1",
+    ),
+    FrameSerializerSpec(
         serializer_id="legacy_us_two_spine",
         writer=HdfWriteSite(
             "tools/_legacy/build_us_acs_multispine_base.py",
@@ -192,6 +203,14 @@ HDF_WRITE_EXCLUSIONS = (
             "_write_weight_metadata",
         ),
         reason="Adds weight-kind and mass-log root attributes only.",
+    ),
+    HdfWriteExclusion(
+        exclusion_id="uk_smoke_non_release_root_attrs",
+        writer=HdfWriteSite(
+            "tools/build_uk_frs_spine.py",
+            "_mark_non_release_h5",
+        ),
+        reason="Adds non-release smoke metadata to existing root attributes only.",
     ),
     HdfWriteExclusion(
         exclusion_id="puf_equivalence_raw_draw_observer",

@@ -1,3 +1,372 @@
+# US engine lock → policyengine-us 2.2.1
+
+Lane: `engine-lock-pe-us-2.2.1`, off `origin/main` at `51c3143829b88382270f5af0714ae28fba14f803`,
+in the worktree `~/PolicyEngine/_worktrees/microcosm-engine-bump`. Started 2026-09-15.
+Everything below the `---` rule at the end of this section is prior-lane
+history; see "Root journals are history, not state" in `CLAUDE.md`.
+
+## State
+
+In progress. Nothing pushed yet.
+
+## Goal
+
+Move the US engine lock from policyengine-us 1.819.0 / spm-calculator 0.3.1 /
+policyengine-core 3.31.0 to policyengine-us **2.2.1** / spm-calculator **1.0.0** /
+policyengine-core **3.32.5** — the trio inside the certified claim for
+`populace-us-2024-spm-20260915`. Not 2.5.0: the claim names 2.2.1.
+
+Every fail-closed pin re-derived by its own generator; never a hand-edited digest.
+
+## Plan
+
+1. Constraints (`microcosm-build`, `microcosm-data[us]`, `microcosm-frame[policyengine]`)
+   `>=1.745.0,<2` → `>=2.2.1,<3`; relock; verify the trio.
+2. Read policyengine-us CHANGELOG 1.819.0 → 2.2.1; enumerate every entry that
+   touches a variable microcosm reads/writes/seeds/scores.
+3. Re-derive the fail-closed pins: frame adapter generated-source audit, US
+   engine ABI lock, `ENGINE_PUBLIC_PARAMETER_FILES` RECORD digests, take-up
+   contract, per-test `version("policyengine-us")` literals, the release input
+   coverage manifest prose + artifact.
+4. The 2.0.0 SPM-area breaking change: per-call-site explicit selection.
+5. Identity re-pins downstream of the engine, through their generators.
+6. Tests exactly as CI runs them (`tools/ci_test_groups.py` shards) plus the
+   engine-free reproduction.
+7. Changelog fragment.
+8. Push + draft PR (root gates the merge).
+
+## Done
+
+- **Step 1 — constraints and lock** (`6aad4e1bd`). `policyengine-us>=1.745.0,<2`
+  → `>=2.2.1,<3` in `packages/microcosm-build/pyproject.toml`,
+  `packages/microcosm-data/pyproject.toml` (`us` extra) and
+  `packages/microcosm-frame/pyproject.toml` (`policyengine` extra); `uv.lock`
+  relocked. Resolved trio confirmed in the lane venv: policyengine-us 2.2.1,
+  spm-calculator 1.0.0, policyengine-core 3.32.5.
+- **Step 2 — changelog read, 1.819.0 → 2.2.1** (49 releases). Read from
+  `gh api repos/PolicyEngine/policyengine-us/contents/CHANGELOG.md`, not from
+  memory. The entries that touch a variable microcosm reads, writes, seeds or
+  scores:
+  - **2.0.0 (breaking) — SPM geography.** County FIPS required by default, or
+    an explicit national or fixed SPM area selection, for SPM measurement and
+    for resource calculations (household net income, benefits, marginal tax
+    rates) *only where a unit's housing assistance is positive*. Country
+    threshold extrapolation replaced by spm-calculator 1.0.0's canonical
+    2022–2035 amounts; unavailable years fail. Population datasets must supply
+    observed county inputs and source-backed SPM independence roles instead of
+    stored formula-owned SPM outputs, which the loader now rejects.
+  - **2.2.1 — housing-assistance valuation.** General household benefits and
+    CBO means-tested transfers count actual housing assistance rather than its
+    SPM-capped valuation (the cap stays inside SPM resources), so household
+    benefits, household net income, marginal tax rates and CBO transfer
+    aggregates rise for assisted households. Housing assistance and awarded
+    families' tenant contributions are allocated across a household's SPM units
+    by member share before each unit's resource cap, so SPM poverty and deep
+    poverty move for multi-SPM-unit households.
+  - **2.2.1 — loader rejections.** Derived poverty aliases such as `in_poverty`
+    are rejected from stored datasets; a `county_fips` input that is not a
+    five-digit string is rejected however it is spelled; the default dataset
+    content hash is verified.
+  - **1.822.1 + 2.0.6 — heating inputs.** Canonical `heating_type` enum
+    (default `UNSPECIFIED`) with derived `heating_expense`; new `wood_expense`
+    and `other_heating_fuel_expense` inputs; new `has_heating_expense` /
+    `has_cooling_expense` facts read by SNAP utility-allowance incurrence;
+    `heating_expense_person` and `heating_cooling_expense` deprecated as
+    heating-amount inputs; Illinois AABD reads `gas_expense` instead of the
+    deprecated `metered_gas_expense`.
+  - **1.824.5 — federal disability gates.** SNAP elderly-or-disabled member
+    qualifies by SSI receipt rather than the SSI disability criteria flag; SNAP
+    work/ABAWD/student rules recognise disability benefit receipt; the SSI
+    student earned income exclusion uses the SSI disability test; HUD
+    person-with-disabilities status recognises the SSI and SSDI paths.
+  - **1.820.0 — SNAP work-requirement surface.** New `is_snap_abawd_exempt`,
+    `is_subject_to_snap_abawd`, `has_snap_abawd_household_child`.
+  - **2.0.1 — deduction ordering.** Stable deduction order for person-level AGI
+    and student-loan-interest MAGI, removing process-dependent floating-point
+    results; any pinned golden number in that chain may move.
+  - **1.823.0 — removal.** The inert legacy New York `gov/hhs/ccdf` encoding
+    (market rates, county clusters, copay percentages and variables) is gone.
+  - State/parameter corrections with no microcosm input surface (1.820.1–1.825.2
+    Arkansas/NY/Washington/Michigan/Massachusetts/Maine/Minnesota/Montana, the
+    CCDF and CCAP rate tables, SNAP utility-allowance value corrections,
+    Medicaid ABD unit, Texas CEAP, state TANF unearned-income lists) change
+    computed outputs but no leaf microcosm supplies; they are scoring-surface
+    movement, not lock work.
+- **Step 3a — frame-adapter generated-variable audit** (`59608c332`). The
+  `_GENERATED_SOURCE_VERSION` / `_GENERATED_SOURCE_SHA256` audit in
+  `packages/microcosm-frame/src/microcosm/frame/adapters/policyengine_us.py`
+  re-derived through a new generator, `tools/refresh_us_generated_variable_audit.py`,
+  with the import-free AST inventory split out into
+  `adapters/_policyengine_us_source_index.py`.
+- **Step 3b — engine ABI lock and US pool engine contracts** (`4c6bce3d8`).
+  `packages/microcosm-build/src/microcosm/build/us/engine_abi.lock.json`
+  regenerated through `tools/generate_us_bundle_from_constants.py`; the
+  multispine pool contracts re-pinned through a new
+  `tools/repin_us_pool_engine_contracts.py`.
+
+- **Step 3c — `ENGINE_PUBLIC_PARAMETER_FILES` is not on this branch.** The
+  brief's `tools/spec_seed_identity_diagnostics.py` pin set exists only on
+  unmerged branches (first added in `a5a066f90`); `git cat-file -e
+  origin/main:tools/spec_seed_identity_diagnostics.py` fails and
+  `ENGINE_PUBLIC_PARAMETER_FILES` appears nowhere in this tree. The brief was
+  written against the #893 file inventory. No equivalent import-time parameter
+  pin exists on `main`, so this step has no target here and nothing was
+  invented in its place.
+- **Step 3d — take-up contract** (`afaffae26`). `asserted_engine.constraint`
+  → `>=2.2.1,<3`, `inventory_built_against` → `2.2.1`, and the ACA
+  `engine_state_note` version. The repository's own fail-closed check,
+  `assert_take_up_contract_current()`, passes against the installed 2.2.1
+  engine: all seventeen `takes_up_*` flags present, no addition, no removal,
+  no entity/value_type/default/engine_class drift. No new
+  `populace_treatment` decision and no rate was introduced. `aca_take_up_seed`
+  is still absent from the whole 2.2.1 source tree, so the note's claim holds.
+- **Step 3f (partial) — source-stage and parity prose** (`afaffae26`). Each
+  mechanism claim re-verified against 2.2.1 through microcosm's own static
+  consumer index before its version string moved:
+  `is_incapable_of_self_care` 33 receipts (SNAP work registration and general
+  work requirements, federal and AR Medicaid work requirements, CDCC, many
+  state dependent-care deductions); `health_insurance_premiums` read by
+  exactly the five named state/local formulas; the 162(l) chain unchanged;
+  Early Head Start still `age < 3 | is_pregnant`; `uncapped_ssi` still the
+  SSI-eligible current-benefit candidate. Frozen generation-0 digests moved
+  with their files (`source_stages.json` dc58a0d7→7935d891,
+  `take_up_contract.json` a9e70fb3→282dbc4c; `support_spine.json` unchanged);
+  US bundle `spec_sha256` a521bf1934d799beef056a1bb999be91e7a2af5c15b124cf13725a837a100f20.
+
+- **Step 3e/3g — engine-pinned test facts and remaining literals** (`325680a7d`).
+  Every `version("policyengine-us")` literal moved only after its surrounding
+  fact was re-checked and the file run; all twenty-six changed test files pass
+  against 2.2.1. Two pinned quantities genuinely moved, both from 1.824.5's
+  disability-gate realignment (SSI closure input leaves 55 → 54,
+  `materialized_pool_input_surface` 32 → 31) and one from the 2.x input-registry
+  delta (924 → 925). Two `1.819.0` strings deliberately remain: the
+  financial-assistance documentation-drift comment and — until step 5 rewrote
+  it — the multispine pool-tool comment narrating a past re-pin.
+- **Step 3f — release input-coverage manifest** (`93ae078a5`). Prose re-verified
+  through microcosm's own consumer index, then the manifest regenerated by its
+  own tool (163 required, 7 reviewed exclusions, 41 probes — unchanged). The
+  `1.777.0` and `1.764.6` references deliberately stay: they date an artifact
+  and a measurement, not a live mechanism.
+- **Step 4 — SPM-area selection** (`36e6c411b`). Measured, not assumed. Under
+  2.2.1 `household_net_income` and `household_benefits` compute identically with
+  and without `county_fips` on a household with positive housing assistance;
+  only `spm_unit_capped_housing_subsidy`, `spm_unit_spm_threshold` and
+  `in_poverty` raise `SPMInputError(SPM_GEOGRAPHY_REQUIRED)`. **2.0.0's
+  changelog line about resource calculations no longer describes 2.2.1**, whose
+  housing-valuation change moved general household benefits off the SPM-capped
+  path. A second, unlisted fail-closed arm also exists: one SPM unit with no
+  classified adult raises `SPM_COMPOSITION_REQUIRED` for the whole population's
+  SPM measurement. Selections are recorded per call site in the lane report.
+  The county ladder gates now reject a non-text `county_fips`.
+- **Step 5 — identity re-pins** (`78add8f33`, pool pins to follow). Six
+  `EXPECTED_HASHES` values, the loader golden, the frozen generation-0 digests
+  and the multispine pool-tool identities, each recomputed by its documented
+  path. `spec_engine_coverage.py --check` is green at 41/41 inventory checks and
+  42,156/42,156 configuration fields.
+
+## Next
+
+- Finish the CI-faithful test run (all four US engine groups plus `rest`,
+  `shared-spec` and the engine-free reproduction), then push and open the
+  draft PR. The root gates the merge; this lane never marks it ready.
+- Owner questions in the lane report: whether to add a release-H5 precondition
+  gate for `SPM_COMPOSITION_REQUIRED` (zero-adult SPM units), and whether the
+  SNAP elderly-or-disabled population shift from 1.824.5 needs a seeding
+  response.
+
+---
+
+# Publisher compatibility range at source-enrichment certification
+
+Lane: `max/certify-compatible-model-range-20260914`, off `origin/main` at
+`18271b28d`. Started 2026-09-14. Everything below the `---` rule at the end of
+this section is prior-lane history; see "Root journals are history, not state"
+in `CLAUDE.md`.
+
+## State
+
+Pushed as draft PR
+[#928](https://github.com/PolicyEngine/microcosm/pull/928). No publication of
+any kind: this lane changes producer/validator source only, and builds,
+certifies and publishes no artifact.
+
+An adversarial review lane run against this worktree wrote into it while it
+worked: a reviewer checked out `origin/main` copies of the changed files for a
+byte-for-byte default-path comparison, and a `git add -A` in this session
+committed and pushed that reverted tree as `4b0ae3624`, briefly deleting the
+feature from the PR and committing a reviewer's scratch test module. The branch
+was reset to `8f82d0c6a` and the two intended commits reapplied; `git diff
+8f82d0c6a <head>` is now exactly the docs and journal changes, with the feature
+and test files byte-identical to `8f82d0c6a`. Review lanes must run in their own
+worktree, not this one.
+
+## Problem
+
+`certify_source_enrichment` writes
+`compatible_{model,core}_packages = [{"name": pkg, "specifier": "==<tested version>"}]`
+over whatever the candidate manifest held (`source_enrichment.py:940-942`), and
+`_check_compatibility` then requires exactly that list at every later validation,
+including publish preflight (`source_enrichment.py:610-615`). The contract layer
+(`contract.py::_check_compatible_package_entries`) and both consumers (Microcosm
+`loader.py::_package_certification`, policyengine.py
+`provenance/certification.py::validate_release_manifest`) already accept any PEP
+440 specifier set that contains the built-with version — so the exact pin is a
+producer-tooling choice, not a schema limit. The consequence: each country patch
+release moves the binding rather than widening it, and a data release whose H5
+bytes are unchanged still needs re-certification.
+
+## Plan
+
+1. Add a validated publisher claim at certification time, recorded in both
+   `release_manifest.json` and `source_enrichment.json`, with the default path
+   byte-identical to today.
+2. Relax the certification-time equality gate to "equals the default exact pin,
+   or equals the claim the report records", keeping every other guard.
+3. Tests for accept/reject/default/consumer-read.
+4. Docs: when a range is legitimate and when it is not.
+
+## Done
+
+- Read both gates, the contract layer, both consumers and the 2026-09-12 dry-run
+  report that motivated the change.
+- `--compatible-model-specifier` / `--compatibility-claim-declared-by` on the
+  source-enrichment CLI and `certify_source_enrichment`, validated by
+  `parse_compatibility_claim_requirement` (PEP 508, names the built-with
+  package, no URL/extras/marker) and `compatibility_claim_entry` (valid and
+  non-empty PEP 440 set, contains the tested version under the consumers' own
+  containment, bounded above, accountable declarer).
+- The claim recorded in `source_enrichment.json`
+  (`compatibility.publisher_claims.model`) and `release_manifest.json`
+  (`compatible_model_packages[0]`, `basis: publisher_claim`, `declared_by`),
+  cross-checked at every later validation so a manifest widened after
+  certification has no declaration behind it.
+- `contract.py` refuses a `publisher_claim` basis with no declarer, and a
+  declarer with no basis, for every release type.
+- 20 tests across `test_source_enrichment.py` and `test_contract.py`;
+  `packages/microcosm-data/tests/` 550 passed, 2 skipped; `ruff check .` clean;
+  `tools/ci_test_groups.py --verify` ok.
+- Docs: a "Declaring a publisher compatibility range" section in
+  `docs/us-native-spm-role-source-enrichment.md` with when to use a range and
+  when not to, a note in the `microcosm-data` README, and a changelog fragment.
+
+## Second session, 2026-09-14 evening
+
+The lane was re-entered after the first session ended at `a4e7e131c`. Nothing
+was rewritten: the feature and test files are untouched, and this session's job
+was to confirm the branch rather than extend it. Done here:
+
+- `packages/microcosm-data/tests/` re-run from scratch in the lane venv: 565
+  passed, 2 skipped, matching what the PR body claims.
+- A second, independent adversarial pass over the branch, run out of two
+  detached review worktrees so no reviewer could write into this one (the
+  collision recorded above must not repeat): PEP 440 containment parity against
+  both consumers, guard-preservation and bypass, wrapper accept/refuse measured
+  rather than described, mutation testing of every new guard, a claims audit of
+  the PR body and docs, and a blast-radius sweep for anything that reads
+  `compatible_model_packages`.
+
+## Third session, 2026-09-14 — second-pass review, part two
+
+The second-pass review (`review-928-r2.md`, written against `7cb8eae6e`)
+confirmed the six earlier fixes and left five items. This session applies them,
+each with a test that fails before and passes after.
+
+- **M1** — the boundedness guard bounds a claim above and never below, so
+  `policyengine-us<2.1` over a 2.0.1 build is accepted and certifies a consumer
+  running 0.9.0. Add a lower-bound probe.
+- **L1** — `compatibility.narrowed_claims` is written and never read; surface it
+  in the validation/preflight output.
+- **L2** — the "pass the flags" remediation suffix fires even when the flags
+  were passed this run; gate it on the claim being absent.
+- **L3** — the narrowing loop calls a Core pin change a narrowed "claim",
+  although no producer can declare a Core range; reword.
+- **I2** — doc only: a prerelease built-with version cannot carry a range, so
+  the exact default pin is the only option there. (Filed as such; the premise
+  did not survive measurement — see "Done".)
+
+### Done
+
+- **M1.** A third boundedness probe in `compatibility_claim_entry` asks whether
+  the claim still admits `Version(f"{tested.epoch}!0")`. Measured first:
+  `Version("0") in SpecifierSet("<2.1")` is `True`, and `False` for
+  `>=2.0.1,<2.1`, `~=2.0.1`, `==2.0.*` and `>=2.0.1,<3`. `<2.1` and `<=2.0.5`
+  moved from the accepted parameters to the refused ones, a
+  certification-level `policyengine-us<2` case was added, and the next-major
+  error text now cites `'>=2.0.1,<2.1'` instead of the `'<2.1'` the new probe
+  refuses. Four tests failed before, pass after. The probe carries the tested
+  version's epoch because a claim may mix epochs: over a `1!2.0.1` build,
+  `>=2.0.1,<1!2.1` admits `1!0` while excluding a bare `Version("0")`. The
+  first draft justified that backwards — claiming an epoch-0 zero sits outside
+  an epoch-bearing claim, when `Version("0") in SpecifierSet("<1!2.1")` is
+  `True` — and its test survived replacing the probe with a bare
+  `Version("0")`. Corrected after the third pass; the test now uses the
+  mixed-epoch claim and kills that mutant.
+- **L1.** `recorded_narrowed_claims` reads the record back, and both validation
+  (`python -m microcosm.data.source_enrichment` without `--certify`) and
+  `microcosm-publish-release --preflight-only` print `narrowed_claims` beside
+  their verdict when a bundle carries one; publication repeats it on stderr,
+  since reaching publication does not require running the preflight first.
+  It reports rather than gates: an absent or malformed record reads as no
+  record. Three tests failed before.
+- **L2.** The "pass the flags" suffix is gated on `claim_specifier is None`.
+  Both branches tested through a re-certification that tightens a declared
+  range (`>=1.998.0,<2` → `>=1.999.0,<2`): warns, no suffix.
+- **L3.** Message construction moved to `_narrowing_notice`; Core reads "moves
+  the policyengine-core compatibility pin". The Core branch turns out to be
+  unreachable through `certify_source_enrichment` — the input gate re-runs the
+  loader qualification and requires the recorded receipt to equal the runtime,
+  so a moved Core version is refused first. Both the wording and that wall are
+  now pinned by tests.
+- **I2.** The review's premise was wrong and the docs say the accurate thing
+  instead. Installed `packaging` 26.2 matches prereleases by default
+  (`SpecifierSet.contains` documents it; `Version("2.1.0rc1") in
+  SpecifierSet(">=2.0.1,<2.2")` is `True`). The real constraint is ordering: a
+  prerelease sorts below its own release, so `>=2.0.1,<2.1` and `~=2.0.1`
+  exclude a `2.0.1rc1` build while `>=2.0.1rc1,<2.1` and `==2.0.*` reach it and
+  pass all three probes. A characterization test pins all five outcomes; it
+  passes before and after.
+- `packages/microcosm-data/tests/` 611 passed, 2 skipped; the two named files
+  379 passed; `ruff check` and `ruff format --check` clean on
+  `packages/microcosm-data` and on every changed `.py`; repo-wide `ruff check`
+  clean; `tools/ci_test_groups.py --verify` ok.
+
+### Third adversarial pass
+
+Five read-only reviewers over the five changes (guard correctness, reporting
+path, wording and reachability, docs/claims audit, test quality), each finding
+put to an independent refuter: 33 raised, 2 survived. Both are fixed.
+
+- **The epoch rationale was a fabricated mechanism, and its test was inert.**
+  The comment and docstring said an epoch-0 zero sits outside an epoch-bearing
+  claim; `Version("0") in SpecifierSet("<1!2.1")` is `True`. The verifier
+  mutated the probe to a bare `Version("0")` and the whole file stayed green —
+  the test named for the epoch carry survived dropping it. The carry is
+  justified by mixed-epoch claims instead (`>=2.0.1,<1!2.1` over `1!2.0.1`
+  admits `1!0` and not `0`), which is the case the test now uses; the mutant
+  fails it.
+- **The record reached the preflight and not the publish run.** Already closed
+  mid-flight, before the pass reported it: publication repeats it on stderr,
+  since `tools/publish_release.sh` passes its arguments straight through and
+  the runbook's "remove `--preflight-only`" step is a habit, not a gate.
+
+Two refuted findings were worth acting on anyway. The documented probe residue
+is now executable on both sides (`<2.1,!=0` admits `0.9.0` exactly as
+`>=2.0.1,!=3.0.0,!=99999.0.0` admits `5.0`), so the sentence describing the
+guard's limit cannot drift from it. And `--certify` now reports the narrowing
+it caused in its own verdict, with `_narrowed_claims` giving all four verdicts
+one tolerance so none can report a bundle differently from the others.
+
+### Next
+
+- PR CI. Do not merge; do not mark ready.
+
+## Next
+
+- Whole-workspace run and PR CI to finish; hand to human review. Do not merge;
+  do not publish.
+
+---
+
 # Amendment 19 — typed opaque artifacts on the graph interface
 
 Lane: `amend-typed-artifacts`, off `origin/main` at `3094bfe84`. Started

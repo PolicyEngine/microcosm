@@ -88,6 +88,10 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_REGION_CODE
+from microcosm.calibrate.geography_constants import (
+    UK_LADDER_NATION_REGION_CODES,
+    UK_REGION_TIER,
+)
 
 #: Derived (lookup-sourced) layers the ladder artifact must carry a vintage
 #: for. ITL2 and ITL1 are structural prefixes of the ITL3 code and share the
@@ -142,6 +146,69 @@ UK_ENGLAND_WALES_REGION_CODES = (
 #: summary (London holds roughly 13% of England & Wales household weight, so a
 #: collapse to zero is caught the way the US ladder catches an NYC collapse).
 UK_LONDON_REGION_CODE = "E12000007"
+
+
+def region_tier_by_area(
+    codes: np.ndarray,
+    regions: np.ndarray,
+    *,
+    level: str,
+) -> dict[str, str]:
+    """Map every area id to the one region-tier code its output areas carry.
+
+    The ladder stamps each OA with a region code (``E12`` for England, the
+    nation pseudo-codes elsewhere). The region tier nests constituencies and
+    authorities exactly, so an area whose OAs disagree is a ladder defect and
+    refuses here rather than becoming a cross-grain leg that belongs to two
+    controls (microcosm#905).
+    """
+
+    tier_codes = {code for _, code in UK_REGION_TIER}
+    region_by_area: dict[str, str] = {}
+    for area_id, region in zip(
+        np.asarray(codes).astype(str).tolist(),
+        np.asarray(regions).astype(str).tolist(),
+        strict=True,
+    ):
+        tier = UK_LADDER_NATION_REGION_CODES.get(region, region)
+        if tier not in tier_codes:
+            raise ValueError(
+                f"UK OA ladder {level} area {area_id!r} carries region code "
+                f"{region!r}, which is outside the region tier."
+            )
+        previous = region_by_area.setdefault(area_id, tier)
+        if previous != tier:
+            raise ValueError(
+                f"UK OA ladder {level} area {area_id!r} spans region-tier codes "
+                f"{previous!r} and {tier!r}; the region tier must nest."
+            )
+    return dict(sorted(region_by_area.items()))
+
+
+def uk_area_region_codes(ladder: Any) -> dict[str, str]:
+    """Constituency and local-authority id -> region-tier code, from a ladder.
+
+    The run's own ladder is the authority for the cross-grain legs of the
+    areas it assigned; the packaged crosswalk carries the same mapping for
+    the pinned ladder and is the fallback when no ladder is in hand.
+    """
+
+    mapping: dict[str, str] = {}
+    for level, column in (
+        ("constituency", "constituency_code"),
+        ("local_authority", "local_authority_code"),
+    ):
+        for area_id, tier in region_tier_by_area(
+            getattr(ladder, column), ladder.region_code, level=level
+        ).items():
+            previous = mapping.setdefault(area_id, tier)
+            if previous != tier:
+                raise ValueError(
+                    f"UK OA ladder area {area_id!r} maps to both {previous!r} "
+                    f"and {tier!r} across levels."
+                )
+    return mapping
+
 
 UK_OA_LADDER_SCHEMA_VERSION = 1
 UK_OA_LADDER_KIND = "uk_oa_ladder"
@@ -453,10 +520,7 @@ def expected_uk_ladder_area_support(
         region_households = float(constituency_weight.sum())
         for constituency_code, household_count in constituency_weight.items():
             expected_rows = (
-                n_clones
-                * int(n_region)
-                * float(household_count)
-                / region_households
+                n_clones * int(n_region) * float(household_count) / region_households
             )
             constituency_key = str(constituency_code)
             constituency_expected[constituency_key] += expected_rows
@@ -504,9 +568,13 @@ def uk_region_mix(
     """Summarize household row and weight shares by normalized UK region."""
 
     if region_column not in household.columns:
-        raise ValueError(f"household table must contain region column {region_column!r}.")
+        raise ValueError(
+            f"household table must contain region column {region_column!r}."
+        )
     if weight_column not in household.columns:
-        raise ValueError(f"household table must contain weight column {weight_column!r}.")
+        raise ValueError(
+            f"household table must contain weight column {weight_column!r}."
+        )
 
     region_codes = _household_region_codes(
         household[region_column],
@@ -518,7 +586,9 @@ def uk_region_mix(
     if not np.isfinite(weights).all() or (weights < 0).any():
         raise ValueError(f"{weight_column} must be finite and non-negative.")
     if len(weights) == 0:
-        raise ValueError("household table must contain at least one row for region mix.")
+        raise ValueError(
+            "household table must contain at least one row for region mix."
+        )
     total_weight = float(weights.sum())
     if total_weight <= 0:
         raise ValueError(f"{weight_column} must carry positive total weight.")

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import numpy as np
+import pytest
+
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 
 
@@ -154,6 +157,28 @@ def test_cgt_incidence_mass_threshold_is_live() -> None:
             "maximum_relative_mass_imbalance": 0.009,
         },
     ).passed
+
+
+def test_cgt_incidence_mass_accepts_float_roundoff_at_zero_policy_tolerance() -> None:
+    original = 100.0
+    clone = np.nextafter(original, np.inf)
+
+    result = uk_stage_health_gate(
+        evidence={
+            "stage": "cgt_incidence_clone",
+            "mass_by_clone_flag": {"false": original, "true": clone},
+        },
+        stage="cgt_incidence_clone",
+        check="cgt_incidence_mass",
+        parameters={
+            "stage": "cgt_incidence_clone",
+            "check": "cgt_incidence_mass",
+            "maximum_relative_mass_imbalance": 0.0,
+        },
+    )
+
+    assert _passed(result)
+    assert result.details["relative_imbalance"] > 0.0
 
 
 def test_spi_support_channel_parameters_are_live() -> None:
@@ -320,6 +345,53 @@ def test_age_tail_relative_deviation_parameter_is_live() -> None:
     ).passed
 
 
+def test_cgt_summary_allocation_receipt_must_be_finite_and_non_negative() -> None:
+    parameters = {
+        "stage": "hmrc_cgt_gains_spine",
+        "check": "cgt_imputation_summary",
+        "minimum_band_rows": 1,
+    }
+
+    def evidence(error: float, released: float) -> dict:
+        return {
+            "stage": "hmrc_cgt_gains_spine",
+            "rows": [{"gain_lower_bound": 12300.0}],
+            "taxpayer_mass": 1.0,
+            "published_taxpayer_mass": 1.0,
+            "remainder_mass": 0.0,
+            "allocation": {
+                "rake": {
+                    "ipf_max_abs_margin_error": error,
+                    "gains_margin_max_abs_error": error,
+                    "ipf_zero_seed_cells": 0,
+                },
+                "fallback_released_mass": released,
+            },
+        }
+
+    assert _passed(
+        uk_stage_health_gate(
+            evidence=evidence(0.01, 250.0),
+            stage="hmrc_cgt_gains_spine",
+            check="cgt_imputation_summary",
+            parameters=parameters,
+        )
+    )
+    assert not uk_stage_health_gate(
+        evidence=evidence(0.01, -1.0),
+        stage="hmrc_cgt_gains_spine",
+        check="cgt_imputation_summary",
+        parameters=parameters,
+    ).passed
+    with pytest.raises(ValueError):
+        uk_stage_health_gate(
+            evidence=evidence(float("nan"), 0.0),
+            stage="hmrc_cgt_gains_spine",
+            check="cgt_imputation_summary",
+            parameters=parameters,
+        )
+
+
 def test_cgt_summary_minimum_rows_parameter_is_live() -> None:
     evidence = {
         "stage": "hmrc_cgt_gains_spine",
@@ -462,3 +534,122 @@ def test_latent_attribute_realization_fails_on_empty_blocks_and_zero_rows() -> N
     zero_rows = _latent_receipt()
     zero_rows["incidence_by_region"]["LONDON"]["rows"] = 0
     assert not _latent_gate(zero_rows).passed
+
+
+def _asset_type_evidence(**overrides: object) -> dict[str, object]:
+    evidence: dict[str, object] = {
+        "stage": "hmrc_cgt_asset_type_spine",
+        "residential": {
+            "count_target_individuals_basis": 202_630.0,
+            "gains_target_individuals_basis": 12.24e9,
+            "expected_count": 202_630.0,
+            "expected_gains": 12.24e9,
+            "achieved_count": 202_620.0,
+            "achieved_gains": 11.9e9,
+            "achieved_rows": 3_377,
+            "max_liable_weight": 60.0,
+            "count_bernoulli_sigma": 2_000.0,
+            "gains_bernoulli_sigma": 0.15e9,
+        },
+        "asset_type": {
+            "achieved_gains_share": {
+                "listed_shares": 0.094,
+                "unlisted_shares": 0.528,
+                "other_financial_assets": 0.282,
+                "agricultural_commercial_industrial_land_buildings": 0.044,
+                "other_non_financial_assets": 0.052,
+            }
+        },
+        "value_counts": {
+            "none": 4_043,
+            "sub_aea": 1_309,
+            "residential_land_buildings": 3_377,
+        },
+    }
+    evidence.update(overrides)
+    return evidence
+
+
+def test_cgt_asset_type_summary_holds_the_residential_realisation() -> None:
+    parameters = {
+        "stage": "hmrc_cgt_asset_type_spine",
+        "check": "cgt_asset_type_summary",
+        "maximum_relative_deviation": 0.05,
+        "maximum_gains_sigma": 3.0,
+        "maximum_solve_relative_error": 1e-6,
+    }
+
+    passed = uk_stage_health_gate(
+        stage="hmrc_cgt_asset_type_spine",
+        check="cgt_asset_type_summary",
+        evidence=_asset_type_evidence(),
+        parameters=parameters,
+    )
+    assert passed.passed
+    assert passed.details["residential_count_gap"] == 10.0
+    assert passed.details["residential_gains_bound"] == 0.05 * 12.24e9
+
+    # A small frame: the noise floor is wider than the band and governs.
+    noisy = _asset_type_evidence(
+        residential={
+            **_asset_type_evidence()["residential"],
+            "achieved_gains": 9.0e9,
+            "gains_bernoulli_sigma": 1.5e9,
+        }
+    )
+    assert uk_stage_health_gate(
+        stage="hmrc_cgt_asset_type_spine",
+        check="cgt_asset_type_summary",
+        evidence=noisy,
+        parameters=parameters,
+    ).passed
+
+    # A count more than one person off the expectation is a broken draw.
+    off_count = _asset_type_evidence(
+        residential={
+            **_asset_type_evidence()["residential"],
+            "achieved_count": 202_500.0,
+        }
+    )
+    failed = uk_stage_health_gate(
+        stage="hmrc_cgt_asset_type_spine",
+        check="cgt_asset_type_summary",
+        evidence=off_count,
+        parameters=parameters,
+    )
+    assert not failed.passed
+    assert any("count gap" in failure for failure in failed.failures)
+
+    drifted = _asset_type_evidence(
+        residential={
+            **_asset_type_evidence()["residential"],
+            "achieved_gains": 10.0e9,
+        }
+    )
+    failed = uk_stage_health_gate(
+        stage="hmrc_cgt_asset_type_spine",
+        check="cgt_asset_type_summary",
+        evidence=drifted,
+        parameters=parameters,
+    )
+    assert not failed.passed
+    assert any("gains gap" in failure for failure in failed.failures)
+
+    bad_share = _asset_type_evidence(
+        asset_type={"achieved_gains_share": {"listed_shares": 1.5}}
+    )
+    failed = uk_stage_health_gate(
+        stage="hmrc_cgt_asset_type_spine",
+        check="cgt_asset_type_summary",
+        evidence=bad_share,
+        parameters=parameters,
+    )
+    assert not failed.passed
+
+    with pytest.raises(ValueError, match="residential"):
+        uk_stage_health_gate(
+            stage="hmrc_cgt_asset_type_spine",
+            check="cgt_asset_type_summary",
+            evidence={"stage": "hmrc_cgt_asset_type_spine"},
+            parameters=parameters,
+        )

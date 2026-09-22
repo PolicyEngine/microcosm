@@ -19,6 +19,7 @@ import pytest
 from microcosm.data import (
     EVIDENCE_RELEASE_ID_SEGMENT,
     EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+    PUBLISHER_CLAIM_BASIS,
     RELEASE_MANIFEST_SCHEMA_VERSION,
     US_SOURCE_COVERAGE_DIAGNOSTICS_FILE,
     ReleaseContractError,
@@ -137,13 +138,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "38a8a01467e372c87d845e3aacef67c5cc67d90dbc86fa5325408296be00afab"
+    "211abff22b4eedf9cf69f4b43a6f77ca8966d61a386c1804c3fdb093b0e27aa0"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "49e86be979d5a266c88ea3091b295f8efe2fa96c85fddeb153c6d6083be6c72b"
+    "462271cdc72631e4b6780be52b53d7ea7572ad97e9b91a00a1f3da199f56858c"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "25049e61956b1f4145c1915f0e9a0b9523ec86da428f2a378c6ed8dce5cd2793"
+    "8baa7f5c0db3f64c5e00859ff7fd2bd4cf2daf611367ec36f519d1e428af1ebd"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -176,6 +177,7 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
+    "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred", None),
     "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
     "uk_stage_etb_services_support": ("stage_health", "transferred", None),
     "uk_stage_frs_hmrc_spine_leaves_signal": (
@@ -214,6 +216,11 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_student_loans_realization": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_hmrc_cgt_asset_type_spine_summary": (
         "stage_health",
         "transferred",
         None,
@@ -260,6 +267,11 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled", "enum_domain"),
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled", "enum_domain"),
+    "uk_capital_gains_asset_type_enum_domain": (
+        "enum_domain",
+        "transferred",
+        "enum_domain",
+    ),
     "uk_uc_deduction_combination_enum_domain": (
         "enum_domain",
         "terminal",
@@ -1181,6 +1193,7 @@ def _gate_battery_payload(
         "uk_stage_was_wealth_support": "was_wealth",
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_energy_rake": "lcfs_consumption",
         "uk_stage_etb_vat_support": "etb_vat",
         "uk_stage_etb_services_support": "etb_services",
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
@@ -1189,6 +1202,7 @@ def _gate_battery_payload(
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
         "uk_stage_cgt_band_donors_support": "cgt_band_donors",
         "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",
+        "uk_stage_hmrc_cgt_asset_type_spine_summary": "hmrc_cgt_asset_type_spine",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
         "uk_stage_age_tail_targets": "age_tail",
@@ -3977,6 +3991,91 @@ def test_release_manifest_compatible_specifier_must_be_valid(
 
     failures = "\n".join(excinfo.value.failures)
     assert "valid PEP 440 specifier" in failures
+
+
+def _declare_model_claim(release_dir: Path, entry: dict) -> None:
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["compatible_model_packages"] = [entry]
+    manifest_path.write_text(json.dumps(manifest))
+
+
+def test_release_manifest_accepts_a_declared_publisher_compatibility_range(
+    release_dir: Path,
+) -> None:
+    _declare_model_claim(
+        release_dir,
+        {
+            "name": "policyengine-us",
+            "specifier": ">=1.729.0,<1.730",
+            "basis": PUBLISHER_CLAIM_BASIS,
+            "declared_by": "PolicyEngine data release owner",
+        },
+    )
+
+    validate_release_dir(release_dir)
+
+
+@pytest.mark.parametrize(
+    ("entry", "message"),
+    [
+        (
+            {"basis": "vibes", "declared_by": "someone"},
+            "is not a recognised compatibility basis",
+        ),
+        ({"basis": PUBLISHER_CLAIM_BASIS}, "declared_by is required"),
+        (
+            {"basis": PUBLISHER_CLAIM_BASIS, "declared_by": "  "},
+            "declared_by is required",
+        ),
+        ({"declared_by": "someone"}, "declared_by needs the matching"),
+    ],
+)
+def test_release_manifest_rejects_an_unattributed_compatibility_claim(
+    release_dir: Path, entry: dict, message: str
+) -> None:
+    _declare_model_claim(
+        release_dir,
+        {"name": "policyengine-us", "specifier": ">=1.729.0,<1.730", **entry},
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    assert message in "\n".join(excinfo.value.failures)
+
+
+@pytest.mark.parametrize(
+    ("declared_by", "message"),
+    [
+        ("x" * 201, "at most 200 characters"),
+        ("two\nlines", "printable"),
+        (" padded ", "whitespace"),
+    ],
+)
+def test_release_manifest_rejects_a_declarer_the_producer_would_refuse(
+    release_dir: Path, declared_by: str, message: str
+) -> None:
+    """Both layers apply one declarer rule, so neither can admit the other's junk.
+
+    ``check_compatibility_claim_declarer`` refuses these at certification. A
+    bundle carrying one reached this contract from somewhere other than the
+    producer, and the contract is where publication reads it.
+    """
+    _declare_model_claim(
+        release_dir,
+        {
+            "name": "policyengine-us",
+            "specifier": ">=1.729.0,<1.730",
+            "basis": PUBLISHER_CLAIM_BASIS,
+            "declared_by": declared_by,
+        },
+    )
+
+    with pytest.raises(ReleaseContractError) as excinfo:
+        validate_release_dir(release_dir)
+
+    assert message in "\n".join(excinfo.value.failures)
 
 
 def test_release_manifest_compatible_model_package_must_cover_build_version(

@@ -1040,6 +1040,33 @@ def _rowwise_target_set(problem: UKRowwiseLocalMatrix) -> TargetSet:
     return TargetSet(targets)
 
 
+def _progress_fan_out(
+    progress: Callable[[str], None] | None,
+    progress_events: Callable[[dict[str, object]], None] | None,
+) -> Callable[[dict[str, object]], None] | None:
+    """One calibrator callback that feeds the line sink and the event sink."""
+
+    sinks: list[Callable[[dict[str, object]], None]] = []
+    if progress is not None:
+        from microcosm.build.uk_runtime.solve_progress import (
+            uk_solve_progress_callback,
+        )
+
+        sinks.append(uk_solve_progress_callback(progress))
+    if progress_events is not None:
+        sinks.append(progress_events)
+    if not sinks:
+        return None
+    if len(sinks) == 1:
+        return sinks[0]
+
+    def callback(event: dict[str, object]) -> None:
+        for sink in sinks:
+            sink(event)
+
+    return callback
+
+
 def solve_uk_rowwise_weights_under_doctrine(
     frame: Frame,
     problem: UKRowwiseLocalMatrix,
@@ -1058,13 +1085,21 @@ def solve_uk_rowwise_weights_under_doctrine(
     seed: int = 0,
     selection_seed: int | None = None,
     selection_pi_hi: float = 1.0,
+    baseline_pi_floor: float = 0.0,
     size_checkpoint_dir: Path | None = None,
     resume_size_checkpoint: Path | None = None,
     checkpoint_identity: Mapping[str, Any] | None = None,
     checkpoint_provenance: Mapping[str, Any] | None = None,
     progress: Callable[[str], None] | None = None,
+    progress_events: Callable[[dict[str, object]], None] | None = None,
 ) -> UKRowwiseDoctrineSolve:
     """Solve rowwise household weights under the reviewed doctrine.
+
+    ``progress`` receives readable lines (every 100 epochs, each probe, the
+    search stop); ``progress_events`` receives every raw calibrator event as a
+    dict (``calibration_epoch``, ``budget_probe``, ``budget_search_done``),
+    phase-tagged by the size machinery, so a build driver can publish staging
+    telemetry without changing the lines a log reader follows.
 
     ``selection_seed`` (default ``seed``) seeds only the size selection —
     the informed L0 search, the exact-count draw and the refit — so two
@@ -1077,7 +1112,10 @@ def solve_uk_rowwise_weights_under_doctrine(
     checkpoint instead of solving and searching again, refusing when the
     identity, the pool or the target surface differ. The draw's threshold
     (``selection_pi_hi``) may differ from the one the search stopped on; the
-    size receipt records both.
+    size receipt records both. ``baseline_pi_floor`` trims the refit's
+    Horvitz–Thompson baseline (see
+    :func:`~microcosm.build.uk_runtime.dataset_size.refit_uk_dataset_size`);
+    it is a refit setting, so a resumed checkpoint may use a different one.
 
     ``progress`` receives one readable line per hundred epochs of the dense
     solve, of every budget probe and of the refit, one line per finished
@@ -1202,13 +1240,7 @@ def solve_uk_rowwise_weights_under_doctrine(
         raise ValueError("size checkpoints apply to a dataset_households solve.")
     if size_checkpoint_dir is not None and resume_size_checkpoint is not None:
         raise ValueError("a resumed solve does not write a second checkpoint.")
-    progress_callback = None
-    if progress is not None:
-        from microcosm.build.uk_runtime.solve_progress import (
-            uk_solve_progress_callback,
-        )
-
-        progress_callback = uk_solve_progress_callback(progress)
+    progress_callback = _progress_fan_out(progress, progress_events)
     restored = None
     if resume_size_checkpoint is not None:
         from microcosm.build.uk_runtime.size_checkpoint import load_uk_size_checkpoint
@@ -1314,6 +1346,7 @@ def solve_uk_rowwise_weights_under_doctrine(
             learning_rate=learning_rate,
             seed=size_seed,
             pi_hi=selection_pi_hi,
+            baseline_pi_floor=baseline_pi_floor,
             selection=size_selection,
             progress_callback=progress_callback,
         )
@@ -1660,6 +1693,7 @@ def rotated_uk_local_holdout(
     solve_seed: int = 0,
     selection_seed: int | None = None,
     selection_pi_hi: float = 1.0,
+    baseline_pi_floor: float = 0.0,
 ) -> dict[str, object]:
     """Run five local-row rotations with national rows fixed in training."""
 
@@ -1707,6 +1741,7 @@ def rotated_uk_local_holdout(
             seed=solve_seed,
             selection_seed=selection_seed,
             selection_pi_hi=selection_pi_hi,
+            baseline_pi_floor=baseline_pi_floor,
         )
         held_targets = problem.targets[holdout_indices]
         held_estimates = np.asarray(

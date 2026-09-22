@@ -30,6 +30,7 @@ from microcosm.build.ledger_targets import (
 from microcosm.build.target_reference_authoring import _json_safe_ledger_id
 from microcosm.build.uk_runtime.chronicle_feed import (
     UKChronicleFeed,
+    load_uk_chronicle_feed,
 )
 
 VENDOR_SELECTIONS_RESOURCE = "ledger_fact_vendor_selections.json"
@@ -341,6 +342,81 @@ def load_vendored_resource(name: str) -> dict[str, Any]:
     return payload
 
 
+def vendored_rows(
+    name: str, *, fiscal_start: str | None = None, **criteria: object
+) -> list[dict[str, Any]]:
+    """Rows of a committed vendored resource, refused if it lags the feed pin.
+
+    The one reader every stage consumer goes through: the resource must have
+    been vendored from the Chronicle feed ``uk/chronicle_feed.json`` declares
+    (a stale copy is refused before any row is read), ``criteria`` filter as
+    :func:`rows_matching`, and ``fiscal_start`` selects fiscal-year rows by
+    their ``period_coverage.start_date`` because publishers label fiscal years
+    differently (DfT by the closing year, HMRC, OBR, ORR and the devolved
+    publishers by the opening year).
+    """
+
+    from microcosm.build.uk_runtime.chronicle_feed import load_uk_chronicle_feed
+
+    payload = load_vendored_resource(name)
+    expected = feed_identity(load_uk_chronicle_feed())
+    if payload.get("source_fact_feed") != expected:
+        raise ValueError(
+            f"{name} was vendored from a different Chronicle feed than "
+            "uk/chronicle_feed.json declares; regenerate it with "
+            "tools/vendor_uk_ledger_facts.py before compiling."
+        )
+    rows = rows_matching(payload, **criteria)
+    if fiscal_start is None:
+        return rows
+    return [
+        row
+        for row in rows
+        if isinstance(row.get("period_coverage"), Mapping)
+        and str(row["period_coverage"].get("start_date")) == str(fiscal_start)
+    ]
+
+
+_FEED_IDENTITY_KEYS = (
+    "source_commit",
+    "facts_sha256",
+    "manifest_sha256",
+    "fact_row_count",
+)
+
+
+def verify_vendored_resource_feed_identity(
+    payload: Mapping[str, Any], *, pin: UKChronicleFeed | None = None
+) -> None:
+    """Refuse a vendored resource that was not taken from the committed pin.
+
+    Every vendored resource records the feed it was copied from; a stage
+    reading one at build time checks that record against the packaged
+    ``chronicle_feed.json`` before it reads a row, so a resource left behind
+    by an earlier pin (or vendored with ``--allow-unpinned-feed``) fails by
+    name rather than conditioning a build on stale facts.
+    """
+
+    pin = pin or load_uk_chronicle_feed()
+    recorded = payload.get("source_fact_feed")
+    if not isinstance(recorded, Mapping):
+        raise ValueError(
+            f"Vendored resource {payload.get('resource')!r} records no source_fact_feed."
+        )
+    drifted = {
+        key: (recorded.get(key), getattr(pin, key))
+        for key in _FEED_IDENTITY_KEYS
+        if recorded.get(key) != getattr(pin, key)
+    }
+    if drifted:
+        raise ValueError(
+            f"Vendored resource {payload.get('resource')!r} was taken from a "
+            "Chronicle feed that differs from the committed UK pin on "
+            f"{sorted(drifted)}: {drifted}. Re-vendor it with "
+            f"{VENDOR_TOOL} against the pinned artifact."
+        )
+
+
 def rows_matching(
     payload: Mapping[str, Any], **criteria: object
 ) -> list[dict[str, Any]]:
@@ -363,6 +439,15 @@ def rows_matching(
     for row in payload["rows"]:
         keep = True
         for key, expected in criteria.items():
+            if key == "dimensions" and isinstance(expected, Mapping):
+                actual_dims = row.get("dimensions") or {}
+                if any(
+                    str(actual_dims.get(dim)) != str(value)
+                    for dim, value in expected.items()
+                ):
+                    keep = False
+                    break
+                continue
             path = aliases.get(key, (key,))
             actual: Any = row
             for part in path:

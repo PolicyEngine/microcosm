@@ -21,6 +21,10 @@ from pathlib import Path
 
 import numpy as np
 
+from microcosm.build.staging_v2 import (
+    StagingContractError,
+    validate_staging_delivery,
+)
 from microcosm.build.uk_runtime.local_targets import load_uk_population_contract
 from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
 from microcosm.build.uk_runtime.release_identity import UK_NATIONAL_RELEASE_ID
@@ -51,6 +55,35 @@ def _uk_publisher_labels() -> dict[str, str]:
     }
 
 
+def _refuse_non_release_smoke_spine(spine_h5: Path) -> None:
+    """Reject bounded smoke output before any release files are created."""
+
+    sidecar_path = spine_h5.with_suffix(".build.json")
+    if sidecar_path.is_file():
+        sidecar = _load_json(sidecar_path, label="spine build sidecar")
+        if (
+            sidecar.get("non_release") is True
+            or sidecar.get("release_posture") == "non_release_smoke"
+        ):
+            raise SystemExit(
+                "error: release assembly refuses a non-release smoke spine sidecar"
+            )
+    if not spine_h5.is_file():
+        return
+    try:
+        import h5py
+
+        with h5py.File(spine_h5, mode="r") as file:
+            non_release = bool(file.attrs.get("populace_non_release", False))
+            posture = file.attrs.get("populace_release_posture", "")
+            if isinstance(posture, bytes):
+                posture = posture.decode("utf-8")
+    except OSError:
+        return
+    if non_release or posture == "smoke":
+        raise SystemExit("error: release assembly refuses a non-release smoke H5")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     summary = _assemble(args)
@@ -59,9 +92,21 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _assemble(args: argparse.Namespace) -> dict[str, object]:
+    _refuse_non_release_smoke_spine(args.spine_h5)
     certification_bytes = args.certification_json.read_bytes()
     certification = _load_json_bytes(certification_bytes, label="--certification-json")
     build_record = _load_json(args.build_record_json, label="--build-record-json")
+    raw_staging_delivery = build_record.get("staging_delivery")
+    if not isinstance(raw_staging_delivery, Mapping):
+        raise SystemExit(
+            "error: build record is missing valid staging-delivery evidence"
+        )
+    try:
+        staging_delivery = validate_staging_delivery(raw_staging_delivery)
+    except StagingContractError as error:
+        raise SystemExit(
+            f"error: invalid staging-delivery evidence: {error}"
+        ) from error
     diagnostics_bytes = args.diagnostics_json.read_bytes()
     diagnostics = _load_json_bytes(diagnostics_bytes, label="--diagnostics-json")
 
@@ -278,6 +323,7 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
             seam_part=seam_part,
             release_cut_part=release_cut_part,
             spine_report_path=spine_report_path,
+            staging_delivery=staging_delivery,
         )
     finally:
         shutil.rmtree(staging_parent, ignore_errors=True)
@@ -307,6 +353,7 @@ def _stage_and_finalize(
     seam_part: Mapping[str, object],
     release_cut_part: Mapping[str, object],
     spine_report_path: Path,
+    staging_delivery: Mapping[str, object],
 ) -> dict[str, object]:
     np.savez(
         calibration_path,
@@ -354,6 +401,7 @@ def _stage_and_finalize(
         "attempt_id": attempt_id,
         "cut_tag": cut_tag,
         "created_at": created_at,
+        "staging": dict(staging_delivery),
     }
     build_manifest_path = release_dir / "build_manifest.json"
     _write_json(build_manifest_path, build_manifest)

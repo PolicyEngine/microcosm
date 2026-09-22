@@ -83,7 +83,12 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "hmrc_cgt_size_bands.json",
+      "path": "hmrc_cgt_conditioning_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "hmrc_cgt_asset_type_facts.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -123,12 +128,7 @@
       "schema_id": "legacy_json"
     },
     {
-      "path": "need_energy_targets.json",
-      "kind": "legacy_json",
-      "schema_id": "legacy_json"
-    },
-    {
-      "path": "lcfs_consumption_anchors.json",
+      "path": "ofgem_region_crosswalk.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },
@@ -354,6 +354,16 @@
     },
     {
       "path": "ofgem_price_cap_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "desnz_domestic_energy_facts.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "qep_energy_prices.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"
     },

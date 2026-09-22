@@ -232,6 +232,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "acs_transfer_bank.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_checkpoint.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_pool.py",
+        # Pinned ASEC source coordinates and verified fetch; no population
+        # treatment. Remains subject to the all-runtime source-identity scan.
+        "asec_sources.py",
         "base_pool.py",
         "block_ladder_sources.py",
         "capital_gain_distributions.py",

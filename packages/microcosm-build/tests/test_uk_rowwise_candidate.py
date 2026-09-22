@@ -6,6 +6,7 @@ import base64
 import hashlib
 import importlib.util
 import json
+import shutil
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -368,6 +369,8 @@ def _mandatory_input_flags(input_h5: Path, ladder_path: Path) -> list[str]:
         "1" * 64,
         "--ledger-manifest-sha256",
         "2" * 64,
+        # Tests never reach the Hub: telemetry and the staged bundle stay local.
+        "--staging-local-only",
     ]
 
 
@@ -453,6 +456,8 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -469,9 +474,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
         == 0
     )
 
-    candidate_h5 = output_dir / builder.CANDIDATE_FILENAME_TEMPLATE.format(
-        calibration_year=2025
-    )
+    candidate_h5 = output_dir / "microcosm_uk_2024_25_local.h5"
     expected_sidecars = {
         builder.MANIFEST_FILENAME,
         builder.SOLVE_DIAGNOSTICS_FILENAME,
@@ -479,7 +482,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
         builder.PAST_CAP_FILENAME,
         builder.CALIBRATION_DIAGNOSTICS_FILENAME,
         builder.LOCAL_REGISTRY_FILENAME,
-        builder.LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(calibration_year=2025),
+        "microcosm_uk_2024_25_local.local_gates.json",
     }
     assert candidate_h5.exists()
     assert expected_sidecars <= {path.name for path in output_dir.iterdir()}
@@ -507,6 +510,20 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     assert record.declared_factor == pytest.approx(record.new_total / record.old_total)
 
     manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
+    # The manifest declares the role it was built under (microcosm#823): the
+    # dense pre-flight and assembler refuse any other, and the parameters
+    # carry the role's doctrine block verbatim.
+    assert manifest["schema_version"] == 4
+    assert manifest["release_role"] == "dense"
+    assert manifest["release_id"] == "microcosm-uk-2024-25-dense"
+    assert manifest["parameters"]["release_role"] == "dense"
+    assert manifest["parameters"]["n_clones"] == 2
+    assert manifest["parameters"]["doctrine"] == (
+        builder.UK_ROWWISE_DENSE_POSTURE.doctrine_bounds()
+    )
+    assert manifest["outputs"]["dataset"]["path"].endswith(
+        "microcosm_uk_2024_25_local.h5"
+    )
     assert manifest["candidate_scope"] == "adjudicated_partial"
     assert manifest["bound_target_families"] == ["census_households/constituency"]
     adjudications = manifest["binding_adjudications"]
@@ -674,6 +691,8 @@ def test_candidate_dry_run_plans_without_solve_or_write(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -785,19 +804,23 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
                 str(output_dir),
             ]
         ).n_clones
-        == builder.UK_LOCAL_CLONE_COUNT
+        == builder.UK_ROWWISE_DENSE_POSTURE.clone_count
     )
     with pytest.raises(ValueError, match="must equal --n-clones"):
         builder.main(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -815,6 +838,8 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -876,6 +901,8 @@ def test_candidate_clone_count_planning_is_dry_run_only(tmp_path) -> None:
             [
                 "--input-h5",
                 str(tmp_path / "missing.h5"),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(tmp_path / "missing.npz"),
                 "--out",
@@ -1359,6 +1386,8 @@ def test_joint_candidate_f100_and_f001_end_to_end(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1400,6 +1429,8 @@ def test_joint_candidate_f100_and_f001_end_to_end(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1415,7 +1446,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
         == 0
     )
     f100 = json.loads((f100_out / builder.MANIFEST_FILENAME).read_text())
-    assert f100["schema_version"] == 3
+    assert f100["schema_version"] == 4
     # The written rowwise artifact carries the shared ``clone_index`` name on
     # every table: the compact national loader must refuse it (flattening
     # rule) and the rowwise reader must undo the export rename.
@@ -1487,6 +1518,8 @@ def test_joint_candidate_f100_and_f001_end_to_end(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1556,6 +1589,8 @@ def test_candidate_refusal_records_receipt_and_reraises(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1574,9 +1609,7 @@ def test_candidate_refusal_records_receipt_and_reraises(
     assert len(rows) == 1
     row = rows[0]
     assert row.disposition == "failed"
-    gate_report_path = output_dir / builder.LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(
-        calibration_year=2025
-    )
+    gate_report_path = output_dir / "microcosm_uk_2024_25_local.local_gates.json"
     assert gate_report_path.exists()
     assert row.gate_verdicts["uk_local_geography_ladder_post_calibration"] == {
         "verdict": "failed",
@@ -1618,6 +1651,8 @@ def test_candidate_binding_adjudication_failure_records_failed_row(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1672,6 +1707,8 @@ def test_candidate_setup_failure_records_failed_row(monkeypatch, tmp_path) -> No
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1812,6 +1849,8 @@ def test_candidate_dry_run_refuses_ladder_sidecar_collision(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1835,8 +1874,8 @@ def test_candidate_publication_rolls_back_on_interrupt(
     staging_dir.mkdir()
     output_paths = builder._output_paths(
         output_dir,
-        source_year=2023,
-        calibration_year=2025,
+        posture=builder.UK_ROWWISE_DENSE_POSTURE,
+        vintage="2024_25",
     )
     staged = {key: staging_dir / path.name for key, path in output_paths.items()}
     for path in staged.values():
@@ -1869,6 +1908,8 @@ def _joint_f100_args(input_h5: Path, ladder_path: Path, output_dir: Path) -> lis
     return [
         "--input-h5",
         str(input_h5),
+        "--release-role",
+        "dense",
         "--ladder",
         str(ladder_path),
         "--out",
@@ -2064,6 +2105,8 @@ def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None
     base = [
         "--input-h5",
         str(tmp_path / "spine.h5"),
+        "--release-role",
+        "dense",
         "--input-sha256",
         pin,
         "--ladder",
@@ -2083,8 +2126,8 @@ def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None
     # The doctrine defaults are the release posture: nothing to refuse.
     args = builder._parse_args(base)
     builder._validate_cli_args(args)
-    assert args.n_clones == builder.UK_LOCAL_CLONE_COUNT == 15
-    assert args.epochs == builder.UK_LOCAL_SOLVE_EPOCHS == 1500
+    assert args.n_clones == builder.UK_ROWWISE_DENSE_POSTURE.clone_count == 15
+    assert args.epochs == builder.UK_ROWWISE_DENSE_POSTURE.epochs == 1500
     assert args.target_weight_rule == "grain_equal"
 
     with pytest.raises(ValueError, match=r"--epochs != doctrine 1500"):
@@ -2103,6 +2146,8 @@ def test_candidate_requires_pinned_ledger_inputs(tmp_path) -> None:
         [
             "--input-h5",
             str(tmp_path / "spine.h5"),
+            "--release-role",
+            "dense",
             "--input-sha256",
             "0" * 64,
             "--ladder",
@@ -2199,6 +2244,8 @@ def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
         [
             "--input-h5",
             str(input_h5),
+            "--release-role",
+            "dense",
             "--ladder",
             str(ladder_path),
             *flags,
@@ -2229,7 +2276,7 @@ def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
         manifest["weights"]["stretch_reference"]
         == "normalized_horvitz_thompson_w_over_q"
     )
-    path = out / builder.CANDIDATE_FILENAME_TEMPLATE.format(calibration_year=2025)
+    path = out / "microcosm_uk_2024_25_local.h5"
     with pd.HDFStore(path, "r") as store:
         households = store["household"]
         persons = store["person"]
@@ -2245,6 +2292,10 @@ def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
     assert size["seed"] == 11
     assert manifest["parameters"]["selection_pi_hi"] == 1.0
     assert size["selection_pi_hi"] == 1.0
+    assert manifest["parameters"]["baseline_pi_floor"] == 0.0
+    assert size["baseline_pi_floor"] == 0.0
+    assert size["baseline_floored_rows"] == 0
+    assert size["refit_baseline"] == "normalized_horvitz_thompson_w_over_q"
     assert size["selection_receipt"]["pi_hi"] == 1.0
     assert size["selection_feasibility"]["requested_pi_hi"] == 1.0
     assert size["selection_feasibility"]["feasible_at_requested_pi_hi"] is True
@@ -2301,6 +2352,8 @@ def test_selection_seed_requires_a_dataset_size(tmp_path):
         [
             "--input-h5",
             str(tmp_path / "spine.h5"),
+            "--release-role",
+            "dense",
             "--ladder",
             str(tmp_path / "ladder.npz"),
             "--out",
@@ -2319,6 +2372,9 @@ def test_selection_seed_requires_a_dataset_size(tmp_path):
         (["--selection-pi-hi", "0.95"], "requires --dataset-households"),
         (["--dataset-households", "10", "--selection-pi-hi", "0"], r"in \(0, 1\]"),
         (["--dataset-households", "10", "--selection-pi-hi", "1.5"], r"in \(0, 1\]"),
+        (["--baseline-pi-floor", "0.01"], "requires --dataset-households"),
+        (["--dataset-households", "10", "--baseline-pi-floor", "-0.1"], r"in \[0, 1\]"),
+        (["--dataset-households", "10", "--baseline-pi-floor", "1.5"], r"in \[0, 1\]"),
     ],
 )
 def test_selection_pi_hi_is_candidate_only_and_bounded(tmp_path, argv_tail, message):
@@ -2327,6 +2383,8 @@ def test_selection_pi_hi_is_candidate_only_and_bounded(tmp_path, argv_tail, mess
         [
             "--input-h5",
             str(tmp_path / "spine.h5"),
+            "--release-role",
+            "dense",
             "--ladder",
             str(tmp_path / "ladder.npz"),
             "--out",
@@ -2340,7 +2398,10 @@ def test_selection_pi_hi_is_candidate_only_and_bounded(tmp_path, argv_tail, mess
 
 def test_dense_candidate_manifest_has_no_size_sidecars(tmp_path):
     builder = _load_builder_module()
-    paths = builder._output_paths(tmp_path, source_year=2024, calibration_year=2025)
+    paths = builder._output_paths(
+        tmp_path, posture=builder.UK_ROWWISE_DENSE_POSTURE, vintage="2024_25"
+    )
+    assert paths["dataset"].name == "microcosm_uk_2024_25_local.h5"
     assert paths["dense_reference"].name == builder.DENSE_REFERENCE_DIAGNOSTICS_FILENAME
     assert paths["selection"].name == builder.DATASET_SIZE_SELECTION_FILENAME
     assert builder._SIZE_RUN_ONLY_OUTPUTS == {"dense_reference", "selection"}
@@ -2352,6 +2413,8 @@ def test_size_cli_refuses_promotion_without_separate_certification(tmp_path):
         [
             "--input-h5",
             str(tmp_path / "spine.h5"),
+            "--release-role",
+            "dense",
             "--ladder",
             str(tmp_path / "ladder.npz"),
             "--out",
@@ -2393,6 +2456,8 @@ def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
     common = [
         "--input-h5",
         str(input_h5),
+        "--release-role",
+        "dense",
         "--ladder",
         str(ladder_path),
         *_configure_households_only_inputs(
@@ -2425,7 +2490,10 @@ def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
     assert checkpoint["identity"]["epochs"] == 2
     # The identity carries the solve doctrine; the provenance names the
     # writing run (reported on resume, not compared).
-    assert checkpoint["identity"]["doctrine"] == builder._doctrine_bounds()
+    assert checkpoint["identity"]["doctrine"] == builder._doctrine_bounds(
+        builder.UK_ROWWISE_DENSE_POSTURE
+    )
+    assert checkpoint["identity"]["release_role"] == "dense"
     assert set(checkpoint["provenance"]) == {"code_pin", "build_id"}
     manifest = json.loads((first / builder.MANIFEST_FILENAME).read_text())
     written = manifest["solve"]["dataset_size"]["checkpoint"]["written"]
@@ -2521,6 +2589,8 @@ def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -2548,3 +2618,900 @@ def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
         == checkpoint["provenance"]["build_id"]
     )
     assert "written_at" not in resumed_receipt
+
+    # ---------------------------------------------------------------------------
+    # Staging: telemetry to runs/<run_id>/ and the staged dataset bundle.
+
+    # A checkpoint written before the release role existed (no release_role
+    # in its identity) refuses to resume: the identity is the run's
+    # contract, and a pre-role checkpoint is rebuilt, never grandfathered.
+    legacy = tmp_path / "legacy"
+    shutil.copytree(first, legacy)
+    legacy_manifest = json.loads(
+        (legacy / SIZE_CHECKPOINT_MANIFEST_FILENAME).read_text()
+    )
+    del legacy_manifest["identity"]["release_role"]
+    (legacy / SIZE_CHECKPOINT_MANIFEST_FILENAME).write_text(json.dumps(legacy_manifest))
+    with pytest.raises(ValueError, match="release_role: absent in checkpoint"):
+        builder.main(
+            [
+                *common,
+                "--out",
+                str(tmp_path / "from-legacy"),
+                "--resume-size-checkpoint",
+                str(legacy),
+            ]
+        )
+    assert not (tmp_path / "from-legacy" / builder.MANIFEST_FILENAME).exists()
+
+
+def _load_tool(name: str):
+    root = Path(__file__).resolve().parents[3]
+    spec = importlib.util.spec_from_file_location(name, root / "tools" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+class _FakeHub:
+    """One fake Hub serving the telemetry repo and the private dataset repo."""
+
+    def __init__(
+        self,
+        *,
+        fail_commit: bool = False,
+        role: str = "write",
+        scopes: list[dict] | None = None,
+    ) -> None:
+        self.role = role
+        self.scopes = scopes
+        self.commit_of: dict[tuple[str, str], str] = {}
+        self.files: dict[tuple[str, str], bytes] = {}
+        self.uploads: list[tuple[str, str]] = []
+        self.commits: list[dict[str, object]] = []
+        self.fail_commit = fail_commit
+        self.sha = "a" * 40
+
+    def paths(self, repo_id: str) -> list[str]:
+        return sorted(path for repo, path in self.files if repo == repo_id)
+
+    def upload_file(self, *, path_or_fileobj, path_in_repo, repo_id, repo_type):
+        assert repo_type == "dataset"
+        self.files[(repo_id, path_in_repo)] = Path(path_or_fileobj).read_bytes()
+        self.uploads.append((repo_id, path_in_repo))
+
+    def hf_hub_download(self, *, repo_id, filename, repo_type, **kwargs):
+        assert repo_type == "dataset"
+        if (repo_id, filename) not in self.files:
+            raise FileNotFoundError(filename)
+        destination = (
+            Path(kwargs.get("local_dir") or _FAKE_HUB_CACHE) / repo_id / filename
+        )
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(self.files[(repo_id, filename)])
+        return str(destination)
+
+    def file_exists(self, *, repo_id, filename, repo_type):
+        assert repo_type == "dataset"
+        return (repo_id, filename) in self.files
+
+    def repo_info(self, *, repo_id, repo_type):
+        assert repo_type == "dataset"
+        return SimpleNamespace(sha=self.sha)
+
+    def whoami(self):
+        token = {"role": self.role}
+        if self.role == "fineGrained":
+            token["fineGrained"] = {"global": [], "scoped": self.scopes or []}
+        return {"name": "tester", "auth": {"accessToken": token}}
+
+    def get_paths_info(self, *, repo_id, paths, expand, repo_type):
+        assert expand and repo_type == "dataset"
+        return [
+            SimpleNamespace(
+                path=path,
+                last_commit=SimpleNamespace(oid=self.commit_of[(repo_id, path)]),
+            )
+            for path in paths
+            if (repo_id, path) in self.commit_of
+        ]
+
+    def create_commit(
+        self, *, repo_id, operations, commit_message, repo_type, parent_commit
+    ):
+        assert repo_type == "dataset"
+        if self.fail_commit:
+            raise RuntimeError("403 Forbidden token=do-not-record")
+        assert parent_commit == self.sha
+        for operation in operations:
+            self.files[(repo_id, operation.path_in_repo)] = Path(
+                operation.path_or_fileobj
+            ).read_bytes()
+        self.commits.append(
+            {
+                "repo_id": repo_id,
+                "message": commit_message,
+                "paths": sorted(op.path_in_repo for op in operations),
+            }
+        )
+        self.sha = hashlib.sha256(commit_message.encode()).hexdigest()[:40]
+        for operation in operations:
+            self.commit_of[(repo_id, operation.path_in_repo)] = self.sha
+        return SimpleNamespace(oid=self.sha)
+
+
+_FAKE_HUB_CACHE = "/tmp/microcosm-fake-hub-cache"
+
+
+def _staging_run_setup(builder, monkeypatch, tmp_path, *, remote: bool = False):
+    """Fixture inputs plus the flag list; ``remote`` drops the local-only switch."""
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    input_h5 = tmp_path / "staging.h5"
+    ladder_path = tmp_path / "ladder.npz"
+    _write_staging_h5(input_h5, households_per_region=52)
+    ladder = _write_ladder(ladder_path)
+    flags = _configure_households_only_inputs(
+        builder, monkeypatch, input_h5=input_h5, ladder_path=ladder_path
+    )
+    import microcosm.build.uk_runtime.battery_bindings as battery_bindings
+
+    monkeypatch.setattr(
+        battery_bindings,
+        "_local_area_roster",
+        lambda _resource, levels: {
+            "constituency": tuple(sorted(set(ladder.constituency_code))),
+            "local_authority": tuple(sorted(set(ladder.local_authority_code))),
+        },
+    )
+    if remote:
+        flags = [flag for flag in flags if flag != "--staging-local-only"]
+    return input_h5, ladder_path, flags
+
+
+def _build_args(input_h5, ladder_path, flags, out, *extra):
+    return [
+        "--input-h5",
+        str(input_h5),
+        "--release-role",
+        "dense",
+        "--ladder",
+        str(ladder_path),
+        *flags,
+        "--out",
+        str(out),
+        "--n-clones",
+        "2",
+        "--seed",
+        "7",
+        "--epochs",
+        "2",
+        "--skip-holdout",
+        *extra,
+    ]
+
+
+def _single_run_id(out: Path) -> str:
+    runs = sorted(path.name for path in (out / "staging" / "runs").iterdir())
+    assert len(runs) == 1, runs
+    return runs[0]
+
+
+def test_candidate_build_stages_telemetry_locally_and_inventories_the_bundle(
+    monkeypatch, tmp_path, capsys
+):
+    from microcosm.build.staging_v2 import validate_v2_bundle
+
+    builder = _load_builder_module()
+    input_h5, ladder_path, flags = _staging_run_setup(builder, monkeypatch, tmp_path)
+    out = tmp_path / "candidate"
+    status = builder.main(_build_args(input_h5, ladder_path, flags, out))
+    assert status == 0
+    captured = capsys.readouterr()
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+    # The stdout manifest is the on-disk manifest, evidence blocks included.
+    assert json.loads(captured.out)["staged_dataset"] == manifest["staged_dataset"]
+    assert "staged dataset: skipped (local_only)" in captured.err
+
+    run_id = _single_run_id(out)
+    rows = load_spool_rows(out / "logbook-spool")
+    assert rows[0].build_id == run_id
+    bundle = validate_v2_bundle(out / "staging", run_id)
+    run_manifest = bundle["run_manifest"]
+    assert run_manifest["status"] == "completed"
+    assert run_manifest["run_kind"] == "calibration"
+    assert run_manifest["operation_id"] == "uk_rowwise_candidate"
+    assert run_manifest["pipeline"]["id"] == "uk-local-candidate"
+    assert run_manifest["non_release"] is True
+    assert run_manifest["sample"] == {"mode": "full"}
+    assert run_manifest["delivery"]["mode"] == "local_only"
+    assert run_manifest["delivery"]["upload_attempts"] == 0
+    assert {a["logical_name"] for a in run_manifest["artifacts"]} == {
+        "fit_summary",
+        "staged_dataset",
+    }
+    run_dir = out / "staging" / "runs" / run_id
+    fit_summary = json.loads((run_dir / "artifacts" / "fit_summary.json").read_text())
+    assert fit_summary["run_id"] == run_id
+    assert set(fit_summary["gates"]) == set(builder.UK_LOCAL_GATE_SCOPE)
+    assert fit_summary["loss"]["final"] == manifest["solve"]["final_loss"]
+    assert set(fit_summary["fit_by_family"]["local"]) == {"census_households"}
+    staged_artifact = json.loads(
+        (run_dir / "artifacts" / "staged_dataset.json").read_text()
+    )
+    assert staged_artifact == manifest["staged_dataset"]
+
+    # Every phase reports started then completed, in build order; the
+    # calibration progress keeps the last epoch only (thinning at 2 epochs).
+    events = bundle["events"]
+    completed = [e["stage_id"] for e in events if e["status"] == "completed"]
+    assert completed == [
+        "input_pinning",
+        "target_compilation",
+        "cloning",
+        "surface_resolution",
+        "calibration",
+        "gate_battery",
+        "holdout",
+        "output_bundle",
+        "dataset_staging",
+        "complete",
+    ]
+    for stage in ("target_compilation", "cloning", "calibration", "gate_battery"):
+        transitions = [e["status"] for e in events if e["stage_id"] == stage]
+        assert transitions == ["started", "completed"], stage
+    calibration_rows = json.loads((run_dir / "calibration_progress.json").read_text())[
+        "events"
+    ]
+    assert [
+        (row["epoch"], row["epochs"], row["phase"]) for row in calibration_rows
+    ] == [(2, 2, None)]
+    calibration_done = next(
+        e
+        for e in events
+        if e["stage_id"] == "calibration" and e["status"] == "completed"
+    )
+    assert calibration_done["details"]["final_loss"] == manifest["solve"]["final_loss"]
+    assert calibration_done["details"]["size_checkpoint"] is None
+
+    # The manifest carries both receipts; the bundle inventory is the outputs.
+    assert manifest["staging_delivery"]["mode"] == "local_only"
+    assert manifest["staging_delivery"]["run_id"] == run_id
+    staged = manifest["staged_dataset"]
+    assert staged["mode"] == "local_only" and staged["status"] == "skipped"
+    assert staged["prefix"] == f"staged/{run_id}"
+    assert set(staged["files"]) == {
+        Path(entry["path"]).name for entry in manifest["outputs"].values()
+    }
+    for entry in manifest["outputs"].values():
+        assert staged["files"][Path(entry["path"]).name]["sha256"] == entry["sha256"]
+    # The local sums verify the directory as it is, evidence blocks included.
+    for line in (out / "sha256sums.txt").read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((out / name).read_bytes()).hexdigest() == digest, name
+    inventory = json.loads((out / "staged_manifest.json").read_text())
+    assert inventory["run_id"] == run_id and inventory["files"] == staged["files"]
+    assert inventory["summary"]["releasable"] is True
+    assert inventory["telemetry"] == {
+        "repository": None,
+        "prefix": f"runs/{run_id}",
+        "mode": "local_only",
+    }
+    # The sidecars are evidence about the outputs, never outputs themselves.
+    assert "sha256sums" not in manifest["outputs"]
+    assert "staged_manifest" not in manifest["outputs"]
+
+
+def test_size_candidate_stages_the_search_and_refit_phases(monkeypatch, tmp_path):
+    from microcosm.build.staging_v2 import validate_v2_bundle
+
+    builder = _load_builder_module()
+    input_h5, ladder_path, flags = _staging_run_setup(builder, monkeypatch, tmp_path)
+    out = tmp_path / "k300"
+    status = builder.main(
+        _build_args(
+            input_h5,
+            ladder_path,
+            flags,
+            out,
+            "--dataset-households",
+            "300",
+            "--selection-seed",
+            "11",
+        )
+    )
+    assert status in (0, 1)
+    run_id = _single_run_id(out)
+    bundle = validate_v2_bundle(out / "staging", run_id)
+    assert bundle["run_manifest"]["status"] == "completed"
+    rows = json.loads(
+        (out / "staging" / "runs" / run_id / "calibration_progress.json").read_text()
+    )["events"]
+    phases = [row["phase"] for row in rows]
+    assert phases[0] is None and "size_search" in phases and phases[-1] == "size_refit"
+    probe_rows = [row for row in rows if row["budget_search"] == 1]
+    assert probe_rows and all(row["l0_lambda"] is not None for row in probe_rows)
+    assert all(row["epoch"] == 2 for row in rows)
+    calibration_done = next(
+        e
+        for e in bundle["events"]
+        if e["stage_id"] == "calibration" and e["status"] == "completed"
+    )
+    assert calibration_done["details"]["size_checkpoint"] == "written"
+    assert calibration_done["details"]["realized_households"] == 300
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["releasable"] is False
+    assert manifest["staged_dataset"]["status"] == "skipped"
+    assert "dataset_size_selection.csv" in manifest["staged_dataset"]["files"]
+    fit_summary = json.loads(
+        (
+            out / "staging" / "runs" / run_id / "artifacts" / "fit_summary.json"
+        ).read_text()
+    )
+    assert fit_summary["dataset_size"]["requested_households"] == 300
+    assert "pool_row_indices" not in fit_summary["dataset_size"]
+    assert fit_summary["releasable"] is False
+
+
+def test_staging_epoch_stride_keeps_the_forwarded_rows_bounded():
+    builder = _load_builder_module()
+
+    def stride(epochs, households):
+        return builder._staging_epoch_every(
+            SimpleNamespace(epochs=epochs, dataset_households=households)
+        )
+
+    assert stride(2, None) == 10 and stride(2, 300) == 10
+    assert stride(2000, None) == 10
+    # dense + ten probes + refit at 2,000 epochs: 24,000 epochs -> 2,400 rows
+    assert stride(2000, 55000) == 10
+    assert stride(10000, 55000) == 50
+    assert stride(100000, None) == 42
+    for epochs, households in ((2000, 55000), (10000, 55000), (100000, None)):
+        solves = 1 if households is None else 2 + builder._BUDGET_ITERS
+        assert (
+            epochs * solves / stride(epochs, households)
+            <= builder._STAGING_MAX_EPOCH_ROWS
+        )
+
+
+def test_telemetry_content_refusal_never_aborts_the_solve(
+    monkeypatch, tmp_path, capsys
+):
+    from microcosm.build.staging_v2 import StagingContentError, validate_v2_bundle
+
+    builder = _load_builder_module()
+    input_h5, ladder_path, flags = _staging_run_setup(builder, monkeypatch, tmp_path)
+
+    class Refusing(builder.StagingTelemetryV2):
+        def calibration_progress(self, event):
+            raise StagingContentError("Staging file exceeds the 5242880-byte limit.")
+
+    monkeypatch.setattr(builder, "StagingTelemetryV2", Refusing)
+    out = tmp_path / "refused-rows"
+    status = builder.main(_build_args(input_h5, ladder_path, flags, out))
+    assert status == 0
+    err = capsys.readouterr().err
+    assert err.count("no longer forwarded") == 1
+    run_id = _single_run_id(out)
+    bundle = validate_v2_bundle(out / "staging", run_id)
+    assert bundle["run_manifest"]["status"] == "completed"
+    assert not (
+        out / "staging" / "runs" / run_id / "calibration_progress.json"
+    ).exists()
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["staging_delivery"]["mode"] == "local_only"
+    assert load_spool_rows(out / "logbook-spool")[0].disposition == "iterating"
+
+
+def test_invalid_local_telemetry_bundle_is_a_warning_not_the_runs_failure(
+    monkeypatch, tmp_path, capsys
+):
+    from microcosm.build.staging_v2 import StagingContractError
+
+    builder = _load_builder_module()
+    input_h5, ladder_path, flags = _staging_run_setup(builder, monkeypatch, tmp_path)
+
+    class Invalid(builder.StagingTelemetryV2):
+        def validate_local_bundle(self):
+            raise StagingContractError("synthetic bundle defect")
+
+    monkeypatch.setattr(builder, "StagingTelemetryV2", Invalid)
+    out = tmp_path / "invalid-bundle"
+    status = builder.main(_build_args(input_h5, ladder_path, flags, out))
+    assert status == 0
+    err = capsys.readouterr().err
+    assert "does not validate" in err and "synthetic bundle defect" in err
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["staging_delivery"]["mode"] == "local_only"
+    assert manifest["staged_dataset"]["status"] == "skipped"
+    rows = load_spool_rows(out / "logbook-spool")
+    assert rows and rows[0].disposition == "iterating"
+
+
+def test_no_staging_records_both_opt_outs(monkeypatch, tmp_path):
+    builder = _load_builder_module()
+    input_h5, ladder_path, flags = _staging_run_setup(
+        builder, monkeypatch, tmp_path, remote=True
+    )
+    out = tmp_path / "quiet"
+    status = builder.main(
+        _build_args(input_h5, ladder_path, flags, out, "--no-staging")
+    )
+    assert status == 0
+    assert not (out / "staging").exists()
+    assert not (out / "sha256sums.txt").exists()
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["staging_delivery"]["mode"] == "disabled"
+    assert manifest["staging_delivery"]["opt_out_reason"] == "--no-staging"
+    assert manifest["staged_dataset"] == {
+        "contract_version": 1,
+        "mode": "disabled",
+        "repository": None,
+        "prefix": None,
+        "run_id": None,
+        "revision": None,
+        "status": "skipped",
+        "error_code": None,
+        "opt_out_reason": "--no-staging",
+        "files": {},
+    }
+    rows = load_spool_rows(out / "logbook-spool")
+    assert "dataset_stage_skipped" in rows[0].phases_reached
+
+
+def test_remote_staging_uploads_telemetry_and_the_bundle_in_one_commit(
+    monkeypatch, tmp_path, capsys
+):
+    builder = _load_builder_module()
+    input_h5, ladder_path, flags = _staging_run_setup(
+        builder, monkeypatch, tmp_path, remote=True
+    )
+    hub = _FakeHub()
+    monkeypatch.setattr(builder, "_hub_api", lambda: hub)
+    monkeypatch.setattr(builder, "_hub_token", lambda: "hf_test_token")
+    out = tmp_path / "remote"
+    status = builder.main(
+        _build_args(
+            input_h5, ladder_path, flags, out, "--staging-upload-interval-seconds", "0"
+        )
+    )
+    assert status == 0
+    err = capsys.readouterr().err
+    run_id = _single_run_id(out)
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+
+    # Telemetry went to runs/<run_id>/ of the staging repository, artifacts
+    # included, under the fixed prefix and nothing else.
+    telemetry_paths = hub.paths("policyengine/populace-uk-staging")
+    assert telemetry_paths == sorted(
+        f"runs/{run_id}/{name}"
+        for name in (
+            "run_manifest.json",
+            "progress.json",
+            "events.ndjson",
+            "calibration_progress.json",
+            "artifacts/fit_summary.json",
+            "artifacts/staged_dataset.json",
+        )
+    )
+    delivery = manifest["staging_delivery"]
+    assert delivery["mode"] == "local_and_remote"
+    assert delivery["configured_repository"] == "policyengine/populace-uk-staging"
+    assert delivery["upload_successes"] == delivery["upload_attempts"] > 0
+    remote_progress = json.loads(
+        hub.files[("policyengine/populace-uk-staging", f"runs/{run_id}/progress.json")]
+    )
+    assert remote_progress["status"] == "completed"
+
+    # The bundle went to staged/<run_id>/ of the private repository in one
+    # commit: every output, the manifest as built, and the two sidecars.
+    assert len(hub.commits) == 1
+    commit = hub.commits[0]
+    assert commit["repo_id"] == "policyengine/populace-uk-private"
+    expected = {Path(e["path"]).name for e in manifest["outputs"].values()} | {
+        builder.MANIFEST_FILENAME,
+        "staged_manifest.json",
+        "sha256sums.txt",
+    }
+    assert commit["paths"] == sorted(f"staged/{run_id}/{name}" for name in expected)
+    assert hub.paths("policyengine/populace-uk-private") == commit["paths"]
+    staged = manifest["staged_dataset"]
+    assert staged["status"] == "uploaded"
+    assert staged["repository"] == "policyengine/populace-uk-private"
+    assert staged["prefix"] == f"staged/{run_id}"
+    assert staged["revision"] == hub.sha
+    assert (
+        f"staged dataset: uploaded at policyengine/populace-uk-private/staged/{run_id}"
+        in err
+    )
+    remote_h5 = hub.files[
+        (
+            "policyengine/populace-uk-private",
+            f"staged/{run_id}/{Path(manifest['outputs']['dataset']['path']).name}",
+        )
+    ]
+    assert (
+        remote_h5
+        == (out / Path(manifest["outputs"]["dataset"]["path"]).name).read_bytes()
+    )
+    # The uploaded manifest is the one the bundle was built from; the local
+    # copy gained the two evidence blocks afterwards.
+    remote_manifest = json.loads(
+        hub.files[
+            (
+                "policyengine/populace-uk-private",
+                f"staged/{run_id}/{builder.MANIFEST_FILENAME}",
+            )
+        ]
+    )
+    assert (
+        "staged_dataset" not in remote_manifest
+        and "staging_delivery" not in remote_manifest
+    )
+    assert remote_manifest["outputs"] == manifest["outputs"]
+    rows = load_spool_rows(out / "logbook-spool")
+    assert "dataset_staged" in rows[0].phases_reached
+    assert rows[0].disposition == "iterating"
+
+    # Re-staging a directory whose record already says these outputs are
+    # uploaded touches nothing: the driver's record and revision stand, the
+    # sidecars keep their bytes, and no commit is made.
+    stager = _load_tool("stage_uk_rowwise_candidate")
+    monkeypatch.setattr(stager, "_hub_api", lambda: hub)
+    sidecar_bytes = (out / "staged_manifest.json").read_bytes()
+    capsys.readouterr()
+    assert stager.main(["--run-dir", str(out)]) == 0
+    assert "nothing to do" in capsys.readouterr().err
+    restaged = json.loads((out / builder.MANIFEST_FILENAME).read_text())[
+        "staged_dataset"
+    ]
+    assert restaged == staged
+    assert (out / "staged_manifest.json").read_bytes() == sidecar_bytes
+    for line in (out / "sha256sums.txt").read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((out / name).read_bytes()).hexdigest() == digest, name
+    assert len(hub.commits) == 1
+
+    # A record that says the upload failed while the Hub already holds these
+    # outputs: the re-stage finds the bundle and records its own commit, not
+    # the repository head, which has moved on since.
+    manifest_path = out / builder.MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text())
+    manifest["staged_dataset"] = {
+        **staged,
+        "status": "failed",
+        "revision": None,
+        "error_code": "UPLOAD_FAILED",
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
+    hub.sha = "e" * 40
+    assert stager.main(["--run-dir", str(out)]) == 0
+    recovered = json.loads(manifest_path.read_text())["staged_dataset"]
+    assert recovered["status"] == "already_staged"
+    assert recovered["revision"] == staged["revision"] != hub.sha
+    assert len(hub.commits) == 1
+    for line in (out / "sha256sums.txt").read_text().splitlines():
+        digest, name = line.split("  ")
+        assert hashlib.sha256((out / name).read_bytes()).hexdigest() == digest, name
+
+    # Consumers fetch by run id and get digest-verified local files.
+    fetcher = _load_tool("fetch_uk_staged_dataset")
+    monkeypatch.setattr(fetcher, "_hub_api", lambda: hub)
+    dest = tmp_path / "fetched"
+    capsys.readouterr()
+    assert fetcher.main(["--run-id", run_id, "--dest", str(dest)]) == 0
+    listed = capsys.readouterr().out.splitlines()
+    assert str(dest / Path(manifest["outputs"]["dataset"]["path"]).name) in listed
+    assert (dest / "sha256sums.txt").is_file()
+    assert (
+        dest / Path(manifest["outputs"]["dataset"]["path"]).name
+    ).read_bytes() == remote_h5
+
+
+def test_remote_staging_failure_is_recorded_and_the_build_still_succeeds(
+    monkeypatch, tmp_path, capsys
+):
+    builder = _load_builder_module()
+    input_h5, ladder_path, flags = _staging_run_setup(
+        builder, monkeypatch, tmp_path, remote=True
+    )
+    hub = _FakeHub(fail_commit=True)
+    monkeypatch.setattr(builder, "_hub_api", lambda: hub)
+    monkeypatch.setattr(builder, "_hub_token", lambda: "hf_test_token")
+    out = tmp_path / "failed-upload"
+    status = builder.main(_build_args(input_h5, ladder_path, flags, out))
+    assert status == 0
+    err = capsys.readouterr().err
+    assert "staged dataset upload failed" in err and "do-not-record" not in err
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+    staged = manifest["staged_dataset"]
+    assert staged["status"] == "failed" and staged["error_code"] == "UPLOAD_FAILED"
+    assert staged["revision"] is None and staged["files"]
+    assert "do-not-record" not in json.dumps(manifest)
+    assert hub.paths("policyengine/populace-uk-private") == []
+    # Telemetry still completed and recorded the outcome.
+    run_id = _single_run_id(out)
+    progress = json.loads(
+        hub.files[("policyengine/populace-uk-staging", f"runs/{run_id}/progress.json")]
+    )
+    assert progress["status"] == "completed"
+    events = [
+        json.loads(line)
+        for line in hub.files[
+            ("policyengine/populace-uk-staging", f"runs/{run_id}/events.ndjson")
+        ]
+        .decode()
+        .splitlines()
+        if line
+    ]
+    done = next(
+        e
+        for e in events
+        if e["stage_id"] == "dataset_staging" and e["status"] == "completed"
+    )
+    assert done["details"]["status"] == "failed"
+    assert done["details"]["error_code"] == "UPLOAD_FAILED"
+    rows = load_spool_rows(out / "logbook-spool")
+    assert rows[0].disposition == "iterating"
+    assert "dataset_stage_failed" in rows[0].phases_reached
+    # The sidecars are in place for a later re-stage.
+    assert (out / "sha256sums.txt").is_file() and (
+        out / "staged_manifest.json"
+    ).is_file()
+
+
+def test_no_staged_dataset_keeps_telemetry_remote_and_the_bundle_local(
+    monkeypatch, tmp_path
+):
+    builder = _load_builder_module()
+    input_h5, ladder_path, flags = _staging_run_setup(
+        builder, monkeypatch, tmp_path, remote=True
+    )
+    hub = _FakeHub()
+    monkeypatch.setattr(builder, "_hub_api", lambda: hub)
+    monkeypatch.setattr(builder, "_hub_token", lambda: "hf_test_token")
+    out = tmp_path / "telemetry-only"
+    status = builder.main(
+        _build_args(input_h5, ladder_path, flags, out, "--no-staged-dataset")
+    )
+    assert status == 0
+    assert hub.paths("policyengine/populace-uk-private") == []
+    assert hub.commits == []
+    assert hub.paths("policyengine/populace-uk-staging")
+    manifest = json.loads((out / builder.MANIFEST_FILENAME).read_text())
+    assert manifest["staging_delivery"]["mode"] == "local_and_remote"
+    assert manifest["staged_dataset"]["mode"] == "disabled"
+    assert manifest["staged_dataset"]["opt_out_reason"] == "--no-staged-dataset"
+    assert not (out / "sha256sums.txt").exists()
+
+
+def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
+    monkeypatch, tmp_path, capsys
+):
+    builder = _load_builder_module()
+    input_h5, ladder_path, flags = _staging_run_setup(
+        builder, monkeypatch, tmp_path, remote=True
+    )
+    out = tmp_path / "refused"
+    monkeypatch.setattr(builder, "_hub_token", lambda: None)
+    with pytest.raises(ValueError, match="write credential"):
+        builder.main(_build_args(input_h5, ladder_path, flags, out))
+    assert not out.exists()
+
+    class Unreachable:
+        def repo_info(self, **kwargs):
+            raise RuntimeError("503 token=do-not-record")
+
+    monkeypatch.setattr(builder, "_hub_token", lambda: "hf_test_token")
+    monkeypatch.setattr(builder, "_hub_api", lambda: Unreachable())
+    with pytest.raises(ValueError, match="cannot reach") as info:
+        builder.main(_build_args(input_h5, ladder_path, flags, out))
+    assert "do-not-record" not in str(info.value)
+    assert not out.exists()
+
+    # A read token sees the private repository but cannot upload: refused
+    # before the spine is read, not after the solve (the Hub answers 403).
+    monkeypatch.setattr(builder, "_hub_api", lambda: _FakeHub(role="read"))
+    with pytest.raises(ValueError, match="read-only"):
+        builder.main(_build_args(input_h5, ladder_path, flags, out))
+    assert not out.exists()
+
+    # A fine-grained token scoped to another owner is refused the same way;
+    # one scoped to the repository's organisation passes the pre-flight.
+    user_scoped = [
+        {"entity": {"type": "user", "name": "someone"}, "permissions": ["repo.write"]}
+    ]
+    monkeypatch.setattr(
+        builder, "_hub_api", lambda: _FakeHub(role="fineGrained", scopes=user_scoped)
+    )
+    with pytest.raises(ValueError, match="repo.write"):
+        builder.main(_build_args(input_h5, ladder_path, flags, out))
+    assert not out.exists()
+    org_scoped = [
+        {
+            "entity": {"type": "org", "name": "policyengine"},
+            "permissions": ["repo.write"],
+        }
+    ]
+    org_hub = _FakeHub(role="fineGrained", scopes=org_scoped)
+    monkeypatch.setattr(builder, "_hub_api", lambda: org_hub)
+    assert builder.main(
+        _build_args(input_h5, ladder_path, flags, tmp_path / "org-scoped")
+    ) in (0, 1)
+    assert org_hub.commits and org_hub.commits[0]["repo_id"] == (
+        "policyengine/populace-uk-private"
+    )
+
+    # Argument refusals cost nothing and come first: a missing credential is
+    # never the reported reason when the arguments are wrong.
+    monkeypatch.setattr(builder, "_hub_token", lambda: None)
+    with pytest.raises(ValueError, match="only with --dry-run"):
+        builder.main(
+            _build_args(
+                input_h5, ladder_path, flags, out, "--candidate-clone-counts", "2,3"
+            )
+        )
+    assert not out.exists()
+
+    # The re-stage tool refuses the same credential the same way.
+    stager = _load_tool("stage_uk_rowwise_candidate")
+    monkeypatch.setattr(stager, "_hub_api", lambda: _FakeHub(role="read"))
+    local_out = tmp_path / "local"
+    monkeypatch.setattr(builder, "_hub_token", lambda: None)
+    assert builder.main(
+        _build_args(input_h5, ladder_path, flags, local_out, "--staging-local-only")
+    ) in (0, 1)
+    with pytest.raises(SystemExit, match="read-only"):
+        stager.main(["--run-dir", str(local_out)])
+
+    # A dry run plans without staging, so it needs neither credential nor repo.
+    capsys.readouterr()
+    monkeypatch.setattr(builder, "_hub_token", lambda: None)
+    assert (
+        builder.main(_build_args(input_h5, ladder_path, flags, out, "--dry-run")) == 0
+    )
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["parameters"]["dataset_households"] is None
+    assert not out.exists()
+
+
+def _role_argv(tmp_path: Path, role: str, *extra: str) -> list[str]:
+    return [
+        "--input-h5",
+        str(tmp_path / "spine.h5"),
+        "--release-role",
+        role,
+        "--input-sha256",
+        "2" * 64,
+        "--ledger-facts",
+        str(tmp_path / "ledger"),
+        "--ledger-facts-sha256",
+        "0" * 64,
+        "--ledger-manifest-sha256",
+        "1" * 64,
+        "--out",
+        str(tmp_path / "out"),
+        *extra,
+    ]
+
+
+def _dense_argv(tmp_path: Path, *extra: str) -> list[str]:
+    return _role_argv(
+        tmp_path,
+        "dense",
+        "--ladder",
+        str(tmp_path / "ladder.npz"),
+        "--ladder-sha256",
+        "3" * 64,
+        *extra,
+    )
+
+
+def test_release_role_is_required(tmp_path) -> None:
+    builder = _load_builder_module()
+    argv = _dense_argv(tmp_path)
+    argv.remove("--release-role")
+    argv.remove("dense")
+    with pytest.raises(SystemExit):
+        builder._parse_args(argv)
+    with pytest.raises(SystemExit):
+        builder._parse_args([*argv, "--release-role", "local"])
+
+
+def test_release_role_supplies_the_solve_defaults(tmp_path) -> None:
+    builder = _load_builder_module()
+    dense = builder._parse_args(_dense_argv(tmp_path))
+    posture = builder.UK_ROWWISE_DENSE_POSTURE
+    assert (dense.n_clones, dense.seed, dense.epochs, dense.learning_rate) == (
+        posture.clone_count,
+        posture.seed,
+        posture.epochs,
+        posture.learning_rate,
+    )
+    assert dense.target_weight_rule == "grain_equal"
+    assert dense.expected_constituency_vintage == "2024_pcon"
+    assert dense.staging_upload_interval_seconds == 300.0
+    assert dense._explicit_arguments == frozenset()
+    builder._validate_cli_args(dense)
+
+    national = builder._parse_args(_role_argv(tmp_path, "national"))
+    posture = builder.uk_rowwise_posture("national")
+    assert national._posture is posture
+    assert national.n_clones is None
+    assert (national.seed, national.epochs, national.learning_rate) == (0, 1500, 0.02)
+    assert national.target_weight_rule == "family_equal"
+    assert national.expected_constituency_vintage is None
+    builder._validate_cli_args(national)
+    explicit = builder._parse_args(_role_argv(tmp_path, "national", "--epochs", "5"))
+    assert explicit.epochs == 5
+    assert explicit._explicit_arguments == frozenset({"epochs"})
+    # The doctrine's own seed may be spelled out; only another seed is refused.
+    builder._validate_cli_args(
+        builder._parse_args(_role_argv(tmp_path, "national", "--seed", "0"))
+    )
+
+
+@pytest.mark.parametrize(
+    ("extra", "needle"),
+    [
+        (["--target-loss-cap", "5"], "--target-loss-cap"),
+        (["--allow-unpinned-feed"], "--allow-unpinned-feed"),
+        (["--target-weight-rule", "family_equal"], "--target-weight-rule family_equal"),
+    ],
+)
+def test_dense_role_refusal_table(tmp_path, extra, needle) -> None:
+    builder = _load_builder_module()
+    args = builder._parse_args(_dense_argv(tmp_path, *extra))
+    with pytest.raises(ValueError, match="--release-role dense refuses") as excinfo:
+        builder._validate_cli_args(args)
+    assert needle in str(excinfo.value)
+
+
+def test_dense_role_requires_the_ladder(tmp_path) -> None:
+    builder = _load_builder_module()
+    argv = _role_argv(tmp_path, "dense", "--ladder-sha256", "3" * 64)
+    with pytest.raises(ValueError, match="requires --ladder"):
+        builder._validate_cli_args(builder._parse_args(argv))
+
+
+@pytest.mark.parametrize(
+    ("extra", "needle"),
+    [
+        (["--ladder", "ladder.npz"], "--ladder"),
+        (["--ladder-sha256", "3" * 64], "--ladder-sha256"),
+        (["--expected-constituency-vintage", "2024_pcon"], "--expected-constituency"),
+        (["--source-year", "2023"], "--source-year"),
+        (["--source-lineage-modulus", "7"], "--source-lineage-modulus"),
+        (["--n-clones", "15"], "--n-clones"),
+        (["--candidate-clone-counts", "2,4", "--dry-run"], "--candidate-clone-counts"),
+        (["--engine-blocks", "2"], "--engine-blocks"),
+        (["--households-only"], "--households-only"),
+        (["--skip-holdout"], "--skip-holdout"),
+        (["--dataset-households", "10"], "--dataset-households"),
+        (["--selection-seed", "3"], "--selection-seed"),
+        (["--selection-pi-hi", "0.5"], "--selection-pi-hi"),
+        (["--baseline-pi-floor", "0.1"], "--baseline-pi-floor"),
+        (["--no-size-checkpoint"], "--no-size-checkpoint"),
+        (["--resume-size-checkpoint", "dir"], "--resume-size-checkpoint"),
+        (["--sample-fraction", "0.1"], "--sample-fraction"),
+        (["--sample-seed", "9"], "--sample-seed"),
+        (["--seed", "7"], "--seed != doctrine 0"),
+        (["--target-weight-rule", "grain_equal"], "--target-weight-rule grain_equal"),
+    ],
+)
+def test_national_role_refusal_table(tmp_path, extra, needle) -> None:
+    builder = _load_builder_module()
+    args = builder._parse_args(_role_argv(tmp_path, "national", *extra))
+    with pytest.raises(ValueError, match="--release-role national refuses") as excinfo:
+        builder._validate_cli_args(args)
+    assert needle in str(excinfo.value)
+
+
+def test_national_role_refuses_release_candidate_with_the_seam_reason(tmp_path):
+    builder = _load_builder_module()
+    args = builder._parse_args(_role_argv(tmp_path, "national", "--release-candidate"))
+    with pytest.raises(ValueError, match="cannot sign shippability"):
+        builder._validate_cli_args(args)

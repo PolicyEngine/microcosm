@@ -115,7 +115,7 @@ def test_uk_2025_dense_is_registered_off_the_default_variant() -> None:
     spec = REGISTRY[("uk", 2025, "dense")]
     assert spec.variant == "dense" != DEFAULT_VARIANT
     assert spec.hf_repo == "policyengine/populace-uk-private"
-    assert spec.filename == "microcosm_uk_2025_dense.h5"
+    assert spec.filename == "microcosm_uk_2024_25_dense.h5"
     assert spec.engine_class == "UKSingleYearDataset"
     assert spec.engine_package == "policyengine-uk"
     assert ("uk", 2025, DEFAULT_VARIANT) not in REGISTRY

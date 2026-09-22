@@ -569,6 +569,13 @@ rows agree within 1%. This is the population-dependent-measure physics the plan 
 the pool's contributions; the engine on 55k rows resolves the council-tax band imputation and the private
 school flag differently.
 
+> **Erratum (2026-09-15, microcosm#929).** The seven VOA band rows were not diverging: `frozen_vs_recomputed` keyed the
+> incumbent-surface rows by `contract_target_id` and summed the Wales regional rollup into the England-pinned target
+> (band A: recomputed − frozen = 248,027 = the Wales band-A rollup to the unit; B 284,108, C 294,555 likewise). Without
+> Wales, frozen and recomputed agree exactly. The comparison now keys on bound rows only (#929), and the same evaluation
+> on the #929 candidate carries no VOA row over 1 %: max divergence 12.4 % → 6.2 %, the two remaining rows being
+> `isc.private_school_students` and `ons.land.corporate_land_value` as before.
+
 **50 downstream (uk-candidate-eval under 2.94.0; "incumbent" = R17's dense H5 on spine-m and the old feed, so
 input differences ride along):**
 
@@ -730,3 +737,364 @@ additive. Green on the rebased tree: calibrate 236 (with the frozen gates contro
 local rowwise 52, registers 93, spec pins + parity + coverage tool, multispine 187; ruff and the partition
 verification clean. Reply to Vahid drafted for María's go.
 
+
+## Rebuild on main after the 2026-09-09/10 spine PRs (María, 2026-09-10 ~12:00Z)
+
+María: "a lot of spine fixing PRs went in in the last 24 hrs" → rebuild the national + local dataset with the
+L0 penalty at 55,000 records, 2,000 epochs, `pi_hi` kept at 0.5 ("so that we don't use a lot of compute for
+minimal improvement"), run the same evaluation the 55k-candidates-2026-09 report went through, and add a
+report to PolicyEngine/uk-dataset-evaluation that compares the new dataset and its dense version with the
+enhanced FRS.
+
+### Tree and engine
+
+Branch `uk-55k-rebuild-2026-09-10` = origin/main **0afb1235** (merge of #889) in worktree `repos/populace-877`
+(the merged `uk-dataset-sizes-355` branch left in place). Since spine-p's 573c4b43 main took #881 (policy-year
+rule), #883 (UC claim and target contracts), #891 (national UC targets on paid claims, explicit source windows),
+#892 (UC capital graph inputs, five #796 fit exemptions retired), #877 (this machinery), #899 (CI concurrency)
+and #889 (CGT measured against FY2024-25 individual observations; the OBR fit exemption retired). The venv
+matches main's lock under the CI recipe (`uv sync --all-packages --locked --extra us --extra uk` → "Would make
+no changes"): policyengine-uk **2.97.0**, core 3.31.0, torch 2.12.0. `git_dirty` 0 for every run.
+
+### P0 — inputs and pins
+
+| input | path | sha256 | note |
+|---|---|---|---|
+| spine-q | `data/ukds/acceptance/spine-q-355/spine-q.h5` | cf1f9dda198a06819241ed3358f68dd99c675eb7ca45fa766a3ed4b07eb0337f | built 2026-09-10 12:24–12:30Z from the clean tree at 0afb1235 (`build_twin.sh` recipe, all licensed tabs): 28 stages, `age_tail` second, policyengine-uk 2.97.0, 15/15 spine gates passed (release_id `uk-frs-spine-20260910T122422Z`), TFC routed share 1.0, 52,846 households / 61,213 benunits / 113,590 persons, mass 29,247,433.0 — the same entity counts as spine-p. Logbook row c3e1e9a3…. |
+| Chronicle consumer artifact **ec7169b** | `data/ukds/acceptance/chronicle-uk-artifact-ec7169b/` | facts 4a50ee9568a01bbb57f73d927084ed6b4b9e52249b51a2338455874ae6e382b5, manifest a95d0ee9f87f36947eaecdb3de29cf81a91e47ccaa822fed42da677eedca877f | 131,450 rows; the feed main's **national** references stand on (`national_chronicle_feed.json`, #891/#889). The local census pin (`local_target_census.py`) still says 6fb700e; the driver takes one feed and both compilations pass on ec7169b (dry run + preflight below), so the run stands on ec7169b for both grains. Not 6fb700e: the ten #891 paid-claim UC targets and the #889 CGT selectors need facts that feed does not carry. |
+| OA ladder | `populace-877/build/uk/uk_oa_ladder_2021.npz` | 9c6d56b90d2e975d750106b175020a54c5ec6acf42ef8909d304a9d7fc3868a7 | unchanged |
+| enhanced FRS **1.57.3** | HF private repo revision 25af520a (2026-09-04, "Upload data files for version 1.57.3"; uk-data PR #480, one year semantics for the FRS build) | `enhanced_frs_2024_25.h5` ef34c1ae28219367981fbc3c1144f58ea1f8a77554165fe02ff395b04c5ffea5 (127,549,424 B); `parliamentary_constituency_weights.h5` 09e86696…; `local_authority_weights.h5` 383b1104… | the latest published incumbent; the September 9 report used 1.57.2 (7b0a06f0). Release manifest claims policyengine-uk 2.93.0 / core 3.31.1; loaded here under 2.97.0 (national loss under the uk-data venv's 2.89.2 / 1.56.14, as before). |
+
+Spine-q against spine-p (`tools/compare_uk_h5_payload.py`, `spine-q-355/diff-vs-spine-p/payload_diff.json`):
+same keys, row counts and indexes; one new person column `is_uc_claimant` (#883/#891 claimant contract);
+values moved in 3 benunit columns (`frs_benunit_capital` and `uc_reported_capital` 1,643 rows,
+`would_claim_uc` 431), 37 household columns (the energy/gas/electricity consumption draws on nearly every
+household, property wealth and main-residence value on ~8,400, the LCFS consumption categories on
+400–1,400 each, bus/rail/fuel spending, financial wealth) and 5 person columns (`universal_credit_reported`
+2,297 rows, `student_loan_balance` 34, three under 10). The CGT stages did not change any stored column
+(#889 changed the targets and their measurement, not the imputation).
+
+Incumbent surfaces re-extracted for 1.57.3: `355-dataset-size/incumbent-2025-1.57.3/` (microcosm
+`extract_uk_local_incumbent_surface.py`, 40 s, 2.6 GB: 52,846 households, 650 constituencies, 360 local
+authorities) and the national loss matrix (uk-data `get_loss_results` on the 1.57.3 file, 637 targets, 433
+within 10 %, 26 s; three salary-sacrifice targets dropped by uk-data itself on HTTP 410).
+
+Preflight `--env --pins pins-spine-q-ec7169b.txt`: OK.
+
+### Runs (root `data/ukds/acceptance/355-dataset-size/spine-q/`)
+
+Runner `run_size_candidate_q.sh` (spine-q, ec7169b, ladder, seed 42, `/usr/bin/time -l`), chain
+`chain-q.sh` (Q50 then D2), evaluator `evaluate_size_run_q.sh`, legs `run-efrs-legs-q.sh`.
+
+**S0 dry run** (`--dry-run --dataset-households 55000 --epochs 2000 --selection-pi-hi 0.5 --skip-holdout`):
+exit 0, 111 s, 5.2 GB. Joint surface **20,794 targets × 792,690 households** (364 national + 20,430 local;
+the same shape as spine-p's S0: #891 replaced values, not rows), K=15, blocks 1, ladder mass 28,060,832,
+vintages unchanged (UC 2025-05, HMRC 2023, ONS housing 2021/2022/2025-12, ONS population 2024).
+
+**Q50 = `f100-k15-h55000-e2000-p50-s42`** (`--dataset-households 55000 --epochs 2000 --selection-pi-hi 0.5
+--skip-holdout`, chained on P95b's row 392f00cf…): launched 2026-09-10 12:35Z.
+
+**Q50 DONE 2026-09-10 19:54:22Z, exit 1 = gate battery blocked the candidate (every stage ran, all artifacts
+written).** 26,339 s wall (7.3 h; 12:35–19:54Z), 8.0 GB peak RSS, Logbook row 296bbe9b… chained on P95b's
+392f00cf…. Dense solve 2,000 epochs → loss **0.015073** (median |rel| 0.73 %, local within 10 % 98.8 %,
+national within 10 % 355/364), marginally better than P50's 0.015084 on the old inputs. Budget search
+(feasibility-aware, open-probability mass, tolerance 2,750): nine probes — λ 1e-3 (mass 10,066), 1e-5
+(22,787), 1e-6 (59,612, certainties exceed k), 3.16e-6 (40,599), 1.78e-6 (50,117), 1.334e-6 (54,660: 581
+draws from mass 267.4, misses the draw check by ~5 mass units), 1.155e-6 (57,087, exceed), 1.241e-6
+(55,863, exceed), **1.2864e-6 drawable**: mass 55,221, certainties 54,976, 24 boundary draws from mass 273.8
+(max 0.456). P50's landing on spine-p was 1.3335e-6 with 405 draws; the drawable window at 0.5 is a few
+hundred rows of mass wide and the bisection needed nine probes (P50's earlier search stopped on the first
+in-band probe). Checkpoint written before the draw (`size_selection_checkpoint.{npz,json}`).
+
+**RED FLAG — the compact refit is mass-starved.** Compact loss **0.15430 = 10.2× dense** (P50 2.3×; the
+plan's red flag is 5×); median |rel| **16.0 %** (P50 0.79 %); local rows within 10 % **35.6 %** (P50 93.0 %),
+past 25 % 4,680 (P50 463); national within 10 % **168/364** (P50 323); refit total **22.30 m** households
+(P50 27.00 m; pool 29.25 m); Kish ESS **1,504** (P50 33,672); max/median positive weight **1,399** (P50 22),
+so `uk_local_weight_ratio` fails beside area support and target fit (P50 failed the last two only);
+constituencies under ESS 50 191 (P50 211), local authorities 31 (P50 42). Headline national rows compact vs
+dense: UK population −16.6 % (dense 0.0 %), state pension −34.6 % (−13.9 %), income tax −28.2 % (−19.6 %),
+council tax −32.6 % (−11.0 %), lone households over 65 −39 %, lone households under 65 −41 %.
+
+Mechanism (from `dataset_size_selection.csv`, not the optimizer): the refit starts from the normalised
+Horvitz–Thompson baseline w/π scaled to the pool mass and may stretch each weight at most 10× that baseline.
+The 24 boundary draws carry π between 4.6e-6 and 6.5e-5, so their baselines are 0.7–3.3 m households each
+and together take **92.0 %** of the 29.25 m; the 54,976 certainties are left 8.0 % (median baseline 0.69×
+design) and their 10× ceiling sums to **23.3 m**, below the ~29 m the targets need. The refit therefore
+pins 91.3 % of rows at the ceiling (P50 69.7 %), crushes the giants to 0.0002× (they still end with weights
+up to 518k) and lands 24 % short of the pool's mass. P50 was the milder case of the same artefact: its 405
+draws held 88.8 % of the baseline mass, but the certainties' ceiling (32.8 m) still covered the need, which
+is where its 7.7 % mass loss came from. Floors on π for the baseline (analytic, from the same CSV): at 0.01
+the certainties would hold 96.7 % of the mass with a 283 m ceiling (P50: 66 %, 193 m); at 0.1, 99.7 % and
+291 m; the dense weights renormalised to the pool mass give 100 % and 292 m.
+
+An experiment (scratchpad `refit_floor_experiment.py`, resume of Q50's checkpoint with
+`dataset_size.refit_l0_selection` patched to floor the baseline's inclusion probabilities; refit only,
+aborted before any artifact; results `refit_floor_results.json`) measures the refit at floors 0.001 / 0.01
+/ 0.1 / 1.0 against an unfloored control. Results below. Any change to the stretch reference is a doctrine
+change in `dataset_size.py` and María's ruling; nothing in the run tree was altered.
+
+**Refit-floor experiment results (20:35–21:06Z, 1,857 s, 7.2 GB; `spine-q/experiments/refit-floor/`):** the
+control reproduces Q50 exactly; every floor from 0.001 up lands on one plateau.
+
+| baseline π floor | loss (× dense 0.015073) | mass (m) | Kish ESS | max/median | rows at 10× ceiling | local within 10 % / past 25 % / median | national within 10 % / 25 % | UK pop · state pension · income tax · lone 65+ |
+|---|---|---|---|---|---|---|---|---|
+| none (Q50 as built) | 0.15430 (10.24×) | 22.30 | 1,504 | 1,399 | 91.3 % | 35.6 % / 4,680 / 16.0 % | 168 / 316 | −16.6 % · −34.6 % · −28.2 % · −39.1 % |
+| 0.001 | 0.01729 (1.15×) | 29.07 | 16,785 | 57 | 1.0 % | 98.5 % / 63 / 0.88 % | 353 / 364 | −0.1 % · −20.2 % · −19.4 % · −0.3 % |
+| 0.01 | 0.01723 (1.14×) | 29.13 | 16,322 | 61 | 0.6 % | 98.6 % / 62 / 0.91 % | 353 / 364 | 0.0 % · −20.0 % · −19.2 % · −0.2 % |
+| 0.1 | 0.01721 (1.14×) | 29.14 | 16,336 | 61 | 0.6 % | 98.7 % / 59 / 0.89 % | 353 / 364 | 0.0 % · −19.7 % · −19.2 % · 0.0 % |
+| 1.0 (dense weights renormalised) | 0.01721 (1.14×) | 29.14 | 16,204 | 65 | 0.5 % | 98.6 % / 60 / 0.89 % | 353 / 364 | 0.0 % · −19.8 % · −19.3 % · +0.2 % |
+
+Dense reference on the same rows: local within 10 % 98.8 %, past 25 % 53, national within 10 % 355/364,
+state pension −13.9 %, income tax −19.6 %. So with the tiny-π blow-up removed the 55,000-row refit fits the
+20,794 targets essentially as the 792,690-row solve does (loss 1.14×, the same 60-odd rows past 25 %, the
+composition rows within a fraction of a percent); state pension is the one headline row the compact file
+still loses (−20 % against the dense −14 %). Not measured here: per-area ESS and the gate battery (the
+experiment stops at the refit); the whole-frame Kish ESS of ~16,300 against Q50's 1,504 and P50's 33,672 says
+the area floors will still be the binding question at 55k. The lever is a doctrine decision on the size
+method's stretch reference (`dataset_size.py`, `refit_l0_selection`'s `support_inclusion_probabilities`);
+once ruled, a re-refit from Q50's checkpoint costs ~4 min plus export and battery.
+
+**D2 = `f100-k15-dense-e2000-s42`** (`--epochs 2000 --skip-holdout`, no size request; same spine, feed, ladder,
+seed; chained on Q50's row 296bbe9b…): launched 19:54:22Z, **done 20:50:59Z, exit 1 = gate battery blocked
+the candidate** (`uk_local_target_fit` + `uk_local_weight_ratio`, as R17), 3,396 s wall, 9.1 GB peak, H5
+2,437,100,602 B (792,690 households, all positive), mass 29.15 m (−0.3 %). **D2 is Q50's dense reference
+exported:** final loss 0.015073282276521414 in both manifests; all 20,430 local rows of D2's
+`solve_diagnostics.csv` match Q50's `dense_reference_diagnostics.csv` estimate for estimate (max |diff| 0);
+the 364 national rows agree to 3e-5 (float32 export rounding). The progress traces matched digit for digit
+at every reported epoch (0.016776 / 0.016049 / 0.015651 / 0.015673). So the dense solve on main is
+deterministic across runs and the "dense reference inside the size run" and "a dense run on the same
+inputs" are one object; every downstream leg can run on D2 as the dense file.
+
+### Ruling (María, 2026-09-10 ~21:15Z): evaluate the floored refit
+
+"should we be calibrating and evaluating the one with much better performance (0.001?)" → yes. Code: commit
+**ca435e20** on `uk-55k-rebuild-2026-09-10` adds `--baseline-pi-floor` (driver) →
+`solve_uk_rowwise_weights_under_doctrine(baseline_pi_floor=)` → `refit_uk_dataset_size(baseline_pi_floor=)`:
+the refit's Horvitz–Thompson baseline divides each selected row's dense weight by `max(q, floor)`; the
+search, the draw and the selected rows are untouched, so a checkpoint resume may floor. Default 0 keeps the
+untrimmed baseline; candidate-only; the size receipt records `baseline_pi_floor`, `baseline_floored_rows`,
+`baseline_mass_share_certainties` and names the stretch reference
+`normalized_horvitz_thompson_w_over_q_floored`. Tests: a refit test (floor 1.0 reproduces the dense weights
+renormalised; same draw either way; receipt fields; range refusals) and the driver's CLI bounds; local_rowwise
+size tests 20, driver 11, spec-engine pins + graph 605 — all green; ruff clean. No pin moved (dataset_size.py
+is not an attested calibrate module).
+
+**Q50f = `f100-k15-h55000-e2000-p50-f001-s42`** (`--resume-size-checkpoint <Q50> --baseline-pi-floor 0.001`,
+same seeds/epochs/pins, chained on D2's row a97aaeeb…): launched 21:21Z at ca435e20, tree clean.
+
+**Q50f DONE 21:37:11Z, exit 1 = gate battery blocked (`uk_local_area_support`, `uk_local_target_fit`; the weight-ratio
+gate passes):** 962 s wall (16 min: pool re-derived and verified against the checkpoint, dense solve and search restored,
+draw at the same seed → the same 55,000 rows, refit, export, battery), 9.7 GB, Logbook row chained on D2's a97aaeeb….
+`selection_reused` true, `baseline_pi_floor` 0.001, `baseline_floored_rows` 23 (of the 24 boundary draws), certainties'
+share of the baseline mass 75.7 %, stretch reference `normalized_horvitz_thompson_w_over_q_floored`. **Compact loss
+0.01729 = 1.15× dense** (the experiment's number exactly), median |rel| 0.88 %, local rows within 10 % **98.5 %** (past
+25 % 63; dense 98.8 % / 53), by family 92.3 % (council tax) to 99.9 % (age), national within 10 % **353/364** (dense
+355), within 25 % 364/364; refit total **29.07 m** (pool 29.25 m); whole-frame Kish ESS **16,785**; max/median positive
+weight 57; 1.0 % of rows at the 10× ceiling; realised max ratio vs design 271 (vs the floored stretch reference 10.0).
+
+**The trade-off the floor exposes — area support:** constituency ESS median **27.4** (min 7.8), **643/650 under the
+floor of 50**; local authorities median 45.7, **218/361 under**. Q50 (191/650, median 60.9) and P50 (211/650, 59.2)
+scored better on ESS only because their mass-starved refits pinned 70–91 % of rows at the ceiling, which flattens the
+weights; with the baseline trimmed the refit keeps the dense solve's weight inequality on 55,000 rows (about 85 per
+constituency), and ESS per area lands near half the floor. Fit and per-area ESS pull against each other at this size;
+the floor removes an artefact, it does not settle the size question (S4 at 110k is the next measurement).
+
+**Evaluations (after-chain, no solve running):** Q50 full evaluation 20:52–21:17Z (step 30 refused: the frozen scoring
+register is R17's 19,105 refs against the surface's 19,419 — known; step 50's incumbent scorecard failed because the tool
+resolves `--incumbent-h5` to the HF blob path without `.h5`, which policyengine-uk's single-year loader rejects → a copy at
+`355-dataset-size/efrs-1.57.3/enhanced_frs_2024_25.h5` (same sha) and the scorecard re-run by hand; the leg runners now
+point at the copy). Q50 frozen vs recomputed: 339 of 364 rows matched, 13 over 1 %, max 22 % (private-school pupils −22 %,
+VOA council-tax bands +3–15 %, land values +7 % / +22 %, SLC repayments +4 %). D2 steps 20 + 40 21:17–21:27Z. eFRS legs
+(Q50 and D2 against 1.57.3, T6 for Q50) from 21:27Z. **A16 retirement evidence on D2:** of the 46 excluded national rows
+the surface evaluator resolves, D2 lands 9 within 25 % (4 within 10 %): `SINGLE_annual_payment_9_600_to_10_800` 2 %,
+`LONE_PARENT_annual_payment_13_200_to_14_400` 3 %, `LONE_PARENT_…_14_400_to_15_600` 4 %, `LONE_PARENT_…_18_000_to_19_200`
+7 %, `LONE_PARENT_…_12_000_to_13_200` 11 %, `LONE_PARENT_…_16_800_to_18_000` 12 %, `LONE_PARENT_…_15_600_to_16_800` 13 %,
+`SINGLE_…_14_400_to_15_600` 16 %, `hmrc/self_employment_income_count_income_band_500_000_to_1_000_000` 20 %; the other 37
+stay 25–95 % off. Retirement is a signed register decision (María); nothing retired. D2 on the incumbent's national surface:
+564 measured rows, 80.9 % within 10 %, 89.7 % within 25 %, median 1.8 % (the eFRS 1.57.3 on its own targets: 433/637 within
+10 %).
+
+**Q50f evaluation (22:08–22:31Z, all steps; step 30 refused on the frozen register as before) and legs (22:31Z–):**
+paired with D2 on all 20,794 rows (no target value differs); frozen vs recomputed national rows: 12 over 1 %, max 11.9 %
+(VOA council-tax bands +3 to +12 %, SLC repayments +11 %, private-school pupils −6 %; Q50 reached 22 %). Incumbent
+surface (eFRS 1.57.3 extraction): local rows Q50f within 25 % **94.0 %** vs eFRS 87.6 %, within 10 % 70.2 % vs 76.8 %
+(constituency 60.1/70.4 within 10 %, 93.3/81.1 within 25 %; local authority 83.8/85.3, 94.9/96.3); national rows (564
+measured) Q50f within 10 % **79.4 %** vs eFRS 68.8 %, within 25 % 89.5 % vs 83.3 %, median 1.8 % vs 4.6 % (candidate ahead on
+SPI bands 90/58, DWP UC 62/32, household composition 60/20, OBR 57/48; eFRS ahead on VOA CT stock by region 77/97 and ONS
+population by region 93/96). Q50 for comparison: local 33.8 % / 77.9 %, national 29.8 % / 69.7 %.
+Downstream on policyengine-uk 2.97.0: **T5** Q50f 7/8 (UC taper −35.4 vs −17.2 ± 15 fails; VAT +22.7 passes), D2 6/8
+(UC taper; VAT +21.1 misses ±10 by 0.2), Q50 7/8 (its underweight file scales impacts down: UC taper −30.5 passes, VAT
++20.7 fails), eFRS 1.57.3 8/8 (UC taper −22.6, VAT +33.2); the six income-tax/benefit reforms agree within £1bn across
+Q50f, D2 and the eFRS. **T4** Q50f passes UC spend (80.4 vs 79.3 bn), UC caseload (6.67 vs 6.76 m), carer element, population
+(69.7 vs 69.5 m); fails social-rented housing element (unmeasured), LCWRA (7.6 m vs 2.4 m: measurement), income tax (269 vs
+331 bn; eFRS 292), multi-family (definition gap); D2 the same four; Q50 fails seven. **T3** Q50f vs D2 152 pass / 33 attention /
+6 fail (Q50 vs D2 136/44/10); Q50f vs eFRS 103/55/33, D2 vs eFRS 106/55/30, Q50 vs eFRS 102/52/37 (the eFRS fails are the
+model-family list: reported AFCS/BSP, corporate wealth, education and fuel spending, bus fares, legacy benefits, student
+loan balance). **#731 scorecard (2.97.0):** population Q50f 69.97 / Q50 58.43 / D2 70.04 / eFRS 69.94 m; households 29.39 /
+22.55 / 29.47 / 31.46 m; state pension 124.3 / 101.9 / 134.1 / 133.8 bn; income tax 287.7 / 255.9 / 286.8 / 312.5 bn; UC 83.6 /
+70.9 / 84.2 / 80.2 bn; UC families 6.78 / 6.12 / 6.76 / 6.38 m; child benefit 17.3 / 15.1 / 17.0 / 17.6 bn; council tax 48.3 /
+38.1 / 49.3 / 52.4 bn; poverty BHC 10.2 / 10.2 / 9.9 / 11.0 %; top-1 % share 8.5 / 9.1 / 8.1 / 6.9 %; Gini 0.374 / 0.371 /
+0.371 / 0.376. **T6 (uk-data venv, eFRS 1.57.3 as the comparison file):** Q50 autumn budget 807 ok / 485 flag (closer 25/37),
+RF UC 10/17 (closer 6/10), childcare 17/16 (closer 7/17), all "review"; Q50f's replays ran after 22:33Z (results in the
+evaluation page's T6 tables).
+
+> **Erratum (2026-09-15, microcosm#929).** The "+3 to +12 %" on the VOA council-tax bands is the same keying artifact
+> as above (the Wales rollup summed into the England-pinned target); corrected, no VOA row diverges and the maximum
+> divergence is 6.2 % (`isc.private_school_students`); see the erratum under the D2 frozen-versus-recomputed paragraph.
+
+## Staging for the full build (María, 2026-09-17; plan `repos/uk-rowwise-staging-plan.md`)
+
+Branch `uk-rowwise-staging` (worktree `repos/populace-staging-rowwise`, cut from main d1196af1).
+Vocabulary settled with María: **staging** is telemetry to `runs/<run_id>/` in
+`policyengine/populace-uk-staging`; **publishing** is `publish_cli` into `releases/` of
+`policyengine/populace-uk-private` with or without moving `latest.json`; the **staged dataset** is
+the new lane, the run's outputs under `staged/<run_id>/` of the private repository, same run id,
+no release contract.
+
+### Code landed
+
+- `tools/build_uk_rowwise_candidate.py` adopts the shared `--staging-*` options and creates the
+  telemetry with the attempt (spine-builder shape; `run_kind=calibration`,
+  `operation_id=uk_rowwise_candidate`, `pipeline_id=uk-local-candidate`, `non_release=true`).
+  Stage events: `input_pinning`, `target_compilation`, `cloning`, `surface_resolution`,
+  `calibration`, `gate_battery`, `holdout`, `output_bundle`, `dataset_staging`. Epoch events reach
+  `calibration_progress` through a new `progress_events` fan-out on
+  `solve_uk_rowwise_weights_under_doctrine`, thinned in the driver to every tenth epoch and each
+  phase's last epoch (`_STAGING_EPOCH_EVERY = 10`): a 2,000-epoch size run emits up to 24,000
+  epochs (dense + ten full-length probes + refit) and the contract caps each file at 5 MiB. The
+  kernel's `budget_search: True` flag becomes `1` for the contract's integer field.
+- New country-neutral `microcosm.build.staging_dataset`: bundle from the manifest's `outputs`
+  (digests re-verified from disk), `staged_manifest.json` + `sha256sums.txt` sidecars, one
+  `create_commit` under `staged/<run_id>/`, idempotence on the outputs' digests
+  (`already_staged` / `REMOTE_DIFFERS`), best-effort with reviewed error codes, `fetch_bundle`.
+  `HuggingFaceDatasetStorage` gains `commit`, `head_revision`, `file_exists`, `download_file`;
+  `uk_runtime/staging.py` gains `UK_STAGED_DATASET_REPOSITORY`
+  (`policyengine/populace-uk-private`, env `POPULACE_UK_STAGED_DATASET_REPO_ID`) and the prefix
+  `staged`; `staging_cli` gains `--staged-dataset-repo-id` / `--no-staged-dataset`.
+- The manifest gains `staging_delivery` (v2) and `staged_dataset` (v1) after the bundle is on
+  disk (atomic rewrite; the uploaded manifest copy predates them, `staged_manifest.json` describes
+  the remote side). Two reviewed artifacts on the telemetry run: `staged_dataset.json` and
+  `fit_summary.json`. A remote dataset stage is refused up front without an ambient Hub credential
+  that can see the repository; an upload failure is recorded and never changes the exit code.
+- `tools/stage_uk_rowwise_candidate.py` (re-stage a finished directory) and
+  `tools/fetch_uk_staged_dataset.py` (digest-verified fetch by run id).
+- `tools/assemble_uk_dense_release_dir.py` requires `staging_delivery` and copies it into
+  `build_manifest.json` as `staging` (the national assembler's rule).
+- Tests: `test_staging_dataset.py` (20), storage/CLI additions in `test_staging_v2.py`, the solver
+  fan-out in `test_uk_local_rowwise.py`, seven driver tests in `test_uk_rowwise_candidate.py`
+  (local-only, size phases, `--no-staging`, remote upload + re-stage + fetch, recorded upload
+  failure, `--no-staged-dataset`, up-front refusals and dry run), dense assembler evidence tests,
+  size-evaluation tolerance. Every existing driver test passes `--staging-local-only` through the
+  shared flag helper.
+
+### Rehearsal on spine-q (2026-09-17, `data/ukds/acceptance/355-dataset-size/run_size_candidate_staging.sh`)
+
+The rehearsal is the size path at 100 epochs with local-only staging
+(`--dataset-households 55000 --epochs 100 --skip-holdout --selection-pi-hi 0.5 --baseline-pi-floor 0.001 --staging-local-only`),
+on the spine-q H5 (cf1f9dda…) from code 0cda403a (`git_dirty` 0, engine 2.98.0). Two input
+mismatches surfaced first, both about running the driver on today's main rather than about staging;
+each left the expected failure evidence.
+
+- **Feed.** With the `ec7169b` artifact the spine-q runs stood on, 631 national target references
+  failed to compile: main pins Chronicle `ec20085` (facts 47612c48…, manifest c91fa9ff…) since
+  #927/#937. The run refused in 130 s. Its telemetry closed as `failed` during
+  `target_compilation` with `error_type SystemExit` and the sanitised message only; because the
+  compile refusal is a `SystemExit`, the driver's `except Exception` wrote no Logbook row or error
+  receipt (pre-existing behaviour, worth a follow-up). Kept as
+  `…-staging-failed-compile-ec7169b/`.
+- **Ladder.** On `ec20085` with the `9c6d56b9…` ladder the pins file names, the ladder-versus-Chronicle
+  dispersion check refused: "NI DZ-to-PARLCON24 household dispersion exceeds the publisher oracle:
+  mean absolute delta 197.889, max absolute delta 694.000" (285 s, 5.1 GB). #887 (merged 2026-09-10)
+  rebuilt the ladder with NISRA's Data Zone lookup; the artifact from that build is
+  `bed3f13d3a82eea2d1f39248b71c0abf5ba6960a446ddd9415ae1dbcb7ae07fd` (present in the #887/#905/#929
+  worktrees; the ladder tool has not changed since). This `ValueError` took the full failure path:
+  telemetry `failed` at `target_compilation`, a `failed` Logbook row and an error receipt. Kept as
+  `…-staging-failed-ladder-9c6d56b9/`.
+
+Third attempt: feed `ec20085`, ladder `bed3f13d…`, same arguments; run id and results below.
+
+- **Spine.** On `ec20085` with ladder `bed3f13d…`, the run compiled 20,885 local and 564 national
+  targets, cloned the 792,690-row pool, and refused in surface resolution:
+  `MeasureResolutionError: provider does not know household.ons_household_type` (550 s, 8.4 GB).
+  The spine-q H5 predates the `frs_relationships` stage (#903, merged 2026-09-11), whose column the
+  national registry on main now resolves. Telemetry closed as `failed` at `surface_resolution`
+  after recording the compile and clone details; Logbook row and error receipt written. Run
+  `uk-local-candidate-f100-s42-20260917T175007Z-2acb7634`, kept as
+  `…-staging-failed-spine-q-stale/`. A spine on main's stages (`spine-r`, code 0cda403a) is built
+  with `834-childcare-tfc/build_twin_passthrough.sh … --staging-local-only` into
+  `data/ukds/acceptance/spine-r-355/`.
+
+### spine-r (2026-09-17 18:01Z, `data/ukds/acceptance/spine-r-355/`)
+
+Built from the worktree at 0ab7ac4f (code identical to 0cda403a; the two commits between are
+receipts) with `build_twin_passthrough.sh … --staging-local-only`: 29 stages (`frs_spine`,
+`age_tail`, `frs_relationships`, …), `rules_engine` policyengine-uk 2.98.0, all 18 spine gates
+passed, `spine-r.h5` sha `3ce8756ac6ce070be4eabf44e6969e03698ce23531021b622eadb94ce83dda58`
+(169 MB). The spine builder's own staging worked as on main: sidecar `staging_delivery` mode
+`local_only`, run `uk-frs-spine-20260917T180117Z` under `spine-r-355/staging/runs/`. Pins for the
+rehearsal in `355-dataset-size/pins-spine-r-ec20085.txt`; run root `355-dataset-size/spine-r/`.
+
+### Rehearsal r1 on spine-r (2026-09-17 18:07–18:35Z, run `uk-local-candidate-f100-s42-20260917T180755Z-a244651d`)
+
+End to end for the first time: 21,449 targets (564 national, 19,874 local, 1,011 ladder) on the
+792,690-row pool; dense solve 100 epochs to loss 0.01956; the search settled after 4 probes
+(λ 3.16e-06, open mass 54,674 for 55,000, 43,681 certainties); refit loss 0.04559 on 55,000 rows
+from the floored Horvitz–Thompson baseline; gates blocked on `uk_local_area_support`,
+`uk_local_target_fit`, `uk_local_weight_ratio` (866 blocking lines, the 55k pattern Q50f showed);
+exit 1 by design, bundle written, 27.4 min wall, 12.0 GB peak RSS.
+
+Staging (local-only): the telemetry bundle validates; `run_manifest.json` 1.9 KiB, `events.ndjson`
+32.6 KiB, `calibration_progress.json` 17.9 KiB with 60 rows (10 dense with `phase` null, 40 probe
+rows with `budget_search` 1 and their λ, 10 refit rows tagged `size_refit`), two reviewed
+artifacts (`fit_summary.json` 16.1 KiB, `staged_dataset.json` 1.6 KiB); every file far under the
+5 MiB cap. Completed stages in order: input_pinning, target_compilation, cloning,
+surface_resolution, calibration (details: final loss, 55,000 realized, checkpoint written),
+gate_battery, holdout (skipped), output_bundle, dataset_staging (`skipped`, 9 files), complete.
+The manifest carries `staging_delivery` (mode local_only, run id) and `staged_dataset` (mode
+local_only, prefix `staged/<run_id>`, 9 files with digests); `staged_manifest.json` and
+`sha256sums.txt` written beside the bundle (374 MB: H5 237 MB, diagnostics 49 MB, registry 29 MB,
+two CSVs 47 MB, manifest 6 MB).
+
+Two warts, both fixed before the second rehearsal: the local `sha256sums.txt` listed the manifest
+as uploaded rather than as rewritten with the evidence blocks (the driver and the re-stage tool now
+refresh that line after the rewrite, so the local and the remote directory each verify themselves);
+and the manifest recorded `git_dirty: true` because the receipts draft was edited in the worktree
+while the run was going (the code was unchanged; never touch the run tree during a run). r1 is kept
+as `spine-r/…-staging-r1/` and is not the bundle staged on the Hub.
+
+### Rehearsal r2 on spine-r (2026-09-17 18:41–19:08Z, run `uk-local-candidate-f100-s42-20260917T184110Z-4a5f5af3`)
+
+Same arguments and inputs as r1, code db40e56c, tree untouched during the run: `git_dirty`
+false in the manifest. Deterministic against r1: identical `solve_diagnostics.csv` and
+`dataset_size_selection.csv` digests, dense loss 0.019561, search settled after 4 probes on
+λ 3.16e-06, refit loss 0.045593, gates blocked on the same three ids; 26.9 min wall, 13.2 GB peak.
+Telemetry bundle valid (60 calibration rows, six files under the cap, ten stages completed in
+order), `staging_delivery` and `staged_dataset` in the manifest, and the local `sha256sums.txt`
+verifies every listed file after the evidence rewrite. This is the bundle staged on the Hub with
+`tools/stage_uk_rowwise_candidate.py` (results below).
+
+### Staging r2 on the Hub (2026-09-17, immediately after r2 closed; 2026-09-18 second attempt)
+
+`tools/stage_uk_rowwise_candidate.py --run-dir …/spine-r/f100-k15-h55000-e100-p50-f001-s42-staging`
+against `policyengine/populace-uk-private`: the repository was reachable (read), the remote
+prefix was absent, and the single commit was refused by the Hub with 403 "you must use a write
+token to upload to a repository". The credential cached on the build machine has the Hub role
+`read`. The lane recorded `status failed`, `error_code UPLOAD_FAILED`, nine
+files with digests, no revision, exit 1, no exception text in the evidence, the bundle and sidecars
+intact for a re-stage; 11 s. Because a read token also passes the reachability pre-flight (it can
+see the private repository), the pre-flight and the re-stage tool now refuse a credential whose
+Hub role is `read` before any work, naming the write requirement. The real upload waits on a write
+credential in María's environment (`HF_TOKEN` or `hf auth login`), then
+`tools/stage_uk_rowwise_candidate.py --run-dir <r2>` stages this bundle, and the fetch-back and
+scorecard checks follow.
+
+Second attempt (2026-09-18, María's shell) with a fine-grained write token: refused again with
+403, recorded again as `UPLOAD_FAILED`. The token's `repo.write` scope covered only her own user
+namespace, not the `policyengine` organisation that owns the repository, and a fine-grained token
+reports the role `fineGrained`, so the read-only pre-flight passed it. The pre-flight and the
+re-stage tool now read the token's scopes from the Hub and refuse a credential without
+`repo.write` on the repository or its owner; a scope the Hub does not describe is warned about and
+proven by the upload. Vahid's review also had the re-stage tool keep the driver's record when the
+same outputs are already uploaded (the bundle's own commit, not the repository head), made the epoch
+thinning size-aware with a content refusal reported rather than raised from inside the solve, and
+gave the dense assembler `--allow-missing-staging` for runs built before the lane.

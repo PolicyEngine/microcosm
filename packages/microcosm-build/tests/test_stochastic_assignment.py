@@ -126,3 +126,37 @@ def test_stable_identity_uniforms_is_permutation_equivariant() -> None:
     permuted_draws = stable_identity_uniforms(permuted_ids, seed=7, salt="flag")
 
     np.testing.assert_array_equal(permuted_draws[[1, 2, 0]], draws)
+
+
+def test_anchored_residual_population_restricts_the_draw_and_the_target() -> None:
+    """The rate is a share of the population; rows outside it are never drawn."""
+
+    # 60 population rows with evenly spread draws, then 40 rows outside it.
+    draws = np.concatenate([np.linspace(0.0, 0.99, 60), np.linspace(0.0, 0.99, 40)])
+    population = np.arange(100) < 60
+    anchor = np.zeros(100, dtype=bool)
+    anchor[5] = True  # inside the population
+    anchor[95] = True  # outside it: reported receipt stays true
+
+    result = assign_binary_with_anchored_residual(
+        draws, 0.5, anchor, population=population
+    )
+
+    # int(0.5 * 60) = 30 inside the population: the anchor plus 29 residual
+    # rows at the adjusted threshold 29 / 59 over the evenly spread draws.
+    assert int(result[population].sum()) == 30
+    assert result[95] and int(result[~population].sum()) == 1
+    assert not (result & ~population & ~anchor).any()
+
+
+def test_anchored_residual_population_without_anchor_and_shape_refusal() -> None:
+    draws = np.linspace(0.0, 0.99, 10)
+    population = np.array([True] * 5 + [False] * 5)
+
+    result = assign_binary_with_anchored_residual(draws, 0.4, population=population)
+
+    assert result.tolist() == [True, True, True, True, False] + [False] * 5
+    with pytest.raises(ValueError, match="population and draws must align"):
+        assign_binary_with_anchored_residual(
+            draws, 0.4, np.zeros(10, dtype=bool), population=np.ones(3, dtype=bool)
+        )

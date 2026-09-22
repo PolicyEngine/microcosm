@@ -59,15 +59,18 @@ from microcosm.data.us_critical_targets import (
 )
 
 __all__ = [
+    "COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS",
     "EVIDENCE_RELEASE_ID_SEGMENT",
     "EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION",
     "LOCAL_AREA_REQUIRED_RELEASE_FILES",
     "NATIONAL_DEFAULT_DATASET_ROLE",
     "NON_DEFAULT_LOCAL_AREA_DATASET_ROLE",
+    "PUBLISHER_CLAIM_BASIS",
     "RELEASE_MANIFEST_SCHEMA_VERSION",
     "REQUIRED_RELEASE_FILES",
     "US_SOURCE_COVERAGE_DIAGNOSTICS_FILE",
     "ReleaseContractError",
+    "compatibility_claim_declarer_error",
     "release_dataset_role",
     "required_release_files",
     "validate_evidence_release_dir",
@@ -78,6 +81,34 @@ __all__ = [
 #: schema, and keep :func:`validate_release_dir` rejecting drift loudly — the
 #: unversioned 1abddeb-era manifest is exactly the silence this guards against.
 RELEASE_MANIFEST_SCHEMA_VERSION = 1
+#: ``compatible_*_packages`` entries default to the exact version the build
+#: measured. An entry the publisher widened deliberately declares this basis
+#: and the person or process accountable for it.
+PUBLISHER_CLAIM_BASIS = "publisher_claim"
+#: Ceiling on the text naming who declared a publisher claim. Long enough for a
+#: role and an issue reference, short enough that the field stays a name rather
+#: than a place to park prose.
+COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS = 200
+
+
+def compatibility_claim_declarer_error(declared_by: object) -> str | None:
+    """Return why ``declared_by`` cannot name a claim's declarer, or ``None``.
+
+    One rule, two layers. The producer raises on it while certifying
+    (``microcosm.data.source_enrichment.check_compatibility_claim_declarer``)
+    and this contract reports it as a release failure, so a bundle cannot reach
+    publication carrying a declarer certification would have refused.
+    """
+    if not isinstance(declared_by, str) or not declared_by.strip():
+        return "is required"
+    if declared_by != declared_by.strip():
+        return "must not carry leading or trailing whitespace"
+    if len(declared_by) > COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS:
+        return f"must be at most {COMPATIBILITY_CLAIM_DECLARER_MAX_CHARS} characters"
+    if not declared_by.isprintable():
+        return "must be printable text, with no control characters"
+    return None
+
 
 #: The release-manifest schema marker for EVIDENCE-tier releases
 #: (microcosm#506). Deliberately a distinct value, not a superset flag on the
@@ -385,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "38a8a01467e372c87d845e3aacef67c5cc67d90dbc86fa5325408296be00afab"
+    "211abff22b4eedf9cf69f4b43a6f77ca8966d61a386c1804c3fdb093b0e27aa0"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "49e86be979d5a266c88ea3091b295f8efe2fa96c85fddeb153c6d6083be6c72b"
+    "462271cdc72631e4b6780be52b53d7ea7572ad97e9b91a00a1f3da199f56858c"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "25049e61956b1f4145c1915f0e9a0b9523ec86da428f2a378c6ed8dce5cd2793"
+    "8baa7f5c0db3f64c5e00859ff7fd2bd4cf2daf611367ec36f519d1e428af1ebd"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -411,6 +442,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
     "uk_ons_household_type_enum_domain": "enum_domain",
+    "uk_capital_gains_asset_type_enum_domain": "enum_domain",
     "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
     "uk_target_surface": "target_surface",
@@ -437,6 +469,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_was_wealth_support": ("stage_health", "transferred"),
     "uk_stage_uc_deduction_attributes": ("stage_health", "transferred"),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred"),
+    "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred"),
     "uk_stage_etb_vat_support": ("stage_health", "transferred"),
     "uk_stage_etb_services_support": ("stage_health", "transferred"),
     "uk_stage_frs_hmrc_spine_leaves_signal": (
@@ -451,6 +484,10 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
     "uk_stage_cgt_band_donors_support": ("stage_health", "transferred"),
     "uk_stage_hmrc_cgt_gains_spine_summary": (
+        "stage_health",
+        "transferred",
+    ),
+    "uk_stage_hmrc_cgt_asset_type_spine_summary": (
         "stage_health",
         "transferred",
     ),
@@ -480,6 +517,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_take_up_signal": ("take_up_signal", "terminal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled"),
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled"),
+    "uk_capital_gains_asset_type_enum_domain": ("enum_domain", "transferred"),
     "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
@@ -517,6 +555,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_was_wealth_support",
         "uk_stage_uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support",
+        "uk_stage_lcfs_consumption_energy_rake",
         "uk_stage_etb_vat_support",
         "uk_stage_etb_services_support",
         "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -525,6 +564,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_cgt_incidence_clone_mass",
         "uk_stage_cgt_band_donors_support",
         "uk_stage_hmrc_cgt_gains_spine_summary",
+        "uk_stage_hmrc_cgt_asset_type_spine_summary",
         "uk_stage_salary_sacrifice_realization",
         "uk_stage_student_loans_realization",
         "uk_stage_age_tail_targets",
@@ -574,6 +614,10 @@ _UK_DENSE_RELEASE_ID = "microcosm-uk-2024-25-dense"
 _UK_DENSE_CUT_TAG_RE = re.compile(
     re.escape(_UK_DENSE_RELEASE_ID) + r"-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}"
 )
+#: The dense line's published microdata filename; mirrors
+#: ``tools/assemble_uk_dense_release_dir.py::_DATASET_FILENAME`` (lockstep test
+#: in the build shard's contract-pin suite).
+_UK_DENSE_DATASET_FILENAME = "microcosm_uk_2024_25_dense.h5"
 _UK_DENSE_GATE_REPORT_FILE = "uk_local_gates.json"
 _UK_DENSE_SCORE_RECEIPT_FILE = "score_vs_incumbent.json"
 _UK_DENSE_SOURCE_COVERAGE_FILE = "uk_source_coverage.json"
@@ -660,6 +704,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
     "spine": frozenset(
         {
             "uk_brma_enum_domain",
+            "uk_capital_gains_asset_type_enum_domain",
             "uk_ons_household_type_enum_domain",
             "uk_stage_age_tail_targets",
             "uk_stage_cgt_band_donors_support",
@@ -668,8 +713,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_frs_relationships_composition",
+            "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
+            "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_lcfs_consumption_support",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_spi_support_channel_mass",
@@ -716,26 +763,26 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "7f9f07e60ba300cc39cbc22d7df60804374664827a803856bf6d6b11d9045287"
+            "778f5d32d421c4fb2cc8c37ef4232093070d2606ec17bf9d4f7ee1c1e6de8b8d"
         ),
         "policy_sha256": (
-            "7058df03511284046d89932747012908d731198359f2b779be9e478e33703364"
+            "c59f645c51ec234e91bd582df2a1576116f2c67183c2cb015f51d3f1a2be9ea7"
         ),
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "cb0d7ce17c0cd3cf70bd432d4ba85efce3fa837ebf3caba5f5cf0b5545c5dc61"
+            "9ed1529c9c6e9ecaca6469d1fe0570930f0598b10002629ff89429334b13a726"
         ),
         "policy_sha256": (
-            "290b1ad240bf4f6412dcaa87c77283dad79d88c817b10b2f402736378fd3d63d"
+            "eaaaacace07b4d282e1b7497f82f027daa9bb31aa7a6268063b05a069588e385"
         ),
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "1aaf29c5e95e70cdbd499fec3a06098478a925caf32e3f09f6fcf3b0ac32f436"
+            "4becf8d00a08d319a26d33681b4bed159711a9873f6cae221af3d161929c5943"
         ),
         "policy_sha256": (
-            "4a93792fb9d03da4401f1aa58d261af19677ead0afb56d93ae9f195203f68307"
+            "a7250c519e79e22d366316cd4943f5f4bd2cc86a0e76b919ee2ff2eacb2335f3"
         ),
     },
 }
@@ -1138,6 +1185,7 @@ def _check_release_manifest(
     failures: list[str],
     *,
     expected_schema_version: object = RELEASE_MANIFEST_SCHEMA_VERSION,
+    annual_revision: str | None = None,
 ) -> None:
     schema_version = manifest.get("schema_version")
     if schema_version is None:
@@ -1236,14 +1284,18 @@ def _check_release_manifest(
                         f"release_manifest.json artifact {key!r} is missing {field!r}."
                     )
             revision = entry.get("revision")
-            revision_matches_release = revision == release_id or (
-                release_id == _UK_NATIONAL_RELEASE_ID
-                and isinstance(revision, str)
-                and revision.startswith(release_id + "-")
-                and _UK_NATIONAL_REVISION_SUFFIX_RE.fullmatch(
-                    revision[len(release_id) + 1 :]
+            revision_matches_release = (
+                revision == release_id
+                or (annual_revision is not None and revision == annual_revision)
+                or (
+                    release_id == _UK_NATIONAL_RELEASE_ID
+                    and isinstance(revision, str)
+                    and revision.startswith(release_id + "-")
+                    and _UK_NATIONAL_REVISION_SUFFIX_RE.fullmatch(
+                        revision[len(release_id) + 1 :]
+                    )
+                    is not None
                 )
-                is not None
             )
             # A present-but-non-string revision must fail here rather than
             # slide past the isinstance guard: publish collects only string
@@ -1561,6 +1613,27 @@ def _check_compatible_package_entries(
                 f"{owner}.specifier {specifier!r} is not a valid PEP 440 specifier."
             )
             continue
+        # An entry wider than the tested build is a publisher's own claim, so
+        # it says so and says who made it. Silence means the entry records what
+        # the build measured.
+        basis = entry.get("basis")
+        if basis is not None:
+            if basis != PUBLISHER_CLAIM_BASIS:
+                failures.append(
+                    f"{owner}.basis {basis!r} is not a recognised compatibility "
+                    f"basis; the only declared basis is {PUBLISHER_CLAIM_BASIS!r}."
+                )
+            reason = compatibility_claim_declarer_error(entry.get("declared_by"))
+            if reason is not None:
+                failures.append(
+                    f"{owner}.declared_by {reason} for a "
+                    f"{PUBLISHER_CLAIM_BASIS!r} entry."
+                )
+        elif entry.get("declared_by") is not None:
+            failures.append(
+                f"{owner}.declared_by needs the matching "
+                f"'basis': {PUBLISHER_CLAIM_BASIS!r}."
+            )
         if name == expected_name:
             matching_specifiers.append(specifier)
 
@@ -5063,6 +5136,7 @@ def validate_release_dir(
     # than a silent fallback.
     role: str = NATIONAL_DEFAULT_DATASET_ROLE
     manifest_probe_path = release_dir / "release_manifest.json"
+    annual_extension = None
     if manifest_probe_path.is_file():
         try:
             manifest_probe = json.loads(manifest_probe_path.read_text())
@@ -5091,6 +5165,19 @@ def validate_release_dir(
                         f"{manifest_probe['release_type']!r}."
                     ],
                 )
+        if isinstance(manifest_probe, Mapping):
+            from microcosm.data.annual_projections import (
+                validate_annual_projection_extension,
+            )
+
+            try:
+                annual_extension = validate_annual_projection_extension(
+                    release_dir, manifest_probe, artifact_root=artifact_root
+                )
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise ReleaseContractError(
+                    release_dir, [f"annual projection extension: {exc}"]
+                ) from exc
         if isinstance(manifest_probe, Mapping) and "dataset_role" in manifest_probe:
             declared_role = manifest_probe["dataset_role"]
             if declared_role not in (
@@ -5136,7 +5223,12 @@ def validate_release_dir(
         manifest = _load_json(release_manifest_path, failures)
         if manifest is not None:
             release_manifest = manifest
-            _check_release_manifest(manifest, release_id, failures)
+            _check_release_manifest(
+                manifest,
+                release_id,
+                failures,
+                annual_revision=annual_extension.revision if annual_extension else None,
+            )
 
     calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
     if calibration_diagnostics_path.is_file():
@@ -6112,7 +6204,7 @@ def _check_uk_dense_surface_files(
         )
         return
     try:
-        dataset = _artifact_by_path(release_manifest, "microcosm_uk_2025_dense.h5")
+        dataset = _artifact_by_path(release_manifest, _UK_DENSE_DATASET_FILENAME)
         expected = {
             "candidate_dataset_sha256": dataset["sha256"],
             "candidate_manifest_sha256": hashes["rowwise_candidate_manifest.json"],

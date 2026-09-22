@@ -142,6 +142,179 @@ microcosm-publish-release /path/to/certified/releases/RELEASE_ID \
   --preflight-only
 ```
 
+## Declaring a publisher compatibility range
+
+Certification writes `compatible_model_packages` and `compatible_core_packages`
+as exact pins on the versions the loader checks actually ran against. That is
+the default and the safe answer: the bundle claims compatibility with exactly
+what was measured.
+
+The exact model pin makes every country release a swap rather than a widening.
+A consumer pinned to the previous model version loses certification the moment
+a re-certified bundle replaces the published one, and a country patch release
+that changes nothing this lane measures still forces a new certified data
+release even when the H5 bytes are identical. Where the publisher can stand
+behind a range, declare it at certification:
+
+```bash
+python -m microcosm.data.source_enrichment --certify \
+  --release-dir /path/to/new-candidate/releases/RELEASE_ID \
+  --output-dir /path/to/certified/releases/RELEASE_ID \
+  --parent-h5 /path/to/certified/populace_us_2024.h5 \
+  --artifact-root /path/to/new-candidate/artifacts \
+  --compatible-model-specifier 'policyengine-us>=2.0.1,<2.1' \
+  --compatibility-claim-declared-by 'PolicyEngine data release owner, microcosm#NNN' \
+  --compatibility-wheel ...
+```
+
+The claim is recorded in `source_enrichment.json` under
+`compatibility.publisher_claims.model` and in `release_manifest.json` as the
+single `compatible_model_packages` entry, both carrying
+`"basis": "publisher_claim"` and the declarer. The specifier is stored exactly
+as declared, save that PEP 508's optional parentheses are dropped. Validation
+replays the claim at every later gate, publish preflight included: the manifest
+entry must equal what the report declares, so a `release_manifest.json` widened
+on its own is refused. Omitting the options leaves certification byte-identical
+to an undeclared run — no `basis` key, no `publisher_claims` key.
+
+Certification rewrites `compatible_model_packages` from these options every
+time, so re-certifying a bundle that already declares a range without passing
+them again reverts it to the exact pin. That is not silent: the run warns,
+naming the lowest version the old claim covered and the new one does not, and
+records the same under `compatibility.narrowed_claims` in the certified report.
+Pass the options again to keep the range.
+
+The record outlives the terminal that printed the warning. Every verdict that
+touches the bundle carries it: `--certify` itself, validation
+(`python -m microcosm.data.source_enrichment` without `--certify`) and publish
+preflight (`microcosm-publish-release --preflight-only`) all print
+`narrowed_claims` beside their verdict whenever the bundle records one, so an
+operator publishing days later reads what an earlier run gave up rather than
+just `passed`. Publication says the same on stderr, because reaching it does
+not require running the preflight first — `tools/publish_release.sh` passes its
+arguments straight through. All four read the record under one tolerance, so
+none of them reports a bundle differently from the others, and a bundle that
+gave nothing up prints nothing.
+
+Only the **model** field may be widened. Core keeps the exact pin it has always
+had, and a `core` key in `publisher_claims` is refused rather than honoured.
+The coverage warning covers Core as defence in depth, and words it as a pin
+moving rather than a claim narrowing, because there is no Core claim to narrow.
+Nothing reaches that wording today: re-certification validates the input bundle
+first, and that gate requires its recorded receipt to equal the current runtime,
+so a Core version that moved is refused before the emitted pin could differ from
+the carried one.
+
+This is a record of who claimed what, not a tamper-proof seal. The report's
+SHA256 lives in the manifest's own `artifacts` map, so widening a certified
+bundle by hand takes two coordinated edits plus a hash refresh instead of one —
+the same trust model as before, where the exact pin was equally editable. What
+actually stands between an edited bundle and the Hub is
+`_check_producer_source_identity`, the publish preflight, and the human
+publication decision.
+
+The tooling refuses a claim that:
+
+- does not parse as a PEP 508 requirement, or carries a URL, extras or an
+  environment marker — it must read `policyengine-us>=2.0.1,<2.1`;
+- names a package other than the built-with model package;
+- excludes the version certification tested, under the same PEP 440 containment
+  the consumers apply (`microcosm.data.loader._package_certification` and
+  policyengine.py's `provenance.manifest._specifier_matches`), so a claim that
+  is accepted here is a claim they will honour;
+- fails any of the three boundedness probes. Over a 2.0.1 build the guard asks
+  whether the range still admits the next major version, `3.0.0`; whether it
+  still admits a far-future `99999.0.0`; and whether it still admits `0`, the
+  bottom of the tested version's epoch. `>=2.0.1`, `!=2.0.5` and
+  `>=2.0.1,<3.0.1` fail the first; `>=2.0.1,!=3.0.0`, which excludes the next
+  major by name while still certifying 4.x, fails the second; `<2.1` and
+  `<=2.0.5`, bounded above but open below, fail the third — a bare `<2.1`
+  certifies every release the package ever made, including ones predating the
+  native-input loader path this qualification measures. State both bounds:
+  `>=2.0.1,<2.1`, `~=2.0.1`, `==2.0.*` or `>=2.0.1,<3`. Probes bound a claim;
+  they do not prove one is bounded, and the residue is symmetric: a specifier
+  that names the probe versions and excludes them passes while admitting
+  others. `>=2.0.1,!=3.0.0,!=99999.0.0` is accepted and admits `5.0`;
+  `<2.1,!=0` is accepted and admits `0.9.0`. Both are pinned by test so the
+  limit cannot quietly widen past what is written here. Declare real bounds
+  rather than a hole-punched open range;
+- arrives without `--compatibility-claim-declared-by`. A wider claim is the
+  publisher's assertion rather than a measurement, so the bundle records who
+  made it.
+
+A **prerelease** built-with version narrows the options, for an ordering reason
+rather than an exclusion one. `packaging` matches prereleases by default,
+following PEP 440's recommendation, but a prerelease sorts below its own
+release: over a `2.0.1rc1` build both `>=2.0.1,<2.1` and `~=2.0.1` exclude the
+very version certification tested, and the containment check refuses them. A
+range has to name the prerelease in its lower bound (`>=2.0.1rc1,<2.1`) or match
+the series with a prefix (`==2.0.*`); both pass all three boundedness probes.
+Declaring nothing leaves the exact `==2.0.1rc1` pin, which is the honest option
+for a runtime still in prerelease anyway.
+
+Where the tooling draws its line and where practice should draw one are not the
+same place: the guard bounds a claim at the next major version, so `>=2.0.1,<3`
+is accepted, while the recommended range stops at the next minor
+(`>=2.0.1,<2.1`) — the span a publisher can actually read the diff for.
+
+### When a range is appropriate
+
+Declare a range over the model versions whose differences cannot reach what
+certification measured — in practice a **country patch release that changes
+neither the native H5 loader path, the person-role variable, nor the dataset
+pin**. The native loader checks are `native_input_loading_only`; the claim is
+about them and nothing else. Before declaring, read the diff between the tested
+version and the upper bound and confirm it touches none of: the H5/dataset
+loader, `DEFAULT_DATASET`, the `is_spm_independent_minor_role` registration, the
+entity tables this release writes, or the SPM path that consumes them.
+
+### When it is not
+
+- **A minor or major bump** (2.0.x → 2.1, 2.x → 3). Re-certify instead.
+- **Anything the certification did not test.** Native input loading is not
+  numerical acceptance; a range never extends to SPM numerics, canonical model
+  acceptance, or Axiom parity, which root owns separately.
+- **A range used to avoid re-running certification** when the runtime under the
+  upper bound was never installed anywhere. A claim the publisher cannot defend
+  is worse than a new release.
+- **Speculative headroom.** `>=2.0.1,<2.1` because 2.0.2 is expected is
+  defensible; `>=2.0.1,<3` because a major bump seems far off is not.
+
+Consumers record which basis they used. Measured against policyengine.py's
+installed provenance code, a manifest declaring `>=2.0.1,<2.1` over `built_with`
+2.0.1 accepts 2.0.1 on the exact build-time match, accepts 2.0.2 on the claim,
+and refuses 2.0.0 and 2.1.0 — on both paths. They differ in what they say:
+
+- **Bundle certification** (`provenance/certification.py::validate_release_manifest`)
+  returns basis `compatible_model_packages` and a warning naming the claim and
+  the version the data was built with. That warning is the intended cost of the
+  wider binding, and an operator certifying a bundle sees it.
+- **Runtime binding** (`provenance/manifest.py::certify_data_release_compatibility`)
+  returns basis `legacy_compatible_model_package` and warns about nothing —
+  that module issues no warnings at all. A user running the certified bundle on
+  a version the claim covers gets no signal; the recorded basis is the only
+  trace. Do not declare a range expecting the runtime to caveat it for you.
+
+The range relaxes consumer-side certification only. It changes nothing about
+the publisher's own gates: `--preflight-only` and the real publisher both re-run
+the native-loader qualification in the current environment and require the
+recomputed receipt to equal the one the bundle records, and that receipt names
+the exact versions certification tested. A publish preflight therefore still
+runs with the exact `built_with` model and Core versions installed, with the
+four matching wheels to hand. A declared range never lets the publisher replay
+a bundle against a runtime it did not measure.
+
+### Follow-on: the other release types still pin exactly
+
+This option exists on the source-enrichment lane only. The calibration release
+assemblers — `tools/assemble_uk_release_dir.py`,
+`tools/assemble_uk_dense_release_dir.py` and
+`tools/build_us_fiscal_refresh_release.py` — each write
+`compatible_model_packages` as `==<measured runtime version>` with no way to
+declare a range, so a UK national, UK dense or US fiscal-refresh release stays
+an exact swap for its consumers. Widening any of them is a separate change with
+its own review.
+
 Certification creates a separate bundle with measured compatibility; it leaves
 the candidate H5 and source evidence unchanged. Both the preflight above and
 the real publisher share local preparation: they invoke the source-enrichment

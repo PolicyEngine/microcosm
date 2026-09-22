@@ -280,9 +280,7 @@ def test_expected_support_matches_hand_computed_two_stage_result(tmp_path) -> No
             ),
         )
     )
-    household = pd.DataFrame(
-        {"household_id": [1, 2], "region": ["LONDON", "London"]}
-    )
+    household = pd.DataFrame({"household_id": [1, 2], "region": ["LONDON", "London"]})
 
     support = expected_uk_ladder_area_support(household, ladder, n_clones=2)
 
@@ -664,3 +662,79 @@ def test_join_raises_on_unmatched_lad_itl() -> None:
             oa_ward=_oa_ward(),
             lad_itl=lad_itl,
         )
+
+
+def test_region_tier_roster_and_enum_table_are_consistent() -> None:
+    from microcosm.build.uk_runtime.frs_spine import REGION_MAP
+    from microcosm.build.uk_runtime.geography_ladder import (
+        UK_ENGLAND_WALES_REGION_CODES,
+    )
+    from microcosm.calibrate.geography_constants import (
+        UK_GEOGRAPHY_ID_TO_LABEL,
+        UK_LADDER_NATION_REGION_CODES,
+        UK_REGION_TIER,
+        UK_REGION_TIER_ENUM,
+    )
+
+    codes = [code for _, code in UK_REGION_TIER]
+    assert len(codes) == 12 == len(set(codes))
+    # Every tier code is a catalogued geography, so the schema-8 hierarchy can
+    # label a region-tier cell without a Chronicle geography.name.
+    assert set(codes) <= set(UK_GEOGRAPHY_ID_TO_LABEL)
+    assert [code for level, code in UK_REGION_TIER if level == "region"] == [
+        code for code in UK_ENGLAND_WALES_REGION_CODES if code.startswith("E12")
+    ]
+    assert [code for level, code in UK_REGION_TIER if level == "country"] == [
+        "W92000004",
+        "S92000003",
+        "N92000002",
+    ]
+    # Every spine region enum has exactly one tier code, and every tier code
+    # names a spine region: the predicate a fan-out row carries can never name
+    # a region the frame does not carry.
+    assert set(UK_REGION_TIER_ENUM) == set(codes)
+    assert sorted(UK_REGION_TIER_ENUM.values()) == sorted(REGION_MAP.values())
+    assert len(set(UK_REGION_TIER_ENUM.values())) == 12
+    assert set(UK_LADDER_NATION_REGION_CODES.values()) == {
+        "W92000004",
+        "S92000003",
+        "N92000002",
+    }
+
+
+def test_uk_area_region_codes_reads_the_ladder_in_hand() -> None:
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime.geography_ladder import uk_area_region_codes
+
+    ladder = SimpleNamespace(
+        constituency_code=np.array(
+            ["E14000001", "E14000001", "W07000041", "S14000001"]
+        ),
+        local_authority_code=np.array(
+            ["E09000001", "E09000001", "W06000001", "S12000033"]
+        ),
+        region_code=np.array(["E12000007", "E12000007", "W99999999", "S99999999"]),
+    )
+    assert uk_area_region_codes(ladder) == {
+        "E09000001": "E12000007",
+        "E14000001": "E12000007",
+        "S12000033": "S92000003",
+        "S14000001": "S92000003",
+        "W06000001": "W92000004",
+        "W07000041": "W92000004",
+    }
+    split = SimpleNamespace(
+        constituency_code=np.array(["E14000001", "E14000001"]),
+        local_authority_code=np.array(["E09000001", "E09000001"]),
+        region_code=np.array(["E12000007", "E12000001"]),
+    )
+    with pytest.raises(ValueError, match="must nest"):
+        uk_area_region_codes(split)
+    outside = SimpleNamespace(
+        constituency_code=np.array(["E14000001"]),
+        local_authority_code=np.array(["E09000001"]),
+        region_code=np.array(["E13000001"]),
+    )
+    with pytest.raises(ValueError, match="outside the region tier"):
+        uk_area_region_codes(outside)

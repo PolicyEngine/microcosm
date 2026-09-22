@@ -926,7 +926,8 @@ class TestUKCountryPackage:
             "gates.json",
             "brma_rent_counts.json",
             "calibration_measure_exclusions.json",
-            "hmrc_cgt_size_bands.json",
+            "hmrc_cgt_conditioning_facts.json",
+            "hmrc_cgt_asset_type_facts.json",
             "advani_summers_capital_gains_distribution.json",
             "salary_sacrifice_anchor.json",
             "slc_liable_stocks.json",
@@ -934,8 +935,7 @@ class TestUKCountryPackage:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
-            "need_energy_targets.json",
-            "lcfs_consumption_anchors.json",
+            "ofgem_region_crosswalk.json",
             "etb_policy_anchors.json",
             "etb_services_anchors.json",
             "dwp_uc_deduction_distributions.json",
@@ -981,6 +981,8 @@ class TestUKCountryPackage:
             "licensed_cars_fuel_type.json",
             "need_energy_facts.json",
             "ofgem_price_cap_facts.json",
+            "desnz_domestic_energy_facts.json",
+            "qep_energy_prices.json",
             "nts_bus_use_frequency.json",
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
@@ -991,10 +993,11 @@ class TestUKCountryPackage:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        # 29 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
-        # #685, then frs_relationships #791 as the newest) plus the
+        # 30 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
+        # #685, frs_relationships #791, then hmrc_cgt_asset_type_spine #725 as
+        # the newest) plus the
         # two certified-pair stages the June path still uses.
-        assert len(spec.sources.stages) == 31
+        assert len(spec.sources.stages) == 32
 
 
 class TestExistingPackagesGeneralize:
@@ -1030,7 +1033,8 @@ class TestExistingPackagesGeneralize:
             "gates.json",
             "brma_rent_counts.json",
             "calibration_measure_exclusions.json",
-            "hmrc_cgt_size_bands.json",
+            "hmrc_cgt_conditioning_facts.json",
+            "hmrc_cgt_asset_type_facts.json",
             "advani_summers_capital_gains_distribution.json",
             "salary_sacrifice_anchor.json",
             "slc_liable_stocks.json",
@@ -1038,8 +1042,7 @@ class TestExistingPackagesGeneralize:
             "hmrc_income_release_gate_report.json",
             "hmrc_income_replay_report.json",
             "hmrc_income_source_stages.json",
-            "need_energy_targets.json",
-            "lcfs_consumption_anchors.json",
+            "ofgem_region_crosswalk.json",
             "etb_policy_anchors.json",
             "etb_services_anchors.json",
             "dwp_uc_deduction_distributions.json",
@@ -1085,6 +1088,8 @@ class TestExistingPackagesGeneralize:
             "licensed_cars_fuel_type.json",
             "need_energy_facts.json",
             "ofgem_price_cap_facts.json",
+            "desnz_domestic_energy_facts.json",
+            "qep_energy_prices.json",
             "nts_bus_use_frequency.json",
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
@@ -1095,7 +1100,13 @@ class TestExistingPackagesGeneralize:
         spec = load_country_spec("uk")
 
         references = {reference.name: reference for reference in spec.target_references}
-        assert len(references) == 424
+        assert (
+            len(references) == 705
+        )  # microcosm#905: 424 - 18 country rows + 189 region-tier cells;
+        # microcosm#929: the 81 VOA region cells become 81 composed MHCLG
+        # cells and Wales gains ten country rows (bands A-I + total);
+        # microcosm#725/#467: 24 CGT age-band rows, 24 region-tier cells and
+        # 24 size-of-gain rows
         assert references["obr.esa"].value_operation == "sum"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"
@@ -1331,6 +1342,7 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
+            "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -1339,6 +1351,7 @@ class TestUKGatesManifest:
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
@@ -1357,6 +1370,7 @@ class TestUKGatesManifest:
             "uk_take_up_signal",
             "uk_brma_enum_domain",
             "uk_ons_household_type_enum_domain",
+            "uk_capital_gains_asset_type_enum_domain",
             "uk_uc_deduction_combination_enum_domain",
             "uk_student_loan_plan_enum_domain",
             "uk_calibration_reference_coverage",
@@ -1422,6 +1436,7 @@ class TestUKGatesManifest:
             "uk_stage_was_wealth_support",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
+            "uk_stage_lcfs_consumption_energy_rake",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
@@ -1430,6 +1445,7 @@ class TestUKGatesManifest:
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
@@ -1473,10 +1489,17 @@ class TestUKGatesManifest:
         aggregate = params["uk_aggregate_admin"]
         assert aggregate["default_rtol"] == 0.15
         assert [anchor["name"] for anchor in aggregate["anchors"]] == [
-            "need_electricity_mean_spending",
-            "need_gas_mean_spending",
             "nhs_spending_total",
         ]
+        energy_rake = params["uk_stage_lcfs_consumption_energy_rake"]
+        assert energy_rake["check"] == "energy_rake"
+        assert list(energy_rake["margins"]) == [
+            "income",
+            "tenure",
+            "accommodation",
+            "region",
+        ]
+        assert energy_rake["maximum_relative_deviation"] == 0.025
 
     def test_zero_weight_declarations_match_the_june_strata(self, manifest) -> None:
         params = {gate.id: gate.parameters for gate in manifest.gates}

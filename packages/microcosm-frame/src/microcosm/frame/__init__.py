@@ -25,6 +25,7 @@ from microcosm.frame.materialize import (
     read_frame_table,
 )
 from microcosm.frame.rules import ExportContract, RulesEngine
+from microcosm.frame.scaling import ScaleFactor, SignedScale, apply_scale
 from microcosm.frame.schema import EntitySchema, LinkSpec, VariableMetadata
 from microcosm.frame.units import (
     MICROUNIT_REQUIRED_COLUMNS,
@@ -58,10 +59,13 @@ __all__ = [
     "MassChangeRecord",
     "PyTablesBooleanMaterialization",
     "RulesEngine",
+    "ScaleFactor",
+    "SignedScale",
     "VariableMetadata",
     "WeightKind",
     "Weights",
     "assert_kind_transition",
+    "apply_scale",
     "assign_us_unit_structure",
     "engine_tables",
     "gini",
