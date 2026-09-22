@@ -1,5 +1,48 @@
 {
   "schema_version": 2,
   "description": "Measures the incumbent comparison artifact (the enhanced FRS) is known not to carry, keyed entity.variable. A target bound through a listed measure may be pruned from BOTH arms of the rule-1 evaluation (microcosm#578 rule 1 on the common surface, microcosm#823); an unlisted unresolvable measure refuses the evaluation rather than pruning. Every entry is a complete approval receipt in the reviewed-exclusion schema, in force from approved_on through expires_on.",
-  "exclusions": {}
+  "exclusions": {
+    "benunit.uc_calibration_administrative_family_type": {
+      "reason": "Administrative-basis UC family type (microcosm#832/#835/#937): derived from the relationship-to-head reconstruction (microcosm#791) the enhanced FRS never carried; 93 dwp_universal_credit rows bind through it.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#823 (rule-1 evaluation on the common surface; microcosm#578)",
+      "approved_on": "2026-09-22",
+      "expires_on": "2026-12-22"
+    },
+    "benunit.uc_calibration_child_count": {
+      "reason": "Administrative-basis UC dependent-child count (microcosm#832/#835/#937): the same relationship-to-head derivation (microcosm#791) the enhanced FRS never carried.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#823 (rule-1 evaluation on the common surface; microcosm#578)",
+      "approved_on": "2026-09-22",
+      "expires_on": "2026-12-22"
+    },
+    "benunit.uc_calibration_has_child_under_one": {
+      "reason": "Administrative-basis UC child-under-one flag (microcosm#832/#835/#937): the same relationship-to-head derivation (microcosm#791) the enhanced FRS never carried.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#823 (rule-1 evaluation on the common surface; microcosm#578)",
+      "approved_on": "2026-09-22",
+      "expires_on": "2026-12-22"
+    },
+    "benunit.uc_tcl_affected_benunit_proxy": {
+      "reason": "Two-child-limit affected-benunit proxy (microcosm#840): a counterfactual the enhanced FRS carries no inputs for; 15 dwp_two_child_limit rows bind through it.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#823 (rule-1 evaluation on the common surface; microcosm#578)",
+      "approved_on": "2026-09-22",
+      "expires_on": "2026-12-22"
+    },
+    "household.ons_household_type": {
+      "reason": "ONS census household type (microcosm#887): the enhanced FRS carries no household-type classification; 10 ons_household_composition rows bind through it.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#823 (rule-1 evaluation on the common surface; microcosm#578)",
+      "approved_on": "2026-09-22",
+      "expires_on": "2026-12-22"
+    },
+    "person.capital_gains_asset_type": {
+      "reason": "CGT asset type (microcosm#939, the E8 spine stage): the enhanced FRS carries gains amounts only; 2 hmrc_cgt rows bind through it.",
+      "approved_by": "juaristi22",
+      "adjudication": "microcosm#823 (rule-1 evaluation on the common surface; microcosm#578)",
+      "approved_on": "2026-09-22",
+      "expires_on": "2026-12-22"
+    }
+  }
 }
