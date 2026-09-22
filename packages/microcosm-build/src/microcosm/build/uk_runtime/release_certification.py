@@ -832,6 +832,7 @@ def _verify_score_receipt(
     if measures:
         from microcosm.build.uk_runtime.candidate_score import (
             load_uk_incumbent_unresolvable_measures,
+            uk_incumbent_unresolvable_register_digest,
         )
 
         reviewed = (
@@ -847,6 +848,23 @@ def _verify_score_receipt(
                 "from both arms stands only on a signed entry, so the cut "
                 "cannot be certified on this receipt."
             )
+        # The receipt names the register it was scored under; against the
+        # committed register of record that digest must be the committed
+        # one, so a receipt scored under another register cannot certify.
+        if reviewed_unresolvable_measures is None:
+            named = (
+                pruned.get("reviewed_register", {}).get("sha256")
+                if isinstance(pruned.get("reviewed_register"), Mapping)
+                else None
+            )
+            committed = uk_incumbent_unresolvable_register_digest()["sha256"]
+            if named != committed:
+                raise UKReleaseCertificationError(
+                    "the score receipt was scored under incumbent-unresolvable "
+                    f"register {named!r}, not the committed register "
+                    f"({committed}); re-score the candidate on the register of "
+                    "record."
+                )
         # An entry suppresses only inside its window, at the certification's
         # own evaluation date: a receipt scored while an entry was in force
         # does not outlive the entry.

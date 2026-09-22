@@ -458,3 +458,37 @@ def test_certification_fields_mirror_the_data_contract(green_certification_input
     assert certification["parent_spine"] == {
         "sha256": green_certification_inputs["spine_sha256"]
     }
+
+
+def test_compose_refuses_a_receipt_scored_under_another_register(
+    green_certification_inputs,
+):
+    """Against the committed register of record, the receipt's register
+    digest must be the committed one (review A2, second half)."""
+    from datetime import date
+
+    from microcosm.build.uk_runtime.candidate_score import (
+        load_uk_incumbent_unresolvable_measures,
+        uk_incumbent_unresolvable_register_digest,
+    )
+
+    measure = sorted(load_uk_incumbent_unresolvable_measures())[0]
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    receipt["incumbent_unresolvable_pruned"].update(
+        {"n_pruned": 1, "n_scored": 306, "measures": [measure]}
+    )
+    receipt["incumbent_unresolvable_pruned"]["reviewed_register"]["sha256"] = "0" * 64
+    receipt["evaluation"]["scored_surface"].update({"n_pruned": 1, "n_scored": 306})
+    path = green_certification_inputs["score_receipt_path"]
+    path.write_text(json.dumps(receipt), encoding="utf-8")
+    # Inside the committed entries' window (they take force 2026-09-22).
+    green_certification_inputs["exclusions_evaluated_on"] = date(2026, 10, 1)
+    with pytest.raises(UKReleaseCertificationError, match="not the committed register"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+    receipt["incumbent_unresolvable_pruned"]["reviewed_register"]["sha256"] = (
+        uk_incumbent_unresolvable_register_digest()["sha256"]
+    )
+    path.write_text(json.dumps(receipt), encoding="utf-8")
+    certification = compose_uk_release_certification(**green_certification_inputs)
+    assert certification["score_receipt"]["evaluation"]["n_pruned"] == 1

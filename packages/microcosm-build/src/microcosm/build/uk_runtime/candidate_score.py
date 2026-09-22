@@ -273,6 +273,13 @@ def _scored_frame(
     )
 
 
+def uk_default_measure_resolver_factory(scratch_dir: Path, year: int):
+    """The production measure-resolver factory (public name; the rowwise
+    driver's national role imports it, so a rename here fails loudly)."""
+
+    return _default_measure_resolver_factory(scratch_dir, year)
+
+
 def _default_measure_resolver_factory(scratch_dir: Path, year: int):
     def build(h5_path: Path, frame: Any):
         from microcosm.build.uk_runtime.measure_simulation import UKMeasureResolver
