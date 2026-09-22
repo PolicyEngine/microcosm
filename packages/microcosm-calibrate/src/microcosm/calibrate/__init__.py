@@ -139,6 +139,15 @@ from microcosm.calibrate.solve import (  # noqa: E402 - after the compat gate
     refit_l0_selection,
     relative_error_loss,
 )
+from microcosm.calibrate.static_aging import (  # noqa: E402 - after the compat gate
+    DemographicProjection,
+    SeriesProjection,
+    StaticAgingResult,
+    YearProjection,
+    score_predictions,
+    ssa_population_projection,
+    static_aging,
+)
 from microcosm.calibrate.target import (  # noqa: E402 - after the compat gate
     Target,
     TargetSet,
@@ -152,6 +161,13 @@ from microcosm.calibrate.variable_labels import (  # noqa: E402 - after compat g
 __version__ = "0.1.0"
 
 __all__ = [
+    "DemographicProjection",
+    "SeriesProjection",
+    "StaticAgingResult",
+    "YearProjection",
+    "score_predictions",
+    "ssa_population_projection",
+    "static_aging",
     "CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION",
     "CALIBRATION_PROVIDER_LABELS_BY_COUNTRY",
     "CALIBRATION_VARIABLE_LABELS_BY_COUNTRY",

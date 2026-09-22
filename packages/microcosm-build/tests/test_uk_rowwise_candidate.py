@@ -6,6 +6,7 @@ import base64
 import hashlib
 import importlib.util
 import json
+import shutil
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -455,6 +456,8 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -471,9 +474,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
         == 0
     )
 
-    candidate_h5 = output_dir / builder.CANDIDATE_FILENAME_TEMPLATE.format(
-        calibration_year=2025
-    )
+    candidate_h5 = output_dir / "microcosm_uk_2024_25_local.h5"
     expected_sidecars = {
         builder.MANIFEST_FILENAME,
         builder.SOLVE_DIAGNOSTICS_FILENAME,
@@ -481,7 +482,7 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
         builder.PAST_CAP_FILENAME,
         builder.CALIBRATION_DIAGNOSTICS_FILENAME,
         builder.LOCAL_REGISTRY_FILENAME,
-        builder.LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(calibration_year=2025),
+        "microcosm_uk_2024_25_local.local_gates.json",
     }
     assert candidate_h5.exists()
     assert expected_sidecars <= {path.name for path in output_dir.iterdir()}
@@ -509,6 +510,20 @@ def test_candidate_build_writes_calibrated_h5_and_evidence(
     assert record.declared_factor == pytest.approx(record.new_total / record.old_total)
 
     manifest = json.loads((output_dir / builder.MANIFEST_FILENAME).read_text())
+    # The manifest declares the role it was built under (microcosm#823): the
+    # dense pre-flight and assembler refuse any other, and the parameters
+    # carry the role's doctrine block verbatim.
+    assert manifest["schema_version"] == 4
+    assert manifest["release_role"] == "dense"
+    assert manifest["release_id"] == "microcosm-uk-2024-25-dense"
+    assert manifest["parameters"]["release_role"] == "dense"
+    assert manifest["parameters"]["n_clones"] == 2
+    assert manifest["parameters"]["doctrine"] == (
+        builder.UK_ROWWISE_DENSE_POSTURE.doctrine_bounds()
+    )
+    assert manifest["outputs"]["dataset"]["path"].endswith(
+        "microcosm_uk_2024_25_local.h5"
+    )
     assert manifest["candidate_scope"] == "adjudicated_partial"
     assert manifest["bound_target_families"] == ["census_households/constituency"]
     adjudications = manifest["binding_adjudications"]
@@ -676,6 +691,8 @@ def test_candidate_dry_run_plans_without_solve_or_write(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -787,19 +804,23 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
                 str(output_dir),
             ]
         ).n_clones
-        == builder.UK_LOCAL_CLONE_COUNT
+        == builder.UK_ROWWISE_DENSE_POSTURE.clone_count
     )
     with pytest.raises(ValueError, match="must equal --n-clones"):
         builder.main(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -817,6 +838,8 @@ def test_candidate_sampling_rung_receipt_and_engine_block_validation(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -878,6 +901,8 @@ def test_candidate_clone_count_planning_is_dry_run_only(tmp_path) -> None:
             [
                 "--input-h5",
                 str(tmp_path / "missing.h5"),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(tmp_path / "missing.npz"),
                 "--out",
@@ -1361,6 +1386,8 @@ def test_joint_candidate_f100_and_f001_end_to_end(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1402,6 +1429,8 @@ def test_joint_candidate_f100_and_f001_end_to_end(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1417,7 +1446,7 @@ def test_joint_candidate_f100_and_f001_end_to_end(
         == 0
     )
     f100 = json.loads((f100_out / builder.MANIFEST_FILENAME).read_text())
-    assert f100["schema_version"] == 3
+    assert f100["schema_version"] == 4
     # The written rowwise artifact carries the shared ``clone_index`` name on
     # every table: the compact national loader must refuse it (flattening
     # rule) and the rowwise reader must undo the export rename.
@@ -1489,6 +1518,8 @@ def test_joint_candidate_f100_and_f001_end_to_end(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1558,6 +1589,8 @@ def test_candidate_refusal_records_receipt_and_reraises(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1576,9 +1609,7 @@ def test_candidate_refusal_records_receipt_and_reraises(
     assert len(rows) == 1
     row = rows[0]
     assert row.disposition == "failed"
-    gate_report_path = output_dir / builder.LOCAL_GATE_REPORT_FILENAME_TEMPLATE.format(
-        calibration_year=2025
-    )
+    gate_report_path = output_dir / "microcosm_uk_2024_25_local.local_gates.json"
     assert gate_report_path.exists()
     assert row.gate_verdicts["uk_local_geography_ladder_post_calibration"] == {
         "verdict": "failed",
@@ -1620,6 +1651,8 @@ def test_candidate_binding_adjudication_failure_records_failed_row(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1674,6 +1707,8 @@ def test_candidate_setup_failure_records_failed_row(monkeypatch, tmp_path) -> No
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1814,6 +1849,8 @@ def test_candidate_dry_run_refuses_ladder_sidecar_collision(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -1837,8 +1874,8 @@ def test_candidate_publication_rolls_back_on_interrupt(
     staging_dir.mkdir()
     output_paths = builder._output_paths(
         output_dir,
-        source_year=2023,
-        calibration_year=2025,
+        posture=builder.UK_ROWWISE_DENSE_POSTURE,
+        vintage="2024_25",
     )
     staged = {key: staging_dir / path.name for key, path in output_paths.items()}
     for path in staged.values():
@@ -1871,6 +1908,8 @@ def _joint_f100_args(input_h5: Path, ladder_path: Path, output_dir: Path) -> lis
     return [
         "--input-h5",
         str(input_h5),
+        "--release-role",
+        "dense",
         "--ladder",
         str(ladder_path),
         "--out",
@@ -2066,6 +2105,8 @@ def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None
     base = [
         "--input-h5",
         str(tmp_path / "spine.h5"),
+        "--release-role",
+        "dense",
         "--input-sha256",
         pin,
         "--ladder",
@@ -2085,8 +2126,8 @@ def test_release_candidate_refuses_non_doctrine_solve_settings(tmp_path) -> None
     # The doctrine defaults are the release posture: nothing to refuse.
     args = builder._parse_args(base)
     builder._validate_cli_args(args)
-    assert args.n_clones == builder.UK_LOCAL_CLONE_COUNT == 15
-    assert args.epochs == builder.UK_LOCAL_SOLVE_EPOCHS == 1500
+    assert args.n_clones == builder.UK_ROWWISE_DENSE_POSTURE.clone_count == 15
+    assert args.epochs == builder.UK_ROWWISE_DENSE_POSTURE.epochs == 1500
     assert args.target_weight_rule == "grain_equal"
 
     with pytest.raises(ValueError, match=r"--epochs != doctrine 1500"):
@@ -2105,6 +2146,8 @@ def test_candidate_requires_pinned_ledger_inputs(tmp_path) -> None:
         [
             "--input-h5",
             str(tmp_path / "spine.h5"),
+            "--release-role",
+            "dense",
             "--input-sha256",
             "0" * 64,
             "--ladder",
@@ -2201,6 +2244,8 @@ def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
         [
             "--input-h5",
             str(input_h5),
+            "--release-role",
+            "dense",
             "--ladder",
             str(ladder_path),
             *flags,
@@ -2231,7 +2276,7 @@ def test_size_candidate_exports_compact_links_and_cannot_claim_dense_release(
         manifest["weights"]["stretch_reference"]
         == "normalized_horvitz_thompson_w_over_q"
     )
-    path = out / builder.CANDIDATE_FILENAME_TEMPLATE.format(calibration_year=2025)
+    path = out / "microcosm_uk_2024_25_local.h5"
     with pd.HDFStore(path, "r") as store:
         households = store["household"]
         persons = store["person"]
@@ -2307,6 +2352,8 @@ def test_selection_seed_requires_a_dataset_size(tmp_path):
         [
             "--input-h5",
             str(tmp_path / "spine.h5"),
+            "--release-role",
+            "dense",
             "--ladder",
             str(tmp_path / "ladder.npz"),
             "--out",
@@ -2336,6 +2383,8 @@ def test_selection_pi_hi_is_candidate_only_and_bounded(tmp_path, argv_tail, mess
         [
             "--input-h5",
             str(tmp_path / "spine.h5"),
+            "--release-role",
+            "dense",
             "--ladder",
             str(tmp_path / "ladder.npz"),
             "--out",
@@ -2349,7 +2398,10 @@ def test_selection_pi_hi_is_candidate_only_and_bounded(tmp_path, argv_tail, mess
 
 def test_dense_candidate_manifest_has_no_size_sidecars(tmp_path):
     builder = _load_builder_module()
-    paths = builder._output_paths(tmp_path, source_year=2024, calibration_year=2025)
+    paths = builder._output_paths(
+        tmp_path, posture=builder.UK_ROWWISE_DENSE_POSTURE, vintage="2024_25"
+    )
+    assert paths["dataset"].name == "microcosm_uk_2024_25_local.h5"
     assert paths["dense_reference"].name == builder.DENSE_REFERENCE_DIAGNOSTICS_FILENAME
     assert paths["selection"].name == builder.DATASET_SIZE_SELECTION_FILENAME
     assert builder._SIZE_RUN_ONLY_OUTPUTS == {"dense_reference", "selection"}
@@ -2361,6 +2413,8 @@ def test_size_cli_refuses_promotion_without_separate_certification(tmp_path):
         [
             "--input-h5",
             str(tmp_path / "spine.h5"),
+            "--release-role",
+            "dense",
             "--ladder",
             str(tmp_path / "ladder.npz"),
             "--out",
@@ -2402,6 +2456,8 @@ def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
     common = [
         "--input-h5",
         str(input_h5),
+        "--release-role",
+        "dense",
         "--ladder",
         str(ladder_path),
         *_configure_households_only_inputs(
@@ -2434,7 +2490,10 @@ def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
     assert checkpoint["identity"]["epochs"] == 2
     # The identity carries the solve doctrine; the provenance names the
     # writing run (reported on resume, not compared).
-    assert checkpoint["identity"]["doctrine"] == builder._doctrine_bounds()
+    assert checkpoint["identity"]["doctrine"] == builder._doctrine_bounds(
+        builder.UK_ROWWISE_DENSE_POSTURE
+    )
+    assert checkpoint["identity"]["release_role"] == "dense"
     assert set(checkpoint["provenance"]) == {"code_pin", "build_id"}
     manifest = json.loads((first / builder.MANIFEST_FILENAME).read_text())
     written = manifest["solve"]["dataset_size"]["checkpoint"]["written"]
@@ -2530,6 +2589,8 @@ def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
             [
                 "--input-h5",
                 str(input_h5),
+                "--release-role",
+                "dense",
                 "--ladder",
                 str(ladder_path),
                 "--out",
@@ -2558,9 +2619,30 @@ def test_size_candidate_checkpoints_before_the_draw_and_resumes_from_it(
     )
     assert "written_at" not in resumed_receipt
 
+    # ---------------------------------------------------------------------------
+    # Staging: telemetry to runs/<run_id>/ and the staged dataset bundle.
 
-# ---------------------------------------------------------------------------
-# Staging: telemetry to runs/<run_id>/ and the staged dataset bundle.
+    # A checkpoint written before the release role existed (no release_role
+    # in its identity) refuses to resume: the identity is the run's
+    # contract, and a pre-role checkpoint is rebuilt, never grandfathered.
+    legacy = tmp_path / "legacy"
+    shutil.copytree(first, legacy)
+    legacy_manifest = json.loads(
+        (legacy / SIZE_CHECKPOINT_MANIFEST_FILENAME).read_text()
+    )
+    del legacy_manifest["identity"]["release_role"]
+    (legacy / SIZE_CHECKPOINT_MANIFEST_FILENAME).write_text(json.dumps(legacy_manifest))
+    with pytest.raises(ValueError, match="release_role: absent in checkpoint"):
+        builder.main(
+            [
+                *common,
+                "--out",
+                str(tmp_path / "from-legacy"),
+                "--resume-size-checkpoint",
+                str(legacy),
+            ]
+        )
+    assert not (tmp_path / "from-legacy" / builder.MANIFEST_FILENAME).exists()
 
 
 def _load_tool(name: str):
@@ -2693,6 +2775,8 @@ def _build_args(input_h5, ladder_path, flags, out, *extra):
     return [
         "--input-h5",
         str(input_h5),
+        "--release-role",
+        "dense",
         "--ladder",
         str(ladder_path),
         *flags,
@@ -3292,3 +3376,142 @@ def test_remote_dataset_staging_is_refused_up_front_without_credential_or_repo(
     plan = json.loads(capsys.readouterr().out)
     assert plan["parameters"]["dataset_households"] is None
     assert not out.exists()
+
+
+def _role_argv(tmp_path: Path, role: str, *extra: str) -> list[str]:
+    return [
+        "--input-h5",
+        str(tmp_path / "spine.h5"),
+        "--release-role",
+        role,
+        "--input-sha256",
+        "2" * 64,
+        "--ledger-facts",
+        str(tmp_path / "ledger"),
+        "--ledger-facts-sha256",
+        "0" * 64,
+        "--ledger-manifest-sha256",
+        "1" * 64,
+        "--out",
+        str(tmp_path / "out"),
+        *extra,
+    ]
+
+
+def _dense_argv(tmp_path: Path, *extra: str) -> list[str]:
+    return _role_argv(
+        tmp_path,
+        "dense",
+        "--ladder",
+        str(tmp_path / "ladder.npz"),
+        "--ladder-sha256",
+        "3" * 64,
+        *extra,
+    )
+
+
+def test_release_role_is_required(tmp_path) -> None:
+    builder = _load_builder_module()
+    argv = _dense_argv(tmp_path)
+    argv.remove("--release-role")
+    argv.remove("dense")
+    with pytest.raises(SystemExit):
+        builder._parse_args(argv)
+    with pytest.raises(SystemExit):
+        builder._parse_args([*argv, "--release-role", "local"])
+
+
+def test_release_role_supplies_the_solve_defaults(tmp_path) -> None:
+    builder = _load_builder_module()
+    dense = builder._parse_args(_dense_argv(tmp_path))
+    posture = builder.UK_ROWWISE_DENSE_POSTURE
+    assert (dense.n_clones, dense.seed, dense.epochs, dense.learning_rate) == (
+        posture.clone_count,
+        posture.seed,
+        posture.epochs,
+        posture.learning_rate,
+    )
+    assert dense.target_weight_rule == "grain_equal"
+    assert dense.expected_constituency_vintage == "2024_pcon"
+    assert dense.staging_upload_interval_seconds == 300.0
+    assert dense._explicit_arguments == frozenset()
+    builder._validate_cli_args(dense)
+
+    national = builder._parse_args(_role_argv(tmp_path, "national"))
+    posture = builder.uk_rowwise_posture("national")
+    assert national._posture is posture
+    assert national.n_clones is None
+    assert (national.seed, national.epochs, national.learning_rate) == (0, 1500, 0.02)
+    assert national.target_weight_rule == "family_equal"
+    assert national.expected_constituency_vintage is None
+    builder._validate_cli_args(national)
+    explicit = builder._parse_args(_role_argv(tmp_path, "national", "--epochs", "5"))
+    assert explicit.epochs == 5
+    assert explicit._explicit_arguments == frozenset({"epochs"})
+    # The doctrine's own seed may be spelled out; only another seed is refused.
+    builder._validate_cli_args(
+        builder._parse_args(_role_argv(tmp_path, "national", "--seed", "0"))
+    )
+
+
+@pytest.mark.parametrize(
+    ("extra", "needle"),
+    [
+        (["--target-loss-cap", "5"], "--target-loss-cap"),
+        (["--allow-unpinned-feed"], "--allow-unpinned-feed"),
+        (["--target-weight-rule", "family_equal"], "--target-weight-rule family_equal"),
+    ],
+)
+def test_dense_role_refusal_table(tmp_path, extra, needle) -> None:
+    builder = _load_builder_module()
+    args = builder._parse_args(_dense_argv(tmp_path, *extra))
+    with pytest.raises(ValueError, match="--release-role dense refuses") as excinfo:
+        builder._validate_cli_args(args)
+    assert needle in str(excinfo.value)
+
+
+def test_dense_role_requires_the_ladder(tmp_path) -> None:
+    builder = _load_builder_module()
+    argv = _role_argv(tmp_path, "dense", "--ladder-sha256", "3" * 64)
+    with pytest.raises(ValueError, match="requires --ladder"):
+        builder._validate_cli_args(builder._parse_args(argv))
+
+
+@pytest.mark.parametrize(
+    ("extra", "needle"),
+    [
+        (["--ladder", "ladder.npz"], "--ladder"),
+        (["--ladder-sha256", "3" * 64], "--ladder-sha256"),
+        (["--expected-constituency-vintage", "2024_pcon"], "--expected-constituency"),
+        (["--source-year", "2023"], "--source-year"),
+        (["--source-lineage-modulus", "7"], "--source-lineage-modulus"),
+        (["--n-clones", "15"], "--n-clones"),
+        (["--candidate-clone-counts", "2,4", "--dry-run"], "--candidate-clone-counts"),
+        (["--engine-blocks", "2"], "--engine-blocks"),
+        (["--households-only"], "--households-only"),
+        (["--skip-holdout"], "--skip-holdout"),
+        (["--dataset-households", "10"], "--dataset-households"),
+        (["--selection-seed", "3"], "--selection-seed"),
+        (["--selection-pi-hi", "0.5"], "--selection-pi-hi"),
+        (["--baseline-pi-floor", "0.1"], "--baseline-pi-floor"),
+        (["--no-size-checkpoint"], "--no-size-checkpoint"),
+        (["--resume-size-checkpoint", "dir"], "--resume-size-checkpoint"),
+        (["--sample-fraction", "0.1"], "--sample-fraction"),
+        (["--sample-seed", "9"], "--sample-seed"),
+        (["--seed", "7"], "--seed != doctrine 0"),
+        (["--target-weight-rule", "grain_equal"], "--target-weight-rule grain_equal"),
+    ],
+)
+def test_national_role_refusal_table(tmp_path, extra, needle) -> None:
+    builder = _load_builder_module()
+    args = builder._parse_args(_role_argv(tmp_path, "national", *extra))
+    with pytest.raises(ValueError, match="--release-role national refuses") as excinfo:
+        builder._validate_cli_args(args)
+    assert needle in str(excinfo.value)
+
+
+def test_national_role_refuses_release_candidate_with_the_seam_reason(tmp_path):
+    builder = _load_builder_module()
+    args = builder._parse_args(_role_argv(tmp_path, "national", "--release-candidate"))
+    with pytest.raises(ValueError, match="cannot sign shippability"):
+        builder._validate_cli_args(args)

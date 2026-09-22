@@ -31,14 +31,14 @@ __all__ = [
     "UKNationalSolveDoctrine",
 ]
 
-UK_NATIONAL_SOLVE_EPOCHS = 256
+UK_NATIONAL_SOLVE_EPOCHS = 1500
 UK_NATIONAL_LEARNING_RATE = 0.02
 UK_NATIONAL_MAX_WEIGHT_RATIO = 10.0
 UK_NATIONAL_SEED = 0
 UK_NATIONAL_TARGET_LOSS_CAP = 10.0
 UK_NATIONAL_L0_LAMBDA = 0.0
 UK_NATIONAL_MASS_RULE = "free"
-UK_NATIONAL_TARGET_WEIGHT_RULE = "uniform"
+UK_NATIONAL_TARGET_WEIGHT_RULE = "family_equal"
 
 _ALLOWED_SCALE_RULES = ("default_target_loss_scales",)
 
@@ -53,10 +53,19 @@ _ALLOWED_SCALE_RULES = ("default_target_loss_scales",)
 # them annihilated 24 population and OBR targets that were never past cap
 # themselves (objective gain from annihilating a segment: +4.48 uniform vs
 # +0.68 family_equal at cap 10, negative at cap 2). María's ruling
-# (2026-08-24): the default stays "uniform" — family_equal is reachable only
-# as an explicit, receipted per-run override while the weighting doctrine is
-# still being measured (its own run-9 receipts show a 9-member family
-# carrying 5.5x the per-reference weight of a 50-member one).
+# (2026-08-24) kept "uniform" as the default while the weighting doctrine was
+# being measured, with family_equal reachable only as an explicit, receipted
+# per-run override (its own run-9 receipts show a 9-member family carrying
+# 5.5x the per-reference weight of a 50-member one).
+#
+# María's ruling (2026-09-20, acknowledged on microcosm#965): every campaign
+# national
+# run since v18 has overridden to family_equal at 1,500 epochs — the v20
+# certified-cut posture (spine-s, loss 0.0104, 6/6 seam gates) carried the
+# receipt {epochs 256 → 1500, target_weight_rule uniform → family_equal} —
+# so those two values are now the doctrine and a certified national cut
+# records no overrides. "uniform" stays vocabulary: a receipted per-run
+# override, never silently reachable.
 _ALLOWED_TARGET_WEIGHT_RULES = ("uniform", "family_equal")
 _ALLOWED_MASS_RULES = ("free",)
 _OVERRIDABLE_FIELDS = frozenset(

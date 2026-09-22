@@ -58,3 +58,60 @@ def test_national_feed_rejects_malformed_identity(
 
     with pytest.raises(ValueError, match=field):
         chronicle_feed.load_uk_chronicle_feed()
+
+
+def test_committed_feed_pin_check_refuses_a_foreign_artifact():
+    from microcosm.build.uk_runtime.chronicle_feed import (
+        UKChronicleFeedPinError,
+        load_uk_chronicle_feed,
+        require_committed_uk_chronicle_feed_pin,
+    )
+
+    pin = load_uk_chronicle_feed()
+    assert (
+        require_committed_uk_chronicle_feed_pin(
+            pin.facts_sha256,
+            manifest_sha256=pin.manifest_sha256,
+            allow_unpinned_feed=False,
+            pin=pin,
+        )
+        is pin
+    )
+    with pytest.raises(UKChronicleFeedPinError, match="facts: loaded 0") as excinfo:
+        require_committed_uk_chronicle_feed_pin(
+            "0" * 64,
+            manifest_sha256=pin.manifest_sha256,
+            allow_unpinned_feed=False,
+            pin=pin,
+        )
+    assert "manifest:" not in str(excinfo.value)
+    with pytest.raises(UKChronicleFeedPinError, match="manifest: loaded None"):
+        require_committed_uk_chronicle_feed_pin(
+            pin.facts_sha256, manifest_sha256=None, allow_unpinned_feed=False, pin=pin
+        )
+    # A reviewed diagnostic run may override; the caller records the override.
+    assert (
+        require_committed_uk_chronicle_feed_pin(
+            "0" * 64, manifest_sha256=None, allow_unpinned_feed=True, pin=pin
+        )
+        is pin
+    )
+
+
+def test_national_and_local_census_read_the_one_chronicle_pin():
+    """The national and local surfaces share uk/chronicle_feed.json (#890)."""
+
+    from microcosm.build.uk_runtime.chronicle_feed import (
+        load_uk_chronicle_feed,
+        require_committed_uk_chronicle_feed_pin,
+    )
+    from microcosm.build.uk_runtime.local_target_census import _LEDGER_FACT_FEED_PIN
+
+    pin = load_uk_chronicle_feed()
+    require_committed_uk_chronicle_feed_pin(
+        pin.facts_sha256, manifest_sha256=pin.manifest_sha256, allow_unpinned_feed=False
+    )
+    assert _LEDGER_FACT_FEED_PIN["facts_sha256"] == pin.facts_sha256
+    assert _LEDGER_FACT_FEED_PIN["manifest_sha256"] == pin.manifest_sha256
+    assert _LEDGER_FACT_FEED_PIN["source_commit"] == pin.source_commit
+    assert _LEDGER_FACT_FEED_PIN["fact_row_count"] == pin.fact_row_count

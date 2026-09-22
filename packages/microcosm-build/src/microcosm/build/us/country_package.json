@@ -63,6 +63,16 @@
       "schema_id": "vintages.schema.json"
     },
     {
+      "path": "chronicle_feed.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
+      "path": "chronicle_feed_scope.json",
+      "kind": "legacy_json",
+      "schema_id": "legacy_json"
+    },
+    {
       "path": "ecps_parity_known_gaps.json",
       "kind": "legacy_json",
       "schema_id": "legacy_json"

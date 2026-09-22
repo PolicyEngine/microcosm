@@ -27,25 +27,42 @@ reference together through the run.
 
 ## 1. Calibrate the national candidate
 
-Use the national calibration driver and record the input digest rather than
-relying on a mutable path:
+Use the rowwise driver's national release role and record the input digest
+rather than relying on a mutable path:
 
 ```bash
-uv run --no-sync python tools/calibrate_uk_national_dataset.py \
+uv run --no-sync python tools/build_uk_rowwise_candidate.py --release-role national \
   --input-h5 <spine-h5> \
   --input-sha256 <spine-h5-sha256> \
   --ledger-facts <ledger-consumer-facts> \
   --ledger-facts-sha256 <ledger-facts-sha256> \
   --ledger-manifest-sha256 <ledger-manifest-sha256> \
-  --staging-h5 <candidate-dir>/microcosm_uk_2024.h5 \
-  --diagnostics-json <candidate-dir>/calibration_diagnostics.json \
-  --build-record-json <candidate-dir>/build_record.json \
-  --terminal-gate-json <candidate-dir>/terminal_gates.json \
-  --release-id dev-uk-national-calibration
+  --incumbent-h5 <incumbent-h5> \
+  --incumbent-sha256 <incumbent-h5-sha256> \
+  --out <candidate-dir>
 ```
 
-Use only the campaign doctrine overrides that were separately adjudicated.
-The build record's id has the form
+`--incumbent-h5` (with its digest; `--incumbent-label` names it, default
+`enhanced_frs_2024_25`) makes the build evaluate the finished candidate
+against the incumbent after the bundle is staged: `score_vs_incumbent.json`
+lands beside the outputs with the rule-1 verdict, rows the incumbent cannot
+materialize are pruned from both arms and named on stderr, the receipt rides
+the staging telemetry as `artifacts/score_vs_incumbent.json`, and the manifest
+records `evaluation` (`status`, `verdict`, `rule_1`, `scored_surface`,
+`pruned_measures`). The evaluation never blocks the build: an error is
+recorded as `status: error` and warned. Without the flags the manifest says
+`not_requested`, and the certifier has no receipt to read until the candidate
+is scored by hand.
+
+The role's doctrine is the campaign posture (1,500 epochs, `family_equal`,
+learning rate 0.02, seed 0): a certified cut passes no solve flags and records
+no overrides. It writes `microcosm_uk_2024_25.h5`,
+`calibration_diagnostics.json`, `build_record.json`,
+`microcosm_uk_2024_25.terminal_gates.json`, `national_target_registry.json`,
+`national_contract_registry.json` (the full compiled register the scoring
+surface takes its band edges from) and `rowwise_candidate_manifest.json`
+into `<candidate-dir>`. The build
+record's id has the form
 `uk-frs-calibration-attempt-<YYYYMMDDTHHMMSSZ>-<uuid8>`; assembly derives the
 per-cut tag from that suffix.
 
@@ -58,13 +75,13 @@ and compose the signed certification:
 
 ```bash
 uv run --no-sync python tools/certify_uk_release_cut.py \
-  --candidate-h5 <candidate-dir>/microcosm_uk_2024.h5 \
+  --candidate-h5 <candidate-dir>/microcosm_uk_2024_25.h5 \
   --candidate-sha256 <candidate-sha256-from-build-record> \
-  --candidate-name microcosm_uk_2024 \
+  --candidate-name microcosm_uk_2024_25 \
   --spine-h5 <spine-h5> \
   --diagnostics-json <candidate-dir>/calibration_diagnostics.json \
   --build-record-json <candidate-dir>/build_record.json \
-  --seam-gate-report <candidate-dir>/terminal_gates.json \
+  --seam-gate-report <candidate-dir>/microcosm_uk_2024_25.terminal_gates.json \
   --ledger-facts <ledger-consumer-facts> \
   --ledger-facts-sha256 <ledger-facts-sha256> \
   --ledger-manifest-sha256 <ledger-manifest-sha256> \
@@ -74,8 +91,8 @@ uv run --no-sync python tools/certify_uk_release_cut.py \
 ```
 
 With the default paths, this writes
-`microcosm_uk_2024.release_cut_gates.json` and
-`microcosm_uk_2024.release_certification.json` next to the candidate. Continue
+`microcosm_uk_2024_25.release_cut_gates.json` and
+`microcosm_uk_2024_25.release_certification.json` next to the candidate. Continue
 only when the certification says `shippable: true`.
 
 ## 3. Assemble the release directory
@@ -86,13 +103,13 @@ and validates the finished directory:
 
 ```bash
 uv run --no-sync python tools/assemble_uk_release_dir.py \
-  --candidate-h5 <candidate-dir>/microcosm_uk_2024.h5 \
+  --candidate-h5 <candidate-dir>/microcosm_uk_2024_25.h5 \
   --spine-h5 <spine-h5> \
-  --certification-json <candidate-dir>/microcosm_uk_2024.release_certification.json \
+  --certification-json <candidate-dir>/microcosm_uk_2024_25.release_certification.json \
   --build-record-json <candidate-dir>/build_record.json \
   --diagnostics-json <candidate-dir>/calibration_diagnostics.json \
-  --seam-gate-report <candidate-dir>/terminal_gates.json \
-  --release-cut-gate-json <candidate-dir>/microcosm_uk_2024.release_cut_gates.json \
+  --seam-gate-report <candidate-dir>/microcosm_uk_2024_25.terminal_gates.json \
+  --release-cut-gate-json <candidate-dir>/microcosm_uk_2024_25.release_cut_gates.json \
   --score-receipt <candidate-dir>/score_vs_enhanced_frs.json \
   --out-dir releases
 ```

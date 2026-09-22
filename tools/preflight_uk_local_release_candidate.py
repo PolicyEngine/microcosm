@@ -119,6 +119,14 @@ def check_candidate_dir(candidate_dir: Path, *, today: date | None = None) -> li
     if not manifest_path.exists():
         return [f"manifest missing: {manifest_path}"]
     manifest = json.loads(manifest_path.read_text())
+    # The manifest declares its release role (microcosm#823); this pre-flight
+    # is the dense line's and refuses every other role, including a
+    # pre-role candidate, which is rebuilt rather than grandfathered.
+    if manifest.get("release_role") != "dense":
+        return [
+            f"manifest.release_role is {manifest.get('release_role')!r}, not "
+            "'dense': this pre-flight covers the dense line only."
+        ]
     parameters = manifest.get("parameters", {})
     if parameters.get("release_candidate") is not True:
         failures.append("parameters.release_candidate is not true.")

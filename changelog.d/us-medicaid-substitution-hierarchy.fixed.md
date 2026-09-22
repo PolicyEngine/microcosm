@@ -1,0 +1,1 @@
+The Medicaid enrollment substitution rebuilds the calibration hierarchy for the substituted state instead of inheriting the template state's, which a feed with Chronicle labels exposed: the clone failed the registry's rule that a hierarchy's target id equals its spec name. The state's display name comes from the reviewed register entry.

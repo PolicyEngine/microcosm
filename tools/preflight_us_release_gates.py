@@ -17,6 +17,13 @@ Example (read-only against the artifacts)::
         --selection-source-manifest inputs/buildm_keogh_swap_selection_source.json \
         --export-input-mass-reference-h5 forensics/populace_us_2024.h5
 
+An SPM unit with no classified adult is a FAIL here: in spm-calculator 1.0.0
+one such unit raises ``SPM_COMPOSITION_REQUIRED`` for the whole population's SPM
+measurement. The release tool refuses the same composition by name in its
+batched pre-export gate report — but only after a full calibration, because it
+grades the calibrated export frame. This is the same verdict on the pool, in
+seconds, before the solve.
+
 Exit code: 1 on any static-check FAIL, 2 on static AT-RISK only, 0 clean. A
 carried red base-pool battery is human-review evidence and does not by itself
 change that exit code. When ``--release-manifest`` is supplied, its base-pool
@@ -41,6 +48,7 @@ from microcosm.build.us_runtime.h5_io import (  # noqa: E402
     US_MULTISPINE_POOL_H5_ARTIFACT_KIND,
 )
 from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: E402
+    MAX_REPORTED_SPM_UNITS_HARD_CAP,
     run_preflight,
 )
 
@@ -106,9 +114,7 @@ def _carried_base_pool_battery(
         )
     gate_reference = _json_object(
         agreement_gate_reference,
-        label=(
-            f"release manifest {path} build.base_pool.agreement_gate_reference"
-        ),
+        label=(f"release manifest {path} build.base_pool.agreement_gate_reference"),
     )
     failures = gate_reference.get("failures")
     failure_count = gate_reference.get("failure_count")
@@ -129,10 +135,7 @@ def _carried_base_pool_battery(
         or failure_count != len(failures)
         or not isinstance(gates_json_sha256, str)
         or len(gates_json_sha256) != 64
-        or any(
-            character not in "0123456789abcdef"
-            for character in gates_json_sha256
-        )
+        or any(character not in "0123456789abcdef" for character in gates_json_sha256)
         or not isinstance(verdict, dict)
         or verdict.get("passed") is not False
     ):
@@ -142,9 +145,7 @@ def _carried_base_pool_battery(
         )
     verdict_gates = verdict.get("gates")
     if not isinstance(verdict_gates, dict):
-        raise ValueError(
-            f"Release manifest {path} has no full carried gate verdict."
-        )
+        raise ValueError(f"Release manifest {path} has no full carried gate verdict.")
     verdict_failures: list[dict[str, str]] = []
     for gate_name, gate_payload in verdict_gates.items():
         if not isinstance(gate_name, str) or not isinstance(gate_payload, dict):
@@ -153,10 +154,10 @@ def _carried_base_pool_battery(
             )
         gate_failures = gate_payload.get("failures")
         gate_passed = gate_payload.get("passed")
-        if type(gate_passed) is not bool or not isinstance(
-            gate_failures, list
-        ) or not all(
-            isinstance(failure, str) for failure in gate_failures
+        if (
+            type(gate_passed) is not bool
+            or not isinstance(gate_failures, list)
+            or not all(isinstance(failure, str) for failure in gate_failures)
         ):
             raise ValueError(
                 f"Release manifest {path} has a malformed carried failure list."
@@ -223,12 +224,35 @@ def _carried_battery_banner(carried: dict[str, object]) -> str:
     return "\n".join(lines)
 
 
+def _non_negative_int(value: str) -> int:
+    """An argparse ``int`` that refuses a negative cap.
+
+    A negative value would reach the report's ``[:max_reported]`` slice and
+    silently mean "every offending unit except the last |N|" — the opposite of
+    a cap. The check clamps defensively too; refusing here is what tells the
+    operator their flag was wrong instead of quietly repairing it.
+    """
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"expected an integer, got {value!r}"
+        ) from None
+    if parsed < 0:
+        raise argparse.ArgumentTypeError(
+            f"must be zero or more, got {parsed}: a negative cap would report "
+            "every offending unit except the last few, not cap the report"
+        )
+    return parsed
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Statically preview the US release gates (selection carryover, "
             "zero-support, export-mass parity risk, reform-coverage smoke "
-            "support) without running a calibration solve."
+            "support, SPM measurement composition) without running a "
+            "calibration solve."
         )
     )
     parser.add_argument(
@@ -312,6 +336,18 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--max-reported-spm-units",
+        type=_non_negative_int,
+        default=None,
+        help=(
+            "How many SPM units with no classified adult the composition check "
+            "names individually, with their members' age bands — under_15 / "
+            "15_to_17 / 18_plus / unknown, never an exact age (default 20, "
+            f"clamped to at most {MAX_REPORTED_SPM_UNITS_HARD_CAP}). The "
+            "failure line reports the full count either way."
+        ),
+    )
+    parser.add_argument(
         "--json-out",
         type=Path,
         default=None,
@@ -351,6 +387,11 @@ def main(argv: list[str] | None = None) -> int:
         relative_tolerance=args.relative_tolerance,
         minimum_reference_total=args.minimum_reference_total,
         allow_gate_failed_base_pool=args.allow_gate_failed_base_pool,
+        **(
+            {}
+            if args.max_reported_spm_units is None
+            else {"max_reported_spm_units": args.max_reported_spm_units}
+        ),
     )
     if args.release_manifest is not None:
         _require_matching_release_base_pool(

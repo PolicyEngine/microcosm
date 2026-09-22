@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from datetime import UTC
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1251,3 +1252,53 @@ def test_the_uk_block_delegates_rather_than_reassembling_the_shared_one(tmp_path
             continue
         assert block[field] == value, field
     assert block["manifest"]["schema_version"] == shared["schema_version"]
+
+
+def test_run_uk_calibration_accepts_a_caller_minted_attempt_id(monkeypatch, tmp_path):
+    """The rowwise driver mints the id before telemetry opens (microcosm#823)."""
+
+    pytest.importorskip("tables")
+    monkeypatch.setattr(
+        calibration_run,
+        "uk_aggregate_admin_totals",
+        lambda frame, manifest: (_admin_anchor_values(), []),
+    )
+    input_h5 = tmp_path / "input.h5"
+    frame = _frame()
+    write_uk_national_frame(frame, input_h5)
+    _write_spine_sidecar(input_h5, frame)
+    paths = _paths(tmp_path)
+    paths = UKCalibrationRunPaths(
+        input_h5=input_h5,
+        staging_h5=paths.staging_h5,
+        diagnostics_json=paths.diagnostics_json,
+        build_record_json=paths.build_record_json,
+        terminal_gate_json=paths.terminal_gate_json,
+    )
+    minted = calibration_run.new_uk_calibration_attempt_id(
+        timestamp=__import__("datetime").datetime(2026, 9, 20, 12, 0, tzinfo=UTC)
+    )
+    assert minted.startswith("uk-frs-calibration-attempt-20260920T120000Z-")
+    common = dict(
+        paths=paths,
+        input_sha256=_sha(input_h5),
+        ledger_artifact=object(),
+        register_registry=_registry(),
+        band_edge_registry=_registry(),
+        calibration_year=2025,
+        exclusion_receipt={},
+        doctrine=UKNationalSolveDoctrine(epochs=1),
+        doctrine_overrides={},
+        measure_resolver=None,
+        source_pins={
+            "input_h5": {"sha256": _sha(input_h5), "size_bytes": 1},
+            "ledger_facts": {"sha256": "a" * 64, "size_bytes": 1},
+        },
+        run_config_extra={"calibration_year": 2025},
+        release_id="test-run",
+    )
+    with pytest.raises(ValueError, match="uk-frs-calibration-attempt-"):
+        run_uk_calibration(build_id="uk-local-candidate-f100-s42-x", **common)
+    result = run_uk_calibration(build_id=minted, **common)
+    assert result.build_record["build_id"] == minted
+    assert result.logbook_spool is not None

@@ -1,0 +1,1 @@
+Read the SPM poverty indicator as nullable in `reform_validation._person_rate`: divide poor by *observed* persons rather than by everyone, and publish an empty observed denominator as JSON `null` instead of a 0% rate. Numerically inert on the pinned engine, where `in_poverty` is Boolean.

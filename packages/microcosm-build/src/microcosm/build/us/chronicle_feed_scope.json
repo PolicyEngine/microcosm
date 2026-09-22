@@ -1,0 +1,4782 @@
+{
+ "version": 1,
+ "country": "us",
+ "source_repo": "PolicyEngine/chronicle",
+ "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
+ "rule": "Exactly the (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl; each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
+ "pair_count": 586,
+ "runs": {
+  "2020": [
+   "packages/bea/nipa_total_wages_salaries",
+   "packages/cms_medicaid/chip_monthly_enrollment_dataset",
+   "packages/irs_soi/table_1_4",
+   "packages/irs_soi/w2_statistics_2020"
+  ],
+  "2021": [
+   "packages/irs_soi/table_1_4"
+  ],
+  "2022": [
+   "packages/irs_soi/historic_table_2",
+   "packages/irs_soi/historic_table_2_state_agi_2022",
+   "packages/irs_soi/historic_table_2_state_broad_2022",
+   "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "packages/irs_soi/table_1_1",
+   "packages/irs_soi/table_1_4",
+   "packages/irs_soi/table_2_5_eitc_agi_children_2022"
+  ],
+  "2023": [
+   "packages/bea/nipa_pension_contributions",
+   "packages/bea/nipa_personal_income_components",
+   "packages/bea/nipa_personal_income_disposition",
+   "packages/bea/nipa_total_wages_salaries",
+   "packages/bea/regional_personal_income_state",
+   "packages/cbo/individual_income_tax_receipts_2026_02",
+   "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "packages/census/b01001_female_15_44_2023",
+   "packages/census/population_projections_2023",
+   "packages/census/stc_individual_income_tax",
+   "packages/cms_nhe/historical_service_source",
+   "packages/cms_nhe/table_24",
+   "packages/federal_reserve/z1_household_net_worth",
+   "packages/hhs_acf_liheap/fy2023_national_profile",
+   "packages/irs_soi/congressional_district_2022",
+   "packages/irs_soi/ira_roth_contributions_2022",
+   "packages/irs_soi/ira_traditional_contributions_2022",
+   "packages/irs_soi/state_2022",
+   "packages/irs_soi/table_1_1",
+   "packages/irs_soi/table_1_2",
+   "packages/irs_soi/table_1_4",
+   "packages/irs_soi/table_2_1",
+   "packages/irs_soi/table_2_5",
+   "packages/irs_soi/table_2_5_eitc_agi_children_2023",
+   "packages/irs_soi/table_4_3",
+   "packages/irs_soi/w2_statistics_2020"
+  ],
+  "2024": [
+   "packages/bea/nipa_total_wages_salaries",
+   "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "packages/census/pep_2024_national_age_sex",
+   "packages/census/pep_2024_state_age_sex",
+   "packages/cms_aca/oep_state_level",
+   "packages/cms_medicaid/chip_monthly_enrollment_december_2024",
+   "packages/cms_medicare/medicare_trustees_report_2025",
+   "packages/cms_nhe/table_24",
+   "packages/hhs_acf/tanf_caseload_2024",
+   "packages/hhs_acf/tanf_financial_2024",
+   "packages/hhs_acf_liheap/fy2024_national_profile",
+   "packages/irs_soi/filing_season_week47_2024",
+   "packages/jct/tax_expenditures_2024",
+   "packages/kff/marketplace_effectuated_enrollment",
+   "packages/ssa/annual_statistical_supplement_2025",
+   "packages/ssa/ssi_monthly_statistics_2024_12",
+   "packages/ssa/ssi_table_7b1_2024",
+   "packages/usda_snap/fy69_to_current"
+  ],
+  "2025": [
+   "packages/cbo/revenue_projections_income_by_source_2026_02"
+  ],
+  "2026": [
+   "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "packages/jct/obbba_revenue_estimates_2025"
+  ],
+  "2027": [
+   "packages/jct/obbba_revenue_estimates_2025"
+  ],
+  "2028": [
+   "packages/jct/obbba_revenue_estimates_2025"
+  ],
+  "2029": [
+   "packages/jct/obbba_revenue_estimates_2025"
+  ]
+ },
+ "pairs": [
+  {
+   "record_set_id": "bea_nipa.cy2018.total_wages_salaries",
+   "period_type": "calendar_year",
+   "period_value": "2018",
+   "package_id": "bea-nipa-total-wages-salaries",
+   "package": "packages/bea/nipa_total_wages_salaries",
+   "build_year": 2020
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.business_current_transfer_receipts",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.defined_contribution_actual_contributions",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-pension-contributions",
+   "package": "packages/bea/nipa_pension_contributions",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.defined_contribution_employer_contributions",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-pension-contributions",
+   "package": "packages/bea/nipa_pension_contributions",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.disposable_personal_income",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-disposition",
+   "package": "packages/bea/nipa_personal_income_disposition",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.employer_government_social_insurance_contributions",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.employer_pension_and_insurance_contributions",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.farm_proprietors_income",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.government_social_benefits_to_persons",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.medicaid_benefits",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.medicare_benefits",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.nonfarm_proprietors_income",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.other_government_social_benefits",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.personal_current_taxes",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-disposition",
+   "package": "packages/bea/nipa_personal_income_disposition",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.personal_current_transfer_receipts",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.personal_dividend_income",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.personal_income",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-disposition",
+   "package": "packages/bea/nipa_personal_income_disposition",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.personal_interest_income",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.personal_outlays",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-disposition",
+   "package": "packages/bea/nipa_personal_income_disposition",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.personal_saving",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-disposition",
+   "package": "packages/bea/nipa_personal_income_disposition",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.personal_saving_rate",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-disposition",
+   "package": "packages/bea/nipa_personal_income_disposition",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.proprietors_income",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.rental_income_of_persons",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.social_security_benefits",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.supplements_to_wages_and_salaries",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.total_wages_salaries",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-total-wages-salaries",
+   "package": "packages/bea/nipa_total_wages_salaries",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.unemployment_insurance_benefits",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2023.veterans_benefits",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-nipa-personal-income-components",
+   "package": "packages/bea/nipa_personal_income_components",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_nipa.cy2024.total_wages_salaries",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "bea-nipa-total-wages-salaries",
+   "package": "packages/bea/nipa_total_wages_salaries",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "bea_regional.cy2023.state_contributions_for_government_social_insurance",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-regional-state-personal-income-components-2024",
+   "package": "packages/bea/regional_personal_income_state",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_regional.cy2023.state_dividends_interest_rent",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-regional-state-personal-income-components-2024",
+   "package": "packages/bea/regional_personal_income_state",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_regional.cy2023.state_personal_current_transfer_receipts",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-regional-state-personal-income-components-2024",
+   "package": "packages/bea/regional_personal_income_state",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_regional.cy2023.state_personal_income",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-regional-state-personal-income-components-2024",
+   "package": "packages/bea/regional_personal_income_state",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_regional.cy2023.state_proprietors_income",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-regional-state-personal-income-components-2024",
+   "package": "packages/bea/regional_personal_income_state",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_regional.cy2023.state_residence_adjustment",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-regional-state-personal-income-components-2024",
+   "package": "packages/bea/regional_personal_income_state",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_regional.cy2023.state_supplements_to_wages_salaries",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-regional-state-personal-income-components-2024",
+   "package": "packages/bea/regional_personal_income_state",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "bea_regional.cy2023.state_wages_salaries",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "bea-regional-state-personal-income-components-2024",
+   "package": "packages/bea/regional_personal_income_state",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "cbo.fy2023.revenues",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "cbo-individual-income-tax-receipts-2026-02",
+   "package": "packages/cbo/individual_income_tax_receipts_2026_02",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2023.income_by_source.adjusted_gross_income",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2023.income_by_source.net_business_income",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2023.income_by_source.net_capital_gain",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2023.income_by_source.qualified_dividend_income",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2023.income_by_source.taxable_interest_ordinary_dividends",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2023.income_by_source.wages_and_salaries",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2024.income_by_source.adjusted_gross_income",
+   "period_type": "tax_year",
+   "period_value": "2024",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2024.income_by_source.net_business_income",
+   "period_type": "tax_year",
+   "period_value": "2024",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2024.income_by_source.net_capital_gain",
+   "period_type": "tax_year",
+   "period_value": "2024",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2024.income_by_source.qualified_dividend_income",
+   "period_type": "tax_year",
+   "period_value": "2024",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2024.income_by_source.taxable_interest_ordinary_dividends",
+   "period_type": "tax_year",
+   "period_value": "2024",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2024.income_by_source.wages_and_salaries",
+   "period_type": "tax_year",
+   "period_value": "2024",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2025.income_by_source.adjusted_gross_income",
+   "period_type": "tax_year",
+   "period_value": "2025",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2025
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2025.income_by_source.net_business_income",
+   "period_type": "tax_year",
+   "period_value": "2025",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2025
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2025.income_by_source.net_capital_gain",
+   "period_type": "tax_year",
+   "period_value": "2025",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2025
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2025.income_by_source.qualified_dividend_income",
+   "period_type": "tax_year",
+   "period_value": "2025",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2025
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2025.income_by_source.taxable_interest_ordinary_dividends",
+   "period_type": "tax_year",
+   "period_value": "2025",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2025
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2025.income_by_source.wages_and_salaries",
+   "period_type": "tax_year",
+   "period_value": "2025",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2025
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2026.income_by_source.adjusted_gross_income",
+   "period_type": "tax_year",
+   "period_value": "2026",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2026.income_by_source.net_business_income",
+   "period_type": "tax_year",
+   "period_value": "2026",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2026.income_by_source.net_capital_gain",
+   "period_type": "tax_year",
+   "period_value": "2026",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2026.income_by_source.qualified_dividend_income",
+   "period_type": "tax_year",
+   "period_value": "2026",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2026.income_by_source.taxable_interest_ordinary_dividends",
+   "period_type": "tax_year",
+   "period_value": "2026",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "cbo.revenue_projection.ty2026.income_by_source.wages_and_salaries",
+   "period_type": "tax_year",
+   "period_value": "2026",
+   "package_id": "cbo-revenue-projections-income-by-source-2026-02",
+   "package": "packages/cbo/revenue_projections_income_by_source_2026_02",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_0",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_1",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_10",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_11",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_12",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_13",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_14",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_15",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_16",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_17",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_18",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_19",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_2",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_20",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_21",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_22",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_23",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_24",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_25",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_26",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_27",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_28",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_29",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_3",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_30",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_31",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_32",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_33",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_34",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_35",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_36",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_37",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_38",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_39",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_4",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_40",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_41",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_42",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_43",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_44",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_45",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_46",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_47",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_48",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_49",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_5",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_50",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_51",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_52",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_53",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_54",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_55",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_56",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_57",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_58",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_59",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_6",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_60",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_61",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_62",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_63",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_64",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_65",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_66",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_67",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_68",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_69",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_7",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_70",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_71",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_72",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_73",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_74",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_75",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_76",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_77",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_78",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_79",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_8",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_80",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_81",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_82",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_83",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_84",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_85_plus",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census.popproj2023.cy2023.national_population.age_9",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-population-projections-2023",
+   "package": "packages/census/population_projections_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.01",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.02",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.04",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.05",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.06",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.08",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.09",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.10",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.11",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.12",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.13",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.15",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.16",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.17",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.18",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.19",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.20",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.21",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.22",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.23",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.24",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.25",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.26",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.27",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.28",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.29",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.30",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.31",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.32",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.33",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.34",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.35",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.36",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.37",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.38",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.39",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.40",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.41",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.42",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.44",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.45",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.46",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.47",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.48",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.49",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.50",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.51",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.53",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.54",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.55",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.56",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_acs.acs1_2023.b01001.female_age.72",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "census-b01001-female-age-2023",
+   "package": "packages/census/b01001_female_15_44_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_pep.cy2024.national_resident_population_age",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-national-age-sex",
+   "package": "packages/census/pep_2024_national_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.01",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.02",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.04",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.05",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.06",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.08",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.09",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.10",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.11",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.12",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.13",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.15",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.16",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.17",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.18",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.19",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.20",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.21",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.22",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.23",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.24",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.25",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.26",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.27",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.28",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.29",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.30",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.31",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.32",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.33",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.34",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.35",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.36",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.37",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.38",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.39",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.40",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.41",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.42",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.44",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.45",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.46",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.47",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.48",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.49",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.50",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.51",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.53",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.54",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.55",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_pep.v2024.cy2024.state_resident_population.56",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "census-pep-2024-state-age-sex",
+   "package": "packages/census/pep_2024_state_age_sex",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.al",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ar",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.az",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ca",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.co",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ct",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.dc",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.de",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ga",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.hi",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ia",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.id",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.il",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.in",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ks",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ky",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.la",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ma",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.md",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.me",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.mi",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.mn",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.mo",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ms",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.mt",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.nc",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.nd",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ne",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.nh",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.nj",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.nm",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ny",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.oh",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ok",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.or",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.pa",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ri",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.sc",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.tn",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.us",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.ut",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.va",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.vt",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.wa",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.wi",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "census_stc.fy2023.individual_income_tax_collections.wv",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "census-stc-individual-income-tax",
+   "package": "packages/census/stc_individual_income_tax",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "cms_aca.oep2024.state_marketplace",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "cms-aca-oep-state-level",
+   "package": "packages/cms_aca/oep_state_level",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "cms_medicaid.month2024_12.state_enrollment",
+   "period_type": "month",
+   "period_value": "2024-12",
+   "package_id": "cms-medicaid-chip-monthly-enrollment-december-2024",
+   "package": "packages/cms_medicaid/chip_monthly_enrollment_december_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "cms_medicaid.month2025_12.state_enrollment",
+   "period_type": "month",
+   "period_value": "2025-12",
+   "package_id": "cms-medicaid-chip-monthly-enrollment-dataset",
+   "package": "packages/cms_medicaid/chip_monthly_enrollment_dataset",
+   "build_year": 2020
+  },
+  {
+   "record_set_id": "cms_medicare.cy2024.part_b_premium_income",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "cms-medicare-trustees-report-2025-part-b-premium-income",
+   "package": "packages/cms_medicare/medicare_trustees_report_2025",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "cms_nhe.cy2023.esi_employer_contribution_premiums",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "cms-nhe-table-24",
+   "package": "packages/cms_nhe/table_24",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "cms_nhe.cy2023.esi_private_employer_contribution_premiums",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "cms-nhe-table-24",
+   "package": "packages/cms_nhe/table_24",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "cms_nhe.cy2023.medicaid_title_xix_expenditures",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "cms-nhe-historical-service-source",
+   "package": "packages/cms_nhe/historical_service_source",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "cms_nhe.cy2024.esi_employer_contribution_premiums",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "cms-nhe-table-24",
+   "package": "packages/cms_nhe/table_24",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "cms_nhe.cy2024.esi_private_employer_contribution_premiums",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "cms-nhe-table-24",
+   "package": "packages/cms_nhe/table_24",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "federal_reserve_z1.cy2023.households_nonprofits_balance_sheet.net_worth",
+   "period_type": "calendar_year",
+   "period_value": "2023",
+   "package_id": "federal-reserve-z1-household-net-worth",
+   "package": "packages/federal_reserve/z1_household_net_worth",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "hhs_acf_liheap.fy2023.national_profile",
+   "period_type": "fiscal_year",
+   "period_value": "2023",
+   "package_id": "hhs-acf-liheap-fy2023-national-profile",
+   "package": "packages/hhs_acf_liheap/fy2023_national_profile",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "hhs_acf_liheap.fy2024.national_profile",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-liheap-fy2024-national-profile",
+   "package": "packages/hhs_acf_liheap/fy2024_national_profile",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.average_monthly_families.state",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-caseload-2024",
+   "package": "packages/hhs_acf/tanf_caseload_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.average_monthly_families.us",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-caseload-2024",
+   "package": "packages/hhs_acf/tanf_caseload_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.average_monthly_recipients.us",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-caseload-2024",
+   "package": "packages/hhs_acf/tanf_caseload_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ak",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.al",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ar",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.az",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ca",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.co",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ct",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.dc",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.de",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.fl",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ga",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.hi",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ia",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.id",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.il",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.in",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ks",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ky",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.la",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ma",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.md",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.me",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.mi",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.mn",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.mo",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ms",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.mt",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.nc",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.nd",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ne",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.nh",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.nj",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.nm",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.nv",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ny",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.oh",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ok",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.or",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.pa",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ri",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.sc",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.sd",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.tn",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.tx",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.us",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.ut",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.va",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.vt",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.wa",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.wi",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.wv",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "hhs_acf_tanf.fy2024.cash_assistance.wy",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "hhs-acf-tanf-financial-2024",
+   "package": "packages/hhs_acf/tanf_financial_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "irs_soi.ty2020.form_w2_social_security_tips",
+   "period_type": "tax_year",
+   "period_value": "2020",
+   "package_id": "soi-w2-statistics-2020",
+   "package": "packages/irs_soi/w2_statistics_2020",
+   "build_year": 2020
+  },
+  {
+   "record_set_id": "irs_soi.ty2020.table_1_4",
+   "period_type": "tax_year",
+   "period_value": "2020",
+   "package_id": "soi-table-1-4",
+   "package": "packages/irs_soi/table_1_4",
+   "build_year": 2020
+  },
+  {
+   "record_set_id": "irs_soi.ty2021.table_1_4",
+   "period_type": "tax_year",
+   "period_value": "2021",
+   "package_id": "soi-table-1-4",
+   "package": "packages/irs_soi/table_1_4",
+   "build_year": 2021
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ak",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.al",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ar",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.az",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ca",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.co",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ct",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.dc",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.de",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.fl",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ga",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.hi",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ia",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.id",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.il",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.in",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ks",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ky",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.la",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ma",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.md",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.me",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.mi",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.mn",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.mo",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ms",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.mt",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.nc",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.nd",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ne",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.nh",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.nj",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.nm",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.nv",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ny",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.oh",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ok",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.or",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.pa",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ri",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.sc",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.sd",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.tn",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.tx",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.ut",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.va",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.vt",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.wa",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.wi",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.wv",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_agi.wy",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-agi-2022",
+   "package": "packages/irs_soi/historic_table_2_state_agi_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ak",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.al",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ar",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.az",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ca",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.co",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ct",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.dc",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.de",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.fl",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ga",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.hi",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ia",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.id",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.il",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.in",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ks",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ky",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.la",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ma",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.md",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.me",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.mi",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.mn",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.mo",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ms",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.mt",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.nc",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.nd",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ne",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.nh",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.nj",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.nm",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.nv",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ny",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.oh",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ok",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.or",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.pa",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ri",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.sc",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.sd",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.tn",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.tx",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.ut",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.va",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.vt",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.wa",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.wi",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.wv",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_broad.wy",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-broad-2022",
+   "package": "packages/irs_soi/historic_table_2_state_broad_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ak",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.al",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ar",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.az",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ca",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.co",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ct",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.dc",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.de",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.fl",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ga",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.hi",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ia",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.id",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.il",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.in",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ks",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ky",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.la",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ma",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.md",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.me",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.mi",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.mn",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.mo",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ms",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.mt",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.nc",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.nd",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ne",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.nh",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.nj",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.nm",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.nv",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ny",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.oh",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ok",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.or",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.pa",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ri",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.sc",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.sd",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.tn",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.tx",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.ut",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.va",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.vt",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.wa",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.wi",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.wv",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.state_eitc.wy",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2-state-eitc-2022",
+   "package": "packages/irs_soi/historic_table_2_state_eitc_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.historic_table_2.us",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-historic-table-2",
+   "package": "packages/irs_soi/historic_table_2",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.table_1_1",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-table-1-1",
+   "package": "packages/irs_soi/table_1_1",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.table_1_4",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-table-1-4",
+   "package": "packages/irs_soi/table_1_4",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.table_2_5.eitc_by_agi_children.no_qualifying_children",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-table-2-5-eitc-agi-children-2022",
+   "package": "packages/irs_soi/table_2_5_eitc_agi_children_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.table_2_5.eitc_by_agi_children.one_qualifying_child",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-table-2-5-eitc-agi-children-2022",
+   "package": "packages/irs_soi/table_2_5_eitc_agi_children_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-table-2-5-eitc-agi-children-2022",
+   "package": "packages/irs_soi/table_2_5_eitc_agi_children_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2022.table_2_5.eitc_by_agi_children.two_qualifying_children",
+   "period_type": "tax_year",
+   "period_value": "2022",
+   "package_id": "soi-table-2-5-eitc-agi-children-2022",
+   "package": "packages/irs_soi/table_2_5_eitc_agi_children_2022",
+   "build_year": 2022
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.congressional_district_2022.all_returns",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-congressional-district-2022",
+   "package": "packages/irs_soi/congressional_district_2022",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.form_w2_401k_elective_deferrals",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-w2-statistics-2020",
+   "package": "packages/irs_soi/w2_statistics_2020",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.form_w2_designated_roth_401k_contributions",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-w2-statistics-2020",
+   "package": "packages/irs_soi/w2_statistics_2020",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.form_w2_social_security_tips",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-w2-statistics-2020",
+   "package": "packages/irs_soi/w2_statistics_2020",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.roth_ira_contributions.all_taxpayers",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-ira-roth-contributions-2022",
+   "package": "packages/irs_soi/ira_roth_contributions_2022",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.state_2022.us.adjusted_gross_income",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-state-2022",
+   "package": "packages/irs_soi/state_2022",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.state_2022.us.eitc_three_or_more_children_amount",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-state-2022",
+   "package": "packages/irs_soi/state_2022",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.state_2022.us.eitc_three_or_more_children_returns",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-state-2022",
+   "package": "packages/irs_soi/state_2022",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.state_2022.us.return_count",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-state-2022",
+   "package": "packages/irs_soi/state_2022",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_1_1",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-1-1",
+   "package": "packages/irs_soi/table_1_1",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_1_2.all_returns",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-1-2",
+   "package": "packages/irs_soi/table_1_2",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_1_4",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-1-4",
+   "package": "packages/irs_soi/table_1_4",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_2_1.itemized_all_returns",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-2-1",
+   "package": "packages/irs_soi/table_2_1",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_2_5.eitc_all_returns",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-2-5",
+   "package": "packages/irs_soi/table_2_5",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.no_qualifying_children",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-2-5-eitc-agi-children-2023",
+   "package": "packages/irs_soi/table_2_5_eitc_agi_children_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.one_qualifying_child",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-2-5-eitc-agi-children-2023",
+   "package": "packages/irs_soi/table_2_5_eitc_agi_children_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-2-5-eitc-agi-children-2023",
+   "package": "packages/irs_soi/table_2_5_eitc_agi_children_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_2_5.eitc_by_agi_children.two_qualifying_children",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-2-5-eitc-agi-children-2023",
+   "package": "packages/irs_soi/table_2_5_eitc_agi_children_2023",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.table_4_3.all_returns_excluding_dependents",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-table-4-3",
+   "package": "packages/irs_soi/table_4_3",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2023.traditional_ira_contributions.all_taxpayers",
+   "period_type": "tax_year",
+   "period_value": "2023",
+   "package_id": "soi-ira-traditional-contributions-2022",
+   "package": "packages/irs_soi/ira_traditional_contributions_2022",
+   "build_year": 2023
+  },
+  {
+   "record_set_id": "irs_soi.ty2024.filing_season_week47.eitc_all_returns.amount",
+   "period_type": "tax_year",
+   "period_value": "2024",
+   "package_id": "soi-filing-season-week47-2024-eitc-total",
+   "package": "packages/irs_soi/filing_season_week47_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "irs_soi.ty2024.filing_season_week47.eitc_all_returns.count",
+   "period_type": "tax_year",
+   "period_value": "2024",
+   "package_id": "soi-filing-season-week47-2024-eitc-total",
+   "package": "packages/irs_soi/filing_season_week47_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.amount",
+   "period_type": "tax_year",
+   "period_value": "2024",
+   "package_id": "soi-filing-season-week47-2024-eitc-total",
+   "package": "packages/irs_soi/filing_season_week47_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "irs_soi.ty2024.filing_season_week47.eitc_by_agi.count",
+   "period_type": "tax_year",
+   "period_value": "2024",
+   "package_id": "soi-filing-season-week47-2024-eitc-total",
+   "package": "packages/irs_soi/filing_season_week47_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "jct.obbba_title_vii.fy2026",
+   "period_type": "fiscal_year",
+   "period_value": "2026",
+   "package_id": "jct-obbba-revenue-estimates-2025",
+   "package": "packages/jct/obbba_revenue_estimates_2025",
+   "build_year": 2026
+  },
+  {
+   "record_set_id": "jct.obbba_title_vii.fy2027",
+   "period_type": "fiscal_year",
+   "period_value": "2027",
+   "package_id": "jct-obbba-revenue-estimates-2025",
+   "package": "packages/jct/obbba_revenue_estimates_2025",
+   "build_year": 2027
+  },
+  {
+   "record_set_id": "jct.obbba_title_vii.fy2028",
+   "period_type": "fiscal_year",
+   "period_value": "2028",
+   "package_id": "jct-obbba-revenue-estimates-2025",
+   "package": "packages/jct/obbba_revenue_estimates_2025",
+   "build_year": 2028
+  },
+  {
+   "record_set_id": "jct.obbba_title_vii.fy2029",
+   "period_type": "fiscal_year",
+   "period_value": "2029",
+   "package_id": "jct-obbba-revenue-estimates-2025",
+   "package": "packages/jct/obbba_revenue_estimates_2025",
+   "build_year": 2029
+  },
+  {
+   "record_set_id": "jct.tax_expenditures.cy2024",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "jct-tax-expenditures-2024",
+   "package": "packages/jct/tax_expenditures_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "kff.marketplace_effectuated_enrollment.2024.state",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "kff-marketplace-effectuated-enrollment",
+   "package": "packages/kff/marketplace_effectuated_enrollment",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients.by_age",
+   "period_type": "month",
+   "period_value": "2024-12",
+   "package_id": "ssa-ssi-monthly-statistics-2024-12",
+   "package": "packages/ssa/ssi_monthly_statistics_2024_12",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "ssa_supplement.cy2024.oasdi_ssi_payments",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "ssa-annual-statistical-supplement-2025",
+   "package": "packages/ssa/annual_statistical_supplement_2025",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "ssa_supplement.cy2024.ssi_payments.by_area_category",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "ssa-ssi-table-7b1-2024",
+   "package": "packages/ssa/ssi_table_7b1_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "ssa_supplement.cy2024.ssi_recipients.by_area_category",
+   "period_type": "calendar_year",
+   "period_value": "2024",
+   "package_id": "ssa-ssi-table-7b1-2024",
+   "package": "packages/ssa/ssi_table_7b1_2024",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.national_average_monthly_households",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.national_average_monthly_persons",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.national_benefits",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_households.maro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_households.mpro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_households.mwro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_households.nero",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_households.sero",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_households.swro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_households.wro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_persons.maro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_persons.mpro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_persons.mwro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_persons.nero",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_persons.sero",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_persons.swro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_average_monthly_persons.wro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_benefits.maro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_benefits.mpro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_benefits.mwro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_benefits.nero",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_benefits.sero",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_benefits.swro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  },
+  {
+   "record_set_id": "usda_snap.fy2024.state_benefits.wro",
+   "period_type": "fiscal_year",
+   "period_value": "2024",
+   "package_id": "usda-snap-fy69-to-current",
+   "package": "packages/usda_snap/fy69_to_current",
+   "build_year": 2024
+  }
+ ]
+}

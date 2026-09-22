@@ -146,6 +146,27 @@ Logbook attempt row beside the output before the tool returns. The retiring
 two-spine lineage remains available only through its explicit compatibility
 flag for byte-reproducible historical builds.
 
+## Annual cross-sectional projections
+
+Static aging supplies independent annual cross-sections for budget-window
+estimates. It runs downstream of an accepted base population: demographic
+projections change household weights, and monetary factors preserve projected
+input aggregates under those weights. It preserves the base records, entity
+IDs, and memberships. These repeated IDs identify source records; they do not
+describe individual trajectories.
+
+The US release path exports one single-year H5 per supported year with the
+base dataset's entity-table layout. Each annual artifact records its source
+year, projection year, parent release and dataset hash, model and projection
+inputs, and annual acceptance results. Base-year calibration evidence applies
+to the base population; each projected year requires its own demographic,
+aggregate, and runtime checks. Consumers select a declared annual artifact and
+reject requests outside its published coverage.
+
+The base graph and calibration remain the source of the population. Annual
+projection artifacts retain that source identity and do not certify a new
+base population. See [static aging](docs/static-aging.md) and issue #333.
+
 ## Longitudinal (the social-security-model direction)
 
 This section names kernel changes the current `Frame` does NOT yet support;

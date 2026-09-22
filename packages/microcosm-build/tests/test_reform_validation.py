@@ -1247,6 +1247,199 @@ def test_rate_level_computes_state_sliced_person_share():
         assert row["in_sample"] is False
 
 
+def _nullable_rate_spec(id_, *, state=None, mask=None):
+    from microcosm.build.us_runtime.reform_validation import BaselineLevelSpec
+
+    return BaselineLevelSpec(
+        id=id_,
+        name=id_,
+        variable="in_poverty",
+        period=2024,
+        benchmark_value=0.5,
+        benchmark_year="2022-2024",
+        source="Census",
+        source_url="https://census.gov/",
+        statistic="rate",
+        state=state,
+        mask_variable=mask,
+    )
+
+
+def test_rate_level_divides_poor_by_observed_under_a_nullable_indicator():
+    """A missing indicator leaves both the numerator and the denominator.
+
+    Reading ``NaN > 0`` as "not poor" -- what the pre-fix path did -- keeps the
+    unmeasured person in the denominator and deflates the published rate. The
+    negative controls below are the two wrong answers that arithmetic gives.
+    """
+    import numpy as np
+
+    # Five persons, one state. Person 2 and person 4 are unmeasured.
+    poverty = np.array([1.0, 0.0, np.nan, 1.0, np.nan])
+    sim = _FakePersonSim(
+        {
+            "in_poverty": poverty,
+            "is_child": [1, 1, 1, 0, 1],
+            "state_fips": [1, 1, 1, 1, 1],
+        },
+        weights=[10.0, 30.0, 50.0, 20.0, 40.0],
+    )
+
+    payload = reform_validation_payload(
+        [],
+        period=2024,
+        simulate=lambda reform: sim,
+        baseline_levels=[
+            _nullable_rate_spec("overall"),
+            _nullable_rate_spec("al_overall", state="AL"),
+            _nullable_rate_spec("child", mask="is_child"),
+        ],
+    )
+    rows = {r["id"]: r for r in payload["reforms"]}
+
+    # Poor weight 10 + 20 = 30 over observed weight 10 + 30 + 20 = 60.
+    assert rows["overall"]["microcosm"]["budget_effect"] == pytest.approx(0.5)
+    # Negative control: poor over *all* persons, the pre-fix answer.
+    assert rows["overall"]["microcosm"]["budget_effect"] != pytest.approx(30.0 / 150.0)
+    # The state slice is the same population here, so it must agree.
+    assert rows["al_overall"]["microcosm"]["budget_effect"] == pytest.approx(0.5)
+    # Children observed: persons 0 and 1 (weights 10 + 30); poor among them 10.
+    assert rows["child"]["microcosm"]["budget_effect"] == pytest.approx(0.25)
+    # Negative control: the pre-fix child answer, 10 / (10 + 30 + 50 + 40).
+    assert rows["child"]["microcosm"]["budget_effect"] != pytest.approx(10.0 / 130.0)
+
+
+def test_fully_unobserved_rate_slice_serializes_as_json_null(tmp_path):
+    """An empty observed denominator is a missing rate, not a 0% poverty rate.
+
+    Before the fix this slice published ``0.0``: every ``NaN > 0`` flag was
+    False while the all-True mask kept the denominator positive, so the
+    ``denominator == 0`` branch was never reached. The failure was a
+    plausible-looking number, not an error.
+    """
+    import numpy as np
+
+    # AL (fips 1) is wholly unmeasured; CA (fips 6) is wholly observed.
+    sim = _FakePersonSim(
+        {
+            "in_poverty": np.array([np.nan, np.nan, 1.0, 0.0]),
+            "is_child": [1, 1, 1, 1],
+            "state_fips": [1, 1, 6, 6],
+        },
+        weights=[10.0, 30.0, 20.0, 20.0],
+    )
+
+    payload = reform_validation_payload(
+        [],
+        period=2024,
+        simulate=lambda reform: sim,
+        baseline_levels=[
+            _nullable_rate_spec("al_overall", state="AL"),
+            _nullable_rate_spec("ca_overall", state="CA"),
+        ],
+    )
+    rows = {r["id"]: r for r in payload["reforms"]}
+    assert rows["al_overall"]["microcosm"]["budget_effect"] is None
+    assert rows["al_overall"]["microcosm"]["baseline_total"] is None
+    # Negative control: the observed slice still publishes a real rate.
+    assert rows["ca_overall"]["microcosm"]["budget_effect"] == pytest.approx(0.5)
+
+    path = write_reform_validation(payload, tmp_path / "reform_validation.json")
+    raw = path.read_text()
+    assert "NaN" not in raw
+    written = json.loads(raw)
+    by_id = {r["id"]: r for r in written["reforms"]}
+    assert by_id["al_overall"]["microcosm"]["budget_effect"] is None
+    assert by_id["ca_overall"]["microcosm"]["budget_effect"] == pytest.approx(0.5)
+
+
+def test_write_reform_validation_refuses_a_bare_nan_rate(tmp_path):
+    """Why the fix returns ``None`` rather than ``NaN``.
+
+    ``write_reform_validation`` serializes with ``allow_nan=False``, so a bare
+    ``NaN`` reaching a row refuses instead of publishing. ``None`` is the only
+    value that both refuses to look like a rate and survives the writer.
+    """
+    payload = {
+        "schema_version": REFORM_VALIDATION_SCHEMA_VERSION,
+        "baseline_period": 2024,
+        "scoring_window": "see per-reform jct.window",
+        "out_of_sample_simulated": True,
+        "reforms": [{"id": "x", "microcosm": {"budget_effect": float("nan")}}],
+    }
+    with pytest.raises(ValueError):
+        write_reform_validation(payload, tmp_path / "reform_validation.json")
+
+
+def test_rate_level_is_inert_on_a_boolean_indicator():
+    """Regression: on today's engine ``in_poverty`` is ``value_type = bool``.
+
+    With no missing cell, ``observed`` is all-True and ``raw == 1`` equals the
+    old ``raw > 0``, so every published rate must be bit-for-bit what the
+    pre-fix path produced. The expected values are recomputed here from the
+    old formula rather than transcribed.
+    """
+    import numpy as np
+
+    poverty = np.array([True, False, True, True])
+    assert poverty.dtype == np.dtype(bool)
+    weights = np.array([10.0, 30.0, 20.0, 20.0])
+    child = np.array([1, 1, 0, 1])
+    fips = np.array([1, 1, 6, 6])
+    sim = _FakePersonSim(
+        {"in_poverty": poverty, "is_child": child, "state_fips": fips},
+        weights=weights,
+    )
+
+    def legacy_rate(state=None, mask=None):
+        """The pre-fix aggregation, verbatim: ``> 0`` over an all-True mask."""
+        flags = np.asarray(poverty) > 0
+        keep = np.ones(len(flags), dtype=bool)
+        if mask is not None:
+            keep &= np.asarray(mask) > 0
+        if state is not None:
+            keep &= fips == state
+        denominator = float(weights[keep].sum())
+        if denominator == 0:
+            return 0.0
+        return float((flags[keep] * weights[keep]).sum() / denominator)
+
+    payload = reform_validation_payload(
+        [],
+        period=2024,
+        simulate=lambda reform: sim,
+        baseline_levels=[
+            _nullable_rate_spec("us_overall"),
+            _nullable_rate_spec("al_overall", state="AL"),
+            _nullable_rate_spec("ca_overall", state="CA"),
+            _nullable_rate_spec("us_child", mask="is_child"),
+            _nullable_rate_spec("al_child", state="AL", mask="is_child"),
+        ],
+    )
+    rows = {r["id"]: r for r in payload["reforms"]}
+    assert rows["us_overall"]["microcosm"]["budget_effect"] == pytest.approx(
+        legacy_rate()
+    )
+    assert rows["al_overall"]["microcosm"]["budget_effect"] == pytest.approx(
+        legacy_rate(state=1)
+    )
+    assert rows["ca_overall"]["microcosm"]["budget_effect"] == pytest.approx(
+        legacy_rate(state=6)
+    )
+    assert rows["us_child"]["microcosm"]["budget_effect"] == pytest.approx(
+        legacy_rate(mask=child)
+    )
+    assert rows["al_child"]["microcosm"]["budget_effect"] == pytest.approx(
+        legacy_rate(state=1, mask=child)
+    )
+    # Pin the numbers too, so a shared bug in both formulas cannot pass.
+    assert legacy_rate() == pytest.approx(50.0 / 80.0)
+    assert legacy_rate(state=1) == pytest.approx(0.25)
+    assert legacy_rate(state=6) == pytest.approx(1.0)
+    assert legacy_rate(mask=child) == pytest.approx(0.5)
+    assert legacy_rate(state=1, mask=child) == pytest.approx(0.25)
+
+
 def test_rate_spec_validation_errors():
     from microcosm.build.us_runtime.reform_validation import BaselineLevelSpec
 

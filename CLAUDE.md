@@ -135,6 +135,17 @@ A sealed deny-list in `microcosm.build.us_runtime.h5_io` overrides this opt-in
 for known-excluded publications while preserving their scoring-only diagnostic
 path.
 
+The independent US annual static-aging candidate builder lives in
+`microcosm.build.us_annual_static_aging`; it consumes a pinned published parent
+and writes local annual H5 files without running the base graph or publishing.
+See [the annual candidate guide](docs/us-annual-static-aging.md). Its completion
+manifest is build evidence, not release certification.
+Optional annual release metadata invokes additional artifact, identity, and
+acceptance checks within the normal release gates. Annual cuts use one pinned
+`<base_release>-annual-<YYYYMMDDTHHMMSSZ>-<hex8>` tag and cannot update latest
+pointers. Qualify source-enrichment bases before adding annual metadata; use
+the candidate guide's qualification order and tag-only publication route.
+
 ## Root journals are history, not state
 
 The root `PROGRESS*.md`, `FINAL_REPORT.md`, `*_COVERAGE_PROGRESS.md`, and
@@ -160,7 +171,7 @@ Update this guide in the same PR whenever the workspace layout, test
 commands, or release flow change. If you find it contradicting the repo,
 trust the repo and fix this file.
 
-UK size experiments use `tools/build_uk_rowwise_candidate.py --dataset-households`
+UK size experiments use `tools/build_uk_rowwise_candidate.py --release-role dense --dataset-households`
 with the same pool inputs as the dense candidate. The flag changes exported
 support, not clone K. Sizes remain candidate-only until their matched comparison
 and promotion scorecard are adjudicated; see

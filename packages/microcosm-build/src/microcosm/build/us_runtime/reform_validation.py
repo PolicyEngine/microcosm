@@ -917,13 +917,21 @@ def reform_validation_payload(
             (np.asarray(values)[mask] * np.asarray(values.weights)[mask]).sum()
         )
 
-    def _person_rate(level: BaselineLevelSpec) -> float:
-        """Weighted share of persons with ``variable`` truthy among the mask
-        population, sliced to ``state`` when set.
+    def _person_rate(level: BaselineLevelSpec) -> float | None:
+        """Weighted share of persons measured as ``variable == 1`` among the
+        *observed* mask population, sliced to ``state`` when set.
 
         Everything is computed at person level: spm_unit/household variables
         broadcast down to persons, and the numeric ``state_fips`` broadcasts
         where the string ``state_code_str`` cannot.
+
+        The indicator is read as nullable. A person whose indicator is
+        missing is neither poor nor non-poor: they leave the numerator *and*
+        the denominator, and a slice with no observed person yields ``None``
+        (serialized as JSON ``null``), never ``0.0``. Under a Boolean
+        indicator -- ``in_poverty`` is ``value_type = bool`` on the pinned
+        engine -- nothing is missing, so this is numerically identical to the
+        previous ``> 0`` share.
         """
         nonlocal baseline
         import numpy as np
@@ -932,8 +940,14 @@ def reform_validation_payload(
             baseline = simulate(None)  # type: ignore[misc]
         values = baseline.calculate(level.variable, level.period, map_to="person")
         weights = np.asarray(values.weights)
-        flags = np.asarray(values) > 0
-        mask = np.ones(len(flags), dtype=bool)
+        # Do not cast the indicator to bool or select on it directly: ``NaN >
+        # 0`` is False, which would silently read an unmeasured person as not
+        # poor. Compare the observed indicator with 1, and keep missingness as
+        # its own mask.
+        raw = np.asarray(values).astype(float)
+        observed = ~np.isnan(raw)
+        flags = raw == 1
+        mask = observed.copy()
         if level.mask_variable:
             mask &= (
                 np.asarray(
@@ -950,10 +964,11 @@ def reform_validation_payload(
             mask &= fips == US_STATE_POSTAL_TO_NUMERIC_FIPS[level.state]
         denominator = float(weights[mask].sum())
         if denominator == 0:
-            return 0.0
+            # No observed person in the slice: the rate is missing, not zero.
+            return None
         return float((flags[mask] * weights[mask]).sum() / denominator)
 
-    def _level_total(level: BaselineLevelSpec) -> float:
+    def _level_total(level: BaselineLevelSpec) -> float | None:
         nonlocal baseline
         if level.statistic == "rate":
             return _person_rate(level)

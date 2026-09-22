@@ -67,7 +67,12 @@ _REPOSITORY = Path(__file__).resolve().parents[6]
 # The FRS line's spine, staging, imputation and calibration stages share one
 # hash chain (logbook/README.md): the dataset token names the base data, not
 # the build mechanism, so calibration derives the ratified `uk/frs` scope.
-_PIPELINE = "uk-frs-calibration"
+#: The national calibration seam's Logbook pipeline and attempt-id prefix;
+#: the rowwise driver's national release role mints ids with them
+#: (microcosm#823) so a run built either way reads as one pipeline.
+UK_CALIBRATION_PIPELINE = "uk-frs-calibration"
+UK_CALIBRATION_ATTEMPT_ID_PREFIX = "uk-frs-calibration-attempt-"
+_PIPELINE = UK_CALIBRATION_PIPELINE
 
 
 @dataclass(frozen=True)
@@ -277,11 +282,29 @@ def run_uk_calibration(
     staging_delivery: Mapping[str, object] | None = None,
     staging_finalizer: Callable[[], None] | None = None,
     staging_delivery_provider: Callable[[], Mapping[str, object]] | None = None,
+    build_id: str | None = None,
 ) -> UKCalibrationRunResult:
-    """Run the UK national calibration seam and write its sidecars."""
+    """Run the UK national calibration seam and write its sidecars.
+
+    ``build_id`` lets a caller that opened staging telemetry before the run
+    (the rowwise driver's national role) mint the attempt id first, so the
+    telemetry run id and the Logbook row agree; it must carry the seam's
+    attempt prefix. Omitted, the seam mints one.
+    """
 
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
+    if build_id is None:
+        build_id = new_uk_calibration_attempt_id(timestamp=started_ts)
+    elif not (
+        isinstance(build_id, str)
+        and build_id.startswith(UK_CALIBRATION_ATTEMPT_ID_PREFIX)
+        and len(build_id) > len(UK_CALIBRATION_ATTEMPT_ID_PREFIX)
+    ):
+        raise ValueError(
+            "a caller-minted calibration attempt id must start with "
+            f"{UK_CALIBRATION_ATTEMPT_ID_PREFIX!r}, got {build_id!r}."
+        )
     # Pure-argument validation precedes every environment probe: an
     # incoherent register/receipt/band-edge triple must refuse identically
     # whether or not a git checkout or Logbook chain is reachable.
@@ -318,7 +341,7 @@ def run_uk_calibration(
     state = AttemptState(
         # Attempts are distinct rows even when they re-run one release: both
         # the local chain and the store refuse a repeated build id.
-        build_id=_new_calibration_attempt_id(timestamp=started_ts),
+        build_id=build_id,
         identity_digest=hashlib.sha256(canonical_json_bytes(run_config)).hexdigest(),
         input_pins_digest=role_pins_digest(source_pins),
         phases_reached=["attempt_started"],
@@ -370,12 +393,17 @@ def run_uk_calibration(
         raise
 
 
-def _new_calibration_attempt_id(*, timestamp: datetime) -> str:
+def new_uk_calibration_attempt_id(*, timestamp: datetime) -> str:
+    """Mint a calibration attempt id: the seam prefix, the instant, eight hex."""
+
     instant = timestamp.astimezone(UTC)
     return (
-        "uk-frs-calibration-attempt-"
+        f"{UK_CALIBRATION_ATTEMPT_ID_PREFIX}"
         f"{instant.strftime('%Y%m%dT%H%M%SZ')}-{uuid.uuid4().hex[:8]}"
     )
+
+
+_new_calibration_attempt_id = new_uk_calibration_attempt_id
 
 
 def _validate_band_edge_registry(
