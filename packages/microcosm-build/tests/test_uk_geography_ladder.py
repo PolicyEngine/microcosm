@@ -244,6 +244,7 @@ def test_assignment_writes_the_full_ladder_from_the_oa_anchor(tmp_path) -> None:
     assert wales["itl3_code"] == "TLL11"
     assert wales["itl2_code"] == "TLL1"
     assert wales["itl1_code"] == "TLL"
+    assert wales["local_authority"] == "ISLE_OF_ANGLESEY"
     # London households draw a London OA only.
     assert set(assigned.loc[[100, 200, 300], "oa_code"]).issubset(
         {"E00000001", "E00000002", "E00000003"}
@@ -472,8 +473,14 @@ def _gated_household() -> tuple[pd.DataFrame, np.ndarray]:
             "local_authority_code": [
                 "E09000001",
                 "E07000010",
-                "E08000020",
+                "E08000003",
                 "W06000001",
+            ],
+            "local_authority": [
+                "CITY_OF_LONDON",
+                "FENLAND",
+                "MANCHESTER",
+                "ISLE_OF_ANGLESEY",
             ],
             "ward_code": ["E05000001", "E05000010", "E05000020", "W05000001"],
             "constituency_code": [
@@ -520,6 +527,57 @@ def test_gate_fails_on_itl_prefix_inconsistency() -> None:
 
     assert not result.passed
     assert any("disagree with the ITL3 prefix" in f for f in result.failures)
+
+
+def test_gate_fails_when_local_authority_disagrees_with_its_code() -> None:
+    household, weights = _gated_household()
+    household.loc[1, "local_authority"] = "MAIDSTONE"
+
+    result = uk_geography_ladder_gate(household, weights)
+
+    assert not result.passed
+    assert any(
+        "local_authority: 1/4 row(s) disagree with local_authority_code" in f
+        for f in result.failures
+    )
+
+
+def test_gate_fails_on_local_authority_code_outside_the_roster() -> None:
+    household, weights = _gated_household()
+    # Gateshead's pre-2013 code: a valid GSS pattern, absent from the April
+    # 2023 roster, so it must be reported rather than pass on shape alone.
+    household.loc[1, "local_authority_code"] = "E08000020"
+
+    result = uk_geography_ladder_gate(household, weights)
+
+    assert not result.passed
+    assert any(
+        "not on the April 2023 local authority roster" in f for f in result.failures
+    )
+
+
+def test_gate_fails_when_local_authority_is_blank() -> None:
+    household, weights = _gated_household()
+    household.loc[2, "local_authority"] = ""
+
+    result = uk_geography_ladder_gate(household, weights)
+
+    assert not result.passed
+    assert any("local_authority: 1/4 row(s) are blank" in f for f in result.failures)
+
+
+def test_assignment_refuses_ladder_codes_outside_the_lad23_roster(tmp_path) -> None:
+    ladder = load_uk_oa_ladder(
+        _write_ladder(
+            tmp_path / "ladder.npz",
+            local_authority_code=["E09000001", "E09000001", "E09000002", "W09999999"],
+        )
+    )
+
+    with pytest.raises(
+        ValueError, match="not on the April 2023 local authority roster"
+    ):
+        assign_uk_geography_ladder(_household(), ladder, seed=0)
 
 
 def test_gate_fails_when_columns_are_missing() -> None:

@@ -406,6 +406,7 @@ def test_build_uk_rowwise_dataset_ladder_route_records_gate_verdict(
                 "lsoa_code": ["E0101", "W0101"],
                 "msoa_code": ["E0201", "W0201"],
                 "local_authority_code": ["E06000063", "W06000001"],
+                "local_authority": ["CUMBERLAND", "ISLE_OF_ANGLESEY"],
                 "ward_code": ["E05000001", "W05000001"],
                 "constituency_code": ["E14000001", "W07000041"],
                 "region_code": ["E12000007", "W99999999"],
@@ -442,9 +443,7 @@ def test_build_uk_rowwise_dataset_ladder_route_records_gate_verdict(
         (),
         {
             "constituency_code": pd.Series(["E14000001", "W07000041"]).to_numpy(),
-            "local_authority_code": pd.Series(
-                ["E06000063", "W06000001"]
-            ).to_numpy(),
+            "local_authority_code": pd.Series(["E06000063", "W06000001"]).to_numpy(),
         },
     )()
     monkeypatch.setattr(builder, "load_uk_oa_ladder", lambda _path: ladder)
@@ -681,14 +680,14 @@ def test_build_uk_rowwise_dataset_rejects_overwriting_input(monkeypatch, tmp_pat
         "argv",
         [
             "build_uk_rowwise_dataset.py",
-                "--input-h5",
-                str(input_h5),
-                "--out",
-                str(tmp_path),
-                "--dataset-filename",
-                input_h5.name,
-            ],
-        )
+            "--input-h5",
+            str(input_h5),
+            "--out",
+            str(tmp_path),
+            "--dataset-filename",
+            input_h5.name,
+        ],
+    )
 
     with pytest.raises(ValueError, match="must differ"):
         builder.main()

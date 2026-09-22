@@ -185,6 +185,12 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.household_is_cgt_band_donor",
     "household.household_is_spi_synthetic",
     "household.la_code_oa",
+    # #953: the engine's household local_authority enum input, written by the
+    # rowwise geography ladder from local_authority_code. The incumbent never
+    # carried it, so the coverage manifest cannot list it; this allow-list
+    # binds at the national release-cut export gate, and the rowwise lane's
+    # own guard is the ladder gate's code/member consistency check.
+    "household.local_authority",
     "household.lsoa_code",
     "household.mortgage_debt",
     "household.msoa_code",

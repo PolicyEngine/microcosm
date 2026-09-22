@@ -625,6 +625,7 @@
           "household.household_is_cgt_band_donor",
           "household.household_is_spi_synthetic",
           "household.la_code_oa",
+          "household.local_authority",
           "household.lsoa_code",
           "household.mortgage_debt",
           "household.msoa_code",

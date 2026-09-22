@@ -36,8 +36,11 @@ silent partial join on mismatched geography vintages is the failure these
 checks exist to forbid (the #205 lesson).
 
 Column names are policyengine-uk household *inputs* where one exists
-(``region`` is the pre-assigned enum input; the ladder never overwrites it),
-and plain data columns otherwise: policyengine-uk has no OA/LSOA/MSOA/ward/
+(``region`` is the pre-assigned enum input; the ladder never overwrites it;
+``local_authority`` is the enum input the ladder itself writes, resolved from
+the assigned April 2023 ONS code through the pinned names resource, see
+:mod:`microcosm.build.uk_runtime.local_authority_input`, microcosm#953), and
+plain data columns otherwise: policyengine-uk has no OA/LSOA/MSOA/ward/
 constituency/ITL input variable, so those ride as ``*_code`` data columns. The
 exported artifact never carries a formula output — ``country`` recomputes from
 ``region`` in the engine, so it is never persisted (the #34 regression).
@@ -87,6 +90,10 @@ import numpy as np
 import pandas as pd
 
 from microcosm.build.gates import GateResult
+from microcosm.build.uk_runtime.local_authority_input import (
+    local_authority_consistency_failures,
+    resolve_local_authority_engine_keys,
+)
 from microcosm.build.uk_runtime.rowwise_geography import FRS_REGION_TO_REGION_CODE
 from microcosm.calibrate.geography_constants import (
     UK_LADDER_NATION_REGION_CODES,
@@ -108,14 +115,16 @@ UK_OA_LADDER_DERIVED_LAYERS = (
 )
 
 #: Household spine columns the ladder assignment writes, in write order. Every
-#: name is either a policyengine-uk household input (none finer than ``region``
-#: exists, and ``region`` is pre-assigned, so it is not rewritten) or a plain
-#: ``*_code`` data column carrying an ONS GSS code.
+#: name is either a policyengine-uk household input (``local_authority``, the
+#: enum member name resolved from ``local_authority_code``; ``region`` is
+#: pre-assigned, so it is not rewritten) or a plain ``*_code`` data column
+#: carrying an ONS GSS code.
 UK_GEOGRAPHY_LADDER_COLUMNS = (
     "oa_code",
     "lsoa_code",
     "msoa_code",
     "local_authority_code",
+    "local_authority",
     "ward_code",
     "constituency_code",
     "region_code",
@@ -468,6 +477,12 @@ def assign_uk_geography_ladder(
     assigned["local_authority_code"] = ladder.local_authority_code[
         assigned_index
     ].astype(object)
+    # The engine's household enum input, fail closed: a code the April 2023
+    # names resource does not carry raises here rather than falling to the
+    # engine default (microcosm#953).
+    assigned["local_authority"] = resolve_local_authority_engine_keys(
+        assigned["local_authority_code"]
+    )
     assigned["ward_code"] = ladder.ward_code[assigned_index].astype(object)
     assigned["constituency_code"] = ladder.constituency_code[assigned_index].astype(
         object
@@ -724,6 +739,11 @@ def uk_geography_ladder_gate(
                 f"{label}: {int(bad.sum())}/{len(values)} row(s) are not valid "
                 f"GSS codes; examples {sorted(set(values[bad]))[:5]}"
             )
+
+    # The engine input must agree with the code it was resolved from on every
+    # row, and every code must sit on the April 2023 roster; reported, not
+    # raised, so the local battery's rerun of this gate yields a verdict.
+    failures.extend(local_authority_consistency_failures(household))
 
     itl3 = household["itl3_code"].astype(str).to_numpy()
     itl2 = household["itl2_code"].astype(str).to_numpy()

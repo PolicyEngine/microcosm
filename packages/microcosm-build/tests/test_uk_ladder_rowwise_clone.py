@@ -185,6 +185,7 @@ def test_ladder_clone_assigns_gates_and_conserves(toy_ladder, tmp_path) -> None:
         "lsoa_code",
         "msoa_code",
         "local_authority_code",
+        "local_authority",
         "ward_code",
         "constituency_code",
         "region_code",
@@ -274,6 +275,91 @@ def test_ladder_clone_refuses_preassigned_geography(toy_ladder) -> None:
         clone_uk_dataset_with_ladder_geography(preassigned, ladder, n_clones=1)
 
 
+def test_ladder_clone_refuses_preassigned_local_authority(toy_ladder) -> None:
+    ladder, _ = toy_ladder
+    preassigned = _seam_frame(
+        household=_household_frame().assign(local_authority="MAIDSTONE"),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="pre-assigned geography cannot be silently overwritten",
+    ):
+        clone_uk_dataset_with_ladder_geography(preassigned, ladder, n_clones=1)
+
+
+def test_ladder_clone_writes_the_engine_local_authority_from_its_code(
+    toy_ladder,
+) -> None:
+    from microcosm.build.uk_runtime import local_authority_engine_key_by_code
+
+    ladder, _ = toy_ladder
+    result = clone_uk_dataset_with_ladder_geography(_seam_frame(), ladder, n_clones=2)
+
+    household = result.frame.table("household")
+    table = local_authority_engine_key_by_code()
+    assert household["local_authority"].tolist() == [
+        table[code] for code in household["local_authority_code"]
+    ]
+    assert set(household["local_authority"]) <= {
+        "CITY_OF_LONDON",
+        "BARKING_AND_DAGENHAM",
+        "ISLE_OF_ANGLESEY",
+        "ABERDEEN_CITY",
+        "ANTRIM_AND_NEWTOWNABBEY",
+    }
+
+
+@pytest.mark.requires_uk
+def test_cloned_local_authority_survives_the_engine_loader(toy_ladder) -> None:
+    """The engine decodes the written member names, never its MAIDSTONE default.
+
+    Loaded through the multi-year dataset path, which is the loader's
+    ``set_input`` surface without the single-year economic-assumption
+    uprating (that path reads council tax and rent columns a toy frame does
+    not carry).
+    """
+
+    pytest.importorskip("tables")
+    pytest.importorskip("h5py")
+    from policyengine_uk import Microsimulation
+    from policyengine_uk.data import UKMultiYearDataset, UKSingleYearDataset
+
+    from microcosm.frame import engine_tables
+
+    ladder, _ = toy_ladder
+    result = clone_uk_dataset_with_ladder_geography(_seam_frame(), ladder, n_clones=1)
+    tables = engine_tables(result.frame, weighted_entities=("household",))
+    # Captured before the dataset constructor, which encodes enum columns in
+    # place on the tables it is handed.
+    written = tables["household"]["local_authority"].tolist()
+    single_year = UKSingleYearDataset(
+        person=tables["person"],
+        benunit=tables["benunit"],
+        household=tables["household"],
+        fiscal_year=2023,
+    )
+    simulation = Microsimulation(dataset=UKMultiYearDataset(datasets=[single_year]))
+
+    decoded = [
+        str(value)
+        for value in simulation.calculate("local_authority", 2023, decode_enums=True)
+    ]
+
+    assert (
+        written
+        == [
+            "BARKING_AND_DAGENHAM",
+            "ISLE_OF_ANGLESEY",
+            "ABERDEEN_CITY",
+            "ANTRIM_AND_NEWTOWNABBEY",
+        ]
+        or len(set(written)) == 4
+    )
+    assert decoded == written
+    assert "MAIDSTONE" not in decoded
+
+
 def test_ladder_clone_refuses_uncovered_region(tmp_path) -> None:
     frame = _ladder_frame()
     england_only = frame[frame["region_code"].str.startswith("E")]
@@ -357,6 +443,7 @@ def test_write_round_trip_preserves_ladder_columns(toy_ladder, tmp_path) -> None
         household = store["household"]
     assert "ward_code" in household.columns
     assert "itl1_code" in household.columns
+    assert "local_authority" in household.columns
 
 
 def _load_builder_module():
@@ -457,17 +544,13 @@ def test_driver_ladder_route_builds_with_gate(monkeypatch, toy_ladder, tmp_path)
         "bottom_by_rows",
         "bottom_by_ess",
     }
-    assert sum(row["row_share"] for row in summary["region_mix"]) == pytest.approx(
+    assert sum(row["row_share"] for row in summary["region_mix"]) == pytest.approx(1.0)
+    assert sum(row["weight_share"] for row in summary["region_mix"]) == pytest.approx(
         1.0
     )
-    assert sum(
-        row["weight_share"] for row in summary["region_mix"]
-    ) == pytest.approx(1.0)
     area_support_path = output_dir / builder.AREA_SUPPORT_FILENAME
     assert area_support_path.exists()
-    assert manifest["outputs"]["area_support_summary"]["path"] == str(
-        area_support_path
-    )
+    assert manifest["outputs"]["area_support_summary"]["path"] == str(area_support_path)
     area_support = pd.read_csv(area_support_path)
     assert area_support.columns.tolist() == [
         "area_type",
@@ -885,9 +968,7 @@ def test_driver_ladder_dry_run_refuses_legacy_preassigned_geography(
     _, ladder_path = toy_ladder
     builder = _load_builder_module()
     input_h5 = tmp_path / "preassigned.h5"
-    household = _household_frame().assign(
-        constituency_code_oa="stale-constituency"
-    )
+    household = _household_frame().assign(constituency_code_oa="stale-constituency")
     _write_seam_h5(input_h5, household=household)
     monkeypatch.setattr(
         sys,

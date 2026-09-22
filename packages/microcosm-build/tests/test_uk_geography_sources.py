@@ -15,6 +15,7 @@ from microcosm.build.uk_runtime import (
     build_official_uk_geography_crosswalk,
     build_scotland_crosswalk,
     geography_coverage_summary,
+    load_lad23_names_lookup,
     load_ni_dz_parlcon24_lookup,
     load_scotland_oa_constituencies,
     load_scotland_oa_lau_lookup,
@@ -263,6 +264,69 @@ def test_build_england_wales_crosswalk_rejects_source_mismatch() -> None:
             england_lad_region_lookup(),
             expected_oa_count=None,
         )
+
+
+def _lad23_names_csv(rows: str) -> bytes:
+    return ("\ufeffLAD23CD,LAD23NM,LAD23NMW,ObjectId\n" + rows).encode("utf-8")
+
+
+def test_load_lad23_names_lookup_normalises_columns(monkeypatch) -> None:
+    monkeypatch.setattr(geography_sources, "LAD23_COUNT", 3)
+    monkeypatch.setattr(
+        geography_sources,
+        "_read_url_bytes",
+        lambda url: _lad23_names_csv(
+            "E06000001,Hartlepool,,1\n"
+            "W06000001,Isle of Anglesey,Ynys Môn,288\n"
+            "S12000013,Na h-Eileanan Siar,,261\n"
+            "K04000001,England and Wales,,999\n"
+        ),
+    )
+
+    lookup = load_lad23_names_lookup("memory://lad23-names.csv")
+
+    # The BOM-prefixed header resolves, the Welsh name column is dropped, and
+    # the K04 aggregate row falls outside the four nation prefixes.
+    assert lookup.to_dict("records") == [
+        {"local_authority_code": "E06000001", "local_authority_name": "Hartlepool"},
+        {
+            "local_authority_code": "W06000001",
+            "local_authority_name": "Isle of Anglesey",
+        },
+        {
+            "local_authority_code": "S12000013",
+            "local_authority_name": "Na h-Eileanan Siar",
+        },
+    ]
+
+
+def test_load_lad23_names_lookup_refuses_blank_names_and_wrong_counts(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(geography_sources, "LAD23_COUNT", 2)
+    monkeypatch.setattr(
+        geography_sources,
+        "_read_url_bytes",
+        lambda url: _lad23_names_csv("E06000001,Hartlepool,,1\nE06000002,,,2\n"),
+    )
+    with pytest.raises(ValueError, match="blank local_authority_name"):
+        load_lad23_names_lookup("memory://lad23-names.csv")
+
+    monkeypatch.setattr(
+        geography_sources,
+        "_read_url_bytes",
+        lambda url: _lad23_names_csv("E06000001,Hartlepool,,1\n"),
+    )
+    with pytest.raises(ValueError, match="LAD23"):
+        load_lad23_names_lookup("memory://lad23-names.csv")
+
+    monkeypatch.setattr(
+        geography_sources,
+        "_read_url_bytes",
+        lambda url: "\ufeffLAD23CD,ObjectId\nE06000001,1\n".encode("utf-8"),
+    )
+    with pytest.raises(ValueError, match="missing LAD23CD or LAD23NM"):
+        load_lad23_names_lookup("memory://lad23-names.csv")
 
 
 def test_load_scotland_oa_lau_lookup_maps_lau_to_council_area(monkeypatch) -> None:
