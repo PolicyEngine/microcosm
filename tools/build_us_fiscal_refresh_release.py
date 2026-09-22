@@ -648,6 +648,32 @@ IDENTITY_LEDGER_FILTER_METADATA_KEYS = frozenset(
     }
 )
 
+#: Restated constraints, a third class distinct from both sets above: a
+#: labelled feed re-expresses a fact's universe constraint in the Ledger's own
+#: concept vocabulary (``us:statutes/26/62#adjusted_gross_income_lower_bound``)
+#: alongside the compiled metadata the materializer actually slices on
+#: (``agi_lower_bound``). These keys are NOT inert — they restrict the
+#: microdata — so they can never join the supported set outright: a future
+#: feed whose labelled bound disagreed with the compiled one would then be
+#: silently ignored, materializing a wider population than the published cell
+#: covers, which is the failure the guard exists to stop. Each key here is
+#: accepted only per spec, and only when that spec also carries the filter the
+#: materializer applies and the two select the same population; a restatement
+#: that disagrees, or that has no compiled counterpart, stays fatal and the
+#: refusal names the values. Values are the restated-constraint rule that
+#: decides the comparison (see ``_restated_ledger_filter_refusal``).
+RESTATED_LEDGER_FILTER_CONCEPTS = {
+    "us:statutes/26/62#adjusted_gross_income": "agi_band",
+    "us.tax.earned_income_credit_qualifying_children": "eitc_child_count",
+}
+
+#: Bound-side suffixes a restated constraint key may carry. A key with no
+#: suffix restates an exact value of the concept.
+RESTATED_LEDGER_FILTER_BOUND_SIDES = (
+    ("_lower_bound", "lower"),
+    ("_upper_bound", "upper"),
+)
+
 FISCAL_TARGET_SOURCE_KEYS = {
     "cbo": "Congressional Budget Office revenue projections",
     "cms_aca": "CMS ACA marketplace enrollment public use files",
