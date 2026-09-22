@@ -130,6 +130,12 @@ variables and schema-5 calibration evidence, and requires fresh country/wrapper
 compatibility checks. It has a local candidate builder and uses the regular
 publisher's contract with `--parent-h5` and `--preflight-only`.
 
+The non-default ACS local-area chain (`tools/build_us_acs_local_release.py`)
+calibrates to the SOI `totals` surface by default; `--soi-mode full` is the
+explicit opt-in for the much larger `soi_fiscal_distribution` surface. See
+[the ACS local-area SOI target surface](docs/us-acs-local-soi-target-surface.md)
+for what each mode contains and where the build records it.
+
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
 on the build machine (it needs the freshly built H5), so it isn't a CI step:

@@ -14,7 +14,9 @@ package; each is separately resumable):
                 Ledger feed exactly like the production path
                 (``compile_us_fiscal_target_registry`` -> RI Medicaid
                 substitution -> state {usda_snap, cms_medicaid[enrollment],
-                irs_soi}), run the household-chunked engine pass under the
+                irs_soi}; ``--soi-mode totals`` by default, the
+                ``soi_fiscal_distribution`` role only with ``--soi-mode
+                full``), run the household-chunked engine pass under the
                 nullable-artifact contract (input-schema projection +
                 reviewed-null fill), add PUMA-ladder population marginals
                 (state + congressional district), and write a lean float32
@@ -82,6 +84,46 @@ LEGACY_STAGING_REFRESH_RECIPE = (
     "--puma-ladder build/us/us_puma_ladder_2020.npz"
 )
 
+#: ``--soi-mode`` values for the state-level ``irs_soi`` surface. ``totals``
+#: keeps the specs whose ``target_role`` is not ``soi_fiscal_distribution``;
+#: ``full`` also keeps that role, which is most of the state SOI surface and
+#: so most of the dense admin measure matrix. Totals is the default and full
+#: is an explicit opt-in. docs/us-acs-local-soi-target-surface.md has the
+#: measured surfaces, including what the role holds beyond AGI-band slices.
+SOI_MODE_TOTALS = "totals"
+SOI_MODE_FULL = "full"
+SOI_MODES = (SOI_MODE_TOTALS, SOI_MODE_FULL)
+DEFAULT_SOI_MODE = SOI_MODE_TOTALS
+
+
+def _require_soi_mode(soi_mode: str) -> str:
+    if soi_mode not in SOI_MODES:
+        raise ValueError(
+            f"soi_mode must be one of {SOI_MODES}, got {soi_mode!r}; an "
+            "unrecognised mode must never fall through to either surface."
+        )
+    return soi_mode
+
+
+def release_refresh_recipe(soi_mode: str) -> str:
+    """The one-command release refresh, pinned to the SOI surface it built.
+
+    The recipe names ``--soi-mode`` explicitly so re-running it reproduces
+    the recorded surface even if the parser default changes again.
+    """
+
+    _require_soi_mode(soi_mode)
+    return (
+        "uv run tools/build_us_acs_local_release.py --stage all "
+        "--staging-h5 <run>/acs_multispine_staging.h5 "
+        "--feed <ledger-facts.jsonl> --feed-sha256 <sha> "
+        f"--soi-mode {soi_mode} "
+        "--ladder build/us/us_puma_ladder_2020.npz "
+        "--checkpoint-dir <run>/checkpoints "
+        "--out-h5 <run>/populace_us_2024_acs_local.h5 "
+        "--out <run>/release"
+    )
+
 
 # ---------------------------------------------------------------------------
 # Shared telemetry
@@ -135,15 +177,43 @@ def _load_json(path: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def state_admin_specs(feed: str | Path, families: list[str], soi_mode: str = "full"):
+def soi_surface_predicate(soi_mode: str):
+    """The ``irs_soi`` spec filter for one ``--soi-mode``.
+
+    Both modes keep only specs carrying ``state_fips`` (state rows, and the
+    congressional-district rows that also carry their state). ``totals``
+    then drops every ``soi_fiscal_distribution`` spec (the jetsam-safe
+    Option B of the Build L runbook); ``full`` keeps them. That role is not
+    only AGI-band slices: every SOI fact without a named role gets it, which
+    at state level includes the all-income-range state and district rows.
+    """
+
+    _require_soi_mode(soi_mode)
+
+    def selected(spec) -> bool:
+        if "state_fips" not in spec.metadata:
+            return False
+        return (
+            soi_mode == SOI_MODE_FULL
+            or spec.metadata.get("target_role") != "soi_fiscal_distribution"
+        )
+
+    return selected
+
+
+def state_admin_specs(
+    feed: str | Path, families: list[str], soi_mode: str = DEFAULT_SOI_MODE
+):
     """Select the state-level admin surface from the production compile path.
 
     feed -> ``compile_us_fiscal_target_registry(age_targets=True)`` ->
     ``apply_us_medicaid_enrollment_substitutions`` (RI FIPS-44) -> state-level
-    {usda_snap, cms_medicaid[enrollment], irs_soi}. ``soi_mode='totals'``
-    drops the ``soi_fiscal_distribution`` AGI-band slices (the jetsam-safe
-    Option B of the Build L runbook); ``'full'`` keeps them.
+    {usda_snap, cms_medicaid[enrollment], irs_soi}. The SOI slice follows
+    :func:`soi_surface_predicate`: ``totals`` (the default) or ``full``.
     """
+
+    # Refuse an unknown mode before loading the feed and compiling the registry.
+    _require_soi_mode(soi_mode)
 
     from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
     from microcosm.build.us_runtime import (
@@ -186,17 +256,9 @@ def state_admin_specs(feed: str | Path, families: list[str], soi_mode: str = "fu
             ),
         ).specs
     if "soi" in families:
-        soi_predicate = (
-            state_level
-            if soi_mode == "full"
-            else (
-                lambda spec: (
-                    state_level(spec)
-                    and spec.metadata.get("target_role") != "soi_fiscal_distribution"
-                )
-            )
-        )
-        picked += registry.select(family="irs_soi", predicate=soi_predicate).specs
+        picked += registry.select(
+            family="irs_soi", predicate=soi_surface_predicate(soi_mode)
+        ).specs
     return TargetRegistry(list(picked), country="us"), ri_substitutions
 
 
@@ -1647,6 +1709,25 @@ def _require_uncapped_staging(staging_summary: dict) -> dict[str, object]:
     return {key: orchestration.get(key) for key in _STAGING_ORCHESTRATION_KEYS}
 
 
+def _require_recorded_soi_mode(materialize_rss: dict) -> str:
+    """The SOI surface the checkpoint was materialized with, or refuse.
+
+    Later stages never re-select targets, so the mode that counts is the one
+    ``--stage materialize`` recorded, not this invocation's ``--soi-mode``.
+    A checkpoint that does not record a known mode cannot say which surface
+    was calibrated, and its refresh recipe could not reproduce it.
+    """
+
+    soi_mode = materialize_rss.get("soi_mode")
+    if soi_mode not in SOI_MODES:
+        raise SystemExit(
+            f"materialize_rss.json records soi_mode={soi_mode!r}, not one of "
+            f"{SOI_MODES}; packaging cannot record which SOI surface was "
+            "calibrated. Re-run --stage materialize with the current tool."
+        )
+    return soi_mode
+
+
 def do_package(args) -> dict:
     diagnostics = _load_json(args.checkpoint_dir / "calibration_diagnostics.json")
     gate_report = _load_json(args.gate_report)
@@ -1666,6 +1747,7 @@ def do_package(args) -> dict:
         )
     # Before any release directory exists: a refused smoke leaves nothing.
     staging_orchestration = _require_uncapped_staging(staging_summary)
+    soi_mode = _require_recorded_soi_mode(materialize_rss)
 
     code = _repo_code_identity(args.allow_dirty)
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
@@ -1734,15 +1816,7 @@ def do_package(args) -> dict:
             "unchanged."
         ),
         "staging": LEGACY_STAGING_REFRESH_RECIPE,
-        "release": (
-            "uv run tools/build_us_acs_local_release.py --stage all "
-            "--staging-h5 <run>/acs_multispine_staging.h5 "
-            "--feed <ledger facts.jsonl> --feed-sha256 <sha> "
-            "--ladder build/us/us_puma_ladder_2020.npz "
-            "--checkpoint-dir <run>/checkpoints "
-            "--out-h5 <run>/populace_us_2024_acs_local.h5 "
-            "--out <run>/release"
-        ),
+        "release": release_refresh_recipe(soi_mode),
         "publish": (
             "tools/publish_release.sh <release_dir> --no-latest "
             f"--artifact-root <run> --repo-id {HF_REPO_ID}"
@@ -1790,6 +1864,7 @@ def do_package(args) -> dict:
             )
         },
         "materialize": {
+            "soi_mode": soi_mode,
             "peak_rss_gb": materialize_rss.get("materialize_peak_rss_gb"),
             "hh_chunk": materialize_rss.get("hh_chunk"),
             "engine_pass": (
@@ -1966,7 +2041,19 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--families", default="snap,medicaid,soi")
     parser.add_argument("--geographies", default="state,cd")
-    parser.add_argument("--soi-mode", choices=["full", "totals"], default="full")
+    parser.add_argument(
+        "--soi-mode",
+        choices=SOI_MODES,
+        default=DEFAULT_SOI_MODE,
+        help=(
+            "State SOI target surface for --stage materialize. 'totals' "
+            "(default) drops every soi_fiscal_distribution spec; 'full' is "
+            "the explicit opt-in that keeps them and needs a much larger "
+            "dense admin matrix (contents and sizes in "
+            "docs/us-acs-local-soi-target-surface.md). Later stages use the "
+            "mode the checkpoint recorded."
+        ),
+    )
     parser.add_argument("--epochs", type=int, default=800)
     parser.add_argument("--epoch-batch", type=int, default=400)
     parser.add_argument("--max-weight-ratio", type=float, default=5.0)
