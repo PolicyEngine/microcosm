@@ -461,6 +461,13 @@
           "kind": "allocate_per_capita_from_cell_table",
           "resource": "nhs_consumption_by_age_gender.json",
           "top_band_fold_in": "none"
+        },
+        {
+          "declared_factor": 1,
+          "entity": "household",
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+          "kind": "record_mass_conservation_receipt",
+          "reason": "ETB public-services imputation on the source spine: household weights pass through unchanged and total household mass is conserved."
         }
       ],
       "outputs": [
@@ -539,6 +546,13 @@
         {
           "kind": "support_clip",
           "range": "donor_realized"
+        },
+        {
+          "declared_factor": 1,
+          "entity": "household",
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+          "kind": "record_mass_conservation_receipt",
+          "reason": "ETB VAT expenditure-rate imputation on the source spine: household weights pass through unchanged and total household mass is conserved."
         }
       ],
       "outputs": [
@@ -3293,6 +3307,13 @@
           ],
           "condition": "has_fuel_consumption == false",
           "kind": "zero_when_false"
+        },
+        {
+          "declared_factor": 1,
+          "entity": "household",
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+          "kind": "record_mass_conservation_receipt",
+          "reason": "LCFS consumption imputation on the source spine: household weights pass through unchanged and total household mass is conserved."
         }
       ],
       "outputs": [
@@ -3340,6 +3361,13 @@
           "owner_rows": "main_residence_value > 0",
           "resource": "regional_land_values.json",
           "skip_empty_or_nonpositive_regions": true
+        },
+        {
+          "declared_factor": 1,
+          "entity": "household",
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+          "kind": "record_mass_conservation_receipt",
+          "reason": "Regional property uprating on the source spine: household weights pass through unchanged and total household mass is conserved."
         }
       ],
       "outputs": [],
@@ -3917,6 +3945,13 @@
             "18 <= age <= 55",
             "everyone"
           ]
+        },
+        {
+          "declared_factor": 1,
+          "entity": "household",
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+          "kind": "record_mass_conservation_receipt",
+          "reason": "WAS wealth imputation on the source spine: household weights pass through unchanged and total household mass is conserved."
         }
       ],
       "outputs": [

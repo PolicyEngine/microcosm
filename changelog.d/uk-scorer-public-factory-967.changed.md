@@ -1,0 +1,1 @@
+`candidate_score.uk_default_measure_resolver_factory` is the public name of the production measure-resolver factory; the rowwise driver's national role imports it (the private name stays as an alias), and a national-role test loads the real scorer module to prove the name exists.

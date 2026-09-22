@@ -174,9 +174,7 @@ def test_recipient_predictors_aggregate_person_entities_to_household() -> None:
         }
     )
     benunit = pd.DataFrame({"benunit_id": [100, 200], "benunit_household_id": [10, 20]})
-    household = pd.DataFrame(
-        {"household_id": [10, 20], "household_weight": [1.0, 1.0]}
-    )
+    household = pd.DataFrame({"household_id": [10, 20], "household_weight": [1.0, 1.0]})
     frame = uk_national_frame(
         person=person,
         benunit=benunit,
@@ -190,3 +188,87 @@ def test_recipient_predictors_aggregate_person_entities_to_household() -> None:
     assert result["is_child"].tolist() == [1.0, 0.0]
     assert result["is_SP_age"].tolist() == [1.0, 0.0]
     assert result["household_net_income"].tolist() == [1e4, 2e4]
+
+
+def _receipt_frame():
+    import numpy as np
+
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+    from microcosm.frame import WeightKind
+
+    return uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2, 3],
+                "person_benunit_id": [1, 2, 2],
+                "person_household_id": [1, 2, 2],
+                "age": [40, 35, 6],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame({"household_id": [1, 2]}),
+        time_period="2024",
+        weight_kind=WeightKind.IMPORTANCE,
+        household_weights=np.array([10.0, 30.0]),
+    )
+
+
+def _receipt_stage(name: str, fit_kind: str):
+    from microcosm.build.source_manifest import SourceStageSpec
+
+    return SourceStageSpec.from_mapping(
+        {
+            "stage": name,
+            "survey": "test",
+            "source": "test",
+            "grain": "household",
+            "artifacts": [],
+            "operations": [{"kind": fit_kind, "seed": 0}],
+            "outputs": [],
+        }
+    )
+
+
+def test_stage_transform_records_its_mass_conservation_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime import etb_vat as module
+
+    frame = _receipt_frame()
+    donor = pd.DataFrame({"full_rate_vat_expenditure_rate": [0.1, 0.2]})
+    imputed = pd.DataFrame({"full_rate_vat_expenditure_rate": [0.1, 0.2]})
+    monkeypatch.setattr(module, "assert_rules_engine_country", lambda *_: None)
+    monkeypatch.setattr(module, "etb_vat_configuration", lambda _stage: {})
+    monkeypatch.setattr(module, "clean_etb_vat_table", lambda raw, **_: donor)
+    monkeypatch.setattr(module, "recipient_predictors", lambda *_: pd.DataFrame())
+    monkeypatch.setattr(
+        module,
+        "impute_etb_vat",
+        lambda *_, **__: (imputed, module.FitWeightRecord("etb_vat:test", "explicit")),
+    )
+    monkeypatch.setattr(
+        module,
+        "support_clip_to_donor",
+        lambda draws, *_a, **_k: SimpleNamespace(
+            clipped=draws, receipt=SimpleNamespace(evidence=lambda: {})
+        ),
+    )
+    transform = module.UKETBVATStageTransform(
+        stage=_receipt_stage("etb_vat", "fit_weighted_qrf"),
+        engine=object(),
+        donor=donor,
+    )
+
+    result = transform(frame)
+
+    assert result.table("household")["full_rate_vat_expenditure_rate"].tolist() == [
+        0.1,
+        0.2,
+    ]
+    assert result.weights_for("household").values.tolist() == [10.0, 30.0]
+    receipt = result.mass_log[-1]
+    assert receipt.reason == module.UK_ETB_VAT_MASS_CONSERVATION_REASON
+    assert receipt.old_total == receipt.new_total == 40.0
+    assert receipt.declared_factor == 1.0
