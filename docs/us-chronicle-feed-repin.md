@@ -1,166 +1,156 @@
-# Re-pin the US Chronicle consumer feed
+# Re-pin the US Chronicle consumer artifact
 
-One reviewed declaration, `us/chronicle_feed.json`, names the Chronicle
-commit, the scope file and the feed digest the US fiscal target registry
-compiles from. `us/chronicle_feed_scope.json` names, for every (record set,
-period) pair the feed keeps, the Chronicle source package that emits it and
-the year to build that package with. `tools/build_us_chronicle_feed.py`
-rebuilds the feed from those two, and two runs at the same commit produce the
-same bytes. The target-parity resources (`us/target_parity_manifest.json`,
-`us/target_parity_feed_families.json`) restate the feed digest;
-`tools/build_us_target_parity_manifest.py` refuses to regenerate them against
-any other feed, and `test_us_chronicle_feed.py` fails if the parity resources,
-the generator and the pin disagree, or if the scope file changes without a
-new pin.
-
-## Why the feed moved
-
-`_validate_chronicle_hierarchy_labels`
-(`packages/microcosm-build/src/microcosm/build/ledger_targets.py`) requires
-exactly one Chronicle-owned label for every dimension a target selects on and
-refuses to substitute the identifier. The previous pin,
-`consumer_facts_buildn_v9_4.jsonl` (`b3c08356…`, cut 23 July 2026), carries
-no `dimension_labels`, so target compilation on main refused it. Chronicle
-main has written the labels since its #267 (14 September 2026); this pin is
-the first labelled US export.
+`us/chronicle_feed.json` pins the Chronicle source commit, fact rows, artifact
+manifest and scope consumed by the US fiscal target registry.
+`us/chronicle_feed_scope.json` names the source package and build year for every
+retained record-set/period pair. The builder exports source packages, selects
+those pairs, and validates the result through Chronicle's consumer-artifact
+builder. No emitted source row is patched.
 
 ## The pin
 
 | Field | Value |
 |---|---|
-| Chronicle commit | `c5e5bf8aa84960c1a200ee47303b19c953092d0f` |
-| Feed file | `consumer_facts_us_c5e5bf8.jsonl`, 39,158 rows, 164,603,204 bytes |
-| `facts_sha256` | `b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801` |
-| Consumer fact schema | `chronicle.consumer_fact.v3`, schema file sha256 `bdb51e2a…` (unchanged from the UK pin) |
-| Scope | 586 (record set, period) pairs; 62 package runs over build years 2020 to 2029 |
-| Consumer artifact | none: refused at this commit, see below |
+| Chronicle commit | `b571381fcd875393ea0dabc326558cfa2ca8e8fa` ([Chronicle #278](https://github.com/PolicyEngine/chronicle/pull/278)) |
+| Fact rows | 39,158 |
+| Facts SHA-256 | `4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f` |
+| Manifest SHA-256 | `38ec5bf1efe5a0bd017ec5279065e2ea7645b37da237197f03ae2fbca28cadac` |
+| Artifact wrapper | `policyengine_ledger.consumer_artifact.v2` |
+| Row schema | `chronicle.consumer_fact.v3` |
+| Row-schema SHA-256 | `bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d` |
+| Scope | 586 record-set/period pairs; 62 package runs across build years 2020–2029 |
 
-The feed is too large for the repository. Its home on the build machine is
-`~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_c5e5bf8.jsonl`,
-beside the previous pins; `tools/build_us_target_parity_manifest.py` reads it
-there by default. A holder of the Chronicle commit regenerates it byte for
-byte with the commands below.
+The artifact stays outside Git at
+`~/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/`.
+It contains `consumer_facts.jsonl` and `manifest.json`. The previous bare feed
+`consumer_facts_us_c5e5bf8.jsonl` remains beside it, unchanged. The manifest
+binds the fact and row-schema hashes, not the output path, scope file or source
+commit. Microcosm separately pins the scope's exact bytes and source commit;
+the builder's clean-checkout check and build receipt establish which Chronicle
+source produced the artifact.
 
-## Scope rule
+## Rebuild and verify
 
-The feed keeps exactly the 586 (record set, period) pairs of the previous
-pin, so the family surface the release parity gate reviews does not move in
-this change: 32 compiled families and 52 reviewed exclusions before and after,
-the same 81 feed families. Widening the feed to Chronicle's newer US packages
-is a separate, deliberate change with its own compile-or-fence review per
-family. Scoping by record set alone is wrong: it pulls extra Medicaid months
-into the snapshot families.
-
-`chronicle build-bundle` takes one `--year`, and some packages are
-year-specific (IRS SOI Table 1.4 emits one tax year per run) while others
-are year-independent (BEA NIPA emits the same rows for every year). The scope
-file records one build year per pair: the pair's own period year when the
-package emits the pair for that year, otherwise the earliest export year
-that emits it. `experiments/us-chronicle-feed-repin/derive_scope.py` is the
-one-time derivation, from the previous pin's pairs and the September
-exports; the builder verifies every choice again and refuses a run that does
-not emit its pair.
-
-Whole-year bundles are not used: at this commit `build-bundle --year 2020`
-and `--year 2021` exit 1 because `census-population-projections-2023` fails
-its row criteria for those years, and a whole year takes about twenty
-minutes where a targeted package run takes one or two seconds.
-
-## Rebuild
+Use a clean Chronicle checkout at the pinned commit. From Microcosm:
 
 ```bash
-uv run python tools/build_us_chronicle_feed.py --chronicle-root ~/PolicyEngine/chronicle --out /tmp/us-feed --replace --skip-artifact
+uv run python tools/build_us_chronicle_feed.py \
+  --chronicle-root ~/PolicyEngine/chronicle \
+  --out /tmp/us-chronicle-artifact
 ```
 
-The checkout must be clean at the scope's commit. The tool runs one
-`chronicle build-bundle --year Y --source <package> …` per build year (ten
-runs, 62 packages), reads each package's own `consumer_facts.jsonl`, keeps a
-row only from the run its pair is scoped to, refuses a pair with no row or
-two rows with one `aggregate_fact_key` and different bytes, sorts by
-`aggregate_fact_key`, and writes `consumer_facts.jsonl` plus `receipt.json`
-(commands, row count, digests). Measured 18 September 2026: 7 minutes 35
-seconds; two independent runs gave the same `facts_sha256`, and `cmp` found
-the files byte-identical. The same digest came out of the September scratch
-assembly from whole-year bundles, so the targeted runs reproduce what the
-whole bundles emit.
+The tool checks the Chronicle commit and clean tree, then runs one targeted
+`chronicle build-bundle` command per build year. It keeps each row only from the
+package/year assigned to its pair, refuses missing pairs and conflicting fact
+keys, sorts by `aggregate_fact_key`, and invokes
+`chronicle build-consumer-artifact`. `receipt.json` records all commands, the
+scope hash, row count, source commit and both artifact hashes. The default
+Chronicle command is `uv run --frozen chronicle`; `--chronicle-command` can name
+an already-locked interpreter and `-m policyengine_chronicle.cli` explicitly.
 
-Then copy the feed to its home, regenerate the parity resources and run the
-parity tests:
+Compare the generated artifact hashes with the declaration before placing its
+two files in the external input directory. Then regenerate and test the
+consumer resources:
 
 ```bash
 uv run python tools/build_us_target_parity_manifest.py
+uv run pytest packages/microcosm-build/tests/test_us_chronicle_feed.py \
+  packages/microcosm-build/tests/test_release_target_parity.py
 ```
+
+The generator refuses a facts hash that differs from the declaration. Its
+resources preserve 32 compiled families, 52 reviewed exclusions and 81 feed
+families. The local artifact tests and the two feed-dependent parity tests
+must execute when qualifying the input; a CI skip is not that qualification.
+
+For a release's `--exact-k` arm, pass the artifact **directory** as
+`--ledger-facts`, with both `--ledger-facts-sha256` and
+`--ledger-manifest-sha256` from the declaration. Passing the JSONL alone loads a
+bare feed and cannot satisfy the manifest pin. The `--base-h5` arm continues
+to accept a bare feed; it does not thereby run the exact-k improvement gate.
+
+## Source-authority repair
+
+The preceding #955 pin used Chronicle `c5e5bf8` and facts SHA-256
+`b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801`.
+Its 994 source-label rows lacked the authority required by the existing v3
+schema, so the canonical artifact validator refused that feed. Chronicle #278
+records the actual publisher in the source packages: CMS for 515 rows, Census
+for 468, and JCT for 11. It does not claim an Axiom alignment or relax a schema.
+
+The 19 September 2026 qualification rebuilt all 62 package runs from the
+pinned source commit. It retained every one of the preceding pin's 39,158
+cells with an identical value, adding or removing no cells. The 586 scoped
+pairs are unchanged. Exactly 994 rows change only these provenance fields:
+
+- `concept_alignment.authority`;
+- `concept_alignment.concept_alignment_key`;
+- `layout.record_set_spec_hash`;
+- `legacy_fact_key`.
+
+Aggregate and semantic fact keys, source references, lineage, labels,
+observations and all other row fields remain identical. Both feeds compile
+through the period-2024 fiscal registry, age targets, packaged CD crosswalk
+and reviewed Medicaid substitutions to the same 32,867 target identities in
+32 families. Every target value, measure, filter, entity, period, tolerance,
+citation and hierarchy remains identical. The compiled metadata gains an
+authority on 166 targets and updates legacy keys on 165; the Rhode Island
+substitution deliberately drops per-fact keys. No other TargetSpec field
+changes. The registry version consequently changes from `b74d86d94a76` to
+`749a7b0627ce`.
+
+The evidence preserves the strict full-TargetSpec equality failure alongside
+this explicit provenance-only comparison. It does not report byte-identical
+registries. See `experiments/us-chronicle-feed-repin/artifact_qualification.json`.
+Reproduce the comparison against the preserved public feeds with:
 
 ```bash
-uv run pytest packages/microcosm-build/tests/test_release_target_parity.py packages/microcosm-build/tests/test_us_chronicle_feed.py
+uv run python experiments/us-chronicle-feed-repin/qualify_artifact.py \
+  --old ~/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_c5e5bf8.jsonl \
+  --new ~/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact \
+  --out /tmp/us-chronicle-comparison.json
 ```
 
-## What moved and what did not
+The helper checks complete source rows and TargetSpecs, refusing any difference
+outside the four source-provenance paths and two target-metadata paths above,
+or any deviation from their documented counts. It pins both facts hashes and
+the new manifest hash before comparing rows, refusing different inputs. It also
+checks the added publisher authorities, source-cell identity, scope, target
+identity and values. It requires the changed targets to be exactly 155 in
+`cms_medicaid.state_enrollment` and 11 in `jct.tax_expenditures`, and enforces
+the previously qualified registry versions and full canonical TargetSpec hashes.
+Its report includes full target equality separately; adding
+`--require-identical-targets` exits 1 for this repair even when the narrower
+qualification passes. It loads public Chronicle facts, never population data.
 
-Fact keys were re-derived between Chronicle generations (334 of 37,405
-`aggregate_fact_key`s match), so the comparison joins on what identifies a
-cell in the source table: record set, period, `layout.source_row_id` and
-`layout.source_column_id`
-(`experiments/us-chronicle-feed-repin/value_diff.py`, report in
-`value_diff.json`).
+The full export took 578.58 seconds and peaked at 1.75 GB RSS. The canonical
+loader validated all rows, and independent artifact re-packaging produced
+byte-identical facts and manifest. One full export was run for this authority
+repair; the repeated check covers packaging, not a second source export.
+Cross-package label and duplicate-semantic-key warnings remain in the bundle
+reports; all package runs were valid with none skipped.
 
-- Every one of the previous pin's 37,399 cells is in the new feed with the
-  same value: 37,399 shared, 37,399 equal, 0 different, 0 only in the
-  previous pin.
-- The previous pin carried 6 duplicate cells (`cbo.revenue_projection.ty2023`
-  income by source, each twice); the new feed carries each once. That is why
-  `cbo.revenue_projection` counts 24 rows where it counted 30.
-- The new feed adds 1,759 cells the previous pin lacked, all in record sets
-  the pin already had: IRS SOI Table 1.4 for tax years 2020, 2021 and 2022
-  (578, 540 and 523), Table 1.1 for 2022 (76), Medicaid state enrollment for
-  2024-12 and 2025-12 (20 each), W-2 Social Security tips for 2023 (2). Five
-  feed-family row counts move accordingly: `irs_soi.table_1_4` 679 to 2,320,
-  `irs_soi.table_1_1` 84 to 160, `cms_medicaid.state_enrollment` 475 to 515,
-  `irs_soi.form_w2_social_security_tips` 4 to 6, `cbo.revenue_projection` 30
-  to 24.
-- The 15 `semantic_fact_key` matches whose values differed in an earlier
-  comparison (`irs_soi.ty2022.historic_table_2.us`) are duplicate semantic
-  keys, not revisions: on the cell join no shared value differs.
-- Every row carries `dimension_labels`; the previous pin carried none.
+## Why the labelled feed replaced the July pin
 
-Compiling the new feed through `compile_us_fiscal_target_registry(
-target_period=2024, age_targets=True, packaged CD vintage crosswalk)` and
-`apply_us_medicaid_enrollment_substitutions` gives 32,867 targets in 32
-families in 11.9 seconds, every target with a hierarchy, against the July
-register's 32,842. The previous pin cannot compile on main, so the two
-registers are not compared target by target; the only input difference is
-the added rows above, since every shared cell is equal.
+The earlier July feed (`consumer_facts_buildn_v9_4.jsonl`, `b3c08356…`) lacked
+Chronicle-owned dimension labels, which the current target compiler requires.
+The first labelled export in #955 kept exactly its 586 record-set/period pairs.
+Scoping by record set alone would incorrectly add Medicaid months.
 
-The labelled feed exposed one latent defect in microcosm, fixed in this
-change: `apply_us_medicaid_enrollment_substitutions` built Rhode Island's
-substituted spec by cloning a neighbouring state's spec and kept that state's
-hierarchy, so the substituted `TargetSpec` refused with a hierarchy whose
-target id was not its own. `_substituted_hierarchy` now derives the
-hierarchy from the template with the substituted state's geography, label
-and target id, and the register entry carries a reviewed `state_name`
-(`_geography_fallback_label` is UK-only, so the label cannot be derived from
-the FIPS code).
+The source-cell comparison in
+`experiments/us-chronicle-feed-repin/value_diff.json` records that first move:
+all 37,399 prior cells retained the same value; 1,759 cells were added within
+existing record sets; six duplicate CBO cells were represented once. This
+source-authority repair preserves that labelled feed's complete cell surface.
+New source families remain a separate compile-or-reviewed-exclusion decision.
 
-## The consumer artifact is refused at this commit
+A labelled Medicaid hierarchy also exposed a consumer defect corrected in
+#955: the Rhode Island substitute inherited a neighbouring state's hierarchy.
+`_substituted_hierarchy` now uses Rhode Island's identity and reviewed state
+label. That calculation/selection behavior does not change in the authority
+repair.
 
-`chronicle build-consumer-artifact` validates every row against
-`consumer_fact.v3`, whose `concept_alignment` object has required `authority`
-since Chronicle `cafc583`. `build-bundle` at `c5e5bf8` emits 994 rows whose
-`concept_alignment` has `relation: source_label` and no `authority`, in three
-packages: `cms-medicaid-chip-monthly-enrollment-dataset` (515),
-`census-b01001-female-age-2023` (468) and `jct-tax-expenditures-2024` (11).
-So the artifact step refuses (`Consumer fact row 228 … failed schema
-validation at 'concept_alignment': 'authority' is a required property`), and
-this pin is a bare feed: `manifest_sha256` and `artifact_schema_version` are
-null, and `load_us_chronicle_feed().is_bare_feed` is true.
-
-What that means for releases: the `--base-h5` arm of
-`tools/build_us_fiscal_refresh_release.py` accepts a bare
-`consumer_facts.jsonl` (`--ledger-facts` with `--ledger-facts-sha256`); the
-`--exact-k` arm requires `--ledger-manifest-sha256` and therefore an
-artifact directory, and cannot use this pin until Chronicle either records
-an `authority` for those alignments or relaxes the schema for
-`source_label` relations. That is a Chronicle decision, tracked as
-[PolicyEngine/chronicle#277](https://github.com/PolicyEngine/chronicle/issues/277);
-the builder fails closed without `--skip-artifact`, and a later pin at a
-commit that fixes it records the manifest digest in the same declaration.
+This artifact qualification addresses the Chronicle input contract. It does
+not certify a population, pass the release improvement gate or authorize
+publication. Chronicle #278 and the Microcosm consumer change retain their
+independent code-review and CI requirements.

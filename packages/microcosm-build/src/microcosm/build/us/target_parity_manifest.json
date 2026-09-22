@@ -1,8 +1,8 @@
 {
  "schema_version": 1,
  "reference": {
-  "feed": "consumer_facts_us_c5e5bf8.jsonl",
-  "feed_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
+  "feed": "consumer_facts.jsonl",
+  "feed_sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
   "target_period": "2024",
   "registry_compile": "compile_us_fiscal_target_registry(age_targets=True, canonical CD vintage crosswalk) + apply_us_medicaid_enrollment_substitutions; one national + state + congressional-district surface for every artifact (microcosm#449)",
   "us_data_source": "retired us-data pipeline (archived): utils/loss.py (eCPS loss matrix), db/etl_national_targets.py, db/etl_*.py, utils/national_target_parity.py",

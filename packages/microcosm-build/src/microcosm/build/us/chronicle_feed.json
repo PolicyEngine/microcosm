@@ -3,15 +3,15 @@
   "country": "us",
   "scope": "us_fiscal_targets",
   "source_repo": "PolicyEngine/chronicle",
-  "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
-  "build": "tools/build_us_chronicle_feed.py --skip-artifact: one `chronicle build-bundle --year Y --source <package>` per build year in chronicle_feed_scope.json, rows kept for exactly the scope's (record set, period) pairs and sorted by aggregate_fact_key. Bare feed: `chronicle build-consumer-artifact` refuses it at this commit (994 concept_alignment rows lack `authority`); see docs/us-chronicle-feed-repin.md.",
-  "artifact_schema_version": null,
+  "source_commit": "b571381fcd875393ea0dabc326558cfa2ca8e8fa",
+  "build": "tools/build_us_chronicle_feed.py: targeted chronicle build-bundle runs for the unchanged 586 record-set/period pairs in chronicle_feed_scope.json, then chronicle build-consumer-artifact validation. Chronicle #278 records publisher authority for source_label alignments; docs/us-chronicle-feed-repin.md records the qualified input and provenance-only changes.",
+  "artifact_schema_version": "policyengine_ledger.consumer_artifact.v2",
   "consumer_fact_schema_versions": [
     "chronicle.consumer_fact.v3"
   ],
   "consumer_fact_schema_sha256": "bdb51e2a8115634633ba7448c4005930fd9c0bfbade5e1b079b6bc24da485d3d",
   "fact_row_count": 39158,
-  "facts_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
-  "manifest_sha256": null,
-  "scope_sha256": "b769887d716e90612518788700c5c01dba8b411c5c75f3d47bb8b1273550ddc1"
+  "facts_sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
+  "manifest_sha256": "38ec5bf1efe5a0bd017ec5279065e2ea7645b37da237197f03ae2fbca28cadac",
+  "scope_sha256": "a2bca1a35206d0ff89ea9329e10288f60634f7d6286667f30cca55e1623df6e4"
 }

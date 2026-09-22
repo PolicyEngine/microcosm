@@ -2,7 +2,7 @@
  "version": 1,
  "country": "us",
  "source_repo": "PolicyEngine/chronicle",
- "source_commit": "c5e5bf8aa84960c1a200ee47303b19c953092d0f",
+ "source_commit": "b571381fcd875393ea0dabc326558cfa2ca8e8fa",
  "rule": "Exactly the (record_set_id, period) pairs of the pinned feed consumer_facts_buildn_v9_4.jsonl; each built from the named package with `chronicle build-bundle --year <build_year> --source <package>`.",
  "pair_count": 586,
  "runs": {
