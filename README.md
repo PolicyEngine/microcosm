@@ -63,11 +63,12 @@ This writes `progress.json`, `events.ndjson`, `calibration_progress.json`, and
 final candidate diagnostics under `runs/<run_id>/` without updating production
 `latest.json`.
 
-The UK commands (`tools/build_uk_frs_spine.py`,
-`tools/calibrate_uk_national_dataset.py`, `tools/build_uk_rowwise_candidate.py`)
-stage version 2 telemetry to `policyengine/populace-uk-staging` under the same
-switch. The rowwise candidate command also **stages the finished dataset
-bundle** it built, dense or exact-count, under `staged/<run_id>/` in the
+The UK commands (`tools/build_uk_frs_spine.py` and
+`tools/build_uk_rowwise_candidate.py`, whose `--release-role` builds either
+the national or the dense line) stage version 2 telemetry to
+`policyengine/populace-uk-staging` under the same switch. The rowwise
+candidate command also **stages the finished dataset bundle** it built,
+national, dense or exact-count, under `staged/<run_id>/` in the
 private `policyengine/populace-uk-private` repository so the team can inspect
 it without publishing it: `releases/` and `latest.json` are untouched, the
 release contract is not consulted, and a `releasable: false` size run stages

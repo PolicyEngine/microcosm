@@ -1,3 +1,4 @@
+import dataclasses
 import hashlib
 import importlib.util
 import inspect
@@ -22,7 +23,7 @@ from microcosm.calibrate import (
     TargetSpec,
     calibrate,
 )
-from microcosm.frame import Frame, WeightKind, Weights
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
 
 
 def _load_builder_module():
@@ -4339,12 +4340,23 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
 
     class FakeFrame:
+        # Household-only, shaped like the real ``Frame`` contract: ``schema``
+        # is always present, and ``table`` raises ``ValueError`` for an entity
+        # the schema does not declare (``Frame.table``). That is what lets the
+        # pre-calibration SPM composition advisory degrade to a notice here
+        # instead of aborting the run before the gate under test.
+        schema = EntitySchema(group_entities=("household",))
+
         def n(self, entity):
             assert entity == "household"
             return 2 if terminal_mode == "puf_tail" else 4
 
         def table(self, entity):
-            assert entity == "household"
+            if entity != "household":
+                raise ValueError(
+                    f"Unknown entity {entity!r}; schema declares "
+                    f"{list(self.schema.entities)}."
+                )
             size = self.n("household")
             return pd.DataFrame({"household_id": np.arange(1, size + 1, dtype="int64")})
 
@@ -4356,6 +4368,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             )
 
     class FakeExportFrame:
+        # Household-only, shaped like the real ``Frame`` contract for the same
+        # reason ``FakeFrame`` above is: ``schema`` is always present and
+        # ``table`` raises ``ValueError`` for an entity the schema does not
+        # carry. That is what lets the batched SPM composition gate contribute
+        # one "cannot be classified" failure line to this run's report — the
+        # degraded-mode behaviour this test's cofailure contract expects — with
+        # no attribute the real frame lacks.
+        schema = EntitySchema(group_entities=("household",))
+
         def n(self, entity):
             assert entity == "household"
             return 2
@@ -4368,7 +4389,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             )
 
         def table(self, entity):
-            assert entity == "household"
+            if entity != "household":
+                raise ValueError(
+                    f"Unknown entity {entity!r}; schema declares "
+                    f"{list(self.schema.entities)}."
+                )
             return pd.DataFrame({"household_id": np.asarray([10, 20], dtype="int64")})
 
     if terminal_mode == "puf_tail":
@@ -4593,6 +4618,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "load_ledger_consumer_artifact",
         lambda path, **kwargs: SimpleNamespace(
             facts=({"fact": 1},),
+            facts_sha256="facts-sha",
+            manifest_sha256=None,
             provenance=lambda: {
                 "path_name": "facts.jsonl",
                 "fact_row_count": 1,
@@ -4601,6 +4628,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "manifest_sha256": None,
             },
         ),
+    )
+    # The invented feed is not the committed pin; this test is about the
+    # corridor contract, not the pin, which has its own tests.
+    monkeypatch.setattr(
+        builder, "_check_committed_us_ledger_feed_pin", lambda *a, **k: None
     )
     monkeypatch.setattr(
         builder,
@@ -12294,4 +12326,398 @@ def test_evidence_mode_conversion_is_pinned_structurally() -> None:
     ]
     assert len(owner_check_calls) == 5, (
         f"expected 5 owner-resolution sites in _main(), found {len(owner_check_calls)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# The committed US Chronicle feed pin holds the release build's feed
+# ---------------------------------------------------------------------------
+
+
+def _feed_pin(*, bare: bool):
+    from microcosm.build.us_runtime.chronicle_feed import USChronicleFeed
+
+    fields = {f.name for f in dataclasses.fields(USChronicleFeed)}
+    values = {
+        "facts_sha256": "a" * 64,
+        "manifest_sha256": None if bare else "b" * 64,
+    }
+    committed = load_us_chronicle_feed_for_test()
+    for name in fields:
+        if name not in values:
+            values[name] = getattr(committed, name)
+    if bare:
+        values["artifact_schema_version"] = None
+    return USChronicleFeed(**values)
+
+
+def load_us_chronicle_feed_for_test():
+    from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
+
+    return load_us_chronicle_feed()
+
+
+def test_committed_feed_pin_accepts_the_pinned_feed_and_refuses_another() -> None:
+    builder = _load_builder_module()
+    bare = _feed_pin(bare=True)
+    builder._check_committed_us_ledger_feed_pin(
+        "a" * 64, manifest_sha256=None, allow_unpinned_feed=False, pin=bare
+    )
+    # A bare pin says nothing about a manifest, so an artifact feed with the
+    # pinned facts passes too.
+    builder._check_committed_us_ledger_feed_pin(
+        "a" * 64, manifest_sha256="c" * 64, allow_unpinned_feed=False, pin=bare
+    )
+    with pytest.raises(SystemExit, match=r"facts: loaded " + "f" * 64) as excinfo:
+        builder._check_committed_us_ledger_feed_pin(
+            "f" * 64, manifest_sha256=None, allow_unpinned_feed=False, pin=bare
+        )
+    assert "committed " + "a" * 64 in str(excinfo.value)
+    assert "--allow-unpinned-feed" in str(excinfo.value)
+
+
+def test_committed_feed_pin_holds_the_manifest_when_the_pin_is_an_artifact() -> None:
+    builder = _load_builder_module()
+    artifact = _feed_pin(bare=False)
+    builder._check_committed_us_ledger_feed_pin(
+        "a" * 64, manifest_sha256="b" * 64, allow_unpinned_feed=False, pin=artifact
+    )
+    with pytest.raises(SystemExit, match="manifest: loaded None"):
+        builder._check_committed_us_ledger_feed_pin(
+            "a" * 64, manifest_sha256=None, allow_unpinned_feed=False, pin=artifact
+        )
+
+
+def test_committed_feed_pin_is_waived_only_by_the_flag() -> None:
+    builder = _load_builder_module()
+    bare = _feed_pin(bare=True)
+    builder._check_committed_us_ledger_feed_pin(
+        "f" * 64, manifest_sha256=None, allow_unpinned_feed=True, pin=bare
+    )
+    assert builder._parse_args(_minimal_pin_argv()).allow_unpinned_feed is False
+    assert (
+        builder._parse_args(
+            [*_minimal_pin_argv(), "--allow-unpinned-feed"]
+        ).allow_unpinned_feed
+        is True
+    )
+
+
+def _minimal_pin_argv() -> list[str]:
+    return [
+        "--base-h5",
+        "base.h5",
+        "--ledger-facts",
+        "facts.jsonl",
+        "--release-id",
+        "populace-us-2024-pin-test",
+        "--out",
+        "out",
+    ]
+
+
+def test_main_checks_the_committed_feed_pin_before_compiling_targets() -> None:
+    """The pin check sits between loading the feed and compiling on it."""
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    loaded = source.index("ledger_artifact = load_ledger_consumer_artifact(")
+    checked = source.index("_check_committed_us_ledger_feed_pin(")
+    compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
+    assert loaded < checked < compiled
+    assert source.count("_check_committed_us_ledger_feed_pin(") == 1
+
+
+# SPM measurement composition refusal
+# ---------------------------------------------------------------------------
+
+
+def _spm_frame(people: list[dict]) -> Frame:
+    """A US frame from ``{spm, age, **role columns}`` specs, one household."""
+    from microcosm.frame.units import US_SCHEMA
+
+    role_columns = (
+        "is_spm_independent_minor_role",
+        "is_household_head",
+        "is_household_spouse",
+    )
+    rows = []
+    for index, person in enumerate(people, start=1):
+        row = {
+            "person_id": index,
+            "person_household_id": 1,
+            "person_tax_unit_id": 1,
+            "person_spm_unit_id": int(person["spm"]),
+            "person_family_id": 1,
+            "person_marital_unit_id": index,
+            "age": float(person["age"]),
+        }
+        for column in role_columns:
+            if any(column in candidate for candidate in people):
+                row[column] = bool(person.get(column, False))
+        rows.append(row)
+    person_table = pd.DataFrame(rows)
+    return Frame(
+        {
+            "person": person_table,
+            "household": pd.DataFrame({"household_id": [1]}),
+            "tax_unit": pd.DataFrame({"tax_unit_id": [1]}),
+            "spm_unit": pd.DataFrame(
+                {"spm_unit_id": sorted({int(p["spm"]) for p in people})}
+            ),
+            "family": pd.DataFrame({"family_id": [1]}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": person_table["person_marital_unit_id"].tolist()}
+            ),
+        },
+        US_SCHEMA,
+        {"household": Weights(np.array([100.0]), WeightKind.CALIBRATED)},
+    )
+
+
+def test__spm_composition_gate__minor_only_unit__fails_by_name() -> None:
+    """The release must name the unit and the remedy, not re-raise the engine's
+    anonymous population-wide ``SPM_COMPOSITION_REQUIRED``."""
+    builder = _load_builder_module()
+    frame = _spm_frame([{"spm": 1, "age": 40}, {"spm": 2, "age": 16}])
+
+    failures, details = builder._spm_composition_gate_failures(frame, stage="unit test")
+
+    assert len(failures) == 1
+    # The batched raise prefixes "Release gates failed: " to the joined lines.
+    assert failures[0].startswith("SPM measurement composition failed (unit test): ")
+    assert "SPM_COMPOSITION_REQUIRED" in failures[0]
+    # The single-sourced remedy travels with the refusal.
+    assert "Remedy:" in failures[0]
+    assert "spm_unit_id(s): 2" in failures[0]
+    assert details["evaluated"] is True
+    assert details["n_units_without_classified_adult"] == 1
+
+
+def test__spm_composition_gate__every_unit_classified__contributes_no_failure() -> None:
+    builder = _load_builder_module()
+    frame = _spm_frame([{"spm": 1, "age": 40}, {"spm": 2, "age": 18}])
+
+    failures, details = builder._spm_composition_gate_failures(frame, stage="unit test")
+
+    assert failures == []
+    assert details["evaluated"] is True
+    assert details["n_units"] == 2
+    assert details["n_units_without_classified_adult"] == 0
+
+
+def test__spm_composition_gate__source_role_rescues_the_minor() -> None:
+    builder = _load_builder_module()
+    frame = _spm_frame(
+        [
+            {"spm": 1, "age": 40, "is_spm_independent_minor_role": False},
+            {"spm": 2, "age": 16, "is_spm_independent_minor_role": True},
+        ]
+    )
+
+    failures, details = builder._spm_composition_gate_failures(frame, stage="unit test")
+
+    assert failures == []
+    assert details["role_source"] == "source_column"
+    assert details["n_units_without_classified_adult"] == 0
+
+
+def test__spm_composition_gate__unclassifiable_frame__is_a_named_gate_failure() -> None:
+    """A frame the rule cannot read must not kill the build with a bare
+    ``ValueError`` out of the check.
+
+    policyengine-us registers ``age`` as an input-only variable with
+    ``default_value = 40``, so an export carrying no ``age`` column is not a
+    population the engine would refuse — but it is a population this gate
+    cannot vouch for either. It becomes one more line in the tool's batched
+    ``Release gates failed:`` report, naming the reason, rather than a
+    traceback from inside ``check_spm_composition``.
+    """
+    builder = _load_builder_module()
+    frame = _spm_frame([{"spm": 1, "age": 40}])
+    person = frame.table("person").drop(columns=["age"])
+    stripped = Frame(
+        {
+            entity: (person if entity == "person" else frame.table(entity))
+            for entity in frame.entities
+        },
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+    failures, details = builder._spm_composition_gate_failures(
+        stripped, stage="unit test"
+    )
+
+    assert len(failures) == 1
+    assert failures[0].startswith("SPM measurement composition failed (unit test): ")
+    assert "cannot be classified" in failures[0]
+    assert "no 'age' column" in failures[0]
+    assert details == {
+        "evaluated": False,
+        "error": details["error"],
+    }
+    assert "no 'age' column" in details["error"]
+
+
+def test__spm_composition_report__unclassifiable_frame__raises_for_the_advisory(
+    monkeypatch,
+) -> None:
+    """The pre-calibration advisory catches this; the graded point re-raises it.
+
+    A frame with no ``age`` column cannot be classified at all. The report
+    function must surface that as a ValueError naming the column, so the
+    advisory's ``except (KeyError, ValueError)`` can degrade to a notice while
+    the export-frame assertion still refuses.
+    """
+    builder = _load_builder_module()
+    frame = _spm_frame([{"spm": 1, "age": 40}])
+    person = frame.table("person").drop(columns=["age"])
+    stripped = Frame(
+        {
+            entity: (person if entity == "person" else frame.table(entity))
+            for entity in frame.entities
+        },
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+    with pytest.raises(ValueError, match="no 'age' column"):
+        builder._spm_composition_report(stripped)
+
+
+def test__spm_composition_report__frame_without_spm_units__raises_for_the_advisory() -> (
+    None
+):
+    """A real frame whose schema declares no ``spm_unit`` raises ``ValueError``.
+
+    ``Frame.table`` refuses an undeclared entity with ``ValueError``, so a
+    household-only pool degrades the pre-calibration advisory to a notice
+    through the same ``except (KeyError, ValueError)`` — no broader catch, and
+    no attribute the real frame lacks, is needed for that.
+    """
+    builder = _load_builder_module()
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2],
+                    "person_household_id": [1, 1],
+                    "age": [40.0, 16.0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [1]}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.array([100.0]), WeightKind.CALIBRATED)},
+    )
+
+    with pytest.raises(ValueError, match="Unknown entity 'spm_unit'"):
+        builder._spm_composition_report(frame)
+
+
+def test_spm_composition_gate_rides_the_batched_pre_export_raise() -> None:
+    """Pin the WIRING, not just the helper.
+
+    Every other test here calls ``_spm_composition_gate_failures`` directly, so
+    deleting its call from ``_main()`` would leave them all green while the
+    release stopped refusing anything. This is the same AST ordering idiom
+    ``test_release_h5_write_sits_between_batched_raise_and_smoke`` uses, and it
+    pins the three properties the placement exists for: the gate is evaluated
+    exactly once, its verdict joins the single batched pre-export failure list,
+    and that raise precedes both the export H5 write and the calibration NPZ
+    write.
+    """
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    tree = ast.parse(source)
+
+    gate_calls: list[int] = []
+    extends: list[int] = []
+    batched_raises: list[int] = []
+    writes: list[int] = []
+    npz_writes: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Raise):
+            segment = ast.get_source_segment(source, node) or ""
+            if "terminal_gate_failures" in segment:
+                batched_raises.append(node.lineno)
+        elif isinstance(node, ast.Call):
+            func = node.func
+            name = (
+                func.attr
+                if isinstance(func, ast.Attribute)
+                else getattr(func, "id", None)
+            )
+            if name == "_spm_composition_gate_failures":
+                gate_calls.append(node.lineno)
+            elif name == "write_dataset":
+                writes.append(node.lineno)
+            elif name == "_write_npz":
+                npz_writes.append(node.lineno)
+            elif name == "extend" and "spm_composition_failures" in (
+                ast.get_source_segment(source, node) or ""
+            ):
+                extends.append(node.lineno)
+
+    assert len(gate_calls) == 1, (
+        "main() must classify the export frame's SPM measurement composition "
+        f"exactly once; found {gate_calls}"
+    )
+    assert len(extends) == 1, (
+        "the gate's verdict must join terminal_gate_failures, or a failing "
+        f"export is exported anyway; found {extends}"
+    )
+    assert len(batched_raises) == 1, batched_raises
+    assert len(writes) == 1, writes
+    assert len(npz_writes) == 1, npz_writes
+    assert gate_calls[0] < extends[0] < batched_raises[0] < writes[0] < npz_writes[0], (
+        "Ordering contract violated: the SPM composition gate "
+        f"({gate_calls[0]}) must be evaluated and extended into the batch "
+        f"({extends[0]}) before the batched pre-export raise "
+        f"({batched_raises[0]}), which must precede the export H5 write "
+        f"({writes[0]}) and the calibration NPZ write ({npz_writes[0]})."
+    )
+
+
+def test_spm_composition_gate_is_not_guarded_by_skip_reform_validation() -> None:
+    """The check needs no engine and no reform-validation machinery.
+
+    ``--skip-reform-validation``'s help is "Do not emit reform_validation.json
+    for this release" — nothing in it suggests it also disables a data-integrity
+    gate. Walking the ``if not args.skip_reform_validation:`` bodies proves the
+    gate call is not inside one, rather than trusting indentation.
+    """
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    tree = ast.parse(source)
+
+    skipped_lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        if "args.skip_reform_validation" not in (
+            ast.get_source_segment(source, node.test) or ""
+        ):
+            continue
+        for branch in (*node.body, *node.orelse):
+            for inner in ast.walk(branch):
+                if hasattr(inner, "lineno"):
+                    skipped_lines.add(inner.lineno)
+
+    assert skipped_lines, "expected at least one --skip-reform-validation guard"
+    gate_calls = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", None) == "_spm_composition_gate_failures"
+    ]
+    assert gate_calls and not skipped_lines.intersection(gate_calls), (
+        "--skip-reform-validation must not disable the SPM composition gate; "
+        f"gate call at {gate_calls} sits inside one of its branches"
     )

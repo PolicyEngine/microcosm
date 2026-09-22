@@ -42,6 +42,7 @@ from microcosm.build.us_runtime import (
     default_congressional_district_vintage_crosswalk_path,
     load_congressional_district_vintage_crosswalk,
 )
+from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
 from microcosm.build.us_runtime.fiscal_targets import compile_us_fiscal_target_registry
 from microcosm.build.us_runtime.medicaid_take_up import (
     apply_us_medicaid_enrollment_substitutions,
@@ -60,15 +61,12 @@ US_PACKAGE_DIR = (
 MANIFEST_PATH = US_PACKAGE_DIR / "target_parity_manifest.json"
 FEED_FAMILIES_PATH = US_PACKAGE_DIR / "target_parity_feed_families.json"
 
+DEFAULT_FEED_NAME = "consumer_facts_us_c5e5bf8.jsonl"
 DEFAULT_FEED_PATH = (
-    Path.home()
-    / "PolicyEngine"
-    / "_buildh-runtime"
-    / "inputs"
-    / "consumer_facts_buildn_v9_4.jsonl"
+    Path.home() / "PolicyEngine" / "_buildh-runtime" / "inputs" / DEFAULT_FEED_NAME
 )
-DEFAULT_FEED_NAME = "consumer_facts_buildn_v9_4.jsonl"
-EXPECTED_FEED_SHA256_PREFIX = "b3c08356"
+#: The pinned feed digest (us/chronicle_feed.json); any other feed is refused.
+EXPECTED_FEED_SHA256 = load_us_chronicle_feed().facts_sha256
 TARGET_PERIOD = 2024
 
 
@@ -749,10 +747,10 @@ def main() -> None:
     args = parser.parse_args()
 
     facts, feed_sha256 = _load_feed(args.ledger_facts)
-    if not feed_sha256.startswith(EXPECTED_FEED_SHA256_PREFIX):
+    if feed_sha256 != EXPECTED_FEED_SHA256:
         raise SystemExit(
-            f"Feed sha256 {feed_sha256[:8]} does not match the pinned prefix "
-            f"{EXPECTED_FEED_SHA256_PREFIX}; refusing to regenerate against an "
+            f"Feed sha256 {feed_sha256} does not match the pinned feed "
+            f"{EXPECTED_FEED_SHA256}; refusing to regenerate against an "
             "unexpected feed."
         )
 

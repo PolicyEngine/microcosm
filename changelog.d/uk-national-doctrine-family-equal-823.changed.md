@@ -1,0 +1,1 @@
+The UK national calibration doctrine is now the certified-cut posture every campaign run had overridden to: `UK_NATIONAL_SOLVE_EPOCHS` is 1500 and `UK_NATIONAL_TARGET_WEIGHT_RULE` is `family_equal` (ruling 2026-09-20), so a doctrine national run records no overrides; `uniform` remains a receipted per-run override.

@@ -862,20 +862,23 @@ def test_post_solve_fence_requires_calibrated_kind_and_mass_record() -> None:
 
 
 def test_national_doctrine_constants_are_the_declared_contract() -> None:
-    assert UK_NATIONAL_SOLVE_EPOCHS == 256
+    # María's ruling (2026-09-20, microcosm#965): the certified-cut posture every
+    # campaign national run overrode to — 1,500 epochs, family_equal — is
+    # the doctrine, so a certified national cut records no overrides.
+    assert UK_NATIONAL_SOLVE_EPOCHS == 1500
     assert UK_NATIONAL_LEARNING_RATE == 0.02
     assert UK_NATIONAL_MAX_WEIGHT_RATIO == 10.0
     assert UK_NATIONAL_SEED == 0
     assert UK_NATIONAL_TARGET_LOSS_CAP == 10.0
     assert UK_NATIONAL_L0_LAMBDA == 0.0
     assert UK_NATIONAL_MASS_RULE == "free"
-    # María's ruling (2026-08-24): family_equal is vocabulary, never the
-    # default — she passes it as an explicit per-run override.
-    assert UK_NATIONAL_TARGET_WEIGHT_RULE == "uniform"
+    # "uniform" (the 2026-08-24 default) stays vocabulary: an explicit,
+    # receipted per-run override, never silently reachable.
+    assert UK_NATIONAL_TARGET_WEIGHT_RULE == "family_equal"
     assert UK_NATIONAL_SOLVE_DOCTRINE == UKNationalSolveDoctrine()
     assert UK_NATIONAL_SOLVE_DOCTRINE.scale_rule == "default_target_loss_scales"
-    assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "uniform"
-    assert UKNationalSolveDoctrine(target_weight_rule="family_equal")
+    assert UK_NATIONAL_SOLVE_DOCTRINE.target_weight_rule == "family_equal"
+    assert UKNationalSolveDoctrine(target_weight_rule="uniform")
 
 
 def test_uk_doctrine_with_overrides_receipts_effective_diffs_only() -> None:
@@ -893,18 +896,18 @@ def test_uk_doctrine_with_overrides_receipts_effective_diffs_only() -> None:
     doctrine, receipt = uk_doctrine_with_overrides(
         epochs=128,
         learning_rate=0.01,
-        target_weight_rule="family_equal",
+        target_weight_rule="uniform",
         target_loss_cap=5.0,
     )
     assert doctrine.epochs == 128
     assert doctrine.learning_rate == 0.01
-    assert doctrine.target_weight_rule == "family_equal"
+    assert doctrine.target_weight_rule == "uniform"
     assert doctrine.target_loss_cap == 5.0
     assert receipt == {
-        "epochs": {"default": 256, "effective": 128},
+        "epochs": {"default": 1500, "effective": 128},
         "learning_rate": {"default": 0.02, "effective": 0.01},
         "target_loss_cap": {"default": 10.0, "effective": 5.0},
-        "target_weight_rule": {"default": "uniform", "effective": "family_equal"},
+        "target_weight_rule": {"default": "family_equal", "effective": "uniform"},
     }
 
 
