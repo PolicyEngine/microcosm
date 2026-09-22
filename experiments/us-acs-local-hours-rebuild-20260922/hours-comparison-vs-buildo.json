@@ -85,6 +85,17 @@
      "60+": 4430
     }
    }
+  },
+  "release": {
+   "build_id": "populace-us-2024-buildo-acs-local-cadaf4180-20260922T074911Z",
+   "artifact_sha256": "b65c30ec553d6ce36fc67918a8f3c87c724de39af5a899370aa2a29f407b68ae",
+   "calibration": {
+    "n_targets": 1247,
+    "households": 1588854,
+    "epochs": 800,
+    "source": "calibration_diagnostics.json in this directory"
+   },
+   "published": false
   }
  },
  "incumbent": {
@@ -172,6 +183,25 @@
      "50-59": 6122,
      "60+": 4430
     }
+   }
+  },
+  "release": {
+   "build_id": "populace-us-2024-buildo-acs-local-77e2061-20260724T110908Z",
+   "hub_repo": "policyengine/populace-us",
+   "hub_snapshot_commit": "515b7398d7b4414694865b7a95e4c3f1faa2edb5",
+   "artifact_sha256": "71763290ded993789af0ad818fd833a6aabb9ca7ff7d14f78315340d8617c6f4",
+   "built_at": "2026-07-24T11:09:11Z",
+   "built_with": {
+    "policyengine-us": "1.764.6",
+    "policyengine-core": "3.26.11"
+   },
+   "calibration": {
+    "n_targets": 4461,
+    "households": 1588854,
+    "epochs": 800,
+    "initial_loss": 0.074759,
+    "final_loss": 0.072359,
+    "source": "releases/populace-us-2024-buildo-acs-local-77e2061-20260724T110908Z/calibration_diagnostics.json at that snapshot, sha256 54251f2209c2e71bb1cce9f5626a3e59879847747156e873de51011c8e8b508f, the digest its release manifest signs"
    }
   }
  },
