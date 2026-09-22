@@ -58,6 +58,41 @@ RECEIPTS = (
     ),
 )
 
+_SPI_UPRATED_DRIFT_RATIONALE = (
+    "Declared uprating (microcosm#280 lane, María's ruling of 2026-09-22): ours "
+    "moves the SPI 2023-24 band value to the 2025 calibration year by the index "
+    "the reference declares (amounts by the pinned engine's per-variable OBR and "
+    "ONS indices between 1 January 2023 and 1 January 2025, the state pension by "
+    "the new State Pension rate the engine pays, counts by HMRC's projected "
+    "taxpayer growth in the containing Table 2.5 band as the calendar-2025 "
+    "window); the frozen incumbent fixture holds the 2023-24 values it projects "
+    "one year forward with its own income-projection ratios."
+)
+
+_INCOME_ANCHOR_LEDGER_ONLY_RATIONALE = (
+    "Coverage the incumbent lacks (microcosm#280 lane): HMRC's Income Tax "
+    "liabilities Table 2.5 taxpayers, total income and tax by band as the "
+    "calendar-2025 window of the 2024-25 and 2025-26 projections, and the SPI "
+    "2023-24 savings-interest rows by band uprated by the household interest "
+    "index; the incumbent registry binds neither (chronicle#282)."
+)
+
+_ESA_CUBE_DRIFT_RATIONALE = (
+    "Source class (microcosm#280 lane): ours binds DWP's Stat-Xplore ESA "
+    "caseload by payment type as the mean of the four quarterly points inside "
+    "calendar 2025 summed over the paid types (credits-only claimants left out; "
+    "dual claimants counted under both types they hold); the incumbent binds the "
+    "August 2025 headline and single-type counts from the benefit statistics "
+    "summary (chronicle#282)."
+)
+
+_ESA_CUBE_ROWS = (
+    "dwp.esa_claimants",
+    "dwp.esa_contrib_claimants",
+    "dwp.esa_income_claimants",
+)
+_INCOME_ANCHOR_PREFIXES = ("hmrc.itl.", "hmrc.spi.savings_interest_income.")
+
 _CGT_OBSERVED_RATIONALES = {
     "hmrc.cgt.gains_total": (
         "PR #889 selects HMRC FY2024-25 individuals-only observed gains of "
@@ -536,6 +571,19 @@ def _add_signed_rationale_notes(
             continue
         elif name in _CGT_OBSERVED_RATIONALES:
             row["reason"] = _CGT_OBSERVED_RATIONALES[name]
+        elif (
+            name.startswith("hmrc/")
+            and "_income_band_" in name
+            and row.get("kind") == "calibration_drift"
+        ):
+            row["reason"] = _SPI_UPRATED_DRIFT_RATIONALE
+        elif (
+            name.startswith(_INCOME_ANCHOR_PREFIXES)
+            and row.get("kind") == "ledger_only"
+        ):
+            row["reason"] = _INCOME_ANCHOR_LEDGER_ONLY_RATIONALE
+        elif name in _ESA_CUBE_ROWS and row.get("kind") == "calibration_drift":
+            row["reason"] = _ESA_CUBE_DRIFT_RATIONALE
         elif (
             name.startswith(_CGT_BAND_INCUMBENT_PREFIXES)
             and row.get("kind") == "calibration_drift"

@@ -10,7 +10,8 @@
     "monthly_window_average",
     "monthly_window_sum_average",
     "linear_combination",
-    "scaled_by_ratio"
+    "scaled_by_ratio",
+    "calendar_year_window"
   ],
   "resolution_defaults": {
     "base_period_policy": "latest_not_after_build_base_period",
@@ -742,7 +743,12 @@
       "hmrc.cgt.taxpayers_by_region": "New declaration backed by the HMRC CGT Table 5 2024-25 country/region facts in Chronicle (cgt_country_region_2026), scaled to the individuals basis by the Table 1 share; the incumbent registry has no regional CGT metric (microcosm#725).",
       "hmrc.cgt.gains_by_region": "New declaration backed by the HMRC CGT Table 5 2024-25 country/region facts in Chronicle (cgt_country_region_2026), scaled to the individuals basis by the Table 1 share; the incumbent registry has no regional CGT metric (microcosm#725).",
       "hmrc.cgt.residential_property_taxpayers": "New declaration backed by the HMRC CGT Table 8a 2024-25 residential property facts in Chronicle (cgt_residential_property_2026), scaled to the individuals basis by the Table 8b share; the incumbent registry has no residential-property CGT metric (microcosm#725).",
-      "hmrc.cgt.residential_property_gains": "New declaration backed by the HMRC CGT Table 8a 2024-25 residential property facts in Chronicle (cgt_residential_property_2026), scaled to the individuals basis by the Table 8b share; the incumbent registry has no residential-property CGT metric (microcosm#725)."
+      "hmrc.cgt.residential_property_gains": "New declaration backed by the HMRC CGT Table 8a 2024-25 residential property facts in Chronicle (cgt_residential_property_2026), scaled to the individuals basis by the Table 8b share; the incumbent registry has no residential-property CGT metric (microcosm#725).",
+      "hmrc.itl.taxpayers_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle (income_tax_liabilities_july_2026): taxpayers by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry binds SPI 2023-24 component counts only (microcosm#280 lane).",
+      "hmrc.itl.total_income_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle: total income by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry has no total-income anchor (microcosm#280 lane).",
+      "hmrc.itl.income_tax_by_total_income_band": "New declaration backed by HMRC's Income Tax liabilities statistics Table 2.5 (July 2026) in Chronicle: Income Tax liabilities by total-income band as the calendar-2025 window of the 2024-25 and 2025-26 projections; the incumbent registry binds the OBR receipts total only (microcosm#280 lane).",
+      "hmrc.spi.savings_interest_income.amount_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 interest from banks and building societies in Chronicle (spi_income_bands_2023_24); the incumbent registry deliberately excludes savings interest from its SPI targets (uk-data incomes_projection.py) and binds the ONS D.41 row instead (microcosm#866, #280 lane).",
+      "hmrc.spi.savings_interest_income.count_by_total_income_band": "New declaration backed by SPI 2023-24 Table 3.7 interest recipient counts in Chronicle (spi_income_bands_2023_24); the incumbent registry has no savings-interest count target (microcosm#866, #280 lane)."
     },
     "suppressed_ancestors": {
       "hmrc/salary_sacrifice_it_relief_basic_rate": {
@@ -1031,7 +1037,12 @@
       "hmrc.cgt.taxpayers_by_gain_band",
       "hmrc.cgt.gains_by_gain_band",
       "hmrc.cgt.residential_property_taxpayers",
-      "hmrc.cgt.residential_property_gains"
+      "hmrc.cgt.residential_property_gains",
+      "hmrc.itl.taxpayers_by_total_income_band",
+      "hmrc.itl.total_income_by_total_income_band",
+      "hmrc.itl.income_tax_by_total_income_band",
+      "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+      "hmrc.spi.savings_interest_income.count_by_total_income_band"
     ]
   },
   "profile_parity": {
@@ -2928,7 +2939,9 @@
         "entity_name": "person"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Amount by total income band"
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.average_earnings between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
       "target_id": "hmrc.spi.employment_income.count_by_total_income_band",
@@ -2976,7 +2989,9 @@
         "groupby_dimension": "hmrc.total_income_band"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Count by total income band"
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (microcosm#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
       "target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
@@ -3012,7 +3027,9 @@
         "entity_name": "person"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Amount by total income band"
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.mixed_income between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
       "target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
@@ -3060,7 +3077,9 @@
         "groupby_dimension": "hmrc.total_income_band"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Count by total income band"
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (microcosm#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
       "target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
@@ -3096,7 +3115,9 @@
         "entity_name": "person"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Amount by total income band"
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
       "target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
@@ -3144,7 +3165,9 @@
         "groupby_dimension": "hmrc.total_income_band"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Count by total income band"
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (microcosm#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
       "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
@@ -3180,7 +3203,9 @@
         "entity_name": "person"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Amount by total income band"
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
       "target_id": "hmrc.spi.property_income.count_by_total_income_band",
@@ -3228,7 +3253,9 @@
         "groupby_dimension": "hmrc.total_income_band"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Count by total income band"
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (microcosm#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
@@ -3264,7 +3291,9 @@
         "entity_name": "person"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Amount by total income band"
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.private_pension_index between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
       "target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
@@ -3312,7 +3341,9 @@
         "groupby_dimension": "hmrc.total_income_band"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Count by total income band"
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (microcosm#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
       "target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
@@ -3348,7 +3379,9 @@
         "entity_name": "person"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Amount by total income band"
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the new State Pension weekly rate the engine pays at each period (203.85 at 2023, 230.25 at 2025 on the pinned engine): the engine fixes every pensioner's amount at the period's rate, so the bands can only be met at that level. Ruled by María on 2026-09-22 (microcosm#280 lane)."
     },
     {
       "target_id": "hmrc.spi.state_pension.count_by_total_income_band",
@@ -3396,7 +3429,9 @@
         "groupby_dimension": "hmrc.total_income_band"
       },
       "category_id": "hmrc.survey_of_personal_incomes",
-      "label": "Count by total income band"
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (microcosm#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
     },
     {
       "target_id": "hmrc.cgt.taxpayers_total",
@@ -3649,7 +3684,13 @@
       "measurement": {
         "entity": "benunit",
         "map_to": "household",
-        "concept": "uk.benefit_unit.count"
+        "concept": "uk.benefit_unit.count",
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3664,7 +3705,7 @@
           "value_variable": "benunit_count",
           "from_entity": "benunit",
           "map_to": "household",
-          "notes": "uk-data binds the combined count to the benunit-level esa variable. People on ESA at August 2025 (DWP benefit statistics, February 2026). The published total includes claimants on both contributory and income-related ESA and claimants receiving National Insurance credits only; the model's esa > 0 covers paid ESA of either type, so the total sits above what the frame can carry by the credits-only caseload, which DWP does not publish. The frame also carries fewer ESA reporters than the FRS: 791k on spine-q against 1.06m in FRS 2024-25 at design weights, the SPI support channel under-carrying them (#882, microcosm#869). Bound at benefit-unit grain for incumbent parity."
+          "notes": "Paid ESA caseload, Great Britain, as the mean of the four quarterly Stat-Xplore points inside calendar 2025 (February, May, August, November 2025) of the three paid payment types, contributions based plus both plus income based; the published total also counts 'No payments - Credits only' claimants (78k to 84k through 2025), whose National Insurance record is credited without payment and whom no household frame can pay, so they are left out rather than described as unpublished (microcosm#280 section 5, chronicle#282). Calendar-2025 window per María's ruling of 2026-09-22; the year is the ESA income-related managed migration to Universal Credit (income based 499k in February to 30k in November), so a single point would misstate the year the calibration represents. Bound at benefit-unit grain on esa > 0 for incumbent parity; the cube counts claimants. The frame still carries fewer ESA reporters than the FRS (the SPI support channel, microcosm#869)."
         },
         "axiom": {
           "metric_name": "dwp/esa_claimants",
@@ -3674,13 +3715,54 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
-        "source_concept": "dwp.esa_claimants",
+        "source_concept": "dwp.esa_caseload",
+        "source_measure_id": "total_claimants",
+        "groupby_dimension": "dwp.esa_payment_type_by_phase",
+        "dimensions": [
+          "payment_type",
+          "phase_of_esa_claim"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
         "dimension_values": {
-          "esa_claim_type": "all"
+          "phase_of_esa_claim": "all",
+          "payment_type": [
+            "Contributions based",
+            "Both income and contributions based",
+            "Income based"
+          ]
         }
       },
       "category_id": "dwp.legacy_benefits",
-      "label": "Employment and Support Allowance claimants"
+      "label": "Employment and Support Allowance claimants",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "payment_type": "Contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "payment_type": "Both income and contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "payment_type": "Income based",
+            "phase_of_esa_claim": "all"
+          }
+        }
+      ],
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "dwp.esa_contrib_claimants",
@@ -3691,7 +3773,13 @@
       "measurement": {
         "entity": "person",
         "map_to": "household",
-        "concept": "uk.person.count"
+        "concept": "uk.person.count",
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3706,7 +3794,7 @@
           "value_variable": "person_count",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "Contributory ESA at August 2025 (DWP benefit statistics, February 2026): a single-type count per the publication, excluding claimants on both contributory and income-related ESA. The model's esa_contrib > 0 includes dual claimants; on Q50f the overlap is about 4k of 707k (0.5 percent), recorded rather than filtered because esa_income is a benefit-unit variable (#882, microcosm#869)."
+          "notes": "Contributory ESA claimants, Great Britain, as the mean of the four quarterly Stat-Xplore points inside calendar 2025: payment types 'Contributions based' plus 'Both income and contributions based', so the row matches the model's esa_contrib > 0, which includes dual claimants (microcosm#280 section 5, chronicle#282; supersedes the August 2025 single-type count from the benefit statistics summary). The contributory caseload rises through 2025 as dual claimants lose the income-related part on migration to Universal Credit."
         },
         "axiom": {
           "metric_name": "dwp/esa_contrib_claimants",
@@ -3716,13 +3804,47 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
-        "source_concept": "dwp.esa_claimants",
+        "source_concept": "dwp.esa_caseload",
+        "source_measure_id": "total_claimants",
+        "groupby_dimension": "dwp.esa_payment_type_by_phase",
+        "dimensions": [
+          "payment_type",
+          "phase_of_esa_claim"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
         "dimension_values": {
-          "esa_claim_type": "contributions_based"
+          "phase_of_esa_claim": "all",
+          "payment_type": [
+            "Contributions based",
+            "Both income and contributions based"
+          ]
         }
       },
       "category_id": "dwp.legacy_benefits",
-      "label": "Employment and Support Allowance contrib claimants"
+      "label": "Employment and Support Allowance contrib claimants",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "payment_type": "Contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "payment_type": "Both income and contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        }
+      ],
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "dwp.esa_income_claimants",
@@ -3733,7 +3855,13 @@
       "measurement": {
         "entity": "benunit",
         "map_to": "household",
-        "concept": "uk.benefit_unit.count"
+        "concept": "uk.benefit_unit.count",
+        "source_months": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ]
       },
       "bindings": {
         "policyengine": {
@@ -3748,7 +3876,7 @@
           "value_variable": "benunit_count",
           "from_entity": "benunit",
           "map_to": "household",
-          "notes": "Income-related ESA at August 2025 (DWP benefit statistics, February 2026): a single-type count per the publication, excluding claimants on both types. The model's esa_income > 0 includes dual claimants; the overlap is about 4k of 180k on Q50f, recorded rather than filtered (#882, microcosm#869)."
+          "notes": "Income-related ESA claimants, Great Britain, as the mean of the four quarterly Stat-Xplore points inside calendar 2025: payment types 'Income based' plus 'Both income and contributions based', so the row matches the model's esa_income > 0, which includes dual claimants (microcosm#280 section 5, chronicle#282; supersedes the August 2025 single-type count). The calendar-2025 mean spans the managed migration to Universal Credit (759k in February to 50k in November); the FRS 2024-25 base carries the pre-migration caseload, so this row measures the year's average, not the year-end."
         },
         "axiom": {
           "metric_name": "dwp/esa_income_claimants",
@@ -3758,13 +3886,47 @@
       },
       "ledger_selector": {
         "source_name": "dwp",
-        "source_concept": "dwp.esa_claimants",
+        "source_concept": "dwp.esa_caseload",
+        "source_measure_id": "total_claimants",
+        "groupby_dimension": "dwp.esa_payment_type_by_phase",
+        "dimensions": [
+          "payment_type",
+          "phase_of_esa_claim"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
         "dimension_values": {
-          "esa_claim_type": "income_related"
+          "phase_of_esa_claim": "all",
+          "payment_type": [
+            "Income based",
+            "Both income and contributions based"
+          ]
         }
       },
       "category_id": "dwp.legacy_benefits",
-      "label": "Employment and Support Allowance income claimants"
+      "label": "Employment and Support Allowance income claimants",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "payment_type": "Income based",
+            "phase_of_esa_claim": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "payment_type": "Both income and contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        }
+      ],
+      "period_match_policy": "source_window"
     },
     {
       "target_id": "dwp.jsa_claimants",
@@ -17447,6 +17609,228 @@
       "label": "Capital Gains Tax residential property gains"
     },
     {
+      "target_id": "hmrc.itl.taxpayers_by_total_income_band",
+      "family": "hmrc_itl",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.tax.income_tax.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/itl_taxpayers_income_band",
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "total_income",
+          "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out.",
+          "filters": [
+            {
+              "variable": "income_tax",
+              "operator": ">",
+              "value": 0
+            }
+          ]
+        },
+        "axiom": {
+          "metric_name": "hmrc/itl_taxpayers_income_band",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
+      },
+      "value_operation": "calendar_year_window",
+      "assertion_policy": "allow_source_projection",
+      "category_id": "hmrc.income_tax_liabilities_statistics",
+      "label": "Income Tax payers by total income band"
+    },
+    {
+      "target_id": "hmrc.itl.total_income_by_total_income_band",
+      "family": "hmrc_itl",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.total.amount",
+        "groupby_dimension": "hmrc.total_income_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/itl_total_income_income_band",
+          "value_variable": "total_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "total_income",
+          "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out."
+        },
+        "axiom": {
+          "metric_name": "hmrc/itl_total_income_income_band",
+          "status": "pending",
+          "value_rule": "uk.income.total.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
+      },
+      "value_operation": "calendar_year_window",
+      "assertion_policy": "allow_source_projection",
+      "category_id": "hmrc.income_tax_liabilities_statistics",
+      "label": "Total income by total income band"
+    },
+    {
+      "target_id": "hmrc.itl.income_tax_by_total_income_band",
+      "family": "hmrc_itl",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.tax.income_tax.amount",
+        "groupby_dimension": "hmrc.total_income_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/itl_income_tax_income_band",
+          "value_variable": "income_tax",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "total_income",
+          "notes": "Bound at the 2025 calibration period as the calendar-2025 window of HMRC's 2024-25 and 2025-26 projections (3/12 and 9/12; value_operation calendar_year_window), from the Income Tax liabilities statistics of 15 July 2026, HMRC's own projection of the 2023-24 SPI base with ONS population projections and OBR March 2026 assumptions. Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and facts published by tax year use the months to the end of it. Banded by person-level total income on the publisher's eleven bands (30-50k, 50-100k and 200-500k are single bands here; 1m+ splits at 2m); the all-ranges row carries no band and stays out of the fan-out."
+        },
+        "axiom": {
+          "metric_name": "hmrc/itl_income_tax_income_band",
+          "status": "pending",
+          "value_rule": "uk.tax.income_tax.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
+      },
+      "value_operation": "calendar_year_window",
+      "assertion_policy": "allow_source_projection",
+      "category_id": "hmrc.income_tax_liabilities_statistics",
+      "label": "Income Tax liabilities by total income band"
+    },
+    {
+      "target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+      "family": "hmrc_spi",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.income.savings_interest.amount",
+        "groupby_dimension": "hmrc.total_income_band"
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/savings_interest_income_income_band",
+          "value_variable": "savings_interest_income",
+          "from_entity": "person",
+          "map_to": "household",
+          "groupby_variable": "total_income",
+          "notes": "Taxable interest from banks and building societies of taxpayers by total-income band (SPI Table 3.7; ISA interest excluded), the taxpayer-concept anchor microcosm#866 asked for in place of the ONS D.41 row. Banded by person-level total income; band edges come from the fact dimension."
+        },
+        "axiom": {
+          "metric_name": "hmrc/savings_interest_income_income_band",
+          "status": "pending",
+          "value_rule": "uk.income.savings_interest.amount"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person"
+      },
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Amount by total income band",
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.ons.household_interest_income between 1 January 2023 and 1 January 2025, the index the engine uprates savings_interest_income with. Ruled by María on 2026-09-22 (microcosm#280 lane). The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866)."
+    },
+    {
+      "target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+      "family": "hmrc_spi",
+      "geography_levels": [
+        "country"
+      ],
+      "measurement": {
+        "entity": "person",
+        "map_to": "household",
+        "concept": "uk.person.count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "filters": [
+          {
+            "concept": "uk.income.savings_interest.amount",
+            "operator": ">",
+            "value": 0
+          }
+        ]
+      },
+      "bindings": {
+        "policyengine": {
+          "metric_name": "hmrc/savings_interest_income_count_income_band",
+          "groupby_variable": "total_income",
+          "filters": [
+            {
+              "variable": "savings_interest_income",
+              "operator": ">",
+              "value": 0
+            }
+          ],
+          "value_variable": "person_count",
+          "from_entity": "person",
+          "map_to": "household"
+        },
+        "axiom": {
+          "metric_name": "hmrc/savings_interest_income_count_income_band",
+          "status": "pending",
+          "value_rule": "uk.person.count"
+        }
+      },
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band"
+      },
+      "category_id": "hmrc.survey_of_personal_incomes",
+      "label": "Count by total income band",
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by HMRC's own projected growth in Income Tax payers for the Table 2.5 band containing this band (Income Tax liabilities statistics, July 2026): the calendar-2025 window of the 2024-25 and 2025-26 projections (3/12 and 9/12) over the 2023-24 outturn, from the vendored hmrc_itl_taxpayer_counts.json. Ruled by María on 2026-09-22 (microcosm#280 lane): calendar 2025, months to the end of the year for fiscal- and tax-year facts."
+    },
+    {
       "target_id": "hmrc.self_employment_income.amount",
       "family": "hmrc",
       "geography_levels": [
@@ -20536,6 +20920,10 @@
       "dwp.housing_benefit": {
         "provider_id": "dwp",
         "label": "Housing Benefit"
+      },
+      "hmrc.income_tax_liabilities_statistics": {
+        "provider_id": "hmrc",
+        "label": "Income Tax liabilities statistics"
       }
     }
   }

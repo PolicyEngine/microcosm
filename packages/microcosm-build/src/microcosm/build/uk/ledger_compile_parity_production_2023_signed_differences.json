@@ -1,11 +1,11 @@
 {
- "compiled_count": 448,
+ "compiled_count": 477,
  "counts_by_kind": {
   "calibration_drift": 120,
   "fixture_only": 17,
-  "ledger_only": 316
+  "ledger_only": 345
  },
- "difference_count": 453,
+ "difference_count": 482,
  "differences": [
   {
    "fixture_value": 82000.0,
@@ -177,6 +177,27 @@
   },
   {
    "kind": "ledger_only",
+   "ledger_value": 1005791.5,
+   "name": "dwp.esa_claimants",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 741148.0,
+   "name": "dwp.esa_contrib_claimants",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 411227.25,
+   "name": "dwp.esa_income_claimants",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
    "ledger_value": 1685702.9166666667,
    "name": "dwp.hb.households",
    "period": 2023,
@@ -312,6 +333,188 @@
    "kind": "ledger_only",
    "ledger_value": 3130000.0,
    "name": "dwp.uc.households_with_deduction",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1260000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_100000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1240000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 274000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_12570",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1370000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 650000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_150000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3130000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 733000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_200000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2530000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 673000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_300000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1870000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_40000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2340000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_50000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 653000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_500000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1620000000.0,
+   "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_70000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 489000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_100000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 21000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_1000000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1250000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_12570",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2840000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_15000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 146000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_150000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 5250000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_20000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 111000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_200000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 3690000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_30000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 68000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_300000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2370000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_40000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 2230000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_50000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 38000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_500000",
+   "period": 2023,
+   "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
+  },
+  {
+   "kind": "ledger_only",
+   "ledger_value": 1070000.0,
+   "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_70000",
    "period": 2023,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."
   },

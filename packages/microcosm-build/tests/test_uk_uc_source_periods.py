@@ -531,8 +531,29 @@ def test_shipped_uc_monthly_references_preserve_each_declared_window():
         assert reference.value_operation == "monthly_window_average"
         assert reference.period_match_policy == "source_window"
         assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == calendar_2025
+    # The microcosm#280 lane binds the three ESA caseload rows on the four
+    # quarterly Stat-Xplore points inside calendar 2025 (the payment-type cube,
+    # chronicle#282), summed over their paid payment types.
+    esa_quarters = ["2025-02", "2025-05", "2025-08", "2025-11"]
+    legacy = [
+        reference
+        for reference in references
+        if reference.family == "dwp_legacy_benefits"
+        and EXPECTED_SOURCE_MONTHS in reference.metadata
+    ]
+    assert sorted(reference.name for reference in legacy) == [
+        "dwp.esa_claimants",
+        "dwp.esa_contrib_claimants",
+        "dwp.esa_income_claimants",
+    ]
+    for reference in legacy:
+        assert reference.ledger_selector["period_value"] == esa_quarters
+        assert reference.value_operation == "monthly_window_sum_average"
+        assert reference.period_match_policy == "source_window"
+        assert json.loads(reference.metadata[EXPECTED_SOURCE_MONTHS]) == esa_quarters
     assert not any(
         EXPECTED_SOURCE_MONTHS in reference.metadata
         for reference in references
-        if reference.family not in {"dwp_universal_credit", "dwp_housing_benefit"}
+        if reference.family
+        not in {"dwp_universal_credit", "dwp_housing_benefit", "dwp_legacy_benefits"}
     )

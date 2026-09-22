@@ -784,6 +784,22 @@ def _add_uk_membership_accounting(
             ),
         },
         {
+            "family": "hmrc_itl",
+            "status": "active_calendar_year_window_anchors",
+            "active_reference_count": fanout_counts.get("hmrc_itl", 0),
+            "signed_rationale": (
+                "The three HMRC Income Tax liabilities statistics targets "
+                "(Income Tax payers, total income and Income Tax liabilities "
+                "by eleven total-income bands, Table 2.5, July 2026) fan out "
+                "by strict total-income-band pins and bind at the calendar-"
+                "2025 window of HMRC's 2024-25 and 2025-26 source projections "
+                "(three twelfths and nine twelfths; microcosm#280 lane, "
+                "María's ruling of 2026-09-22). They are the calibration-year "
+                "anchors the SPI component bands lack; the OBR fiscal-year "
+                "receipts row stays bound beside them."
+            ),
+        },
+        {
             "family": "dwp_universal_credit",
             "status": "active_with_unmapped_vintage_residue_skipped",
             "active_reference_count": fanout_counts.get("dwp_universal_credit", 0),

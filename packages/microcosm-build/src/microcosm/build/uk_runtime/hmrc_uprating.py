@@ -29,6 +29,7 @@ published by fiscal or tax year use the months to the end of that year.
 from __future__ import annotations
 
 import importlib.metadata
+import re
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from functools import cache, partial
@@ -66,14 +67,36 @@ UK_ENGINE_INDEX_CONCEPTS: tuple[str, ...] = tuple(
 UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT = (
     "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band"
 )
+UK_HMRC_TOTAL_INCOME_GROWTH_INDEX_CONCEPT = (
+    "hmrc.itl_2026.total_income_growth_by_total_income_band"
+)
+UK_HMRC_TOTAL_TAX_GROWTH_INDEX_CONCEPT = (
+    "hmrc.itl_2026.total_tax_growth_by_total_income_band"
+)
 UK_HMRC_TAXPAYER_COUNTS_RESOURCE = "hmrc_itl_taxpayer_counts.json"
 UK_HMRC_TAXPAYER_COUNT_CONCEPT = "hmrc.spi_taxpayer_count"
 UK_HMRC_TAXPAYER_COUNT_MEASURE_ID = "total_taxpayer_count"
-UK_HMRC_TAXPAYER_GROWTH_BASIS = (
-    "HMRC Income Tax liabilities statistics Table 2.5 taxpayers by total-income "
+#: Table 2.5 growth indices: the vendored resource carries the three Table 2.5
+#: measures for every band and year, and each index concept reads one of them.
+UK_HMRC_ITL_GROWTH_MEASURES: Mapping[str, tuple[str, str]] = {
+    UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT: (
+        "hmrc.spi_taxpayer_count",
+        "total_taxpayer_count",
+    ),
+    UK_HMRC_TOTAL_INCOME_GROWTH_INDEX_CONCEPT: (
+        "hmrc.spi_total_income_before_tax_amount",
+        "total_income_amount",
+    ),
+    UK_HMRC_TOTAL_TAX_GROWTH_INDEX_CONCEPT: (
+        "hmrc.spi_total_tax_amount",
+        "total_tax_amount",
+    ),
+}
+UK_HMRC_ITL_GROWTH_BASIS = (
+    "HMRC Income Tax liabilities statistics Table 2.5 {measure} by total-income "
     "band: the calendar-year window of the two tax years overlapping the "
-    "calibration year over the SPI fact's year, in the Table 2.5 band that "
-    "contains the SPI band"
+    "calibration year over the SPI fact's year, summed over the Table 2.5 bands "
+    "the SPI band spans"
 )
 UK_INCOME_UPRATING_ADJUDICATION = (
     "microcosm#280 lane (María, 2026-09-22): the calibration binds at calendar "
@@ -100,6 +123,56 @@ SPI_BAND_TO_ITL_BANDS: Mapping[int, tuple[tuple[int, int | None], ...]] = {
     500_000: ((500_000, 1_000_000),),
     1_000_000: ((1_000_000, 2_000_000), (2_000_000, None)),
 }
+#: Every Table 2.5 band edge, for a band the lower-edge table does not carry
+#: (the regional Table 3.11 top band is 200,000 and over).
+ITL_BANDS: tuple[tuple[int, int | None], ...] = (
+    (12_570, 15_000),
+    (15_000, 20_000),
+    (20_000, 30_000),
+    (30_000, 50_000),
+    (50_000, 100_000),
+    (100_000, 150_000),
+    (150_000, 200_000),
+    (200_000, 500_000),
+    (500_000, 1_000_000),
+    (1_000_000, 2_000_000),
+    (2_000_000, None),
+)
+
+
+def itl_bands_spanned(
+    lower: int, upper: int | None, *, open_top: bool = False
+) -> tuple[tuple[int, int | None], ...]:
+    """The Table 2.5 bands an SPI band spans, refused on a mismatch.
+
+    A band spelled by its lower edge alone is an SPI Table 3.6/3.7 band and
+    takes the declared table; ``open_top`` is a publisher's "and over" band
+    and takes every Table 2.5 band from its lower edge up.
+    """
+
+    if open_top:
+        spanned = tuple(band for band in ITL_BANDS if band[0] >= lower)
+        if not spanned or spanned[0][0] != lower:
+            raise ValueError(f"no Table 2.5 band opens at {lower}.")
+        return spanned
+    declared = SPI_BAND_TO_ITL_BANDS.get(lower)
+    if upper is None:
+        if declared is None:
+            raise ValueError(f"no declared Table 2.5 band for the SPI band at {lower}.")
+        return declared
+    if declared is not None and (declared[-1][1] is None or upper <= declared[-1][1]):
+        # An SPI band spelled with both edges (Table 3.3, 3.11) sits inside the
+        # Table 2.5 band its lower edge declares.
+        return declared
+    spanned = tuple(
+        band
+        for band in ITL_BANDS
+        if band[0] >= lower and band[1] is not None and band[1] <= upper
+    )
+    if not spanned or spanned[0][0] != lower or spanned[-1][1] != upper:
+        raise ValueError(f"the SPI band {lower}-{upper} does not tile Table 2.5 bands.")
+    return spanned
+
 
 ParameterValue = Callable[[str, str], float]
 _LEDGER_FILTER_PREFIX = "ledger_filter_"
@@ -113,8 +186,14 @@ def _engine_system() -> Any:
     return CountryTaxBenefitSystem()
 
 
+@cache
 def engine_parameter_value(path: str, instant: str) -> float:
-    """The pinned engine's value of ``path`` at ``instant`` (``YYYY-MM-DD``)."""
+    """The pinned engine's value of ``path`` at ``instant`` (``YYYY-MM-DD``).
+
+    Cached per (path, instant): the engine materialises a whole parameter
+    snapshot per instant, which is seconds of work, and a compile asks for
+    the same handful of values once per SPI band row.
+    """
 
     node = _engine_system().parameters(instant)
     for part in path.split("."):
@@ -162,6 +241,38 @@ def _target_year(reference: LedgerTargetReference) -> int:
     return int(period[:4])
 
 
+def _refuse_fact_after_target(spec: Any, opening_year: int, target_year: int) -> None:
+    if opening_year > target_year:
+        raise ValueError(
+            f"UK target {spec.name!r}: the fact opens in {opening_year}, after the "
+            f"calibration year {target_year}; a declared uprating never moves a "
+            "value backwards."
+        )
+
+
+def _identity_aligned(
+    spec: Any, reference: LedgerTargetReference, opening_year: int
+) -> Any:
+    """A fact that opens in the calibration year binds as published, receipted.
+
+    The production-2023 parity surface compiles the same references at their
+    own period; the declared index then reads as an identity, so the row stays
+    on the surface with its factor written rather than dropping out.
+    """
+
+    metadata = {
+        **spec.metadata,
+        "uprating_index": str(reference.uprating_index),
+        "uprating_index_basis": "identity: the fact opens in the calibration year",
+        "uprating_index_from_instant": f"{opening_year}-01-01",
+        "uprating_index_to_instant": f"{opening_year}-01-01",
+        "uprating_factor": "1",
+        "ledger_value_before_alignment": f"{spec.value:.15g}",
+        "uprating_adjudication": UK_INCOME_UPRATING_ADJUDICATION,
+    }
+    return replace(spec, metadata=metadata)
+
+
 def align_hmrc_row_by_engine_index(
     reference: LedgerTargetReference,
     registry: TargetRegistry,
@@ -183,11 +294,10 @@ def align_hmrc_row_by_engine_index(
     aligned = []
     for spec in registry.specs:
         opening_year = _opening_year(spec, reference)
-        if opening_year >= target_year:
-            raise ValueError(
-                f"UK target {spec.name!r}: the fact opens in {opening_year}, not "
-                f"before the calibration year {target_year}; nothing to uprate."
-            )
+        _refuse_fact_after_target(spec, opening_year, target_year)
+        if opening_year == target_year:
+            aligned.append(_identity_aligned(spec, reference, opening_year))
+            continue
         from_instant = f"{opening_year}-01-01"
         to_instant = f"{target_year}-01-01"
         from_value = parameter_value(parameter_path, from_instant)
@@ -223,17 +333,46 @@ def _spi_band_lower_edge(spec: Any, reference: LedgerTargetReference) -> int:
     return int(raw)
 
 
-def _vendored_taxpayer_count_rows() -> list[Mapping[str, Any]]:
-    return vendored_rows(
-        UK_HMRC_TAXPAYER_COUNTS_RESOURCE,
-        concept=UK_HMRC_TAXPAYER_COUNT_CONCEPT,
-        period_type="tax_year",
+@cache
+def _vendored_itl_rows(concept: str) -> tuple[Mapping[str, Any], ...]:
+    """The vendored Table 2.5 rows of one concept, read (and pin-checked) once."""
+
+    return tuple(
+        vendored_rows(
+            UK_HMRC_TAXPAYER_COUNTS_RESOURCE, concept=concept, period_type="tax_year"
+        )
     )
 
 
-def _taxpayer_count(
+_BAND_VALUE_ID = re.compile(r"(?:^|_)band_(\d+)(?:_(\d+|plus))?$")
+
+
+def _spi_band_edges(
+    spec: Any, reference: LedgerTargetReference
+) -> tuple[int, int | None, bool]:
+    """``(lower, upper, open)`` of the row's band.
+
+    The publisher's value id says which universe the row belongs to: the SPI
+    band tables spell a band by its lower edge alone (``band_200000``, upper
+    edge implied by the next band), the liabilities and regional tables spell
+    both edges (``band_200000_300000``) or an open top (``band_200000_plus``).
+    The ledger filters supply the lower edge when the id carries none.
+    """
+
+    lower = _spi_band_lower_edge(spec, reference)
+    value_id = str(spec.metadata.get("ledger_layout_groupby_value_id") or "")
+    match = _BAND_VALUE_ID.search(value_id)
+    if match is None or match.group(2) is None:
+        return lower, None, False
+    if match.group(2) == "plus":
+        return lower, None, True
+    return lower, int(match.group(2)), False
+
+
+def _itl_value(
     rows: list[Mapping[str, Any]],
     *,
+    measure_id: str,
     band: tuple[int, int | None],
     opening_year: int,
     spec_name: str,
@@ -242,14 +381,14 @@ def _taxpayer_count(
     matches = [
         row
         for row in rows
-        if str(row.get("measure_id")) == UK_HMRC_TAXPAYER_COUNT_MEASURE_ID
+        if str(row.get("measure_id")) == measure_id
         and int((row.get("period") or {}).get("value", -1)) == opening_year
         and (row.get("dimensions") or {}).get("total_income_lower_bound") == lower
         and (row.get("dimensions") or {}).get("total_income_upper_bound") == upper
     ]
     if len(matches) != 1:
         raise ValueError(
-            f"UK target {spec_name!r}: Table 2.5 taxpayer count for band "
+            f"UK target {spec_name!r}: Table 2.5 {measure_id} for band "
             f"{lower}-{upper if upper is not None else 'inf'} opening in "
             f"{opening_year} matched {len(matches)} vendored rows; expected one."
         )
@@ -257,53 +396,57 @@ def _taxpayer_count(
     value = float(row["value"])
     if not value > 0:
         raise ValueError(
-            f"UK target {spec_name!r}: Table 2.5 taxpayer count is {value!r}."
+            f"UK target {spec_name!r}: Table 2.5 {measure_id} is {value!r}."
         )
     return value, str(row.get("source_record_id") or "")
 
 
-def align_hmrc_count_row_by_taxpayer_growth(
+def align_hmrc_row_by_itl_growth(
     reference: LedgerTargetReference,
     registry: TargetRegistry,
     *,
-    count_rows: list[Mapping[str, Any]] | None = None,
+    index_concept: str,
+    rows: list[Mapping[str, Any]] | None = None,
 ) -> TargetRegistry:
-    """Move an SPI count row by HMRC's projected taxpayer growth in its band.
+    """Move an SPI band row by HMRC's projected growth of a Table 2.5 measure.
 
-    factor = window(count in target-1, count in target) / count in the
+    factor = window(measure in target-1, measure in target) / measure in the
     fact's opening year, where the window is the calendar-year weighting of
-    ``ledger_targets.CALENDAR_YEAR_WINDOW_WEIGHTS`` and the counts are the
-    Table 2.5 band containing the SPI band (summed where the SPI band spans
-    two Table 2.5 bands).
+    ``ledger_targets.CALENDAR_YEAR_WINDOW_WEIGHTS`` and the measure is summed
+    over the Table 2.5 bands the SPI band spans. Counts follow taxpayer
+    numbers; total income and tax rows (the regional Table 3.11 anchors)
+    follow HMRC's projected total income and liabilities in the band.
     """
 
-    if reference.uprating_index != UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT:
+    if reference.uprating_index != index_concept:
         return registry
+    concept, measure_id = UK_HMRC_ITL_GROWTH_MEASURES[index_concept]
     target_year = _target_year(reference)
-    rows = _vendored_taxpayer_count_rows() if count_rows is None else count_rows
+    rows = list(_vendored_itl_rows(concept)) if rows is None else rows
     aligned = []
     for spec in registry.specs:
         opening_year = _opening_year(spec, reference)
-        if opening_year >= target_year:
-            raise ValueError(
-                f"UK target {spec.name!r}: the fact opens in {opening_year}, not "
-                f"before the calibration year {target_year}; nothing to uprate."
-            )
-        lower_edge = _spi_band_lower_edge(spec, reference)
-        bands = SPI_BAND_TO_ITL_BANDS.get(lower_edge)
-        if bands is None:
-            raise ValueError(
-                f"UK target {spec.name!r}: SPI band lower edge {lower_edge} has no "
-                "declared Table 2.5 band."
-            )
+        _refuse_fact_after_target(spec, opening_year, target_year)
+        if opening_year == target_year:
+            aligned.append(_identity_aligned(spec, reference, opening_year))
+            continue
+        lower_edge, upper_edge, open_top = _spi_band_edges(spec, reference)
+        try:
+            bands = itl_bands_spanned(lower_edge, upper_edge, open_top=open_top)
+        except ValueError as error:
+            raise ValueError(f"UK target {spec.name!r}: {error}") from error
         years = {opening_year: 0.0}
         record_ids: list[str] = []
         for offset in CALENDAR_YEAR_WINDOW_WEIGHTS:
             years[target_year + offset] = 0.0
         for band in bands:
             for year in years:
-                value, record_id = _taxpayer_count(
-                    rows, band=band, opening_year=year, spec_name=spec.name
+                value, record_id = _itl_value(
+                    rows,
+                    measure_id=measure_id,
+                    band=band,
+                    opening_year=year,
+                    spec_name=spec.name,
                 )
                 years[year] += value
                 record_ids.append(record_id)
@@ -314,14 +457,15 @@ def align_hmrc_count_row_by_taxpayer_growth(
         factor = window / years[opening_year]
         metadata = {
             **spec.metadata,
-            "uprating_index": UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT,
-            "uprating_index_basis": UK_HMRC_TAXPAYER_GROWTH_BASIS,
+            "uprating_index": index_concept,
+            "uprating_index_basis": UK_HMRC_ITL_GROWTH_BASIS.format(measure=measure_id),
             "uprating_index_resource": UK_HMRC_TAXPAYER_COUNTS_RESOURCE,
+            "uprating_index_measure_id": measure_id,
             "uprating_index_itl_bands": ";".join(
                 f"{lower}-{upper if upper is not None else 'inf'}"
                 for lower, upper in bands
             ),
-            "uprating_index_counts_by_opening_year": ";".join(
+            "uprating_index_values_by_opening_year": ";".join(
                 f"{year}={years[year]:.15g}" for year in sorted(years)
             ),
             "uprating_index_window_weights": ";".join(
@@ -346,10 +490,27 @@ def hmrc_uprating_appliers() -> dict[str, Any]:
         )
         for path in UK_ENGINE_INDEX_PARAMETERS
     }
-    appliers[UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT] = (
-        align_hmrc_count_row_by_taxpayer_growth
-    )
+    for index_concept in UK_HMRC_ITL_GROWTH_MEASURES:
+        appliers[index_concept] = partial(
+            align_hmrc_row_by_itl_growth, index_concept=index_concept
+        )
     return appliers
+
+
+def align_hmrc_count_row_by_taxpayer_growth(
+    reference: LedgerTargetReference,
+    registry: TargetRegistry,
+    *,
+    count_rows: list[Mapping[str, Any]] | None = None,
+) -> TargetRegistry:
+    """The taxpayer-count index, kept under its own name for the SPI count rows."""
+
+    return align_hmrc_row_by_itl_growth(
+        reference,
+        registry,
+        index_concept=UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT,
+        rows=count_rows,
+    )
 
 
 __all__ = [
@@ -358,9 +519,14 @@ __all__ = [
     "UK_ENGINE_INDEX_PARAMETERS",
     "UK_ENGINE_PARAMETER_INDEX_PREFIX",
     "UK_HMRC_TAXPAYER_COUNTS_RESOURCE",
+    "UK_HMRC_ITL_GROWTH_MEASURES",
     "UK_HMRC_TAXPAYER_GROWTH_INDEX_CONCEPT",
+    "UK_HMRC_TOTAL_INCOME_GROWTH_INDEX_CONCEPT",
+    "UK_HMRC_TOTAL_TAX_GROWTH_INDEX_CONCEPT",
     "align_hmrc_count_row_by_taxpayer_growth",
     "align_hmrc_row_by_engine_index",
+    "align_hmrc_row_by_itl_growth",
+    "itl_bands_spanned",
     "engine_parameter_value",
     "hmrc_uprating_appliers",
 ]

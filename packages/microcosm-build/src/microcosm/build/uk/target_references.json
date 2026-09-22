@@ -202,6 +202,10 @@
       "dwp.housing_benefit": {
         "provider_id": "dwp",
         "label": "Housing Benefit"
+      },
+      "hmrc.income_tax_liabilities_statistics": {
+        "provider_id": "hmrc",
+        "label": "Income Tax liabilities statistics"
       }
     },
     "target_categories": {
@@ -284,6 +288,9 @@
       "hmrc.cgt.taxpayers_by_gain_band": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_by_region": "hmrc.capital_gains_tax",
       "hmrc.cgt.taxpayers_total": "hmrc.capital_gains_tax",
+      "hmrc.itl.income_tax_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.itl.taxpayers_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
+      "hmrc.itl.total_income_by_total_income_band": "hmrc.income_tax_liabilities_statistics",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "hmrc.salary_sacrifice_income_tax_relief",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "hmrc.salary_sacrifice_income_tax_relief",
@@ -299,6 +306,8 @@
       "hmrc.spi.private_pension_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.private_pension_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.property_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.savings_interest_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
+      "hmrc.spi.savings_interest_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.self_employment_income.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.self_employment_income.count_by_total_income_band": "hmrc.survey_of_personal_incomes",
       "hmrc.spi.state_pension.amount_by_total_income_band": "hmrc.survey_of_personal_incomes",
@@ -527,6 +536,9 @@
       "hmrc.cgt.taxpayers_by_gain_band": "Capital Gains Tax taxpayers by size of gain",
       "hmrc.cgt.taxpayers_by_region": "Capital Gains Tax taxpayers by region",
       "hmrc.cgt.taxpayers_total": "Capital Gains Tax taxpayers",
+      "hmrc.itl.income_tax_by_total_income_band": "Income Tax liabilities by total income band",
+      "hmrc.itl.taxpayers_by_total_income_band": "Income Tax payers by total income band",
+      "hmrc.itl.total_income_by_total_income_band": "Total income by total income band",
       "hmrc.salary_sacrifice.it_relief_additional_rate": "It relief additional rate",
       "hmrc.salary_sacrifice.it_relief_basic_rate": "It relief basic rate",
       "hmrc.salary_sacrifice.it_relief_higher_rate": "It relief higher rate",
@@ -542,6 +554,8 @@
       "hmrc.spi.private_pension_income.amount_by_total_income_band": "Amount by total income band",
       "hmrc.spi.private_pension_income.count_by_total_income_band": "Count by total income band",
       "hmrc.spi.property_income.count_by_total_income_band": "Count by total income band",
+      "hmrc.spi.savings_interest_income.amount_by_total_income_band": "Amount by total income band",
+      "hmrc.spi.savings_interest_income.count_by_total_income_band": "Count by total income band",
       "hmrc.spi.self_employment_income.amount_by_total_income_band": "Amount by total income band",
       "hmrc.spi.self_employment_income.count_by_total_income_band": "Count by total income band",
       "hmrc.spi.state_pension.amount_by_total_income_band": "Amount by total income band",
@@ -698,6 +712,7 @@
     "calendar_year_average",
     "latest_plateau",
     "count_x_mean",
+    "calendar_year_window",
     "linear_combination",
     "monthly_window_average",
     "monthly_window_sum_average",
@@ -1344,6 +1359,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1368,6 +1384,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1392,6 +1409,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1416,6 +1434,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1440,6 +1459,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1464,6 +1484,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1488,6 +1509,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1512,6 +1534,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1536,6 +1559,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1560,6 +1584,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1584,6 +1609,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1608,6 +1634,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1632,6 +1659,7 @@
         "contract_target_id": "hmrc.spi.employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1655,6 +1683,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1678,6 +1707,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1701,6 +1731,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1724,6 +1755,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1747,6 +1779,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1770,6 +1803,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1793,6 +1827,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1816,6 +1851,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1839,6 +1875,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1862,6 +1899,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1885,6 +1923,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1908,6 +1947,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1931,6 +1971,7 @@
         "contract_target_id": "hmrc.spi.employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1955,6 +1996,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -1979,6 +2021,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2003,6 +2046,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2027,6 +2071,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2051,6 +2096,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2075,6 +2121,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2099,6 +2146,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2123,6 +2171,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2147,6 +2196,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2171,6 +2221,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2195,6 +2246,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2219,6 +2271,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2243,6 +2296,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2266,6 +2320,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2289,6 +2344,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2312,6 +2368,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2335,6 +2392,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2358,6 +2416,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2381,6 +2440,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2404,6 +2464,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2427,6 +2488,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2450,6 +2512,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2473,6 +2536,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2496,6 +2560,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2519,6 +2584,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2542,6 +2608,7 @@
         "contract_target_id": "hmrc.spi.self_employment_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2566,6 +2633,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2590,6 +2658,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2614,6 +2683,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2638,6 +2708,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2662,6 +2733,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2686,6 +2758,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2710,6 +2783,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2734,6 +2808,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2758,6 +2833,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2782,6 +2858,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2806,6 +2883,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2830,6 +2908,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2854,6 +2933,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2877,6 +2957,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2900,6 +2981,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2923,6 +3005,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2946,6 +3029,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2969,6 +3053,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -2992,6 +3077,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3015,6 +3101,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3038,6 +3125,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3061,6 +3149,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3084,6 +3173,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3107,6 +3197,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3130,6 +3221,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3153,6 +3245,7 @@
         "contract_target_id": "hmrc.spi.dividend_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3176,6 +3269,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3199,6 +3293,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3222,6 +3317,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3245,6 +3341,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3268,6 +3365,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3291,6 +3389,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3314,6 +3413,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3337,6 +3437,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3360,6 +3461,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3383,6 +3485,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3406,6 +3509,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3429,6 +3533,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3452,6 +3557,7 @@
         "contract_target_id": "hmrc.spi.property_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3476,6 +3582,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3500,6 +3607,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3524,6 +3632,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3548,6 +3657,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3572,6 +3682,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3596,6 +3707,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3620,6 +3732,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3644,6 +3757,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3668,6 +3782,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3692,6 +3807,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3716,6 +3832,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3740,6 +3857,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3764,6 +3882,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3787,6 +3906,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3810,6 +3930,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3833,6 +3954,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3856,6 +3978,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3879,6 +4002,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3902,6 +4026,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3925,6 +4050,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3948,6 +4074,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3971,6 +4098,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -3994,6 +4122,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4017,6 +4146,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4040,6 +4170,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4063,6 +4194,7 @@
         "contract_target_id": "hmrc.spi.private_pension_income.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4087,6 +4219,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4111,6 +4244,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4135,6 +4269,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4159,6 +4294,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4183,6 +4319,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4207,6 +4344,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4231,6 +4369,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4255,6 +4394,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4279,6 +4419,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4303,6 +4444,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4327,6 +4469,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4351,6 +4494,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4375,6 +4519,7 @@
         "contract_target_id": "hmrc.spi.state_pension.amount_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4398,6 +4543,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4421,6 +4567,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4444,6 +4591,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4467,6 +4615,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4490,6 +4639,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4513,6 +4663,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4536,6 +4687,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4559,6 +4711,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4582,6 +4735,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4605,6 +4759,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4628,6 +4783,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4651,6 +4807,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4674,6 +4831,7 @@
         "contract_target_id": "hmrc.spi.state_pension.count_by_total_income_band",
         "measure_kind": "prepared_column"
       },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
       "uprating_from_period": "2023",
       "uprating_to_period": 2025
     },
@@ -4754,9 +4912,28 @@
       "name": "dwp.esa_claimants",
       "ledger_selector": {
         "source_name": "dwp",
-        "source_concept": "dwp.esa_claimants",
+        "source_concept": "dwp.esa_caseload",
+        "source_measure_id": "total_claimants",
+        "groupby_dimension": "dwp.esa_payment_type_by_phase",
+        "dimensions": [
+          "payment_type",
+          "phase_of_esa_claim"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
         "dimension_values": {
-          "esa_claim_type": "all"
+          "phase_of_esa_claim": "all",
+          "payment_type": [
+            "Contributions based",
+            "Both income and contributions based",
+            "Income based"
+          ]
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -4767,18 +4944,57 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "dwp.esa_claimants",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
       },
-      "uprating_from_period": "2025-08",
-      "uprating_to_period": 2025
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "payment_type": "Contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "payment_type": "Both income and contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "payment_type": "Income based",
+            "phase_of_esa_claim": "all"
+          }
+        }
+      ]
     },
     {
       "name": "dwp.esa_contrib_claimants",
       "ledger_selector": {
         "source_name": "dwp",
-        "source_concept": "dwp.esa_claimants",
+        "source_concept": "dwp.esa_caseload",
+        "source_measure_id": "total_claimants",
+        "groupby_dimension": "dwp.esa_payment_type_by_phase",
+        "dimensions": [
+          "payment_type",
+          "phase_of_esa_claim"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
         "dimension_values": {
-          "esa_claim_type": "contributions_based"
+          "phase_of_esa_claim": "all",
+          "payment_type": [
+            "Contributions based",
+            "Both income and contributions based"
+          ]
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -4789,18 +5005,51 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "dwp.esa_contrib_claimants",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
       },
-      "uprating_from_period": "2025-08",
-      "uprating_to_period": 2025
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "payment_type": "Contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "payment_type": "Both income and contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        }
+      ]
     },
     {
       "name": "dwp.esa_income_claimants",
       "ledger_selector": {
         "source_name": "dwp",
-        "source_concept": "dwp.esa_claimants",
+        "source_concept": "dwp.esa_caseload",
+        "source_measure_id": "total_claimants",
+        "groupby_dimension": "dwp.esa_payment_type_by_phase",
+        "dimensions": [
+          "payment_type",
+          "phase_of_esa_claim"
+        ],
+        "entity_name": "person",
+        "period_type": "month",
+        "period_value": [
+          "2025-02",
+          "2025-05",
+          "2025-08",
+          "2025-11"
+        ],
         "dimension_values": {
-          "esa_claim_type": "income_related"
+          "phase_of_esa_claim": "all",
+          "payment_type": [
+            "Income based",
+            "Both income and contributions based"
+          ]
         },
         "geography_level": "country",
         "geography_id": "K03000001"
@@ -4811,10 +5060,25 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "dwp.esa_income_claimants",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "uk_uc_expected_source_months": "[\"2025-02\",\"2025-05\",\"2025-08\",\"2025-11\"]"
       },
-      "uprating_from_period": "2025-08",
-      "uprating_to_period": 2025
+      "period_match_policy": "source_window",
+      "value_operation": "monthly_window_sum_average",
+      "value_operands": [
+        {
+          "dimension_values": {
+            "payment_type": "Income based",
+            "phase_of_esa_claim": "all"
+          }
+        },
+        {
+          "dimension_values": {
+            "payment_type": "Both income and contributions based",
+            "phase_of_esa_claim": "all"
+          }
+        }
+      ]
     },
     {
       "name": "dwp.jsa_claimants",
@@ -26976,6 +27240,1501 @@
         }
       ],
       "uprating_from_period": "2024",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_100000_150000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 100000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_by_total_income_band.band_100000_150000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_1000000_2000000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 1000000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_by_total_income_band.band_1000000_2000000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_12570_15000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 12570
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_by_total_income_band.band_12570_15000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_15000_20000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 15000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_by_total_income_band.band_15000_20000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_150000_200000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 150000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_by_total_income_band.band_150000_200000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_20000_30000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 20000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_by_total_income_band.band_20000_30000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_200000_500000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 200000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_by_total_income_band.band_200000_500000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_2000000_plus",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 2000000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_by_total_income_band.band_2000000_plus",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_30000_50000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 30000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_by_total_income_band.band_30000_50000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_50000_100000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 50000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_by_total_income_band.band_50000_100000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.taxpayers_by_total_income_band.band_500000_1000000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_taxpayer_count",
+        "source_measure_id": "total_taxpayer_count",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 500000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.taxpayers_by_total_income_band.band_500000_1000000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.taxpayers_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_100000_150000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 100000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.total_income_by_total_income_band.band_100000_150000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.total_income_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_1000000_2000000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 1000000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.total_income_by_total_income_band.band_1000000_2000000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.total_income_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_12570_15000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 12570
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.total_income_by_total_income_band.band_12570_15000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.total_income_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_15000_20000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 15000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.total_income_by_total_income_band.band_15000_20000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.total_income_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_150000_200000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 150000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.total_income_by_total_income_band.band_150000_200000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.total_income_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_20000_30000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 20000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.total_income_by_total_income_band.band_20000_30000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.total_income_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_200000_500000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 200000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.total_income_by_total_income_band.band_200000_500000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.total_income_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_2000000_plus",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 2000000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.total_income_by_total_income_band.band_2000000_plus",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.total_income_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_30000_50000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 30000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.total_income_by_total_income_band.band_30000_50000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.total_income_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_50000_100000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 50000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.total_income_by_total_income_band.band_50000_100000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.total_income_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.total_income_by_total_income_band.band_500000_1000000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 500000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.total_income_by_total_income_band.band_500000_1000000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.total_income_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_100000_150000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 100000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.income_tax_by_total_income_band.band_100000_150000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.income_tax_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_1000000_2000000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 1000000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.income_tax_by_total_income_band.band_1000000_2000000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.income_tax_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_12570_15000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 12570
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.income_tax_by_total_income_band.band_12570_15000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.income_tax_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_15000_20000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 15000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.income_tax_by_total_income_band.band_15000_20000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.income_tax_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_150000_200000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 150000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.income_tax_by_total_income_band.band_150000_200000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.income_tax_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_20000_30000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 20000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.income_tax_by_total_income_band.band_20000_30000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.income_tax_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_200000_500000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 200000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.income_tax_by_total_income_band.band_200000_500000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.income_tax_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_2000000_plus",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 2000000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.income_tax_by_total_income_band.band_2000000_plus",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.income_tax_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_30000_50000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 30000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.income_tax_by_total_income_band.band_30000_50000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.income_tax_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_50000_100000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 50000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.income_tax_by_total_income_band.band_50000_100000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.income_tax_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.itl.income_tax_by_total_income_band.band_500000_1000000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 500000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.itl.income_tax_by_total_income_band.band_500000_1000000",
+      "family": "hmrc_itl",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.itl.income_tax_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_100000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 100000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_100000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 1000000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_12570",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 12570
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_12570",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 15000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_150000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 150000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_150000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 20000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_200000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 200000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_200000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 30000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_300000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 300000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_300000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_40000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 40000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_40000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_50000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 50000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_50000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_500000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 500000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_500000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_70000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "entity_name": "person",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 70000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_70000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.amount_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_100000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 100000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_100000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_1000000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 1000000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_1000000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_12570",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 12570
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_12570",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_15000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 15000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_15000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_150000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 150000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_150000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_20000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 20000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_20000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_200000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 200000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_200000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_30000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 30000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_30000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_300000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 300000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_300000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_40000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 40000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_40000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_50000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 50000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_50000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_500000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 500000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_500000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
+      "uprating_to_period": 2025
+    },
+    {
+      "name": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_70000",
+      "ledger_selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_savings_interest_income_count",
+        "groupby_dimension": "hmrc.total_income_band",
+        "geography_level": "country",
+        "geography_id": "K02000001",
+        "dimension_values": {
+          "total_income_lower_bound": 70000
+        }
+      },
+      "entity": "person",
+      "measure": "hmrc.spi.savings_interest_income.count_by_total_income_band.band_70000",
+      "family": "hmrc_spi",
+      "period": 2025,
+      "metadata": {
+        "contract_target_id": "hmrc.spi.savings_interest_income.count_by_total_income_band",
+        "measure_kind": "prepared_column"
+      },
+      "uprating_index": "hmrc.itl_2026.taxpayer_count_growth_by_total_income_band",
+      "uprating_from_period": "2023",
       "uprating_to_period": 2025
     }
   ]

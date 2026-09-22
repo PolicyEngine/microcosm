@@ -202,6 +202,10 @@
       "dwp.housing_benefit": {
         "provider_id": "dwp",
         "label": "Housing Benefit"
+      },
+      "hmrc.income_tax_liabilities_statistics": {
+        "provider_id": "hmrc",
+        "label": "Income Tax liabilities statistics"
       }
     },
     "target_categories": {

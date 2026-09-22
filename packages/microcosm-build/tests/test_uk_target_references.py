@@ -61,7 +61,7 @@ from tools.generate_uk_target_references import (
     _value_operation_by_target_id,
 )
 
-ACTIVE_REFERENCE_COUNT = 705
+ACTIVE_REFERENCE_COUNT = 764
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -223,6 +223,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "calendar_year_average",
         "latest_plateau",
         "count_x_mean",
+        "calendar_year_window",
         "linear_combination",
         "monthly_window_average",
         "monthly_window_sum_average",
@@ -741,7 +742,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 705,
+        "active": 764,
         "no_fact_at_or_before_period": 7,
         "signed_excluded": 13,
     }
@@ -758,7 +759,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
         {
             "family": "hmrc_spi",
             "status": "active_with_signed_property_amount_exclusion",
-            "active_reference_count": 143,
+            "active_reference_count": 169,
             "signed_rationale": (
                 "SPI income-band targets fan out by strict total-income-band "
                 "dimension pins, except the HMRC property-income amount "
@@ -768,6 +769,22 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "property-income undercount adjustment traced to "
                 f"{UK_DATA_REPO} PR #311 / issue #230 and HMRC Property Rental "
                 "Income Statistics."
+            ),
+        },
+        {
+            "family": "hmrc_itl",
+            "status": "active_calendar_year_window_anchors",
+            "active_reference_count": 33,
+            "signed_rationale": (
+                "The three HMRC Income Tax liabilities statistics targets "
+                "(Income Tax payers, total income and Income Tax liabilities "
+                "by eleven total-income bands, Table 2.5, July 2026) fan out "
+                "by strict total-income-band pins and bind at the calendar-"
+                "2025 window of HMRC's 2024-25 and 2025-26 source projections "
+                "(three twelfths and nine twelfths; microcosm#280 lane, "
+                "María's ruling of 2026-09-22). They are the calibration-year "
+                "anchors the SPI component bands lack; the OBR fiscal-year "
+                "receipts row stays bound beside them."
             ),
         },
         {
@@ -1032,14 +1049,25 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
         for target_id in uc_target_ids - monthly_sum_ids - monthly_average_ids
     )
     facts = _fixture_feed_rows()
+    # Author the UC family alone: the fixture feed carries a 2023 SPI row whose
+    # reference now declares an engine-index uprating (microcosm#280 lane), and
+    # the country's appliers need the engine this test does not require.
+    uc_contract = {
+        **contract,
+        "targets": [
+            target
+            for target in contract["targets"]
+            if target["family"] == "dwp_universal_credit"
+        ],
+    }
     authored = author_target_references(
-        contract,
+        uc_contract,
         facts,
         TargetReferenceAuthoringConfig(
             target_period=2025,
-            geography_pins=_geography_pins(contract),
+            geography_pins=_geography_pins(uc_contract),
             value_operation_by_target_id=operations,
-            reference_metadata_by_target_id=_reference_metadata(contract),
+            reference_metadata_by_target_id=_reference_metadata(uc_contract),
             binding_vocabulary=POLICYENGINE_BINDING_KEYS,
             source_fact_feed="uk_target_reference_feed_rows.jsonl",
         ),

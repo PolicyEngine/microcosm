@@ -1114,8 +1114,10 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 705
-        )  # microcosm#905: 424 - 18 country rows + 189 region-tier cells;
+            len(references) == 764
+        )  # microcosm#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
+        # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
+        # thirteen bands); microcosm#905: 424 - 18 country rows + 189 region-tier cells;
         # microcosm#929: the 81 VOA region cells become 81 composed MHCLG
         # cells and Wales gains ten country rows (bands A-I + total);
         # microcosm#725/#467: 24 CGT age-band rows, 24 region-tier cells and

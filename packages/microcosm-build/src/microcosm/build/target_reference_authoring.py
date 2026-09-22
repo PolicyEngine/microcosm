@@ -1292,6 +1292,19 @@ def _native_groupby_pin(
     ]
     if len(unpinned_dimensions) == 1:
         return unpinned_dimensions[0]
+    # A banded row that carries both edges of its band (HMRC's Table 2.5 rows
+    # state ``total_income_lower_bound`` and ``total_income_upper_bound``) pins
+    # on the lower edge, the key the band-edge derivation reads; an open top
+    # band states the lower edge alone and pins the same way.
+    lower_bounds = [
+        (key, value)
+        for key, value in unpinned_dimensions
+        if key.endswith("_lower_bound")
+    ]
+    if len(lower_bounds) == 1 and len(unpinned_dimensions) == 2:
+        upper_key = f"{lower_bounds[0][0][: -len('_lower_bound')]}_upper_bound"
+        if any(key == upper_key for key, _ in unpinned_dimensions):
+            return lower_bounds[0]
     if len(dimensions) == 1:
         key, value = next(iter(dimensions.items()))
         if str(key) in pinned_dimension_names:
