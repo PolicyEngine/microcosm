@@ -66,6 +66,15 @@ and the CBO revenue projections that age dollar targets, sit in other years'
 bundles. So the export's scope is settled, and its coverage compared with the
 pinned feed record set by record set, before anything is re-pinned.
 
+**22 September 2026:** the labelled pin landed in PR #955:
+`us/chronicle_feed.json` (Chronicle `c5e5bf8`, a bare feed) with the two
+parity resources regenerated, and `tools/build_us_fiscal_refresh_release.py`
+now holds the loaded feed to that pin (`--allow-unpinned-feed` waives it for a
+reviewed diagnostic run only). See `docs/us-chronicle-feed-repin.md`. The
+`--base-h5` arm can take the pin; the `--exact-k` arm needs a consumer artifact
+with a manifest, which Chronicle refuses at `c5e5bf8` (chronicle#277), so it
+waits on that fix.
+
 ### 2. Nothing in the build emits the SPM independence role
 
 In policyengine-us 2.2.1 one SPM unit with no classified adult (age 18 or over,

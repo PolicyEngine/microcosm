@@ -275,7 +275,15 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
     staging = tmp_path / "staging.h5"
     staging.write_bytes(b"staging")
     (tmp_path / "staging.summary.json").write_text(
-        json.dumps({"reviewed_engine_input_nulls": [], "reviewed_limitations": []})
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [],
+                "reviewed_limitations": [],
+                # An uncapped staging run, so the package stage's cap check
+                # (which runs first) lets these inputs reach the hours gates.
+                "orchestration": {"max_households": None},
+            }
+        )
     )
     out_h5 = tmp_path / "out.h5"
     out_h5.write_bytes(b"artifact")
@@ -380,6 +388,95 @@ def test_package_binds_the_hours_gate_to_the_packaged_bytes(
         assert gate["artifact_sha256"] == expected_sha
         assert gate["checked_at_stage"] == "package"
         assert gate["detail"] == {"per_spine": {"acs_2024_1yr": {"rows": 1}}}
+    # The cap check that runs before the hours gates records what it passed.
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build_manifest["staging_orchestration"]["max_households"] is None
+
+
+_UNSET = object()
+
+
+def _package_args_before_evidence(module, tmp_path: Path, *, max_households=_UNSET):
+    """The package stage's inputs up to (not including) the qa/consumer evidence.
+
+    ``max_households`` is what the staging summary records under
+    ``orchestration``; the sentinel omits the block entirely.
+    """
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    staging = tmp_path / "staging.h5"
+    staging.write_bytes(b"staging")
+    summary: dict = {}
+    if max_households is not _UNSET:
+        summary["orchestration"] = {
+            "max_households": max_households,
+            "n_estimators": 32,
+            "max_targets_per_fit": 8,
+        }
+    (tmp_path / "staging.summary.json").write_text(json.dumps(summary))
+    out_h5 = tmp_path / "out.h5"
+    out_h5.write_bytes(b"artifact")
+    (ckpt / "calibration_diagnostics.json").write_text(json.dumps({"households": 1}))
+    (ckpt / "gate_summary.json").write_text(json.dumps({"gates": {}}))
+    (ckpt / "run_identity.json").write_text(
+        json.dumps(
+            {
+                "staging_sha256": module._sha256(staging),
+                "population_cells_dropped": [],
+            }
+        )
+    )
+    (tmp_path / "out.summary.json").write_text(json.dumps({"simulation_ready": True}))
+    return module._parse_args(
+        [
+            "--stage",
+            "package",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(ckpt),
+            "--out-h5",
+            str(out_h5),
+            "--out",
+            str(tmp_path / "release"),
+            "--allow-dirty",
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    ("max_households", "message"),
+    [
+        (5000, r"capped at 5000 ACS household"),
+        (0, r"capped at 0 ACS household"),
+        (_UNSET, r"does not record orchestration\.max_households"),
+    ],
+    ids=["capped", "capped-at-zero", "cap-not-recorded"],
+)
+def test_package_refuses_a_capped_or_unattested_staging_run(
+    tmp_path: Path, max_households, message
+) -> None:
+    """A capped smoke passes every finalize gate (the donor spine keeps every
+    ladder cell populated), so the cap itself must refuse packaging, before
+    any release directory exists."""
+
+    module = _load_tool_module()
+    args = _package_args_before_evidence(
+        module, tmp_path, max_households=max_households
+    )
+    with pytest.raises(SystemExit, match=message):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    assert not (args.out / "releases").exists(), "a refused smoke leaves no release"
+
+
+def test_package_checks_the_cap_before_reading_the_evidence(tmp_path: Path) -> None:
+    """An uncapped summary reaches the evidence checks; the cap check is first."""
+
+    module = _load_tool_module()
+    args = _package_args_before_evidence(module, tmp_path, max_households=None)
+    with pytest.raises(SystemExit, match="spine_qa.json is missing"):
+        module.do_package(args)
 
 
 def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
@@ -390,7 +487,9 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     ckpt.mkdir()
     staging = tmp_path / "staging.h5"
     staging.write_bytes(b"staging")
-    (tmp_path / "staging.summary.json").write_text("{}")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps({"orchestration": {"max_households": None}})
+    )
     out_h5 = tmp_path / "out.h5"
     out_h5.write_bytes(b"artifact")
     (ckpt / "calibration_diagnostics.json").write_text(json.dumps({"households": 1}))
@@ -474,7 +573,15 @@ def _finalize_args(module, tmp_path: Path):
     staging = tmp_path / "staging.h5"
     staging.touch()
     (tmp_path / "staging.summary.json").write_text(
-        json.dumps({"reviewed_limitations": [], "reviewed_engine_input_nulls": []})
+        json.dumps(
+            {
+                "reviewed_limitations": [],
+                "reviewed_engine_input_nulls": [],
+                # The current staging builder records its cap; an uncapped run
+                # is what the package-stage tests built on this fixture need.
+                "orchestration": {"max_households": None},
+            }
+        )
     )
     # finalize hashes the calibrated H5 before loading it; tests that do not
     # load real bytes still need bytes to hash.
