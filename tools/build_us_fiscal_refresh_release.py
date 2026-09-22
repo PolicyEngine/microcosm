@@ -674,9 +674,11 @@ RESTATED_LEDGER_FILTER_BOUND_SIDES = (
     ("_upper_bound", "upper"),
 )
 
-#: Compiled metadata the materializer slices the AGI band on, by bound side
-#: (``:4899-4901``). A restated AGI bound is accepted only against its own
-#: side; the sibling side is judged by its own key.
+#: Compiled metadata the materializer slices the AGI band on, by bound
+#: side: the ``irs_soi`` loop in :func:`_materialize_target_frame` reads
+#: both through :func:`_as_bound` into one half-open mask. A restated AGI
+#: bound is accepted only against its own side; the sibling side is judged
+#: by its own key.
 RESTATED_AGI_BAND_COMPILED_KEYS = {
     "lower": "agi_lower_bound",
     "upper": "agi_upper_bound",
@@ -4371,8 +4373,9 @@ def _is_noop_ledger_filter_value(value: str) -> bool:
 def _unsupported_soi_ledger_filters(metadata: Mapping[str, str]) -> tuple[str, ...]:
     """Ledger filter keys the SOI slice does not act on, for one spec.
 
-    A non-empty result drops the spec from SOI materialization silently
-    (``:5030``), so an accepted restatement must clear here too — otherwise
+    A non-empty result drops the spec from SOI materialization silently in
+    the ``irs_soi`` loop of :func:`_materialize_target_frame`, so an
+    accepted restatement must clear here too — otherwise
     accepting it at the fatal guard would only move the spec from a refusal
     to a silent disappearance. A restatement that disagrees stays listed, and
     :func:`_assert_supported_ledger_filter_metadata` refuses it before the
@@ -4539,7 +4542,7 @@ def _restated_eitc_child_count_refusal(
         restated_mask = counts >= bound
     elif side == "upper":
         # The compiler reads a ``<`` or ``<=`` constraint into one exclusive
-        # upper edge and the materializer applies ``<`` (``:4901-4902``); a
+        # upper edge (``_agi_bounds``) and the materializer applies ``<``; a
         # restated upper bound is read the same half-open way.
         restated_mask = counts < bound
     else:
@@ -4576,9 +4579,10 @@ def _restated_ledger_filter_refusal(
 
     Both compiled counterparts — the AGI band in
     :data:`RESTATED_AGI_BAND_COMPILED_KEYS` and
-    :func:`_soi_eitc_child_count_filter` — are the ``irs_soi`` slice's
-    (``:4892-4916``), and this rule reads them off metadata without consulting
-    the spec's family. That family-blindness is the guard's existing shape:
+    :func:`_soi_eitc_child_count_filter` — are the ``irs_soi`` slice's, read
+    in the loop :func:`_materialize_target_frame` runs over ``irs_soi``
+    specs, and this rule reads them off metadata without consulting the
+    spec's family. That family-blindness is the guard's existing shape:
     ``ledger_filter_eitc_child_count`` is likewise a blanket supported key. A
     spec of another family carries neither counterpart, so it refuses on the
     "does not compile" arm rather than being accepted by accident.
