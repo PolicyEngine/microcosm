@@ -71,7 +71,9 @@ from microcosm.frame import Frame
 #: this tool's own pin so the tool does not inherit the release contract.
 DONOR_SHA256 = "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e"
 
-#: The published national default ``populace-us-2024-spm-20260915``: the same
+#: The published national default, which the Hub signs as both
+#: ``populace-us-2024-spm-20260909`` (the ``latest.json`` release id) and
+#: ``populace-us-2024-spm-20260915`` (the same bytes): the same
 #: Build P population with the native ``is_spm_independent_minor_role`` column
 #: added by the source-enrichment lane (its release manifest declares this
 #: digest). Qualifying it instead of the bare Build P file gives the ACS staging
@@ -87,6 +89,7 @@ def pinned_parents() -> dict[str, str]:
     return {
         DONOR_SHA256: "populace-us-2024-buildp-sparse (July Build P donor)",
         SPM_ROLE_PARENT_SHA256: (
+            "populace-us-2024-spm-20260909, also released as "
             "populace-us-2024-spm-20260915 (Build P plus the native SPM role)"
         ),
     }
@@ -937,8 +940,13 @@ def qualify_donor(
             year: cache / ASEC_EDUCATION_ASSISTANCE_ARCHIVES[year].member
             for year in income_years
         }
+    # Judge every pooled income year, not just the years the caller mapped: the
+    # maintained loader downloads any year without a path, and this tool never
+    # downloads.
     missing_sources = sorted(
-        str(year) for year, path in source_paths.items() if not Path(path).is_file()
+        str(year)
+        for year in income_years
+        if year not in source_paths or not Path(source_paths[year]).is_file()
     )
     if missing_sources:
         _refuse(
@@ -949,7 +957,7 @@ def qualify_donor(
     source = _redacted(
         "public_assistance_type_source.load_asec_public_assistance_type_sources",
         public_assistance_type_source.load_asec_public_assistance_type_sources,
-        {year: Path(path) for year, path in source_paths.items()},
+        {year: Path(source_paths[year]) for year in income_years},
         income_years=income_years,
     )
     derived = derive_receipt_columns(frame, source)

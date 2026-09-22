@@ -552,7 +552,8 @@ def test_accepts_the_spm_role_parent_and_records_which_lineage_it_qualified(
 
 
 def test_pins_the_published_spm_role_release_digest() -> None:
-    # The digest the published populace-us-2024-spm-20260915 manifest declares.
+    # The digest both published manifests declare (populace-us-2024-spm-20260909
+    # and populace-us-2024-spm-20260915 sign the same bytes).
     assert set(builder.pinned_parents()) == {
         "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
         "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84",
@@ -665,6 +666,33 @@ def test_refuses_a_sidecar_that_is_not_present_locally(donor, tmp_path) -> None:
         _qualify(fixture, source_paths=absent)
 
     assert "never downloads" in str(refusal.value)
+    assert not fixture.output.exists()
+
+
+def test_refuses_a_partial_source_mapping_without_downloading(
+    donor, monkeypatch
+) -> None:
+    """A mapping that omits a pooled income year must refuse before any fetch."""
+
+    fixture = donor()
+    omitted = _INCOME_YEARS[-1]
+    partial = {
+        year: path for year, path in fixture.source_paths.items() if year != omitted
+    }
+    fetches: list[int] = []
+
+    def refuse_download(income_year, *args, **kwargs):
+        fetches.append(income_year)
+        raise AssertionError("the tool must never reach the Census download path")
+
+    monkeypatch.setattr(pats, "fetch_asec_education_assistance_source", refuse_download)
+
+    with pytest.raises(builder.DonorQualificationError) as refusal:
+        _qualify(fixture, source_paths=partial)
+
+    assert "never downloads" in str(refusal.value)
+    assert str(omitted) in str(refusal.value)
+    assert fetches == []
     assert not fixture.output.exists()
 
 

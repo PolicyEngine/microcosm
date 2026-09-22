@@ -195,7 +195,7 @@ The tool refuses, before writing anything, when:
 1. the parent's SHA-256 is not one of the two exact pinned parents: the
    reviewed Build P parent (the same digest as
    `microcosm.data.source_enrichment.PARENT_DATASET_SHA256`), or the published
-   national default `populace-us-2024-spm-20260915`, which is that population
+   national default `populace-us-2024-spm-20260909` (also released as `populace-us-2024-spm-20260915`, the same bytes), which is that population
    with the native `is_spm_independent_minor_role` column. Measured on
    21 September 2026, counts only: under the locked engine's adult rule the
    Build P file has 28 of 59,900 SPM units with no classified adult and the
