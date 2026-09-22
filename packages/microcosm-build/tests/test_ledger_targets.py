@@ -4743,3 +4743,132 @@ def test__given_malformed_scaled_by_ratio_operands__then_reference_refuses(
 ) -> None:
     with pytest.raises(ValueError, match=message):
         _ratio_reference(value_operands=operands)
+
+
+def _cy_window_fact(
+    *,
+    key: str,
+    value: float,
+    opening_year: int,
+    measure_id: str = "total_tax_amount",
+    assertion: str = "source_projection",
+    period_type: str = "tax_year",
+):
+    fact = _consumer_fact_row_for_period(opening_year, value=value)
+    fact["aggregate_fact_key"] = f"ledger.aggregate_fact.v2:{key}"
+    fact["semantic_fact_key"] = f"ledger.semantic_fact.v2:{key}"
+    fact["legacy_fact_key"] = f"ledger.fact.v1:{key}"
+    fact["period"] = {"type": period_type, "value": opening_year}
+    fact["assertion"] = assertion
+    fact["layout"] = {**fact["layout"], "measure_id": measure_id}
+    fact["observed_measure"] = {
+        **fact.get("observed_measure", {}),
+        "source_measure_id": measure_id,
+    }
+    return fact
+
+
+def _cy_window_reference(**overrides) -> LedgerTargetReference:
+    values = {
+        "name": "income tax liabilities, calendar 2025",
+        "ledger_selector": {
+            "source_name": "irs_soi",
+            "source_measure_id": "total_tax_amount",
+            "geography_level": "country",
+            "geography_id": "0100000US",
+        },
+        "value_operation": "calendar_year_window",
+        "assertion_policy": "allow_source_projection",
+        "entity": "person",
+        "measure": "hmrc/income_tax_liabilities",
+        "family": "hmrc_spi",
+        "period": 2025,
+    }
+    values.update(overrides)
+    return LedgerTargetReference(**values)
+
+
+def test__given_the_two_overlapping_years__then_calendar_year_window_weights_them_by_months() -> (
+    None
+):
+    facts = [
+        _cy_window_fact(
+            key="fy2023", value=274.0, opening_year=2023, assertion="observation"
+        ),
+        _cy_window_fact(key="fy2024", value=304.0, opening_year=2024),
+        _cy_window_fact(key="fy2025", value=329.0, opening_year=2025),
+        _cy_window_fact(key="fy2026", value=347.0, opening_year=2026),
+    ]
+    registry = compile_ledger_target_references(
+        facts, [_cy_window_reference()], country="uk"
+    )
+
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(0.25 * 304.0 + 0.75 * 329.0)
+    assert spec.period == 2025
+    assert spec.metadata["ledger_value_operation"] == "calendar_year_window"
+    assert spec.metadata["ledger_value_formula"] == (
+        "3/12 * FY2024 + 9/12 * FY2025 (the months to the end of calendar year 2025)"
+    )
+    assert spec.metadata["ledger_calendar_year_window_target_year"] == "2025"
+    members = json.loads(spec.metadata["ledger_calendar_year_window_members"])
+    assert set(members) == {"2024", "2025"}
+    assert members["2024"]["weight"] == "0.25"
+    assert members["2025"]["fact_key"] == "ledger.aggregate_fact.v2:fy2025"
+    assert json.loads(spec.metadata["ledger_member_fact_keys"]) == [
+        "ledger.aggregate_fact.v2:fy2024",
+        "ledger.aggregate_fact.v2:fy2025",
+    ]
+    assert spec.metadata["ledger_resolved_assertion"] == "source_projection"
+
+
+def test__given_a_year_missing__then_calendar_year_window_refuses() -> None:
+    facts = [_cy_window_fact(key="fy2025", value=329.0, opening_year=2025)]
+
+    with pytest.raises(ValueError, match="needs the years opening in \\[2024, 2025\\]"):
+        compile_ledger_target_references(facts, [_cy_window_reference()], country="uk")
+
+
+def test__given_projections_without_the_policy__then_calendar_year_window_finds_no_year() -> (
+    None
+):
+    facts = [
+        _cy_window_fact(key="fy2024", value=304.0, opening_year=2024),
+        _cy_window_fact(key="fy2025", value=329.0, opening_year=2025),
+    ]
+
+    with pytest.raises(ValueError):
+        compile_ledger_target_references(
+            facts,
+            [_cy_window_reference(assertion_policy="observed_only")],
+            country="uk",
+        )
+
+
+def test__given_monthly_facts__then_calendar_year_window_refuses_the_period_type() -> (
+    None
+):
+    facts = [
+        _cy_window_fact(key="m1", value=1.0, opening_year=2024, period_type="month"),
+        _cy_window_fact(key="m2", value=1.0, opening_year=2025, period_type="month"),
+    ]
+    for fact in facts:
+        fact["period"] = {"type": "month", "value": f"{fact['period']['value']}-06"}
+
+    with pytest.raises(ValueError, match="composes fiscal- or tax-year facts"):
+        compile_ledger_target_references(facts, [_cy_window_reference()], country="uk")
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"value_operands": ({"weight": 1},)}, "takes no value_operands"),
+        ({"period_match_policy": "exact"}, "latest_not_after"),
+        ({"period": None}, "explicit calendar-year target period"),
+    ],
+)
+def test__given_a_malformed_window_reference__then_it_is_refused(
+    overrides, message
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        _cy_window_reference(**overrides)

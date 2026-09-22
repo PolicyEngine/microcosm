@@ -792,6 +792,7 @@ def target_references_resource(
                         "monthly_window_sum_average",
                         "linear_combination",
                         "scaled_by_ratio",
+                        "calendar_year_window",
                     }
                 }
             ),

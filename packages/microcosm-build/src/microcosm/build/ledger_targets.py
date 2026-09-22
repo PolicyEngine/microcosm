@@ -16,6 +16,7 @@ import re
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from microcosm.calibrate import (
@@ -45,6 +46,7 @@ ALLOWED_VALUE_OPERATIONS = frozenset(
         "difference",
         "linear_combination",
         "calendar_year_average",
+        "calendar_year_window",
         "latest_plateau",
         "count_x_mean",
         "scaled_by_ratio",
@@ -57,6 +59,7 @@ MULTI_FACT_VALUE_OPERATIONS = frozenset(
         "difference",
         "linear_combination",
         "calendar_year_average",
+        "calendar_year_window",
         "latest_plateau",
         "count_x_mean",
         "scaled_by_ratio",
@@ -73,6 +76,17 @@ EXACT_PERIOD_VALUE_OPERATIONS = frozenset(
         "scaled_by_ratio",
     )
 )
+
+#: ``calendar_year_window``: a calendar-year target composed from the two
+#: fiscal or tax years that overlap it, weighted by the months each
+#: contributes (April-to-March years: three months of the year opening in
+#: Y-1, nine of the year opening in Y). The weights are the operation's
+#: definition, not a per-reference declaration, so a window row means one
+#: thing everywhere it appears.
+CALENDAR_YEAR_WINDOW_WEIGHTS: Mapping[int, float] = MappingProxyType(
+    {-1: 3 / 12, 0: 9 / 12}
+)
+CALENDAR_YEAR_WINDOW_PERIOD_TYPES = frozenset(("fiscal_year", "tax_year"))
 #: Ordered operand roles of ``scaled_by_ratio``: the published cell the
 #: reference selects, then the two national facts whose quotient translates
 #: it (a subset share of the publisher's universe, so the ratio lies in
@@ -238,6 +252,8 @@ class LedgerTargetReference:
             _validate_linear_combination_operands(self.name, self.value_operands)
         if self.value_operation == "scaled_by_ratio":
             _validate_scaled_by_ratio_operands(self.name, self.value_operands)
+        if self.value_operation == "calendar_year_window":
+            _validate_calendar_year_window_reference(self)
         if self.assertion_policy not in ALLOWED_ASSERTION_POLICIES:
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: unsupported "
@@ -769,6 +785,13 @@ def target_spec_from_ledger_reference(
                 f"Ledger target reference {reference.name!r}: linear_combination "
                 f"produced invalid value {numeric_value!r}."
             )
+    elif reference.value_operation == "calendar_year_window":
+        weights = _calendar_year_window_weights(reference, facts)
+        numeric_value = sum(
+            weight * value
+            for weight, value in zip(weights, numeric_values, strict=True)
+        )
+        value_metadata = _calendar_year_window_metadata(reference, facts)
     else:
         numeric_value = numeric_values[0]
     representative_fact = _value_representative_fact(
@@ -1694,6 +1717,10 @@ def _resolve_reference_fact(
             return _resolve_calendar_year_average_reference_facts(
                 reference, eligible_matches
             )
+        if reference.value_operation == "calendar_year_window" and eligible_matches:
+            return _resolve_calendar_year_window_reference_facts(
+                reference, eligible_matches
+            )
         if reference.value_operation == "latest_plateau" and eligible_matches:
             return _resolve_latest_plateau_reference_facts(reference, eligible_matches)
         if reference.value_operation == "count_x_mean" and eligible_matches:
@@ -2367,6 +2394,131 @@ def _resolve_calendar_year_average_reference_facts(
     return _latest_series_partition(
         reference, year_matches, operation="calendar_year_average"
     )
+
+
+def _validate_calendar_year_window_reference(
+    reference: LedgerTargetReference,
+) -> None:
+    if reference.value_operands:
+        raise ValueError(
+            f"LedgerTargetReference {reference.name!r}: calendar_year_window "
+            "takes no value_operands; the two overlapping years and their "
+            "month weights are the operation's own definition."
+        )
+    if reference.period_match_policy != "latest_not_after":
+        raise ValueError(
+            f"LedgerTargetReference {reference.name!r}: calendar_year_window "
+            "resolves the two years overlapping the target calendar year itself; "
+            "declare period_match_policy 'latest_not_after' (the default)."
+        )
+    period_key = _period_key_from_value(reference.period)
+    if reference.period is None or not period_key[0] or period_key[1] % 100 != 99:
+        raise ValueError(
+            f"LedgerTargetReference {reference.name!r}: calendar_year_window "
+            "requires an explicit calendar-year target period."
+        )
+
+
+def _calendar_year_window_opening_year(
+    fact: object, reference: LedgerTargetReference
+) -> int:
+    period_type = _str_at(fact, "period", "type")
+    if period_type not in CALENDAR_YEAR_WINDOW_PERIOD_TYPES:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: calendar_year_window "
+            f"composes fiscal- or tax-year facts; matched a {period_type!r} fact."
+        )
+    period_key = _period_key(fact)
+    if not period_key[0] or period_key[1] % 100 != 99:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: calendar_year_window "
+            "matched a fact whose annual period does not parse to an opening year."
+        )
+    return period_key[1] // 100
+
+
+def _resolve_calendar_year_window_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+) -> tuple[object, ...]:
+    """Resolve the two annual facts whose years overlap the target calendar year.
+
+    Publishers who report by April-to-March years give a calendar year Y three
+    months of the year opening in Y-1 and nine of the year opening in Y. The
+    resolver takes both facts from one series identity (one publication, one
+    measure, one cell) and refuses a window with either year absent, so a
+    partial window never lands as a value.
+    """
+
+    target_year = _calendar_year_from_reference(reference)
+    wanted = {target_year + offset for offset in CALENDAR_YEAR_WINDOW_WEIGHTS}
+    partitions: dict[tuple[str, ...], dict[int, list[object]]] = {}
+    for fact in eligible_matches:
+        opening_year = _calendar_year_window_opening_year(fact, reference)
+        if opening_year not in wanted:
+            continue
+        partitions.setdefault(_selector_period_invariant_key(fact), {}).setdefault(
+            opening_year, []
+        ).append(fact)
+    complete = [years for years in partitions.values() if set(years) == wanted]
+    if not complete:
+        present = sorted({year for years in partitions.values() for year in years})
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: calendar_year_window "
+            f"needs the years opening in {sorted(wanted)} from one series; "
+            f"found {present or 'none'}."
+        )
+    if len(complete) != 1:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: calendar_year_window "
+            f"matched {len(complete)} series identities carrying both years; "
+            "narrow the selector to one."
+        )
+    (years,) = complete
+    resolved: list[object] = []
+    for year in sorted(years):
+        members = years[year]
+        if len(members) != 1:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: calendar_year_window "
+                f"matched {len(members)} facts for the year opening in {year}; "
+                "expected exactly one."
+            )
+        resolved.append(members[0])
+    return tuple(resolved)
+
+
+def _calendar_year_window_weights(
+    reference: LedgerTargetReference, facts: tuple[object, ...]
+) -> tuple[float, ...]:
+    target_year = _calendar_year_from_reference(reference)
+    return tuple(
+        CALENDAR_YEAR_WINDOW_WEIGHTS[
+            _calendar_year_window_opening_year(fact, reference) - target_year
+        ]
+        for fact in facts
+    )
+
+
+def _calendar_year_window_metadata(
+    reference: LedgerTargetReference, facts: tuple[object, ...]
+) -> dict[str, str]:
+    target_year = _calendar_year_from_reference(reference)
+    members: dict[str, dict[str, str]] = {}
+    for fact in facts:
+        opening_year = _calendar_year_window_opening_year(fact, reference)
+        members[str(opening_year)] = {
+            "weight": f"{CALENDAR_YEAR_WINDOW_WEIGHTS[opening_year - target_year]:.15g}",
+            "value": f"{_numeric_fact_value(fact, reference):.15g}",
+            "assertion": _fact_assertion(fact),
+            "fact_key": _fact_key(fact) or _source_record_id(fact),
+        }
+    return {
+        "ledger_calendar_year_window_target_year": str(target_year),
+        "ledger_calendar_year_window_members": json.dumps(
+            members, sort_keys=True, separators=(",", ":")
+        ),
+    }
 
 
 def _resolve_latest_plateau_reference_facts(
@@ -3053,6 +3205,12 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
         metadata["ledger_value_formula"] = "base * numerator / denominator"
     if reference.value_operation == "linear_combination":
         metadata["ledger_value_formula"] = _linear_combination_formula(reference)
+    if reference.value_operation == "calendar_year_window":
+        target_year = _calendar_year_from_reference(reference)
+        metadata["ledger_value_formula"] = (
+            f"3/12 * FY{target_year - 1} + 9/12 * FY{target_year} "
+            f"(the months to the end of calendar year {target_year})"
+        )
     if reference.metadata.get("composed_from_level"):
         # A composed row's Ledger geography is the row's own, not the
         # representative member fact's (which sits one grain below).
