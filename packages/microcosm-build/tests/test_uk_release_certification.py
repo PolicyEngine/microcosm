@@ -325,14 +325,46 @@ def test_compose_refuses_a_score_receipt_whose_surface_does_not_close(
         compose_uk_release_certification(**green_certification_inputs)
 
 
+def test_compose_refuses_a_score_receipt_pruned_through_an_unlisted_measure(
+    green_certification_inputs,
+):
+    """Pruning from both arms is doctrine: a measure the scorer pruned must
+    carry a signed entry on the reviewed incumbent-unresolvable register."""
+    receipt = green_score_receipt(green_certification_inputs["candidate_sha256"])
+    receipt["incumbent_unresolvable_pruned"].update(
+        {"n_pruned": 1, "n_scored": 306, "measures": ["benunit.not_reviewed"]}
+    )
+    receipt["evaluation"]["scored_surface"].update({"n_pruned": 1, "n_scored": 306})
+    green_certification_inputs["score_receipt_path"].write_text(
+        json.dumps(receipt), encoding="utf-8"
+    )
+    with pytest.raises(UKReleaseCertificationError, match="not on the reviewed"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+    from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
+
+    listed = {
+        "benunit.not_reviewed": UKReviewedExclusion(
+            reason="the incumbent never carried it",
+            approved_by="juaristi22",
+            adjudication="microcosm#823 (test)",
+            approved_on="2026-09-01",
+            expires_on="2027-03-01",
+        )
+    }
+    compose_uk_release_certification(
+        **green_certification_inputs, reviewed_unresolvable_measures=listed
+    )
+
+
 def test_certification_summarises_the_score_receipt_verdict(
     green_certification_inputs,
 ):
     certification = compose_uk_release_certification(**green_certification_inputs)
     assert certification["score_receipt"]["evaluation"] == {
         "verdict": "passed",
-        "n_scored": 305,
-        "n_pruned": 2,
+        "n_scored": 307,
+        "n_pruned": 0,
         "n_surface": 307,
         "candidate_full_loss": 0.0096,
         "incumbent_full_loss": 0.211,

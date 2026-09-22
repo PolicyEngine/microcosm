@@ -22,12 +22,18 @@ import hashlib
 import re
 from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any
 
 from microcosm.build.target_materialization import MeasureResolutionError
 from microcosm.build.uk_runtime.national_calibration import prepare_uk_target_frame
 from microcosm.build.uk_runtime.national_frame import load_uk_national_frame
+from microcosm.build.uk_runtime.weighted_integrity import (
+    UKReviewedExclusion,
+    exclusion_evaluation_date,
+    load_uk_reviewed_exclusion_register,
+)
 from microcosm.calibrate import TargetRegistry, score_targets
 
 UK_SCORE_LOSS_CAP = 10.0
@@ -319,17 +325,108 @@ UK_EVALUATION_RULE = (
     "microcosm#578 rule 1: the candidate beats the incumbent on the frozen "
     "comparison register, both artifacts rescored on the surface both can "
     "materialize; rows the incumbent cannot materialize are pruned from both "
-    "arms and listed, never a failure."
+    "arms under the reviewed incumbent-unresolvable register and listed."
 )
 UK_EVALUATION_SCHEMA_VERSION = 1
 UK_EVALUATION_VERDICT_PASSED = "passed"
 UK_EVALUATION_VERDICT_FAILED = "failed"
 INCUMBENT_UNRESOLVABLE_NOTE = (
     "Rows pruned from BOTH arms because their measures cannot be computed on "
-    "the incumbent (inputs the incumbent artifact does not carry). The "
+    "the incumbent (inputs the incumbent artifact does not carry), each under "
+    "a signed entry of the reviewed incumbent-unresolvable register. The "
     "candidate's fit on these rows is measured by the calibration diagnostics "
     "and the terminal gates instead."
 )
+
+#: The reviewed register of measures the incumbent is known not to carry
+#: (``microcosm.build.uk`` resource, reviewed-exclusion schema 2, keyed
+#: ``entity.variable``). Pruning a target from both arms is a doctrine
+#: decision, not a scorer's inference: only a measure with a signed, in-force
+#: entry may be pruned, and an unlisted one refuses the evaluation.
+UK_INCUMBENT_UNRESOLVABLE_REGISTER = "incumbent_unresolvable_measures.json"
+
+#: A materialization skip's reason names the missing column as
+#: ``'entity.variable'`` (or ``'variable'``); the prune loop matches that
+#: exactly, never by substring, so ``measure_b`` cannot claim ``measure_bb``.
+_SKIP_COLUMN = re.compile(r"^'(?:([a-z_0-9]+)\.)?([A-Za-z_0-9]+)'$")
+
+
+def load_uk_incumbent_unresolvable_measures(
+    source: str | Path | None = None,
+) -> dict[str, UKReviewedExclusion]:
+    """The reviewed incumbent-unresolvable register (packaged unless overridden)."""
+
+    return load_uk_reviewed_exclusion_register(
+        source, resource=UK_INCUMBENT_UNRESOLVABLE_REGISTER
+    )
+
+
+def uk_incumbent_unresolvable_register_digest(
+    source: str | Path | None = None,
+) -> dict[str, str]:
+    """Name and digest of the register a receipt was evaluated under."""
+
+    if source is None:
+        from importlib import resources as importlib_resources
+
+        raw = (
+            importlib_resources.files("microcosm.build.uk")
+            .joinpath(UK_INCUMBENT_UNRESOLVABLE_REGISTER)
+            .read_bytes()
+        )
+        name = UK_INCUMBENT_UNRESOLVABLE_REGISTER
+    else:
+        raw = Path(source).read_bytes()
+        name = str(source)
+    return {"resource": name, "sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def _skip_names_the_measure(
+    skip: Mapping[str, Any], entity: str, variable: str
+) -> bool:
+    if variable == str(skip.get("measure", "")):
+        return True
+    match = _SKIP_COLUMN.match(str(skip.get("reason", "")).strip())
+    if match is None:
+        return False
+    skip_entity, skip_variable = match.group(1), match.group(2)
+    return skip_variable == variable and skip_entity in (None, entity)
+
+
+def _require_reviewed_unresolvable(
+    reviewed: Mapping[str, UKReviewedExclusion],
+    entity: str,
+    variable: str,
+    *,
+    evaluated_on: date,
+) -> UKReviewedExclusion:
+    key = f"{entity}.{variable}"
+    record = reviewed.get(key)
+    if record is None:
+        raise MeasureResolutionError(
+            f"{key} is unresolvable on the incumbent but is not on the reviewed "
+            f"incumbent-unresolvable register ({UK_INCUMBENT_UNRESOLVABLE_REGISTER}); "
+            "a target may be pruned from both arms only under a signed entry, "
+            "so the evaluation refuses rather than pruning.",
+            receipt={},
+        )
+    if record.premature(evaluated_on):
+        raise MeasureResolutionError(
+            f"the reviewed incumbent-unresolvable entry for {key} is not yet in "
+            f"force (takes force {record.approved_on}, evaluated on "
+            f"{evaluated_on.isoformat()}); correct the receipt's approved_on or "
+            "wait for it.",
+            receipt={},
+        )
+    if record.expired(evaluated_on):
+        raise MeasureResolutionError(
+            f"the reviewed incumbent-unresolvable entry for {key} expired "
+            f"{record.expires_on} (evaluated on {evaluated_on.isoformat()}); renew "
+            "the adjudication or remove the entry.",
+            receipt={},
+        )
+    return record
+
 
 _FAILED_MEASURE = re.compile(
     r"provider (?:failed computing|does not know) ([a-z_0-9]+)\.([A-Za-z0-9_]+)"
@@ -347,6 +444,7 @@ class PrunedTarget:
     family: str
     unresolvable_measure: str
     reason: str
+    adjudication: str = ""
 
 
 def _failing_measure(error: MeasureResolutionError) -> tuple[str, str] | None:
@@ -384,19 +482,31 @@ def prune_incumbent_unresolvable(
     band_edge_registry: TargetRegistry | None = None,
     contract_targets: Mapping[str, Any] | None = None,
     max_rounds: int = 10,
+    reviewed_measures: Mapping[str, UKReviewedExclusion] | None = None,
+    evaluated_on: date | None = None,
 ) -> tuple[TargetRegistry, dict[str, PrunedTarget]]:
     """Drop every target whose measure the incumbent cannot materialize.
 
     Probes the incumbent's resolution on the scoring surface; on each
-    :class:`MeasureResolutionError` naming a measure, drops the targets the
-    resolution receipt's skip rows name for it, else every target whose
+    :class:`MeasureResolutionError` naming a measure, requires a signed,
+    in-force entry for that measure on the reviewed incumbent-unresolvable
+    register (``reviewed_measures``, the packaged register by default,
+    evaluated on ``evaluated_on``, today by default), then drops the targets
+    the resolution receipt's skip rows name for it, else every target whose
     contract binding gates or values through it, and records each drop with
-    the failing measure. A failure that names no target refuses rather than
-    pruning blindly. Raw-column scoring (no resolver) has nothing to probe.
+    the failing measure and the entry's adjudication. An unlisted measure
+    refuses; a failure that names no target refuses rather than pruning
+    blindly. Raw-column scoring (no resolver) has nothing to probe.
     """
 
     if measure_resolver_factory is None:
         return registry, {}
+    reviewed = (
+        load_uk_incumbent_unresolvable_measures()
+        if reviewed_measures is None
+        else reviewed_measures
+    )
+    now = exclusion_evaluation_date(evaluated_on)
     pruned: dict[str, PrunedTarget] = {}
     surface = registry
     # The probes stand on the full register's band edges too (#803): a
@@ -416,16 +526,16 @@ def prune_incumbent_unresolvable(
             if failing is None:
                 raise
             entity, variable = failing
+            record = _require_reviewed_unresolvable(
+                reviewed, entity, variable, evaluated_on=now
+            )
             receipt = getattr(error, "receipt", None) or {}
             skips = receipt.get("skips", []) if isinstance(receipt, Mapping) else []
             skip_names = {
                 str(skip.get("name"))
                 for skip in skips
                 if isinstance(skip, Mapping)
-                and (
-                    variable == str(skip.get("measure", ""))
-                    or variable in str(skip.get("reason", ""))
-                )
+                and _skip_names_the_measure(skip, entity, variable)
             }
             dropped = [spec for spec in surface.specs if spec.name in skip_names]
             if not dropped:
@@ -457,6 +567,7 @@ def prune_incumbent_unresolvable(
                     family=spec.family,
                     unresolvable_measure=f"{entity}.{variable}",
                     reason=reason,
+                    adjudication=record.adjudication,
                 )
             surface = TargetRegistry(
                 [spec for spec in surface.specs if spec.name not in pruned],
@@ -476,11 +587,23 @@ def prune_incumbent_unresolvable(
 
 
 def pruned_block(
-    pruned: Mapping[str, PrunedTarget], *, n_scored: int, n_surface: int
+    pruned: Mapping[str, PrunedTarget],
+    *,
+    n_scored: int,
+    n_surface: int,
+    reviewed_measures: Mapping[str, UKReviewedExclusion] | None = None,
+    register: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     families: dict[str, int] = {}
     for row in pruned.values():
         families[row.family] = families.get(row.family, 0) + 1
+    measures = sorted({row.unresolvable_measure for row in pruned.values()})
+    reviewed = {} if reviewed_measures is None else reviewed_measures
+    entries_used = {
+        measure: reviewed[measure].policy_payload()
+        for measure in measures
+        if measure in reviewed
+    }
     return {
         "n_pruned": len(pruned),
         "n_scored": int(n_scored),
@@ -489,8 +612,16 @@ def pruned_block(
         # content policy refuses row-level collections by key name, and this
         # receipt rides the run as a reviewed aggregate artifact.
         "pruned_targets": {name: asdict(row) for name, row in sorted(pruned.items())},
-        "measures": sorted({row.unresolvable_measure for row in pruned.values()}),
+        "measures": measures,
         "families": dict(sorted(families.items())),
+        "reviewed_register": {
+            **(
+                {"resource": UK_INCUMBENT_UNRESOLVABLE_REGISTER, "sha256": None}
+                if register is None
+                else dict(register)
+            ),
+            "entries_used": entries_used,
+        },
         "note": INCUMBENT_UNRESOLVABLE_NOTE,
     }
 
@@ -570,17 +701,31 @@ def evaluate_uk_candidate_against_incumbent(
     band_edge_registry: TargetRegistry | None = None,
     prune_incumbent_unresolvable_measures: bool = True,
     contract_targets: Mapping[str, Any] | None = None,
+    reviewed_measures: Mapping[str, UKReviewedExclusion] | None = None,
+    evaluated_on: date | None = None,
 ) -> dict[str, Any]:
     """Score on the common resolvable surface and decide the rule-1 verdict.
 
     Returns the score block with ``incumbent_unresolvable_pruned`` (every
-    row dropped, its family and the absent measure) and ``evaluation``
-    (rule, counts, rule-1 losses and wins, ``verdict``). With pruning off the
-    strict scorer's refusal stands.
+    row dropped, its family, the absent measure and the register entry it
+    was pruned under) and ``evaluation`` (rule, counts, rule-1 losses and
+    wins, ``verdict``). Pruning stands on the reviewed incumbent-unresolvable
+    register (the packaged one unless ``reviewed_measures`` is supplied);
+    with pruning off the strict scorer's refusal stands.
     """
 
     surface = target_registry
     pruned: dict[str, PrunedTarget] = {}
+    register_digest = (
+        uk_incumbent_unresolvable_register_digest()
+        if reviewed_measures is None
+        else None
+    )
+    reviewed = (
+        load_uk_incumbent_unresolvable_measures()
+        if reviewed_measures is None
+        else reviewed_measures
+    )
     if prune_incumbent_unresolvable_measures:
         surface, pruned = prune_incumbent_unresolvable(
             incumbent_h5,
@@ -589,6 +734,8 @@ def evaluate_uk_candidate_against_incumbent(
             measure_resolver_factory,
             band_edge_registry=band_edge_registry,
             contract_targets=contract_targets,
+            reviewed_measures=reviewed,
+            evaluated_on=evaluated_on,
         )
     # A pruned surface must never redraw its own band edges (#803): the
     # edges come from the full register when the caller supplied none.
@@ -608,7 +755,11 @@ def evaluate_uk_candidate_against_incumbent(
         band_edge_registry=edges,
     )
     score["incumbent_unresolvable_pruned"] = pruned_block(
-        pruned, n_scored=len(surface.specs), n_surface=len(target_registry.specs)
+        pruned,
+        n_scored=len(surface.specs),
+        n_surface=len(target_registry.specs),
+        reviewed_measures=reviewed,
+        register=register_digest,
     )
     score["evaluation"] = evaluation_block(score)
     return score

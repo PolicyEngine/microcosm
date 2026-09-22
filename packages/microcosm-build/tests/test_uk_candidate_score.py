@@ -10,6 +10,7 @@ needs no engine.
 from __future__ import annotations
 
 import json
+from datetime import date
 from pathlib import Path
 
 import numpy as np
@@ -29,6 +30,7 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     write_uk_national_frame,
 )
+from microcosm.build.uk_runtime.weighted_integrity import UKReviewedExclusion
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import WeightKind
 
@@ -126,6 +128,29 @@ def _intercept(monkeypatch, *, failing_h5: Path, message: str, receipt: dict):
     return calls
 
 
+_REVIEWED = {
+    "household.measure_b": UKReviewedExclusion(
+        reason="the incumbent twin never carried measure_b",
+        approved_by="juaristi22",
+        adjudication="microcosm#823 (test register)",
+        approved_on="2026-09-01",
+        expires_on="2099-12-31",
+    )
+}
+
+
+@pytest.fixture(autouse=True)
+def _reviewed_register(monkeypatch):
+    """Stand in for the packaged register: measure_b is a signed, in-force
+    entry. Tests that need another register override the loader again."""
+
+    monkeypatch.setattr(
+        candidate_score,
+        "load_uk_incumbent_unresolvable_measures",
+        lambda source=None: dict(_REVIEWED),
+    )
+
+
 _SKIP_RECEIPT = {
     "skips": [
         {"name": "target_b", "measure": "measure_b", "reason": "'household.measure_b'"}
@@ -167,6 +192,7 @@ def test_prunes_the_target_the_incumbent_cannot_materialize_and_scores_the_rest(
         "family": "family_b",
         "unresolvable_measure": MEASURE_B,
         "reason": f"provider does not know {MEASURE_B}",
+        "adjudication": "microcosm#823 (test register)",
     }
     # Both arms were scored on the common surface only.
     assert score["register"]["n_specs"] == 1
@@ -323,3 +349,94 @@ def test_verdict_fails_when_the_incumbent_fits_better(tmp_path):
     assert score["evaluation"]["rule_1"]["incumbent_full_loss"] == pytest.approx(0.1)
     assert score["evaluation"]["verdict"] == "failed"
     assert evaluation_block(score) == score["evaluation"]
+
+
+def _evaluate(candidate, incumbent, **overrides):
+    kwargs = {
+        "candidate_h5": candidate,
+        "incumbent_h5": incumbent,
+        "candidate_sha256": _sha256_file(candidate),
+        "incumbent_sha256": _sha256_file(incumbent),
+        "target_registry": _registry(),
+        "calibration_year": 2025,
+        "measure_resolver_factory": _resolver_factory,
+    }
+    kwargs.update(overrides)
+    return candidate_score.evaluate_uk_candidate_against_incumbent(**kwargs)
+
+
+def test_an_unlisted_unresolvable_measure_refuses_instead_of_pruning(
+    monkeypatch, tmp_path
+):
+    """Pruning is doctrine, not inference: no signed entry, no prune."""
+    candidate, incumbent = _twins(tmp_path)
+    _intercept(
+        monkeypatch,
+        failing_h5=incumbent,
+        message="provider does not know household.measure_b",
+        receipt=_SKIP_RECEIPT,
+    )
+    monkeypatch.setattr(
+        candidate_score, "load_uk_incumbent_unresolvable_measures", lambda s=None: {}
+    )
+    with pytest.raises(MeasureResolutionError, match="not on the reviewed"):
+        _evaluate(candidate, incumbent)
+
+
+def test_an_expired_or_premature_entry_refuses(monkeypatch, tmp_path):
+    candidate, incumbent = _twins(tmp_path)
+    _intercept(
+        monkeypatch,
+        failing_h5=incumbent,
+        message="provider does not know household.measure_b",
+        receipt=_SKIP_RECEIPT,
+    )
+    with pytest.raises(MeasureResolutionError, match="expired"):
+        _evaluate(candidate, incumbent, evaluated_on=date(2100, 1, 1))
+    with pytest.raises(MeasureResolutionError, match="not yet in force"):
+        _evaluate(candidate, incumbent, evaluated_on=date(2026, 8, 1))
+
+
+def test_pruned_rows_carry_the_register_entry_they_stand_on(monkeypatch, tmp_path):
+    candidate, incumbent = _twins(tmp_path)
+    _intercept(
+        monkeypatch,
+        failing_h5=incumbent,
+        message="provider does not know household.measure_b",
+        receipt=_SKIP_RECEIPT,
+    )
+    score = _evaluate(candidate, incumbent, evaluated_on=date(2026, 9, 22))
+    pruned = score["incumbent_unresolvable_pruned"]
+    assert pruned["measures"] == ["household.measure_b"]
+    assert pruned["pruned_targets"]["target_b"]["adjudication"] == (
+        "microcosm#823 (test register)"
+    )
+    register = pruned["reviewed_register"]
+    assert register["resource"] == "incumbent_unresolvable_measures.json"
+    assert len(register["sha256"]) == 64
+    assert register["entries_used"] == {
+        "household.measure_b": _REVIEWED["household.measure_b"].policy_payload()
+    }
+
+
+def test_a_skip_reason_is_matched_exactly_never_by_substring(monkeypatch, tmp_path):
+    """``measure_b`` must not claim a skip whose reason names ``measure_bb``:
+    with no skip naming the measure and no binding, the loop refuses to
+    prune blindly rather than dropping an unrelated row."""
+    candidate, incumbent = _twins(tmp_path)
+    _intercept(
+        monkeypatch,
+        failing_h5=incumbent,
+        message="provider does not know household.measure_b",
+        receipt={
+            "skips": [
+                {
+                    "name": "target_b",
+                    "measure": "other",
+                    "reason": "'household.measure_bb'",
+                }
+            ]
+        },
+    )
+    with pytest.raises(MeasureResolutionError, match="refusing to prune blindly"):
+        _evaluate(candidate, incumbent, contract_targets={})

@@ -348,6 +348,7 @@ def compose_uk_release_certification(
     score_receipt_path: Path,
     exclusions_evaluated_on: date,
     certification_path: Path,
+    reviewed_unresolvable_measures: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Verify the three scoped parts and compose the signed certification.
 
@@ -418,7 +419,11 @@ def compose_uk_release_certification(
     )
     score_receipt_bytes = score_receipt_path.read_bytes()
     score_receipt = json.loads(score_receipt_bytes)
-    _verify_score_receipt(score_receipt, candidate_sha256=candidate_sha256)
+    _verify_score_receipt(
+        score_receipt,
+        candidate_sha256=candidate_sha256,
+        reviewed_unresolvable_measures=reviewed_unresolvable_measures,
+    )
 
     full_digests = _full_manifest_digests()
     run_config = build_record.get("run_config", {})
@@ -741,7 +746,12 @@ def _verify_identity_join(
 UK_SCORE_RECEIPT_VERDICT_PASSED = "passed"
 
 
-def _verify_score_receipt(receipt: Mapping[str, Any], *, candidate_sha256: str) -> None:
+def _verify_score_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    candidate_sha256: str,
+    reviewed_unresolvable_measures: Mapping[str, Any] | None = None,
+) -> None:
     artifacts = receipt.get("artifacts")
     scored = (
         artifacts.get("candidate", {}).get("sha256")
@@ -790,6 +800,29 @@ def _verify_score_receipt(receipt: Mapping[str, Any], *, candidate_sha256: str) 
             f"{UK_SCORE_RECEIPT_VERDICT_PASSED!r}: rule 1 (microcosm#578) is "
             "not met on the common surface, so the cut cannot be certified."
         )
+    # Every pruned measure must stand on the committed reviewed register:
+    # the scorer's inference is re-checked here against the register of
+    # record, so a receipt scored under another register cannot certify.
+    pruned = receipt.get("incumbent_unresolvable_pruned")
+    measures = pruned.get("measures", []) if isinstance(pruned, Mapping) else []
+    if measures:
+        from microcosm.build.uk_runtime.candidate_score import (
+            load_uk_incumbent_unresolvable_measures,
+        )
+
+        reviewed = (
+            load_uk_incumbent_unresolvable_measures()
+            if reviewed_unresolvable_measures is None
+            else reviewed_unresolvable_measures
+        )
+        unlisted = sorted(str(m) for m in measures if str(m) not in reviewed)
+        if unlisted:
+            raise UKReleaseCertificationError(
+                "the score receipt pruned targets through measure(s) not on the "
+                f"reviewed incumbent-unresolvable register: {unlisted}; pruning "
+                "from both arms stands only on a signed entry, so the cut "
+                "cannot be certified on this receipt."
+            )
 
 
 def _score_receipt_summary(receipt: Mapping[str, Any]) -> dict[str, Any]:

@@ -95,7 +95,7 @@ it removed, and the receipt carries them under
 `pruned_targets` with each one's family and measure, `measures`, `families`). The score stands on the common surface
 with band edges from the full register (#803). A measure the *candidate*
 cannot materialize still refuses: that is a defect.
-`--no-prune-incumbent-unresolvable` restores the refusal on the incumbent
+`--no-prune-incumbent-unresolvable` restores the refusal on the incumbent A measure may be pruned only under a signed, in-force entry of the reviewed incumbent-unresolvable register (`packages/microcosm-build/src/microcosm/build/uk/incumbent_unresolvable_measures.json`, keyed `entity.variable`, reviewed-exclusion schema); an unlisted measure refuses the evaluation, the receipt records the register digest and the entries used, and the certifier re-checks every pruned measure against the committed register.
 side too. The receipt's `evaluation` block decides rule 1 (#578) on that
 surface: `verdict` is `passed` when the candidate's full loss is below the
 incumbent's, `failed` otherwise, and the release-cut certifier refuses any
