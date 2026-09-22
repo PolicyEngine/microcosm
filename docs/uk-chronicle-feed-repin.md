@@ -72,3 +72,15 @@ The `c5e5bf8` re-pin (microcosm#725, chronicle #273, on top of `ec20085`) then b
 Tables 7, 8 and 9 (asset type, residential property, carried interest), 276,205 rows, with no
 compiled value moving on either surface.
 The `7846605` re-pin (microcosm#930, chronicle #274 via PR #275, on top of `c5e5bf8`) brought the DfT BUS01 passenger and concessionary journeys by area, the BUS05i operating-revenue and support components, the NTS0303/NTS0601 trip rates by mode and age and the DfI full-fare concession journeys (277,183 rows), with the NTS0705a selection pinned to its quintile groupby because the new packages reuse the trip-rate concepts.
+
+The `00b4b14` re-pin (microcosm#280 lane, chronicle #280/#282 and #274/#275) moved the rows to
+`chronicle.consumer_fact.v4`, which names every geography once per identifier from Chronicle's
+register and keeps the publisher's own text as an optional `geography.publisher_name`, and brought
+the HMRC Income Tax liabilities statistics of July 2026 (Tables 2.1 to 2.6, 2023-24 outturn and the
+2024-25 to 2026-27 projections), the SPI 2023-24 Tables 3.3, 3.4, 3.5, 3.8 and 3.11 and the Table
+3.7 remainder, the ESA caseload by payment type and phase, the property rental income statistics
+2026, the DWP Spring 2026 benefit expenditure and caseload tables and the bus journeys revenue
+components (287,024 rows). No compiled value moved on either surface: the national and local
+reference files are byte-identical, the vendored resources carry the same rows, and the three
+compile-parity receipts are unchanged; the NTS0705a bus-trips vendor selection is pinned to its
+income-quintile dimension because the #275 facts share its concepts. The compiled register version moves (`d131ebf617e3` to `4b2dc4698207`) on display metadata alone: eleven region-tier specs carry the v4 spelling in `ledger_geography_name` and `ledger_fact_label` (Yorkshire and The Humber; the East of England label), so the frozen scoring register in uk-candidate-eval needs a re-freeze before the next national solve.
