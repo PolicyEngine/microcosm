@@ -9,7 +9,9 @@ resolver, and membership in the installed engine's enum.
 
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from importlib import resources as importlib_resources
 
 import numpy as np
@@ -20,6 +22,7 @@ import microcosm.build.uk_runtime.geography_sources as geography_sources
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime import (
     LAD23_NAMES_ITEM_ID,
+    LAD23_NAMES_SHA256,
     LAD23_NAMES_URL,
     LOCAL_AUTHORITY_ENGINE_KEY_ALIASES,
     UK_GEOGRAPHY_LADDER_COLUMNS,
@@ -39,6 +42,8 @@ from tools.generate_uk_local_authority_names import (
     build_local_authority_names,
 )
 
+#: The reviewed digest of the ONS lookup, held here as a literal so a re-pin
+#: of ``LAD23_NAMES_SHA256`` is visible in this test's diff too.
 SOURCE_SHA256 = "6c2d811f50756c459c6a1c7c692ae9262fb4d70df3f535958ef7cdbbbd76cc44"
 
 #: The April 2023 unitaries the engine enum did not carry at 2.98.0; the
@@ -97,6 +102,7 @@ def test_uk_local_authority_names_pins_source_and_roster() -> None:
         "vintage": UK_LOCAL_AUTHORITY_VINTAGE,
     }
     assert LAD23_NAMES_ITEM_ID in LAD23_NAMES_URL
+    assert LAD23_NAMES_SHA256 == SOURCE_SHA256
     assert resource["area_count"] == 361 == len(resource["areas"])
     by_nation: dict[str, int] = {}
     for code in resource["areas"]:
@@ -120,13 +126,17 @@ def test_engine_keys_follow_the_mechanical_rule_except_the_declared_alias() -> N
 
     for code, entry in areas.items():
         assert entry["engine_key"] == local_authority_engine_key(entry["name"]), code
+
+    def bare_rule(name: str) -> str:
+        return re.sub(r"[^A-Z0-9]+", "_", name.upper()).strip("_")
+
     bare_rule_differs = {
         code
         for code, entry in areas.items()
-        if entry["engine_key"] != local_authority_engine_key(entry["name"] + " ")
-        or entry["name"] in LOCAL_AUTHORITY_ENGINE_KEY_ALIASES
+        if entry["engine_key"] != bare_rule(entry["name"])
     }
     assert bare_rule_differs == {"E07000146"}
+    assert bare_rule("King's Lynn and West Norfolk") == "KING_S_LYNN_AND_WEST_NORFOLK"
     assert areas["E07000146"] == {
         "name": "King's Lynn and West Norfolk",
         "engine_key": "KINGS_LYNN_AND_WEST_NORFOLK",
@@ -260,6 +270,18 @@ def test_engine_domain_gap_is_exactly_the_april_2023_unitaries_or_closed() -> No
     assert set(missing) <= set(APRIL_2023_UNITARIES)
 
 
+def test_resource_loader_refuses_a_drifted_source_digest(monkeypatch) -> None:
+    load_uk_local_authority_names_resource.cache_clear()
+    monkeypatch.setattr(geography_sources, "LAD23_NAMES_SHA256", "0" * 64)
+    try:
+        with pytest.raises(ValueError, match="not the pinned LAD23 names digest"):
+            load_uk_local_authority_names_resource()
+    finally:
+        load_uk_local_authority_names_resource.cache_clear()
+    monkeypatch.undo()
+    assert load_uk_local_authority_names_resource()["area_count"] == 361
+
+
 def test_uk_local_authority_names_matches_generator_output() -> None:
     if not DEFAULT_SOURCE_CSV.exists():
         pytest.skip("ONS LAD23 names lookup is not mounted under build/uk")
@@ -276,6 +298,16 @@ def test_generator_refuses_wrong_row_count_and_duplicate_keys(
         "E06000001,Hartlepool,,1\n"
         "E06000002,Middlesbrough,,2\n",
         encoding="utf-8",
+    )
+    # A lookup whose bytes differ from the pinned digest is refused before
+    # any row is parsed, naming both digests.
+    with pytest.raises(ValueError, match=f"expected {SOURCE_SHA256}, got "):
+        build_local_authority_names(source_csv=source)
+
+    monkeypatch.setattr(
+        geography_sources,
+        "LAD23_NAMES_SHA256",
+        hashlib.sha256(source.read_bytes()).hexdigest(),
     )
     monkeypatch.setattr(geography_sources, "LAD23_COUNT", 3)
     with pytest.raises(ValueError, match="LAD23"):
@@ -295,6 +327,11 @@ def test_generator_refuses_wrong_row_count_and_duplicate_keys(
         "E06000001,Somerset,,1\n"
         "E06000066,Somerset!,,2\n",
         encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        geography_sources,
+        "LAD23_NAMES_SHA256",
+        hashlib.sha256(source.read_bytes()).hexdigest(),
     )
     with pytest.raises(ValueError, match="one engine key"):
         build_local_authority_names(source_csv=source)

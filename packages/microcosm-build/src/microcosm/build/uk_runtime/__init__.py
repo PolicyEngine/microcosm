@@ -179,6 +179,7 @@ from microcosm.build.uk_runtime.geography_sources import (
     LAD23_COUNT,
     LAD23_ITL_URL,
     LAD23_NAMES_ITEM_ID,
+    LAD23_NAMES_SHA256,
     LAD23_NAMES_URL,
     NI_DZ2021_COUNT,
     NI_DZ_GEOJSON_ZIP_URL,
@@ -221,6 +222,7 @@ from microcosm.build.uk_runtime.geography_sources import (
     load_scotland_oa_ward_lookup,
     normalise_lad23_names,
     update_england_wales_lad_codes,
+    verify_lad23_names_bytes,
     write_geography_crosswalk,
 )
 from microcosm.build.uk_runtime.hmrc_calibration import (
@@ -1032,6 +1034,7 @@ __all__ = [
     "uk_zero_weight_strata_gate",
     "LAD23_COUNT",
     "LAD23_NAMES_ITEM_ID",
+    "LAD23_NAMES_SHA256",
     "LAD23_NAMES_URL",
     "load_lad23_names_lookup",
     "normalise_lad23_names",
@@ -1048,5 +1051,6 @@ __all__ = [
     "local_authority_engine_key_by_code",
     "local_authority_keys_missing_from_engine",
     "resolve_local_authority_engine_keys",
+    "verify_lad23_names_bytes",
     "verify_local_authority_engine_domain",
 ]

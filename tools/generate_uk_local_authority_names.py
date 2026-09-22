@@ -4,8 +4,10 @@
 Writes ``local_authority_names.json``: every April 2023 local authority
 district code with its ONS display name and the policyengine-uk
 ``LocalAuthority`` member name the rowwise build writes as the household
-``local_authority`` input (microcosm#953). The source bytes are sha-pinned in
-the resource, so a re-run against a re-published lookup shows up in review.
+``local_authority`` input (microcosm#953). The source bytes must match
+``geography_sources.LAD23_NAMES_SHA256``; the resource records that digest and
+the loader asserts it, so a re-published lookup is a reviewed re-pin, never a
+silent regeneration.
 
 Run from the repository root::
 
@@ -29,6 +31,7 @@ from typing import Any
 
 import pandas as pd
 
+import microcosm.build.uk_runtime.geography_sources as geography_sources
 from microcosm.build.uk_runtime.geography_sources import (
     LAD23_NAMES_ITEM_ID,
     LAD23_NAMES_URL,
@@ -76,6 +79,9 @@ def build_local_authority_names(
     )
     if not payload:
         raise ValueError("LAD23 names lookup is empty.")
+    # The pinned digest, not whatever was downloaded: a re-published lookup
+    # is re-pinned in geography_sources first, then regenerated here.
+    geography_sources.verify_lad23_names_bytes(payload)
     lookup = normalise_lad23_names(pd.read_csv(io.BytesIO(payload), dtype=str))
     areas: dict[str, dict[str, str]] = {}
     for row in lookup.itertuples(index=False):

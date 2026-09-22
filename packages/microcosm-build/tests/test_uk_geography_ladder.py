@@ -580,6 +580,20 @@ def test_assignment_refuses_ladder_codes_outside_the_lad23_roster(tmp_path) -> N
         assign_uk_geography_ladder(_household(), ladder, seed=0)
 
 
+def test_assignment_refuses_local_authority_layer_vintage_mismatch(tmp_path) -> None:
+    metadata = _ladder_metadata()
+    metadata["layers"]["local_authority"] = {
+        "vintage": "2025_april_lad",
+        "source": "a rebuilt ladder",
+    }
+    ladder = load_uk_oa_ladder(
+        _write_ladder(tmp_path / "ladder.npz", metadata_json=json.dumps(metadata))
+    )
+
+    with pytest.raises(ValueError, match="local authority vintage '2025_april_lad'"):
+        assign_uk_geography_ladder(_household(), ladder, seed=0)
+
+
 def test_gate_fails_when_columns_are_missing() -> None:
     household, weights = _gated_household()
     household = household.drop(columns=["ward_code"])

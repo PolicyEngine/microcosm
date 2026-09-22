@@ -91,6 +91,7 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.uk_runtime.local_authority_input import (
+    UK_LOCAL_AUTHORITY_VINTAGE,
     local_authority_consistency_failures,
     resolve_local_authority_engine_keys,
 )
@@ -440,6 +441,17 @@ def assign_uk_geography_ladder(
                 "match the vintage household constituencies were assigned under "
                 f"({expected_constituency_vintage!r})."
             )
+    # The engine input resolves through the April 2023 names resource, so a
+    # ladder rebuilt on another local authority frame refuses by vintage here
+    # rather than surfacing later as off-roster codes (microcosm#953).
+    local_authority_vintage = ladder.layer_vintages["local_authority"]
+    if local_authority_vintage != UK_LOCAL_AUTHORITY_VINTAGE:
+        raise ValueError(
+            f"UK OA ladder local authority vintage {local_authority_vintage!r} "
+            f"is not {UK_LOCAL_AUTHORITY_VINTAGE!r}, the vintage of the names "
+            "resource that resolves local_authority; regenerate "
+            "local_authority_names.json for the new roster first."
+        )
 
     region_codes = _validated_household_ladder_region_codes(
         household,

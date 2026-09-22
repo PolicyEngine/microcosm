@@ -5,9 +5,10 @@ policyengine-uk reads a household enum input ``local_authority``
 ``MAIDSTONE``). The rowwise geography ladder writes every household's April
 2023 ONS code as ``local_authority_code``; this module resolves that code to
 the enum member name the engine loader expects, through the committed ONS
-names-and-codes resource ``local_authority_names.json`` (published data,
-sha-pinned by ``tools/generate_uk_local_authority_names.py``) and the
-mechanical key rule below (code, with one declared alias).
+names-and-codes resource ``local_authority_names.json`` (published data;
+``geography_sources.LAD23_NAMES_SHA256`` pins the lookup bytes, and the
+generator, the loader and this resource all assert it) and the mechanical
+key rule below (code, with one declared alias).
 
 Fail closed, never default: a code the resource does not carry raises at the
 write point; :func:`uk_geography_ladder_gate` reports any row whose
@@ -33,6 +34,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
+import microcosm.build.uk_runtime.geography_sources as geography_sources
 
 UK_LOCAL_AUTHORITY_INPUT_COLUMN = "local_authority"
 UK_LOCAL_AUTHORITY_CODE_COLUMN = "local_authority_code"
@@ -88,8 +91,15 @@ def load_uk_local_authority_names_resource() -> Mapping[str, Any]:
     if payload.get("country") != "uk":
         raise ValueError(f"{label}: country must be 'uk'.")
     source = payload.get("source")
-    if not isinstance(source, Mapping) or not source.get("sha256"):
-        raise ValueError(f"{label}: source block must pin the lookup's sha256.")
+    if not isinstance(source, Mapping):
+        raise ValueError(f"{label}: source block is missing.")
+    if source.get("sha256") != geography_sources.LAD23_NAMES_SHA256:
+        raise ValueError(
+            f"{label}: source sha256 {source.get('sha256')!r} is not the pinned "
+            f"LAD23 names digest {geography_sources.LAD23_NAMES_SHA256}."
+        )
+    if source.get("url") != geography_sources.LAD23_NAMES_URL:
+        raise ValueError(f"{label}: source url is not LAD23_NAMES_URL.")
     if source.get("vintage") != UK_LOCAL_AUTHORITY_VINTAGE:
         raise ValueError(
             f"{label}: source vintage must be {UK_LOCAL_AUTHORITY_VINTAGE!r}."

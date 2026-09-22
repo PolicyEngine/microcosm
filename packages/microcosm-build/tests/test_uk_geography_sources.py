@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import io
 import urllib.error
 import zipfile
@@ -270,12 +271,28 @@ def _lad23_names_csv(rows: str) -> bytes:
     return ("\ufeffLAD23CD,LAD23NM,LAD23NMW,ObjectId\n" + rows).encode("utf-8")
 
 
+def _serve_lad23_names(monkeypatch, payload: bytes) -> None:
+    """Serve ``payload`` as the lookup and pin its digest for the test."""
+
+    monkeypatch.setattr(geography_sources, "_read_url_bytes", lambda url: payload)
+    monkeypatch.setattr(
+        geography_sources, "LAD23_NAMES_SHA256", hashlib.sha256(payload).hexdigest()
+    )
+
+
+def test_load_lad23_names_lookup_refuses_a_digest_mismatch(monkeypatch) -> None:
+    payload = _lad23_names_csv("E06000001,Hartlepool,,1\n")
+    monkeypatch.setattr(geography_sources, "_read_url_bytes", lambda url: payload)
+
+    with pytest.raises(ValueError, match="LAD23 names lookup digest mismatch"):
+        load_lad23_names_lookup("memory://lad23-names.csv")
+
+
 def test_load_lad23_names_lookup_normalises_columns(monkeypatch) -> None:
     monkeypatch.setattr(geography_sources, "LAD23_COUNT", 3)
-    monkeypatch.setattr(
-        geography_sources,
-        "_read_url_bytes",
-        lambda url: _lad23_names_csv(
+    _serve_lad23_names(
+        monkeypatch,
+        _lad23_names_csv(
             "E06000001,Hartlepool,,1\n"
             "W06000001,Isle of Anglesey,Ynys Môn,288\n"
             "S12000013,Na h-Eileanan Siar,,261\n"
@@ -304,26 +321,18 @@ def test_load_lad23_names_lookup_refuses_blank_names_and_wrong_counts(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(geography_sources, "LAD23_COUNT", 2)
-    monkeypatch.setattr(
-        geography_sources,
-        "_read_url_bytes",
-        lambda url: _lad23_names_csv("E06000001,Hartlepool,,1\nE06000002,,,2\n"),
+    _serve_lad23_names(
+        monkeypatch, _lad23_names_csv("E06000001,Hartlepool,,1\nE06000002,,,2\n")
     )
     with pytest.raises(ValueError, match="blank local_authority_name"):
         load_lad23_names_lookup("memory://lad23-names.csv")
 
-    monkeypatch.setattr(
-        geography_sources,
-        "_read_url_bytes",
-        lambda url: _lad23_names_csv("E06000001,Hartlepool,,1\n"),
-    )
+    _serve_lad23_names(monkeypatch, _lad23_names_csv("E06000001,Hartlepool,,1\n"))
     with pytest.raises(ValueError, match="LAD23"):
         load_lad23_names_lookup("memory://lad23-names.csv")
 
-    monkeypatch.setattr(
-        geography_sources,
-        "_read_url_bytes",
-        lambda url: "\ufeffLAD23CD,ObjectId\nE06000001,1\n".encode("utf-8"),
+    _serve_lad23_names(
+        monkeypatch, "\ufeffLAD23CD,ObjectId\nE06000001,1\n".encode("utf-8")
     )
     with pytest.raises(ValueError, match="missing LAD23CD or LAD23NM"):
         load_lad23_names_lookup("memory://lad23-names.csv")
