@@ -2793,7 +2793,7 @@ def _compiled_ledger_filter_fixture() -> dict:
 
 
 def test_pinned_chronicle_feed_compiles_no_unsupported_ledger_filters() -> None:
-    """The feed #955 pins carries no filter key the materializer would ignore.
+    """The pre-merge compile of the feed #955 pins carries no ignored filter key.
 
     The fixture is compiled target metadata from
     ``compile_us_fiscal_target_registry`` over that feed — the sampled rows in
@@ -2804,6 +2804,15 @@ def test_pinned_chronicle_feed_compiles_no_unsupported_ledger_filters() -> None:
     supported nor a reviewed identity qualifier must be noop-valued on every
     target that carries it, which is what makes "zero unsupported" a statement
     about the whole registry and not only about the fifty rows kept here.
+
+    The census was captured at ``369dedf1f``, before this branch merged
+    ``origin/main`` and so before
+    :func:`microcosm.build.ledger_targets._constraint_bound_filters` existed;
+    a compile at the current head stamps restated keys this census does not
+    list. That is deliberate — the rows keep pinning the compile the
+    supported/identity classification was reviewed against, and
+    :func:`test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters`
+    is the arm that meets the restated keys on the live feed.
     """
 
     builder = _load_builder_module()
@@ -2831,12 +2840,13 @@ def test_pinned_chronicle_feed_compiles_no_unsupported_ledger_filters() -> None:
 def test_restated_bounds_track_each_compiled_band_in_the_fixture() -> None:
     """Replay the rule over real compiled bands, agreeing and perturbed.
 
-    The feed #955 pins states its AGI band only as compiled metadata, so this
-    injects the restatement a labelled vocabulary would add onto real rows:
-    each banded target's own lower edge is accepted, and the same target with
-    that edge moved is refused. Guards the rule against a fixture that happens
-    to contain no band — if the sample ever loses its SOI rows, the assertion
-    on ``banded`` fails rather than the test passing vacuously.
+    In the pre-merge compile the fixture pins, the feed states its AGI band
+    only as compiled metadata, so this injects the restatement a labelled
+    vocabulary would add onto real rows: each banded target's own lower edge
+    is accepted, and the same target with that edge moved is refused. Guards
+    the rule against a fixture that happens to contain no band — if the sample
+    ever loses its SOI rows, the assertion on ``banded`` fails rather than the
+    test passing vacuously.
     """
 
     builder = _load_builder_module()
@@ -2872,11 +2882,21 @@ def test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters() -
     """The same assertion against the real feed, when this machine has it.
 
     The pinned consumer-facts feed is a 164 MB restricted-free public
-    aggregate export that no CI lane carries, and compiling it takes order ten
-    minutes, so this runs only when ``MICROCOSM_US_CHRONICLE_FACTS`` points at
-    it. It is the arm that proves the fixture above still describes the feed;
+    aggregate export that no CI lane carries, so this runs only when
+    ``MICROCOSM_US_CHRONICLE_FACTS`` points at it.
     ``experiments/us-labelled-filter-support/census_compiled_ledger_filters.py``
-    regenerates the fixture from the same compile.
+    surveys the same compile.
+
+    This is the arm that meets real restated keys. Since the branch merged
+    ``origin/main``,
+    :func:`microcosm.build.ledger_targets._constraint_bound_filters` stamps the
+    feed's AGI and qualifying-child universe constraints as
+    ``ledger_filter_us:statutes/26/62#adjusted_gross_income_{lower,upper}_bound``
+    and
+    ``ledger_filter_us.tax.earned_income_credit_qualifying_children_lower_bound``,
+    and 1,988 of the 31,066 state-surface specs carry one. Reverting either
+    call site of :func:`_restated_ledger_filter_refusal` fails this assertion
+    on exactly those 1,988.
     """
 
     feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")

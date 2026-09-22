@@ -278,3 +278,109 @@ same pattern in the legacy vocabulary.
    exclusive to match `_agi_bounds`, which folds both `<` and `<=` into one
    edge the materializer applies as `<`. If the Ledger means `<=` for count
    dimensions, one line changes and one test flips.
+
+## 7. 2026-09-22: re-levelled on `origin/main` — the premise does reproduce
+
+Sections 1–6 above were written at `369dedf1f`, before this branch was
+re-levelled. **Section 5 is superseded: the refusal is real.** What changed is
+the tree, not the feed.
+
+### Why the first measurement found nothing
+
+`origin/main` gained
+`microcosm.build.ledger_targets._constraint_bound_filters` after this stack's
+merge base `8c44daa52` (the `parameter_gated_threshold` filter-aware work in
+the UK CGT lane, changelog `725-filter-aware-gated-provider.changed.md`). It
+runs inside `_ledger_metadata` right after the dimension stamp:
+
+```python
+for key, value in sorted(_constraint_bound_filters(fact, dimensions).items()):
+    metadata.setdefault(f"ledger_filter_{key}", value)
+```
+
+and turns every `role: filter` universe constraint whose operator is one of
+`>= > < <=`, whose value is a finite number, and whose variable is **not**
+already a dimension, into `ledger_filter_<variable>_lower_bound` /
+`_lower_bound_exclusive` / `_upper_bound` / `_upper_bound_inclusive`.
+
+Section 1's reading — "`ledger_targets.py:3257` is the **only** producer of
+`ledger_filter_*` metadata and it stamps `_dimensions(fact)` alone; it never
+reads `universe_constraints`" — was correct for the tree it was read in, and
+is exactly what stopped being true. Section 5's observation that the concept
+vocabulary "appears only in `universe_constraints[].variable`" was the
+mechanism, seen one commit too early: those constraint rows are now filter
+keys.
+
+### The three counts, same feed, same surface
+
+`tools/build_us_acs_local_release.py::state_admin_specs(feed,
+["snap","medicaid","soi"], soi_mode="full")` over
+`consumer_facts_us_c5e5bf8.jsonl`; 31,066 state specs in every run.
+
+| Tree | `_unsupported_ledger_filter_metadata` | `_unsupported_soi_ledger_filters` |
+|---|---:|---:|
+| `us-chronicle-feed-repin` merged with `origin/main` (no rule) | **1,988** | 1,988 |
+| this head (rule at both call sites) | **0** | 0 |
+| this head, both call sites reverted | **1,988** | 1,988 |
+
+The 1,988 refused specs carry 2,702 refusal entries:
+`…earned_income_credit_qualifying_children_lower_bound` 1,076,
+`…adjusted_gross_income_lower_bound` 816,
+`…adjusted_gross_income_upper_bound` 810 — the three keys section 2's rule was
+written for, in the vocabulary it was written for.
+
+So the rule is not forward-compatibility scaffolding. It is what keeps the ACS
+local state surface compiling once this branch sits on `main`, and the
+answer to question 6.1 is (a) with the premise now evidenced.
+
+### Still open: `ledger_filter_age_{lower,upper}_bound`, 939 targets
+
+`_constraint_bound_filters` also stamps the **bare** vocabulary. Over the whole
+compiled registry (32,866 targets, not just the state surface) this head still
+refuses 939:
+
+| Key | Targets carrying it |
+|---|---:|
+| `ledger_filter_age_lower_bound` | 939 |
+| `ledger_filter_age_upper_bound` | 886 |
+
+936 are `census_population` / `population_age` and 3 are
+`ssa` / `ssa_ssi_age_band_recipients`, and every one restates the
+`age_lower_bound` / `age_upper_bound` the materializer already slices on in
+`_population_age_household_values`. It is section 2's pattern exactly, one
+concept further out, and it is **not** this branch's regression. Measured
+against `origin/main` at `18c6d39a0` with no part of this stack applied
+(main's own `packages/*/src` on `PYTHONPATH`, `ledger_targets.__file__`
+asserted to be under that checkout), same feed,
+`compile_us_fiscal_target_registry(..., age_targets=True)`:
+
+| Tree | Compiled targets | Refused |
+|---|---:|---:|
+| `origin/main` `18c6d39a0` alone | 32,866 | **3,208** |
+| this head | 32,866 | **939** |
+
+Main's 3,208 split `irs_soi|soi_fiscal_distribution` 2,269,
+`census_population|population_age` 936, `ssa|ssa_ssi_age_band_recipients` 3.
+This branch clears the 2,269; the 939 age-band refusals are main's and survive
+it. The ACS local state surface never selects `census_population` or `ssa`,
+which is why the state-surface table above reads 0.
+
+Not fixed here, deliberately: adding `age` to
+`RESTATED_LEDGER_FILTER_CONCEPTS` under a third `age_band` rule (compare
+`ledger_filter_age_lower_bound` against `age_lower_bound` and
+`ledger_filter_age_upper_bound` against `age_upper_bound`, both through
+`_as_bound`) is a one-rule change of the same shape, but it widens what this
+PR accepts beyond the surface it was reviewed against. It wants its own
+decision.
+
+### What the committed fixture now is
+
+`tests/fixtures/us_compiled_ledger_filter_specs.json` was captured at
+`369dedf1f`, so its key census predates `_constraint_bound_filters` and lists
+none of the restated keys. It is kept as-is: it still pins the compile the
+supported/identity classification was reviewed against, and the fixture
+`description` and the two tests reading it now say so.
+`test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters` is
+the arm that meets the restated keys — before the re-level it passed over a
+feed carrying none, and now it passes over 31,066 real specs of which 1,988
+carry one.
