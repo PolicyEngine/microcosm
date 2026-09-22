@@ -1,54 +1,81 @@
 # UK CGT sub-exempt gainers: remainder amounts, incidence anchor and projection fence (microcosm#970)
 
-*2026-09-22. Branch `uk-970-cgt-sub-exempt`. Measurement receipts to be filled in from the licensed rebuild;
-the numbers quoted for the v20 candidate come from the `uk-equalising-cgt` dashboard run of 2026-09-21
-(PolicyEngine/uk-equalising-cgt PR #3) and the HMRC Capital Gains Tax statistics 2026 release.*
+*2026-09-22. Branch `uk-970-cgt-sub-exempt` (commits 0754a531, f44d2a84, 3aa6ed37, 98ac4757, 24509d78). Licensed
+receipts under `data/ukds/acceptance/970-cgt-sub-exempt/` and `runs/uk-623-first-calibrated/spine-assessment-v22/`;
+the v20 numbers come from the `uk-equalising-cgt` dashboard run of 2026-09-21 (PolicyEngine/uk-equalising-cgt PR #3)
+and the HMRC Capital Gains Tax statistics 2026 release.*
 
 ## Question
 
-The staged v20 candidate (`staged/uk-spine-assessment-v20-calibration`) carried 11.66 million weighted people
-with capital gains at or below the £3,000 annual exempt amount, 10.82 million of them at exactly £3,000.00: the
-amounts stage capped every gainer beyond HMRC's published taxpayer mass at the exempt amount, and the equal-mass
-incidence clone left half of all household mass on gainer households. policyengine-uk freezes the exempt amount
-and uprates gains by per-capita GDP growth, so every one of them became a CGT taxpayer in the first projected
-year: 11.54 million taxpayers in 2026-27 against 597 thousand on the incumbent Enhanced FRS and 551 thousand
-in HMRC Table 1 for 2024-25. Issue #970 fixes this in three parts, and this note records what each changes.
+The staged v20 candidate (`staged/uk-spine-assessment-v20-calibration`) carried 11.66 million weighted people with
+capital gains at or below the £3,000 annual exempt amount, 10.82 million of them at exactly £3,000.00: the amounts
+stage capped every gainer beyond HMRC's published taxpayer mass at the exempt amount, and the equal-mass incidence
+clone left half of all household mass on gainer households. policyengine-uk freezes the exempt amount and uprates gains
+by per-capita GDP growth, so every one of them became a CGT taxpayer in the first projected year: 11.54 million
+taxpayers in 2026-27 against 597 thousand on the incumbent Enhanced FRS and 551 thousand in HMRC Table 1 for 2024-25.
+Issue #970 fixes this in three parts, and this note records what each changed on the licensed rebuild.
 
 ## What changed
 
-1. **Amounts** (`hmrc_cgt_gains_spine`): the remainder takes amounts from the Advani-Summers Table A1
-   within-band gains distribution restricted to the quantiles between each band's zero crossing and its
-   crossing of the exempt amount, rank-preserving within the band and deterministic (no seed consumed).
-   The table is used as published (2017-18 nominal), with no uprating; for the first income band the
-   crossings sit at quantiles 0.1805 and 0.2354.
-2. **Incidence** (`cgt_incidence_anchor`, new 31st spine stage, weights only): the sub-exempt and
-   loss-making clone households are trimmed to the reporter composition implied by the redrawn liable mass
-   and the Advani-Summers crossings (sub-exempt = liable × (q_AEA − q_0) / (1 − q_AEA), losses =
-   liable × q_0 / (1 − q_AEA)), with a factor rising in the band's incidence and capped at one; every unit
-   of mass a clone loses goes to its paired original, so pair mass, household mass and every non-CGT
-   aggregate are conserved. Liable clones and band donors are untouched. Gate:
-   `uk_stage_cgt_incidence_anchor_composition`.
-3. **Fence** (`uk_cgt_projection_entrants`, calibration seam): the weighted sub-exempt gainers whose
-   uprated gains cross the frozen exempt amount are counted year by year to 2030; the largest count must not
-   exceed the vendored HMRC Table 2.1a taxpayers in the £3,000–£5,999 band (73,000 in 2024-25).
-
-## Expected end state on a rebuilt candidate
-
-Liable mass unchanged (about 551.6 thousand), sub-exempt remainder about 43 thousand, loss-makers about
-136 thousand, entrants by uprating in the tens of thousands per year, dashboard 2026-27 taxpayers in the
-555–600 thousand range.
+1. **Amounts** (`hmrc_cgt_gains_spine`): the remainder takes amounts from the Advani-Summers Table A1 within-band
+   gains distribution restricted to the quantiles between each band's zero crossing and its crossing of the exempt
+   amount, rank-preserving within the band and deterministic (no seed consumed). The table is used as published
+   (2017-18 nominal), with no uprating; for the first income band the crossings sit at quantiles 0.1805 and 0.2354.
+2. **Incidence** (`cgt_incidence_anchor`, new 31st spine stage, weights only): the sub-exempt and loss-making clone
+   households are trimmed to the reporter composition implied by the redrawn liable mass and the Advani-Summers
+   crossings (sub-exempt = liable × (q_AEA − q_0) / (1 − q_AEA), losses = liable × q_0 / (1 − q_AEA)), with a factor
+   rising in the band's incidence and capped at one; every unit of mass a clone loses goes to its paired original, so
+   pair mass, household mass and every non-CGT aggregate are conserved to rounding. Liable clones and band donors are
+   untouched. Gate: `uk_stage_cgt_incidence_anchor_composition`. The first licensed build was blocked by that gate:
+   a global exact-total correction borrowed from the clone stage had moved the summed rounding of 26,288 transfers
+   onto one household (1.6e-13 relative on its pair); the fix conserves pairs arithmetically and records the total as
+   realised.
+3. **Fence** (`uk_cgt_projection_entrants`, calibration seam): the weighted sub-exempt gainers whose uprated gains
+   cross the frozen exempt amount are counted year by year to 2030; the largest count must not exceed the vendored
+   HMRC Table 2.1a taxpayers in the £3,000–£5,999 band (73,000 in 2024-25).
 
 ## Measurements
 
-| receipt | v20 (before) | rebuilt candidate |
-| --- | --- | --- |
-| `hmrc_cgt_gains_spine.allocation.remainder` persons / mass | cap at £3,000; 10.82m weighted | _pending_ |
-| `cgt_incidence_anchor.after.sub_exempt` / `.loss` / `liable_mass` | no anchor | _pending_ |
-| `uk_cgt_projection_entrants.max_entrants` (year) | would have failed: 10.8m (2025) | _pending_ |
-| pass-2 score (head-to-head) | 495–24 | _pending_ |
-| dashboard 2026-27 CGT taxpayers | 11.54m | _pending after the staged upload_ |
+Before: the fence evaluated on the calibrated v20 artifact, and the seam receipt of calibrating the v20 spine through
+this branch (signed report, blocked at terminal, no H5).
+
+- Entrants by uprating: 10,832,804 in 2025 rising to 10,978,624 in 2030, against the 73,000 bound. Sub-exempt weighted
+  persons 11,664,957, of which 10,815,254 at exactly £3,000; the 10th, 50th and 90th percentiles of sub-exempt gains
+  are all £3,000.
+
+After: the 31-stage spine rebuilt on 24509d78 from the same licensed inputs as spine-s (all 21 spine gates pass), then
+calibrated as v22 with the v20 recipe (frozen register pin, 1,500 epochs, family_equal). María's signed deferral of
+the self-employment £20k–£30k band (90bdb809, not on main) was cherry-picked onto a measurement branch so the recipe
+matched v20; without it main's `uk_target_fit` fails that band at +25.3%.
+
+- Anchor receipt (spine): clone sub-exempt 11,291,667 → 40,729; loss-making 2,707,829 → 150,250; liable clone mass
+  486,720 untouched; liable mass 557,420; reporter composition q_0 = 0.2008, q_AEA = 0.2552 (implied reporters
+  748,399); 25,436 of 26,288 clone households trimmed, none capped; largest pair error 2.2e-16.
+- Remainder receipt (spine): 20,642 persons placed in (£0.24, £2,999.76], all 61 Advani-Summers bands represented.
+- Calibration: 7/7 seam gates pass. Loss 0.3015 → 0.01038 (v20 0.01041); 96.6% of 638 targets within 10% (v20
+  96.4%); CGT targets 61 of 65 within 10% (worst: tax by age 65–74 +14.0%, liability total +10.0%). ESS 4,907 (v20
+  9,305). Calibrated liable mass 550,202 carrying £117.4bn of gains.
+- Fence (calibrated frame): PASSED. Entrants 12,711 in 2025, 22,331 in 2026, 43,377 in 2027, 50,416 in 2028, 54,321
+  in 2029, 67,611 in 2030, against 73,000. Sub-exempt weighted persons 326,532, median £2,116, none at exactly £3,000.
+- Pass-2 head-to-head against the incumbent (scored from the deferral tree, whose scoring-prepare fix 1f45bdf3 the
+  eval script needs): 500–24 on 524 common targets, candidate loss 0.0103 against the incumbent's 0.2171; the CGT family
+  73–2 (v20: 493–26 on 519, loss 0.0096 vs 0.211, CGT 73–2).
+
+## What the fence found next
+
+Of the 67,611 entrants in 2030, 61,219 are band donors and 6,392 are clones. The Table 3 redraw ranks every gainer in
+an income band by its prior and fills the published cells from the top; it does not distinguish the band donors, so
+119 of the 270 donors fall into the sub-exempt remainder, almost all in the £12.3k–£250k bands where the clones'
+Advani-Summers tails outrank the band means (12.3k band 30 of 30, 25k band 29, 50k band 27, 100k band 27, 250k band
+5, 1m band 1, none above). They carry 321,300 weighted persons before calibration and 291,099 after. The same
+demotion existed on v20, where those donors sat at the £3,000 cap inside the 10.82 million. The donor stage's notes
+describe the donors as support households and exclude bands below £12.3k because "the spline body already supplies
+that support", so a demoted donor is redundant support that has kept its mass as a sub-exempt gainer. How to treat
+them (protect donors in the redraw's cell selection, drop their mass, or stack donors only where the clone pool is
+short) is a separate decision this branch does not take.
 
 ## Status
 
-Code, manifests, fixtures and pins are on the branch; the synthetic smoke build, the licensed "would have
-failed v20" seam receipt and the v22 rebuild remain to be run and recorded here.
+Code, manifests, fixtures, pins and the licensed receipts above are on the branch. Still open: the
+full `microcosm-build` shard on the final tree, the dashboard measurement (after the staged upload), and María's
+ruling on demoted donors.
