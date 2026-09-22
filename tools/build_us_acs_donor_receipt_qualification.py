@@ -7,9 +7,27 @@ through the maintained producers in
 :mod:`microcosm.build.us_runtime.cps_carried` and the pinned ``PAW_TYP``
 restore in :mod:`microcosm.build.us_runtime.public_assistance_type_source`.
 
-Every other cell, weight, index, attribute and entity table is preserved
-byte-for-byte and proven so. The result is a local H5 plus an aggregate
-receipt: never a release, a staged bundle, a calibration or a latest pointer.
+The HDF change is confined to the ``person`` and ``spm_unit`` groups, and is
+proven to be exactly this:
+
+- ``person/table`` and ``spm_unit/table`` are each replaced by a new dataset
+  with the same shape and chunking whose compound record type is the old type
+  widened by one HDF bitfield8 field per appended column. Every pre-existing
+  field, including any weight or identifier field, keeps its type, offset and
+  bytes, every pre-existing table attribute is copied exactly, and five
+  attributes are added per appended column (``FIELD_<n>_NAME``,
+  ``FIELD_<n>_FILL``, ``<column>_dtype``, ``<column>_kind``,
+  ``<column>_meta``).
+- On those two groups, four pandas column-registration attributes
+  (``data_columns``, ``info``, ``non_index_axes``, ``values_cols``) are
+  rewritten to append the new column names; each rewrite is checked against
+  the expected append.
+
+Every other HDF object and attribute, including every other entity table and
+every pandas index dataset, is compared exactly with no exemption. File bytes,
+object addresses and object-header metadata are not claimed identical. The
+result is a local H5 plus an aggregate receipt: never a release, a staged
+bundle, a calibration or a latest pointer.
 
 See ``docs/us-acs-donor-receipt-qualification.md``.
 """
@@ -17,7 +35,10 @@ See ``docs/us-acs-donor-receipt-qualification.md``.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import errno
 import hashlib
+import inspect
 import io
 import json
 import os
@@ -64,7 +85,7 @@ from microcosm.data.h5_enrichment import (  # noqa: PLC2701
     _value_bytes,
     file_sha256,
 )
-from microcosm.frame import Frame
+from microcosm.frame import EntitySchema, Frame
 
 #: The exact reviewed Build P parent. Equal to
 #: ``microcosm.data.source_enrichment.PARENT_DATASET_SHA256``; declared here as
@@ -117,6 +138,10 @@ REQUIRED_SPM_UNIT_COLUMNS: tuple[str, ...] = ("spm_unit_id",)
 
 RECEIPT_FILENAME = "donor_receipt_qualification.json"
 
+#: Every source file whose code decides a receipt value. ``acs_transfer.py``
+#: (``resolve_acs_donor_channel``) and the Frame ``bundle.py``/``schema.py``
+#: (``Frame.select`` and the group membership it prunes by) decide the
+#: gate-selected channel counts that refusal 7 judges.
 _PRODUCER_FILES = (
     "tools/build_us_acs_donor_receipt_qualification.py",
     "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py",
@@ -124,6 +149,9 @@ _PRODUCER_FILES = (
     "packages/microcosm-build/src/microcosm/build/us_runtime/education_assistance_source.py",
     "packages/microcosm-build/src/microcosm/build/us_runtime/support_provenance.py",
     "packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py",
+    "packages/microcosm-frame/src/microcosm/frame/bundle.py",
+    "packages/microcosm-frame/src/microcosm/frame/schema.py",
     "packages/microcosm-data/src/microcosm/data/h5_enrichment.py",
 )
 
@@ -180,6 +208,9 @@ def _producer_identity() -> dict:
                 education_assistance_source.__file__,
                 support_provenance.__file__,
                 h5_io.__file__,
+                inspect.getsourcefile(resolve_acs_donor_channel),
+                inspect.getsourcefile(Frame.select),
+                inspect.getsourcefile(EntitySchema),
                 h5_enrichment.__file__,
             ),
             strict=True,
@@ -464,7 +495,10 @@ def append_boolean_fields(
     ``plan`` maps an HDF group (``person``, ``spm_unit``) to the ordered
     Boolean columns appended to that group's ``table`` dataset. The
     destination must not exist; the parent is opened read-only and never
-    modified. No HDF repacking or pandas table rewrite occurs.
+    modified. Each planned ``table`` is replaced by a wider dataset whose
+    existing record bytes are copied verbatim, never re-encoded through
+    pandas; no HDF repacking occurs. :func:`compare_boolean_append` states
+    and proves the exact extent of the change.
     """
 
     parent_h5, child_h5 = Path(parent_h5), Path(child_h5)
@@ -640,11 +674,20 @@ def compare_boolean_append(
     child_h5: str | Path,
     plan: Mapping[str, Mapping[str, np.ndarray]],
 ) -> dict:
-    """Prove exact identity of every pre-existing object, byte for byte.
+    """Prove the child differs from the parent only by the planned append.
 
-    Compares HDF datatype identities (including bitfields), NaN payloads,
-    signed zero, every index dataset, every attribute and row order. The
-    result holds only aggregate counts and digests, never a record.
+    The object inventory (paths, kinds, hard links only, no aliases) must be
+    identical. For each planned ``<group>/table``: the same shape and storage,
+    a record type equal to the old type widened by one HDF bitfield8 field per
+    planned column in plan order, every pre-existing field's bytes exact,
+    every pre-existing table attribute exact, and exactly the five expected
+    attributes added per column. On each planned group, the four pandas
+    column-registration attributes must equal the old value with the planned
+    columns appended; every other attribute there is exact. Every other
+    object and attribute is compared exactly: HDF datatype identities
+    (including bitfields), storage, NaN payloads, signed zero, every index
+    dataset and row order. The result holds only aggregate counts and
+    digests, never a record.
     """
 
     columns_by_group = _plan_columns(plan)
@@ -653,6 +696,7 @@ def compare_boolean_append(
     child_sha = file_sha256(child_h5)
     datasets = groups = attributes = 0
     fields_checked: dict[str, int] = {}
+    added_attributes: dict[str, tuple[str, ...]] = {}
     digests = {
         column: hashlib.sha256()
         for names in columns_by_group.values()
@@ -705,6 +749,9 @@ def compare_boolean_append(
                     _refuse(f"{path} dtype differs beyond the appended fields")
                 fields_checked[path] = len(old.dtype.names)
                 rows[path] = len(old)
+                added_attributes[path] = tuple(
+                    _new_table_attributes(len(old.dtype.names), names)
+                )
             elif old.id.get_type() != new.id.get_type() or old.dtype != new.dtype:
                 _refuse(f"HDF dtype changed at {path}")
             slices = (
@@ -739,7 +786,10 @@ def compare_boolean_append(
         "schema_version": 1,
         "parent_sha256": parent_sha,
         "candidate_sha256": child_sha,
-        "all_preexisting_objects_exact": True,
+        # Every pre-existing field of the replaced tables and every other
+        # dataset's bytes; the exceptions are enumerated below, not implied.
+        "all_preexisting_fields_and_datasets_exact": True,
+        "all_other_objects_and_attributes_exact": True,
         "groups_checked_including_root": groups,
         "datasets_checked": datasets,
         "preexisting_attributes_checked": attributes,
@@ -748,15 +798,19 @@ def compare_boolean_append(
                 "rows": rows[path],
                 "preexisting_fields_checked_including_index": fields_checked[path],
                 "appended_fields": list(names),
+                "storage": "HDF bitfield8; pandas bool",
+                "record_size_increase_bytes": len(names),
+                "added_table_attributes": sorted(added_attributes[path]),
             }
             for path, names in tables.items()
+        },
+        "rewritten_group_attributes": {
+            group: list(_REGISTRATION) for group in columns_by_group
         },
         "appended_columns": {
             column: {"values_sha256": digest.hexdigest()}
             for column, digest in digests.items()
         },
-        "storage": "HDF bitfield8; pandas bool",
-        "column_registration_attributes": list(_REGISTRATION),
     }
 
 
@@ -900,6 +954,39 @@ def _refuse_signalless_columns(counts: Mapping[str, Mapping]) -> None:
             )
 
 
+_OCCUPIED_TARGET_ERRNOS = frozenset({errno.EEXIST, errno.ENOTEMPTY, errno.ENOTDIR})
+
+
+def _expose_without_overwrite(staging: Path, output_dir: Path) -> None:
+    """Atomically rename ``staging`` to ``output_dir``, never overwriting.
+
+    ``os.mkdir`` first reserves the name: it fails if anything, including a
+    dangling symlink, is already there, so there is no check-then-act window.
+    POSIX ``rename(2)`` then replaces a directory target only while it is
+    empty, so the rename atomically swaps the verified staging directory for
+    this call's own empty reservation, and fails, rather than overwriting, if
+    another process has since put anything inside the reservation or
+    replaced it with a file or symlink. On failure only an empty directory at
+    ``output_dir`` is removed (``os.rmdir`` cannot remove anything else), and
+    the caller removes ``staging``. This relies on POSIX rename semantics
+    (macOS and Linux).
+    """
+
+    occupied = "Output appeared during the build; refusing to overwrite"
+    try:
+        os.mkdir(output_dir, 0o700)
+    except FileExistsError:
+        raise FileExistsError(occupied) from None
+    try:
+        os.rename(staging, output_dir)
+    except OSError as exc:
+        with contextlib.suppress(OSError):
+            os.rmdir(output_dir)
+        if exc.errno in _OCCUPIED_TARGET_ERRNOS:
+            raise FileExistsError(occupied) from exc
+        raise
+
+
 def qualify_donor(
     *,
     parent_h5: Path,
@@ -1023,11 +1110,7 @@ def qualify_donor(
         }
         _json_write(staging / RECEIPT_FILENAME, receipt)
         child_h5.chmod(0o400)
-        if output_dir.exists() or output_dir.is_symlink():
-            raise FileExistsError(
-                "Output appeared during the build; refusing to overwrite"
-            )
-        os.rename(staging, output_dir)
+        _expose_without_overwrite(staging, output_dir)
         return receipt
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)

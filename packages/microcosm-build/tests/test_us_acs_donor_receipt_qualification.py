@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import pickle
 import re
 from pathlib import Path
 from types import SimpleNamespace
@@ -250,6 +252,13 @@ def _qualify(fixture, **overrides):
     return builder.qualify_donor(**kwargs)
 
 
+def _leftover_staging(fixture) -> list[str]:
+    return sorted(
+        path.name
+        for path in fixture.output.parent.glob(".donor-receipt-qualification-*")
+    )
+
+
 # --------------------------------------------------------------------------
 # Happy path
 # --------------------------------------------------------------------------
@@ -286,6 +295,10 @@ def test_qualifies_the_pinned_donor(donor) -> None:
     receipt_path = fixture.output / builder.RECEIPT_FILENAME
     assert json.loads(receipt_path.read_text()) == receipt
     assert child.stat().st_mode & 0o777 == 0o400
+    assert sorted(path.name for path in fixture.output.iterdir()) == sorted(
+        [child.name, builder.RECEIPT_FILENAME]
+    )
+    assert _leftover_staging(fixture) == []
 
 
 def test_receipt_reports_counts_by_year_role_and_channel(donor) -> None:
@@ -724,3 +737,882 @@ def test_producer_files_are_the_modules_that_are_actually_imported() -> None:
     root = builder._repository_root()
     for filename in builder._PRODUCER_FILES:
         assert (root / filename).is_file(), filename
+
+
+def test_producer_receipt_hashes_the_code_that_decides_the_channel_counts() -> None:
+    # resolve_acs_donor_channel and Frame.select decide the gate-selected
+    # channel counts that refusal 7 judges, so their sources are receipt inputs.
+    assert {
+        "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py",
+        "packages/microcosm-frame/src/microcosm/frame/bundle.py",
+        "packages/microcosm-frame/src/microcosm/frame/schema.py",
+    } <= set(builder._PRODUCER_FILES)
+    root = builder._repository_root()
+
+    identity = builder._producer_identity()
+
+    assert identity["source_files_sha256"] == {
+        name: file_sha256(root / name) for name in builder._PRODUCER_FILES
+    }
+    assert len(identity["git_commit"]) == 40
+
+
+def _foreign_resolver(donor, channel):
+    return donor, channel
+
+
+class _ForeignFrame:
+    def select(self, person_mask):
+        return self
+
+
+class _ForeignSchema:
+    pass
+
+
+@pytest.mark.parametrize(
+    ("name", "replacement", "filename"),
+    [
+        (
+            "resolve_acs_donor_channel",
+            _foreign_resolver,
+            "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py",
+        ),
+        (
+            "Frame",
+            _ForeignFrame,
+            "packages/microcosm-frame/src/microcosm/frame/bundle.py",
+        ),
+        (
+            "EntitySchema",
+            _ForeignSchema,
+            "packages/microcosm-frame/src/microcosm/frame/schema.py",
+        ),
+    ],
+)
+def test_producer_identity_refuses_channel_code_from_elsewhere(
+    monkeypatch, name, replacement, filename
+) -> None:
+    monkeypatch.setattr(builder, name, replacement)
+
+    with pytest.raises(builder.DonorQualificationError) as refusal:
+        builder._producer_identity()
+
+    assert f"Producer must execute this checkout's {filename}" in str(refusal.value)
+
+
+# --------------------------------------------------------------------------
+# The byte-preservation verifier refuses every unplanned change
+# --------------------------------------------------------------------------
+#
+# Each test below appends the planned columns to the synthetic parent through
+# the real writer, then tampers with the child (or the plan) and requires
+# ``compare_boolean_append`` or ``append_boolean_fields`` to refuse. The
+# untampered case passes first, so every refusal is caused by its tamper.
+
+_PLAN_ORDER = {
+    "person": ("receives_wic",),
+    "spm_unit": ("receives_snap", "receives_tanf"),
+}
+
+
+def _plan(order: dict | None = None) -> dict:
+    return {
+        group: {column: np.asarray(_EXPECTED[column], dtype=bool) for column in names}
+        for group, names in (order or _PLAN_ORDER).items()
+    }
+
+
+@pytest.fixture
+def appended(tmp_path):
+    parent = tmp_path / "parent.h5"
+    _write_parent(parent)
+    child = tmp_path / "child.h5"
+    plan = _plan()
+    report = builder.append_boolean_fields(
+        parent, child, plan, expected_parent_sha256=file_sha256(parent)
+    )
+    return SimpleNamespace(parent=parent, child=child, plan=plan, report=report)
+
+
+def _verify(fixture, plan: dict | None = None) -> dict:
+    return builder.compare_boolean_append(
+        fixture.parent, fixture.child, fixture.plan if plan is None else plan
+    )
+
+
+def _write_records(dataset, values, start: int = 0) -> None:
+    """Write raw records with the file type, so only the intended bytes move."""
+
+    values = np.ascontiguousarray(values)
+    selection = dataset.id.get_space()
+    selection.select_hyperslab((start,), (values.size,))
+    dataset.id.write(
+        h5py.h5s.create_simple(values.shape),
+        selection,
+        values,
+        mtype=dataset.id.get_type(),
+    )
+
+
+def _set_field_byte(dataset, field: str, *, row: int = 0, value=None) -> None:
+    """Flip the low bit of ``field``'s first byte in one row, or set it."""
+
+    record = builder._raw_rows(dataset, row, row + 1)
+    offset = record.dtype.fields[field][1]
+    raw = record.view(np.uint8)
+    raw[offset] = raw[offset] ^ 1 if value is None else value
+    _write_records(dataset, record, start=row)
+
+
+def _recreate_dataset(
+    group,
+    name: str,
+    *,
+    datatype=None,
+    rows: int | None = None,
+    chunks: tuple[int, ...] | None = None,
+) -> None:
+    """Replace one dataset, keeping its attributes, with one property changed."""
+
+    old = group[name]
+    datatype = old.id.get_type() if datatype is None else datatype
+    rows = len(old) if rows is None else rows
+    creation = h5py.h5p.create(h5py.h5p.DATASET_CREATE)
+    creation.set_chunk(chunks or old.chunks)
+    new = h5py.Dataset(
+        h5py.h5d.create(
+            group.id,
+            b"_tampered",
+            datatype,
+            h5py.h5s.create_simple((rows,), (h5py.h5s.UNLIMITED,)),
+            dcpl=creation,
+        )
+    )
+    source = builder._raw_rows(old, 0, rows)
+    if datatype == old.id.get_type():
+        _write_records(new, source)
+    for key in old.attrs:
+        builder._copy_attribute(old, new, key)
+    del group[name]
+    group.move("_tampered", name)
+
+
+def test_verifier_accepts_the_untampered_append_and_states_its_extent(
+    appended,
+) -> None:
+    report = _verify(appended)
+
+    assert report == appended.report
+    assert report["all_preexisting_fields_and_datasets_exact"] is True
+    assert report["all_other_objects_and_attributes_exact"] is True
+    assert report["rewritten_group_attributes"] == {
+        "person": ["data_columns", "info", "non_index_axes", "values_cols"],
+        "spm_unit": ["data_columns", "info", "non_index_axes", "values_cols"],
+    }
+    person_fields = len(_person_table().columns) + 1  # plus the pandas index
+    assert report["tables_extended"]["person/table"] == {
+        "rows": len(_PEOPLE),
+        "preexisting_fields_checked_including_index": person_fields,
+        "appended_fields": ["receives_wic"],
+        "storage": "HDF bitfield8; pandas bool",
+        "record_size_increase_bytes": 1,
+        "added_table_attributes": sorted(
+            [
+                f"FIELD_{person_fields}_NAME",
+                f"FIELD_{person_fields}_FILL",
+                "receives_wic_dtype",
+                "receives_wic_kind",
+                "receives_wic_meta",
+            ]
+        ),
+    }
+    spm = report["tables_extended"]["spm_unit/table"]
+    assert spm["appended_fields"] == ["receives_snap", "receives_tanf"]
+    assert spm["record_size_increase_bytes"] == 2
+    assert len(spm["added_table_attributes"]) == 10
+
+
+@pytest.mark.parametrize(
+    ("table", "field"),
+    [
+        ("person/table", "index"),
+        ("person/table", "PERIDNUM"),
+        ("person/table", "age"),
+        ("person/table", "person_spm_unit_id"),
+        ("person/table", "is_female"),
+        ("spm_unit/table", "spm_unit_id"),
+        ("spm_unit/table", "spm_unit_support_channel"),
+        ("spm_unit/table", "takes_up_snap_if_eligible"),
+    ],
+)
+def test_verifier_refuses_a_changed_existing_field(appended, table, field) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        _set_field_byte(h5[table], field, row=1)
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match=f"Existing {re.escape(table)} field changed: {field}$",
+    ):
+        _verify(appended)
+
+
+def test_verifier_refuses_reordered_rows(appended) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        table = h5["person/table"]
+        _write_records(table, builder._raw_rows(table, 0, len(table))[::-1])
+
+    with pytest.raises(
+        builder.DonorQualificationError, match="Existing person/table field changed"
+    ):
+        _verify(appended)
+
+
+@pytest.mark.parametrize(
+    ("path", "field"),
+    [
+        ("household/table", "household_weight"),
+        ("tax_unit/table", "tax_unit_id"),
+        ("_time_period/table", "time_period"),
+        ("person/_i_table/age/sortedLR", None),
+        ("spm_unit/_i_table/spm_unit_id/sortedLR", None),
+    ],
+)
+def test_verifier_refuses_a_changed_value_in_any_other_dataset(
+    appended, path, field
+) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        dataset = h5[path]
+        if field is None:
+            dataset[0] = dataset[0] + 1
+        else:
+            _set_field_byte(dataset, field)
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match=f"Existing HDF dataset values changed: {re.escape(path)}$",
+    ):
+        _verify(appended)
+
+
+@pytest.mark.parametrize(
+    ("table", "column"),
+    [
+        ("person/table", "receives_wic"),
+        ("spm_unit/table", "receives_snap"),
+        ("spm_unit/table", "receives_tanf"),
+    ],
+)
+def test_verifier_refuses_a_non_boolean_appended_value(appended, table, column) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        _set_field_byte(h5[table], column, value=2)
+
+    with pytest.raises(
+        builder.DonorQualificationError, match=f"Appended {column} is not Boolean"
+    ):
+        _verify(appended)
+
+
+_ATTRIBUTE_OWNERS = (
+    "",
+    "household",
+    "person",
+    "spm_unit",
+    "person/table",
+    "spm_unit/table",
+    "tax_unit/table",
+    "person/_i_table/age",
+    "spm_unit/_i_table/spm_unit_id/sortedLR",
+)
+
+
+@pytest.mark.parametrize("mutation", ["added", "removed", "value", "dtype"])
+@pytest.mark.parametrize("owner", _ATTRIBUTE_OWNERS)
+def test_verifier_refuses_any_other_attribute_change(appended, owner, mutation) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        attrs = h5[owner].attrs if owner else h5.attrs
+        if mutation == "added":
+            attrs["unapproved"] = np.int16(1)
+        elif mutation == "removed":
+            del attrs["CLASS"]
+        elif mutation == "value":
+            # Same HDF type and length, different bytes.
+            attrs.modify("CLASS", bytes(attrs["CLASS"])[::-1])
+        else:
+            attrs["CLASS"] = np.int64(7)
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match=f"HDF attributes? changed at {re.escape(owner)}(:CLASS)?$",
+    ):
+        _verify(appended)
+
+
+def _tamper_registration(value, attribute: str):
+    if attribute == "info":
+        value["tampered"] = {}
+    elif attribute == "non_index_axes":
+        value[0][1].reverse()
+    else:
+        value.reverse()
+    return value
+
+
+@pytest.mark.parametrize(
+    "attribute", ["data_columns", "info", "non_index_axes", "values_cols"]
+)
+@pytest.mark.parametrize("group", ["person", "spm_unit"])
+def test_verifier_refuses_a_registration_change_beyond_the_append(
+    appended, group, attribute
+) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        attrs = h5[group].attrs
+        value = _tamper_registration(pickle.loads(bytes(attrs[attribute])), attribute)
+        attrs[attribute] = np.bytes_(pickle.dumps(value, protocol=0))
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match=f"Unexpected pandas column registration change at {group}:{attribute}",
+    ):
+        _verify(appended)
+
+
+@pytest.mark.parametrize("group", ["person", "spm_unit"])
+def test_verifier_refuses_correct_registration_bytes_with_the_wrong_type(
+    appended, group
+) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        attrs = h5[group].attrs
+        attrs["values_cols"] = np.frombuffer(bytes(attrs["values_cols"]), np.uint8)
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match=f"Unexpected pandas column registration change at {group}:values_cols",
+    ):
+        _verify(appended)
+
+
+@pytest.mark.parametrize(
+    "attribute", ["data_columns", "info", "non_index_axes", "values_cols"]
+)
+def test_verifier_refuses_a_registration_change_on_an_unplanned_group(
+    appended, attribute
+) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        attrs = h5["household"].attrs
+        value = _tamper_registration(pickle.loads(bytes(attrs[attribute])), attribute)
+        if value == pickle.loads(bytes(attrs[attribute])):
+            value = _tamper_registration(value, "info")
+        attrs[attribute] = np.bytes_(pickle.dumps(value, protocol=0))
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match=f"HDF attribute changed at household:{attribute}",
+    ):
+        _verify(appended)
+
+
+@pytest.mark.parametrize(
+    ("table", "attribute", "mutation"),
+    [
+        ("person/table", "receives_wic_dtype", "value"),
+        ("person/table", "receives_wic_kind", "uint8"),
+        ("person/table", "FIELD_{first}_FILL", "int64"),
+        ("spm_unit/table", "FIELD_{first}_NAME", "value"),
+        ("spm_unit/table", "receives_tanf_meta", "removed"),
+        ("spm_unit/table", "receives_snap_kind", "value"),
+    ],
+)
+def test_verifier_refuses_invalid_appended_column_metadata(
+    appended, table, attribute, mutation
+) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        dataset = h5[table]
+        first = dataset.dtype.names.index(_PLAN_ORDER[table.split("/")[0]][0])
+        name = attribute.format(first=first)
+        attrs = dataset.attrs
+        if mutation == "removed":
+            del attrs[name]
+        elif mutation == "int64":
+            attrs[name] = np.int64(0)
+        elif mutation == "uint8":
+            attrs[name] = np.frombuffer(bytes(attrs[name]), np.uint8)
+        else:
+            attrs.modify(name, bytes(attrs[name])[::-1])
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match=(
+            f"Invalid appended column metadata at {re.escape(table)}:{name}$"
+            f"|HDF attributes changed at {re.escape(table)}$"
+        ),
+    ):
+        _verify(appended)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        "extra_root_group",
+        "extra_root_dataset",
+        "extra_dataset_in_person",
+        "extra_dataset_in_index",
+        "removed_group",
+        "removed_index_dataset",
+    ],
+)
+def test_verifier_refuses_an_added_or_removed_object(appended, mutation) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        if mutation == "extra_root_group":
+            h5.create_group("extra")
+        elif mutation == "extra_root_dataset":
+            h5.create_dataset("extra", data=[1])
+        elif mutation == "extra_dataset_in_person":
+            h5["person"].create_dataset("extra", data=[1])
+        elif mutation == "extra_dataset_in_index":
+            h5["spm_unit/_i_table/spm_unit_id"].create_dataset("extra", data=[1])
+        elif mutation == "removed_group":
+            del h5["family"]
+        else:
+            del h5["person/_i_table/age/sortedLR"]
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match="HDF groups or datasets were added or removed",
+    ):
+        _verify(appended)
+
+
+@pytest.mark.parametrize("mutation", ["soft_link", "external_link", "alias"])
+def test_verifier_refuses_links_and_aliases(appended, mutation) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        if mutation == "soft_link":
+            h5["extra"] = h5py.SoftLink("/person")
+        elif mutation == "external_link":
+            h5["extra"] = h5py.ExternalLink(str(appended.parent), "/person")
+        else:
+            h5["extra"] = h5["person"]
+
+    # The object walk is the reviewed h5_enrichment primitive; its refusals
+    # are plain ValueErrors, which the CLI reports as refusals too.
+    with pytest.raises(ValueError, match="Nonlocal HDF link|Aliased HDF object"):
+        _verify(appended)
+
+
+@pytest.mark.parametrize(
+    ("table", "mutation"),
+    [
+        ("person/table", "order"),
+        ("spm_unit/table", "existing_bitfield_as_uint8"),
+        ("spm_unit/table", "appended_bitfield_as_uint8"),
+        ("person/table", "appended_bitfield_as_uint8"),
+    ],
+)
+def test_verifier_refuses_an_extended_record_type_beyond_the_append(
+    appended, table, mutation
+) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        old_type = h5[table].id.get_type()
+        datatype = h5py.h5t.create(h5py.h5t.COMPOUND, old_type.get_size())
+        indices = list(range(old_type.get_nmembers()))
+        if mutation == "order":
+            indices.reverse()
+        planned = {column.encode() for column in _PLAN_ORDER[table.split("/")[0]]}
+        for index in indices:
+            name = old_type.get_member_name(index)
+            member_type = old_type.get_member_type(index)
+            existing = mutation == "existing_bitfield_as_uint8" and (
+                name == b"takes_up_snap_if_eligible"
+            )
+            appended_field = mutation == "appended_bitfield_as_uint8" and (
+                name in planned
+            )
+            if existing or appended_field:
+                # NumPy still sees uint8; the HDF bitfield identity is lost.
+                member_type = h5py.h5t.STD_U8LE
+            datatype.insert(name, old_type.get_member_offset(index), member_type)
+        group, name = table.split("/")
+        _recreate_dataset(h5[group], name, datatype=datatype)
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match=f"{re.escape(table)} dtype differs beyond the appended fields",
+    ):
+        _verify(appended)
+
+
+def test_verifier_refuses_a_changed_dtype_elsewhere(appended) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        old_type = h5["tax_unit/table"].id.get_type()
+        datatype = h5py.h5t.create(h5py.h5t.COMPOUND, old_type.get_size())
+        for index in range(old_type.get_nmembers()):
+            # Same size and field names, but big-endian integers.
+            datatype.insert(
+                old_type.get_member_name(index),
+                old_type.get_member_offset(index),
+                h5py.h5t.STD_I64BE,
+            )
+        _recreate_dataset(h5["tax_unit"], "table", datatype=datatype)
+
+    with pytest.raises(
+        builder.DonorQualificationError, match="HDF dtype changed at tax_unit/table$"
+    ):
+        _verify(appended)
+
+
+@pytest.mark.parametrize(
+    ("path", "change"),
+    [
+        ("household/table", {"rows": 3}),
+        ("household/table", {"chunks": (7,)}),
+        ("person/table", {"rows": 7}),
+        ("spm_unit/table", {"chunks": (3,)}),
+    ],
+)
+def test_verifier_refuses_a_changed_shape_or_storage(appended, path, change) -> None:
+    with h5py.File(appended.child, "r+") as h5:
+        group, name = path.split("/")
+        _recreate_dataset(h5[group], name, **change)
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match=f"HDF shape or storage changed at {re.escape(path)}$",
+    ):
+        _verify(appended)
+
+
+@pytest.mark.parametrize(
+    ("order", "match"),
+    [
+        # The spm_unit columns in the opposite order to the written one.
+        (
+            {
+                "person": ("receives_wic",),
+                "spm_unit": ("receives_tanf", "receives_snap"),
+            },
+            "Unexpected pandas column registration change at spm_unit:",
+        ),
+        # A written table the plan does not declare.
+        ({"person": ("receives_wic",)}, "HDF attribute changed at spm_unit:"),
+        # A declared column that was never written.
+        (
+            {**_PLAN_ORDER, "household": ("receives_wic",)},
+            "Unexpected pandas column registration change at household:",
+        ),
+        (
+            {"person": ("receives_wix",), "spm_unit": _PLAN_ORDER["spm_unit"]},
+            "Unexpected pandas column registration change at person:",
+        ),
+    ],
+)
+def test_verifier_refuses_a_plan_other_than_the_written_one(
+    appended, order, match
+) -> None:
+    # The verifier judges the plan's groups and column order, not its values.
+    plan = {
+        group: {column: np.zeros(0, dtype=bool) for column in columns}
+        for group, columns in order.items()
+    }
+
+    with pytest.raises(builder.DonorQualificationError, match=match):
+        _verify(appended, plan)
+
+
+def test_append_refuses_a_parent_hash_mismatch(tmp_path) -> None:
+    parent, child = tmp_path / "parent.h5", tmp_path / "child.h5"
+    _write_parent(parent)
+    before = file_sha256(parent)
+
+    with pytest.raises(
+        builder.DonorQualificationError, match="Parent H5 SHA-256 mismatch"
+    ):
+        builder.append_boolean_fields(
+            parent, child, _plan(), expected_parent_sha256="0" * 64
+        )
+
+    assert not child.exists()
+    assert file_sha256(parent) == before
+
+
+@pytest.mark.parametrize(
+    ("plan", "match"),
+    [
+        (
+            {"person": {"receives_wic": np.ones(len(_PEOPLE), dtype=np.uint8)}},
+            "receives_wic must be a one-dimensional Boolean array",
+        ),
+        (
+            {"person": {"receives_wic": np.ones((len(_PEOPLE), 1), dtype=bool)}},
+            "receives_wic must be a one-dimensional Boolean array",
+        ),
+        (
+            {"person": {"receives_wic": np.ones(len(_PEOPLE) - 1, dtype=bool)}},
+            "receives_wic coverage does not match the person rows",
+        ),
+        (
+            {"spm_unit": {"receives_snap": np.ones(len(_PEOPLE), dtype=bool)}},
+            "receives_snap coverage does not match the spm_unit rows",
+        ),
+        ({"spm_unit": {}}, "Empty append plan for spm_unit"),
+        (
+            {"benunit": {"receives_wic": np.ones(4, dtype=bool)}},
+            "Parent has no benunit/table",
+        ),
+    ],
+)
+def test_append_refuses_an_invalid_plan(tmp_path, plan, match) -> None:
+    parent, child = tmp_path / "parent.h5", tmp_path / "child.h5"
+    _write_parent(parent)
+    before = file_sha256(parent)
+
+    with pytest.raises(builder.DonorQualificationError, match=match):
+        builder.append_boolean_fields(
+            parent, child, plan, expected_parent_sha256=before
+        )
+
+    assert not child.exists()
+    assert file_sha256(parent) == before
+
+
+@pytest.mark.parametrize("column", ["receives_wic", "PERIDNUM"])
+def test_append_refuses_a_column_already_in_the_hdf_table(tmp_path, column) -> None:
+    parent, child = tmp_path / "parent.h5", tmp_path / "child.h5"
+    _write_parent(parent, person_overrides={"receives_wic": [False] * len(_PEOPLE)})
+    before = file_sha256(parent)
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match="Parent already carries a qualified column at person/table",
+    ):
+        builder.append_boolean_fields(
+            parent,
+            child,
+            {"person": {column: np.ones(len(_PEOPLE), dtype=bool)}},
+            expected_parent_sha256=before,
+        )
+
+    assert not child.exists()
+
+
+def test_append_refuses_a_filtered_table(tmp_path) -> None:
+    parent, child = tmp_path / "parent.h5", tmp_path / "child.h5"
+    with pd.HDFStore(parent, "w", complevel=1, complib="zlib") as store:
+        store.put("person", _person_table(), format="table", data_columns=True)
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match="Expected an unfiltered native pandas table at person/table",
+    ):
+        builder.append_boolean_fields(
+            parent,
+            child,
+            {"person": {"receives_wic": np.ones(len(_PEOPLE), dtype=bool)}},
+            expected_parent_sha256=file_sha256(parent),
+        )
+
+    assert not child.exists()
+
+
+@pytest.mark.parametrize("destination", ["existing", "parent", "symlink"])
+def test_append_never_overwrites_its_destination(tmp_path, destination) -> None:
+    parent = tmp_path / "parent.h5"
+    _write_parent(parent)
+    child = tmp_path / "child.h5"
+    if destination == "existing":
+        child.write_bytes(b"existing artifact")
+    elif destination == "parent":
+        child = parent
+    else:
+        child.symlink_to(parent)
+    original = child.read_bytes()
+
+    with pytest.raises(FileExistsError):
+        builder.append_boolean_fields(
+            parent, child, _plan(), expected_parent_sha256=file_sha256(parent)
+        )
+
+    assert child.read_bytes() == original
+
+
+def test_append_refuses_values_that_differ_from_the_derivation(
+    tmp_path, monkeypatch
+) -> None:
+    parent, child = tmp_path / "parent.h5", tmp_path / "child.h5"
+    _write_parent(parent)
+    before = file_sha256(parent)
+    write = builder._append_group_fields
+
+    def write_inverted(handle, group_name, columns):
+        write(handle, group_name, {name: ~values for name, values in columns.items()})
+
+    monkeypatch.setattr(builder, "_append_group_fields", write_inverted)
+
+    with pytest.raises(
+        builder.DonorQualificationError,
+        match="Written receives_wic differs from the derivation",
+    ):
+        builder.append_boolean_fields(
+            parent, child, _plan(), expected_parent_sha256=before
+        )
+
+    assert not child.exists()
+    assert file_sha256(parent) == before
+
+
+# --------------------------------------------------------------------------
+# Late refusals and the never-overwrite exposure
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("stage", ["preservation", "reload", "producer_drift"])
+def test_a_late_refusal_leaves_no_output_and_no_staging(
+    donor, monkeypatch, stage
+) -> None:
+    fixture = donor()
+    if stage == "preservation":
+
+        def refuse_preservation(*args, **kwargs):
+            raise builder.DonorQualificationError("HDF attributes changed at person")
+
+        monkeypatch.setattr(builder, "compare_boolean_append", refuse_preservation)
+        match = "HDF attributes changed at person"
+    elif stage == "reload":
+
+        def refuse_reload(*args, **kwargs):
+            raise builder.DonorQualificationError("person weights changed")
+
+        monkeypatch.setattr(builder, "verify_reload", refuse_reload)
+        match = "person weights changed"
+    else:
+        identities = iter(
+            [
+                _STUB_IDENTITY,
+                {**_STUB_IDENTITY, "source_files_sha256": {"synthetic.py": "e" * 64}},
+            ]
+        )
+        monkeypatch.setattr(builder, "_producer_identity", lambda: next(identities))
+        match = "Producer source files changed while qualifying the donor"
+
+    with pytest.raises(builder.DonorQualificationError, match=match):
+        _qualify(fixture)
+
+    assert not fixture.output.exists()
+    assert not fixture.output.is_symlink()
+    assert _leftover_staging(fixture) == []
+
+
+def _intrude(path: Path, intruder: str) -> None:
+    if intruder == "populated_directory":
+        path.mkdir()
+        (path / "foreign.txt").write_bytes(b"foreign")
+    elif intruder == "empty_directory":
+        path.mkdir()
+    elif intruder == "file":
+        path.write_bytes(b"foreign")
+    else:
+        path.symlink_to(path.parent / "nowhere")
+
+
+def _intruder_state(path: Path) -> tuple:
+    if path.is_symlink():
+        return ("symlink", os.readlink(path))
+    if path.is_dir():
+        return (
+            "directory",
+            sorted((item.name, item.read_bytes()) for item in path.iterdir()),
+        )
+    return ("file", path.read_bytes())
+
+
+@pytest.mark.parametrize(
+    "intruder", ["populated_directory", "empty_directory", "file", "dangling_symlink"]
+)
+def test_never_overwrites_an_output_that_appears_during_the_build(
+    donor, monkeypatch, intruder
+) -> None:
+    fixture = donor()
+    verify = builder.verify_reload
+    expected: list[tuple] = []
+
+    def verify_then_intrude(*args, **kwargs):
+        report = verify(*args, **kwargs)
+        _intrude(fixture.output, intruder)
+        expected.append(_intruder_state(fixture.output))
+        return report
+
+    monkeypatch.setattr(builder, "verify_reload", verify_then_intrude)
+
+    with pytest.raises(FileExistsError, match="Output appeared during the build"):
+        _qualify(fixture)
+
+    assert [_intruder_state(fixture.output)] == expected
+    assert _leftover_staging(fixture) == []
+
+
+@pytest.mark.parametrize("intrusion", ["populate", "replace_with_file", "symlink"])
+def test_exposure_refuses_an_intrusion_into_its_reservation(
+    tmp_path, monkeypatch, intrusion
+) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "child.h5").write_bytes(b"verified")
+    output = tmp_path / "qualified"
+    rename = os.rename
+
+    def intrude_then_rename(source, target):
+        target = Path(target)
+        # The reservation must already exist, empty, when the rename runs.
+        assert target.is_dir() and not any(target.iterdir())
+        if intrusion == "populate":
+            (target / "foreign.txt").write_bytes(b"foreign")
+        else:
+            target.rmdir()
+            if intrusion == "replace_with_file":
+                target.write_bytes(b"foreign")
+            else:
+                target.symlink_to(tmp_path / "elsewhere")
+        return rename(source, target)
+
+    monkeypatch.setattr(builder.os, "rename", intrude_then_rename)
+    with pytest.raises(FileExistsError, match="Output appeared during the build"):
+        builder._expose_without_overwrite(staging, output)
+    monkeypatch.undo()
+
+    if intrusion == "populate":
+        assert _intruder_state(output) == ("directory", [("foreign.txt", b"foreign")])
+    elif intrusion == "replace_with_file":
+        assert _intruder_state(output) == ("file", b"foreign")
+    else:
+        assert _intruder_state(output) == ("symlink", str(tmp_path / "elsewhere"))
+    assert (staging / "child.h5").read_bytes() == b"verified"
+
+
+def test_exposure_releases_its_reservation_when_the_rename_fails(
+    tmp_path, monkeypatch
+) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    output = tmp_path / "qualified"
+
+    def failing_rename(source, target):
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(builder.os, "rename", failing_rename)
+    with pytest.raises(PermissionError):
+        builder._expose_without_overwrite(staging, output)
+    monkeypatch.undo()
+
+    assert not output.exists()
+    assert staging.is_dir()
+
+
+def test_exposure_moves_the_staging_directory_whole(tmp_path) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "child.h5").write_bytes(b"verified")
+    output = tmp_path / "qualified"
+
+    builder._expose_without_overwrite(staging, output)
+
+    assert not staging.exists()
+    assert _intruder_state(output) == ("directory", [("child.h5", b"verified")])
