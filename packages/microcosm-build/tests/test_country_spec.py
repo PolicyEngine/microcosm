@@ -1379,6 +1379,7 @@ class TestUKGatesManifest:
             "uk_calibration_reference_coverage",
             "uk_target_surface",
             "uk_target_fit",
+            "uk_cgt_projection_entrants",
             "uk_input_mass_parity",
             "uk_qrf_tail_concentration",
             "uk_local_geography_ladder_post_calibration",
@@ -1455,6 +1456,9 @@ class TestUKGatesManifest:
             "uk_stage_age_tail_targets",
             "uk_stage_frs_relationships_composition",
             "uk_weights_audit",
+            # The #970 projection fence: a seam that cannot project cannot
+            # certify the candidate's sub-exempt gainers.
+            "uk_cgt_projection_entrants",
         ]
         assert all(g.not_applicable is None for g in manifest.gates)
 

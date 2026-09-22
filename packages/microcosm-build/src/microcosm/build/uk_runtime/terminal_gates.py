@@ -29,6 +29,7 @@ from microcosm.build.gates import (
 from microcosm.build.gates import (
     target_surface_gate as _target_surface_gate,
 )
+from microcosm.build.uk_runtime.cgt_projection import UKCGTProjection
 from microcosm.build.uk_runtime.diagnostics import uk_weight_summary
 from microcosm.build.uk_runtime.weighted_integrity import (
     UK_DEGENERATE_EXCLUSION_REGISTER_RESOURCE,
@@ -69,6 +70,7 @@ __all__ = [
     "uk_weight_ess_gate",
     "uk_weight_ratio_gate",
     "uk_zero_weight_strata_gate",
+    "uk_cgt_projection_entrants_gate",
 ]
 
 UK_CANDIDATE_DATASET_NAME = "microcosm_uk_2024"
@@ -887,4 +889,113 @@ def _missing_fit_weight_evidence_gate() -> GateResult:
             "an absent audit is not a passing audit.",
         ),
         details={"fits_checked": 0, "evidence_missing": True},
+    )
+
+
+def _weighted_quantiles(
+    values: np.ndarray, weights: np.ndarray, probabilities: Sequence[float]
+) -> dict[str, float | None]:
+    order = np.argsort(values, kind="stable")
+    ordered = values[order]
+    mass = weights[order]
+    total = float(mass.sum())
+    if total <= 0.0 or ordered.size == 0:
+        return {f"p{int(round(p * 100))}": None for p in probabilities}
+    cumulative = np.cumsum(mass) / total
+    return {
+        f"p{int(round(p * 100))}": float(
+            ordered[
+                min(int(np.searchsorted(cumulative, p, side="left")), ordered.size - 1)
+            ]
+        )
+        for p in probabilities
+    }
+
+
+def uk_cgt_projection_entrants_gate(
+    person: pd.DataFrame,
+    person_weights: np.ndarray,
+    projection: UKCGTProjection,
+    *,
+    bound: float,
+    bound_source: str,
+) -> GateResult:
+    """Fence the gainers the engine would tip into liability by uprating.
+
+    The engine freezes the annual exempt amount at its nominal value and
+    uprates ``capital_gains`` by per-capita GDP growth, so a gainer at or
+    just below the exempt amount in the build period becomes a taxpayer in
+    a later projected year without any change in behaviour. For every year
+    to the horizon the weighted persons whose uprated gains cross that
+    year's exempt amount are counted, and the largest count must not exceed
+    ``bound``: the published taxpayer count of the thinnest liable band,
+    the most any one year's entrants could plausibly be (microcosm#970). A
+    frame without ``capital_gains`` cannot be fenced and fails closed.
+    """
+
+    if "capital_gains" not in person.columns:
+        raise ValueError(
+            "cgt_projection_entrants requires person.capital_gains; a frame "
+            "without it cannot be fenced."
+        )
+    gains = pd.to_numeric(person["capital_gains"], errors="raise").to_numpy(dtype=float)
+    weights = np.asarray(person_weights, dtype=float)
+    if weights.shape != gains.shape:
+        raise ValueError("cgt_projection_entrants needs one weight per person.")
+    if not np.isfinite(gains).all() or not np.isfinite(weights).all():
+        raise ValueError("cgt_projection_entrants requires finite gains and weights.")
+    if not math.isfinite(bound) or bound <= 0.0:
+        raise ValueError("cgt_projection_entrants requires a positive finite bound.")
+    base_exempt = float(projection.exempt_amount_by_year[str(projection.base_year)])
+    sub_exempt = (gains > 0.0) & (gains <= base_exempt)
+    entrants_by_year: dict[str, float] = {}
+    for year in projection.projected_years:
+        factor = float(projection.cumulative_gains_factor_by_year[str(year)])
+        exempt = float(projection.exempt_amount_by_year[str(year)])
+        crossing = sub_exempt & (gains * factor > exempt)
+        entrants_by_year[str(year)] = float(weights[crossing].sum())
+    worst_year = max(
+        entrants_by_year, key=lambda year: (entrants_by_year[year], -int(year))
+    )
+    max_entrants = entrants_by_year[worst_year]
+    sub_exempt_weights = weights[sub_exempt]
+    details: dict[str, object] = {
+        "base_year": projection.base_year,
+        "horizon_year": projection.horizon_year,
+        "entrants_by_year": entrants_by_year,
+        "worst_year": int(worst_year),
+        "max_entrants": max_entrants,
+        "bound": float(bound),
+        "bound_source": bound_source,
+        "cumulative_gains_factor_by_year": dict(
+            projection.cumulative_gains_factor_by_year
+        ),
+        "exempt_amount_by_year": dict(projection.exempt_amount_by_year),
+        "gains_growth_parameter": projection.growth_parameter,
+        "exempt_amount_parameter": projection.exempt_amount_parameter,
+        "projection_engine": projection.engine,
+        "sub_exempt": {
+            "rows": int(sub_exempt.sum()),
+            "weighted_persons": float(sub_exempt_weights.sum()),
+            "weighted_at_exempt_amount": float(
+                weights[sub_exempt & (gains == base_exempt)].sum()
+            ),
+            **_weighted_quantiles(
+                gains[sub_exempt], sub_exempt_weights, (0.1, 0.5, 0.9)
+            ),
+        },
+    }
+    failures: tuple[str, ...] = ()
+    if max_entrants > bound:
+        failures = (
+            f"{UK_CANDIDATE_DATASET_NAME}: {max_entrants:,.0f} weighted sub-exempt "
+            f"gainers cross the frozen annual exempt amount by {worst_year} under "
+            f"the engine's uprating, above the bound of {bound:,.0f} "
+            f"({bound_source}).",
+        )
+    return GateResult(
+        name="cgt_projection_entrants",
+        passed=not failures,
+        failures=failures,
+        details=details,
     )

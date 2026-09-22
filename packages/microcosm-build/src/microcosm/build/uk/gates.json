@@ -795,6 +795,21 @@
       "notes": "Every calibration target within twenty-five percent absolute relative error, the certified June acceptance bound."
     },
     {
+      "id": "uk_cgt_projection_entrants",
+      "gate": "cgt_projection_entrants",
+      "phase": "terminal",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "horizon_year": 2030,
+        "gains_growth_parameter": "gov.economic_assumptions.yoy_growth.obr.per_capita.gdp",
+        "exempt_amount_parameter": "gov.hmrc.cgt.annual_exempt_amount",
+        "bound_resource": "hmrc_cgt_conditioning_facts.json",
+        "bound_size_band_lower_bound": 3000
+      },
+      "notes": "Projection fence over the calibrated frame's sub-exempt gainers (microcosm#970). The engine freezes the annual exempt amount at its nominal value and uprates capital_gains by OBR per-capita GDP growth, so a gainer at or just below the exempt amount in the build period becomes a CGT taxpayer in a later projected year without any change in behaviour. For every year to the horizon the weighted persons whose uprated gains cross that year's exempt amount are counted, and the largest count must not exceed the vendored HMRC Table 2.1a taxpayers in the 3,000 to 5,999 gains band of the conditioning vintage (73,000 in 2024-25): the published count of the thinnest liable band, and so the most any one year's entrants could plausibly be. The v20 candidate would have failed it with 10.8 million entrants in the first projected year. The projection artifact is read from the installed engine by the seam; the bound comes from the same vendored facts the amounts stage is pinned to, never from a literal."
+    },
+    {
       "id": "uk_input_mass_parity",
       "gate": "input_mass_parity",
       "phase": "terminal",

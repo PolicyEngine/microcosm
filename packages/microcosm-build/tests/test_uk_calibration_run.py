@@ -58,6 +58,47 @@ def _signing_key(monkeypatch):
     monkeypatch.setenv("MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY", SIGNING_KEY)
 
 
+def _fake_cgt_projection(base_year: int = 2023, horizon_year: int = 2030):
+    """A flat 3 percent growth path against a frozen 3,000 exempt amount."""
+
+    from microcosm.build.uk_runtime.cgt_projection import (
+        UK_CGT_EXEMPT_AMOUNT_PARAMETER,
+        UK_CGT_GAINS_GROWTH_PARAMETER,
+        UKCGTProjection,
+    )
+
+    growth: dict[str, float] = {}
+    cumulative: dict[str, float] = {}
+    factor = 1.0
+    for year in range(base_year + 1, horizon_year + 1):
+        factor *= 1.03
+        growth[str(year)] = 0.03
+        cumulative[str(year)] = factor
+    return UKCGTProjection(
+        base_year=base_year,
+        horizon_year=horizon_year,
+        growth_parameter=UK_CGT_GAINS_GROWTH_PARAMETER,
+        exempt_amount_parameter=UK_CGT_EXEMPT_AMOUNT_PARAMETER,
+        yoy_growth_by_year=growth,
+        cumulative_gains_factor_by_year=cumulative,
+        exempt_amount_by_year={
+            str(year): 3_000.0 for year in range(base_year, horizon_year + 1)
+        },
+        engine="test",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _cgt_projection(monkeypatch):
+    """The seam reads the projection from the engine; tests supply a flat one."""
+
+    monkeypatch.setattr(
+        calibration_run,
+        "uk_cgt_projection_artifact",
+        lambda frame, manifest: _fake_cgt_projection(),
+    )
+
+
 def _frame():
     ids = np.arange(4, dtype="int64")
     return uk_national_frame(
@@ -67,6 +108,7 @@ def _frame():
                 "person_benunit_id": ids,
                 "person_household_id": ids,
                 "nhs_spending": [50.0, 50.0, 50.0, 50.0],
+                "capital_gains": [0.0, 0.0, 0.0, 0.0],
             }
         ),
         benunit=pd.DataFrame(

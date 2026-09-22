@@ -116,7 +116,7 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "2e120665e05208748b541d09982fb15aa07d9754c355f690354f8c58f10aeaba"
+    "16ecd6788a1f7abfc4b66a83538c99a0a46d29b959130a0931ccc74e87e5c117"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
     "ee6b1eb9451866654bfeb0d2090a8412e08b8c2caa8bfb16fb9aa3c5b5002d84"
@@ -272,6 +272,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_target_surface": ("target_surface", "terminal", "target_surface"),
     "uk_target_fit": ("target_fit", "terminal", "target_fit"),
+    "uk_cgt_projection_entrants": ("cgt_projection_entrants", "terminal", None),
     "uk_input_mass_parity": ("input_mass_parity", "terminal", "input_mass_parity"),
     "uk_qrf_tail_concentration": (
         "tail_concentration",
@@ -1232,6 +1233,12 @@ def _gate_battery_payload(
             }
         elif entry_id == "uk_calibration_reference_coverage":
             details = {"activated": 388, "resolved": 388, "matrix": 388}
+        elif entry_id == "uk_cgt_projection_entrants":
+            details = {
+                "max_entrants": 41_000.0,
+                "worst_year": 2030,
+                "bound": 73_000.0,
+            }
         elif entry_id.startswith("uk_local_"):
             # Local candidate gates are explicitly excluded from national
             # certification; this full-report fixture needs only their
@@ -1300,6 +1307,9 @@ def _gate_battery_payload(
         ),
         "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,
         "uk_input_mass_parity": UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256,
+        "uk_cgt_projection_entrants": _canonical_sha256(
+            {"cgt_projection": {"base_year": 2023, "horizon_year": 2030}}
+        ),
     }
     for entry_id, stage in stage_health_stages.items():
         evidence[entry_id] = _canonical_sha256({stage: {"stage": stage}})

@@ -416,7 +416,7 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "2e120665e05208748b541d09982fb15aa07d9754c355f690354f8c58f10aeaba"
+    "16ecd6788a1f7abfc4b66a83538c99a0a46d29b959130a0931ccc74e87e5c117"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
     "ee6b1eb9451866654bfeb0d2090a8412e08b8c2caa8bfb16fb9aa3c5b5002d84"
@@ -530,6 +530,10 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_target_surface": ("target_surface", "terminal"),
     "uk_target_fit": ("target_fit", "terminal"),
+    "uk_cgt_projection_entrants": (
+        "cgt_projection_entrants",
+        "terminal",
+    ),
     "uk_input_mass_parity": ("input_mass_parity", "terminal"),
     "uk_qrf_tail_concentration": ("tail_concentration", "terminal"),
     "uk_local_geography_ladder_post_calibration": (
@@ -574,6 +578,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_student_loans_realization",
         "uk_stage_age_tail_targets",
         "uk_stage_frs_relationships_composition",
+        "uk_cgt_projection_entrants",
     }
 )
 # The input-mass binding's evidence payload wraps the reviewed reference
@@ -735,6 +740,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
         {
             "uk_aggregate_admin",
             "uk_calibration_reference_coverage",
+            "uk_cgt_projection_entrants",
             "uk_target_fit",
             "uk_weight_ess",
             "uk_weight_ratio",
@@ -777,10 +783,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "9ed1529c9c6e9ecaca6469d1fe0570930f0598b10002629ff89429334b13a726"
+            "59323ffc470884c49f77105a80cb05eb6cc5321e9bfb109733ff51ea9f557d94"
         ),
         "policy_sha256": (
-            "eaaaacace07b4d282e1b7497f82f027daa9bb31aa7a6268063b05a069588e385"
+            "daa0b7fd4abeea97ffeeca227b1524458d00cc5f1bf45278b437dacb79cf4032"
         ),
     },
     "release_cut": {

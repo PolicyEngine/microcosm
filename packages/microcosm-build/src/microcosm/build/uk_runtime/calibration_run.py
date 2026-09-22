@@ -47,6 +47,11 @@ from microcosm.build.logbook_adoption import (
 from microcosm.build.staging_v2 import validate_staging_delivery
 from microcosm.build.target_materialization import assert_calibration_input_finite
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
+from microcosm.build.uk_runtime.cgt_projection import (
+    UK_CGT_PROJECTION_ARTIFACT_KEY,
+    UKCGTProjection,
+    uk_cgt_projection,
+)
 from microcosm.build.uk_runtime.diagnostics import (
     uk_target_geography_levels,
     write_uk_calibration_diagnostics,
@@ -58,6 +63,7 @@ from microcosm.build.uk_runtime.national_calibration import UKNationalCalibratio
 from microcosm.build.uk_runtime.national_frame import (
     load_uk_national_frame,
     uk_household_weight_kind,
+    uk_time_period,
     write_uk_national_frame,
 )
 from microcosm.calibrate import TargetRegistry
@@ -98,6 +104,10 @@ class UKCalibrationRunResult:
 
 UK_CALIBRATION_GATE_SCOPE = (
     "uk_target_fit",
+    # The projection fence over sub-exempt gainers is a property of the
+    # calibrated frame under the engine's uprating; the seam owns it and the
+    # release cut inherits the seam's verdict (microcosm#970).
+    "uk_cgt_projection_entrants",
     "uk_weight_ratio",
     "uk_weight_ess",
     "uk_zero_weight_strata",
@@ -744,6 +754,7 @@ def _run_calibration_gate_battery(
 ) -> dict[str, object]:
     manifest = _calibration_gate_manifest()
     admin_totals, admin_receipt = uk_aggregate_admin_totals(frame, manifest)
+    projection = uk_cgt_projection_artifact(frame, manifest)
     artifacts = {
         "national_calibration": stage.manifest,
         "parity_evidence": SimpleNamespace(
@@ -753,6 +764,7 @@ def _run_calibration_gate_battery(
             }
         ),
         "aggregate_admin": admin_totals,
+        UK_CGT_PROJECTION_ARTIFACT_KEY: projection,
         # The target-fit deferral register is evaluated against the run
         # clock (schema-2 approval windows); the seam supplies today's date
         # exactly as the rowwise candidate build supplies its start date.
@@ -960,6 +972,33 @@ def uk_scoped_gate_manifest(
 UK_DERIVED_ADMIN_ANCHOR_MEASURES: Mapping[str, tuple[str, ...]] = {
     "nhs_spending": UK_NHS_SPENDING_COMPONENT_COLUMNS,
 }
+
+
+def uk_cgt_projection_artifact(
+    frame: Frame, manifest: GatesManifest
+) -> UKCGTProjection:
+    """Read the projection the declared entrants fence needs, fail-loud.
+
+    The declared entry names the horizon and the two parameter paths; the
+    base year is the calibrated frame's period. Reading from the installed
+    engine keeps the receipt reproducible from the parameter tree alone.
+    """
+
+    for entry in manifest.gates:
+        if entry.id == "uk_cgt_projection_entrants":
+            parameters = entry.parameters
+            break
+    else:
+        raise ValueError(
+            "The calibration seam declares no uk_cgt_projection_entrants entry; "
+            "refusing to fabricate a projection."
+        )
+    return uk_cgt_projection(
+        int(uk_time_period(frame)),
+        int(parameters["horizon_year"]),
+        growth_parameter=str(parameters["gains_growth_parameter"]),
+        exempt_amount_parameter=str(parameters["exempt_amount_parameter"]),
+    )
 
 
 def uk_aggregate_admin_totals(
