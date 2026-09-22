@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from microcosm.build.uk_runtime.cgt_asset_type import (
+    UK_CGT_ASSET_TYPE_MASS_CONSERVATION_REASON,
+)
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_IMPUTATION_SEED,
     UK_CGT_IMPUTATION_STAGE_NAME,
@@ -17,10 +20,10 @@ from microcosm.build.uk_runtime.cgt_structure import (
     CGT_DONOR_MASS_CHANGE_REASON,
 )
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
-    HMRC_CGT_JOINT_ODS_SHA256,
-    HMRC_CGT_JOINT_ODS_SIZE_BYTES,
-    HMRC_CGT_JOINT_ODS_URL,
-    HMRC_CGT_JOINT_SHEET_NAMES,
+    HMRC_CGT_BUILD_PERIOD,
+    HMRC_CGT_CONDITIONING_RECORD_SETS,
+    HMRC_CGT_CONDITIONING_RESOURCE,
+    HMRC_CGT_SOURCE_VINTAGE,
 )
 from microcosm.build.uk_runtime.release_input_coverage import (
     load_uk_release_input_coverage_manifest,
@@ -49,17 +52,23 @@ def _stage() -> dict:
     return stages[0]
 
 
-def test_manifest_pins_the_artifact_the_code_pins() -> None:
-    """One provenance, declared once: the manifest repeats the module's pin."""
-    surface = {artifact["role"]: artifact for artifact in _stage()["artifacts"]}[
-        "published_fact_surface"
+def test_manifest_names_the_resource_the_code_reads() -> None:
+    """One provenance, declared once: the manifest repeats the module's roster."""
+    artifacts = {artifact["role"]: artifact for artifact in _stage()["artifacts"]}
+    assert "published_fact_surface" not in artifacts
+    surface = artifacts["cgt_conditioning_facts"]
+    verify = {operation["kind"]: operation for operation in _stage()["operations"]}[
+        "verify_vendored_fact_resource"
     ]
 
-    assert surface["locator"] == HMRC_CGT_JOINT_ODS_URL
-    assert surface["sha256"] == HMRC_CGT_JOINT_ODS_SHA256
-    assert surface["size_bytes"] == HMRC_CGT_JOINT_ODS_SIZE_BYTES
-    assert surface["sheets"] == list(HMRC_CGT_JOINT_SHEET_NAMES.values())
+    assert surface["resource"] == HMRC_CGT_CONDITIONING_RESOURCE
     assert surface["runtime_sha256_required"] is True
+    assert verify["artifact_role"] == "cgt_conditioning_facts"
+    assert verify["resource"] == HMRC_CGT_CONDITIONING_RESOURCE
+    assert verify["feed_pin"] == "chronicle_feed.json"
+    assert verify["record_sets"] == list(HMRC_CGT_CONDITIONING_RECORD_SETS)
+    assert verify["source_vintage"] == HMRC_CGT_SOURCE_VINTAGE
+    assert verify["mapped_build_period"] == int(HMRC_CGT_BUILD_PERIOD)
 
 
 def test_manifest_operations_match_the_stage_implementation() -> None:
@@ -71,8 +80,9 @@ def test_manifest_operations_match_the_stage_implementation() -> None:
     draws = operations["within_band_draws"]
     assert draws["seed_base"] == UK_CGT_IMPUTATION_SEED
     assert draws["deterministic"] is True
-    verify = operations["verify_pinned_cgt_ods"]
+    verify = operations["verify_vendored_fact_resource"]
     assert verify["require_before_source_read"] is True
+    assert verify["fail_on_mismatch"] is True
 
 
 def test_band_facts_stay_fenced_from_calibration() -> None:
@@ -168,6 +178,13 @@ def test_the_shipped_family_contracts_pass_the_terminal_gate_shape() -> None:
                 new_total=100.0,
                 declared_factor=1.0,
                 reason=UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+            ),
+            MassChangeRecord(
+                entity="household",
+                old_total=100.0,
+                new_total=100.0,
+                declared_factor=1.0,
+                reason=UK_CGT_ASSET_TYPE_MASS_CONSERVATION_REASON,
             ),
             MassChangeRecord(
                 entity="household",

@@ -608,6 +608,7 @@ class TestUKManifest:
                 "cgt_incidence_clone",
                 "cgt_band_donors",
                 "hmrc_cgt_gains_spine",
+                "hmrc_cgt_asset_type_spine",
                 "salary_sacrifice",
                 "student_loans",
                 "was_wealth",

@@ -93,6 +93,21 @@ Never reduce `--n-clones` to request a smaller output. Full builds still need
 the dense build's peak memory and add L0/refit work; the reduction is in the
 exported dataset's storage and downstream loading/simulation footprint.
 
+Every run stages by default (see [UK staging operations](uk-staging-operations.md)):
+telemetry to `runs/<run_id>/` in `policyengine/populace-uk-staging` while it
+runs, and at the end the bundle the manifest registers, under
+`staged/<run_id>/` in `policyengine/populace-uk-private`, keyed by the same
+run id (the Logbook build id unless `--staging-run-id` is given). A size run
+stays `releasable=false`; staging does not change that, it makes the
+candidate inspectable. The run needs an ambient `HF_TOKEN` that can see the
+private repository, or `--staging-local-only` to keep everything on disk
+(`--no-staging` records a deliberate opt-out, `--no-staged-dataset` runs the
+telemetry alone). The command ends with a `staged dataset:` line naming the
+repository, prefix and revision, and the manifest carries `staging_delivery`
+and `staged_dataset`. Fetch a staged bundle with
+`tools/fetch_uk_staged_dataset.py --run-id <run_id>`; re-stage a finished
+directory with `tools/stage_uk_rowwise_candidate.py --run-dir <dir>`.
+
 ### The search stops on the draw's own feasibility; the solve is checkpointed before the draw (2026-09-09)
 
 S2 on spine-p (55,000 at `--selection-pi-hi 0.95`, 2,000 epochs) was refused at the

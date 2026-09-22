@@ -201,6 +201,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.admitted_patient_visits",
     "person.age_started_or_accepted_current_education_or_training",
     "person.attends_private_school_random_draw",
+    "person.capital_gains_asset_type",
+    "person.capital_gains_residential_property",
     "person.care_hours",
     "person.charitable_investment_gifts",
     "person.dla_m_category",

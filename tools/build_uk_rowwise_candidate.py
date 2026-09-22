@@ -22,8 +22,9 @@ import sys
 import tempfile
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,27 @@ from microcosm.build.logbook_adoption import (
     role_pins_digest,
     sha256_argument,
     write_error_receipt,
+)
+from microcosm.build.staging_cli import (
+    add_staged_dataset_arguments,
+    add_staging_arguments,
+    validate_staged_dataset_arguments,
+    validate_staging_arguments,
+)
+from microcosm.build.staging_dataset import (
+    SHA256SUMS_FILENAME,
+    StagedDatasetBundle,
+    disabled_staged_dataset,
+    local_only_staged_dataset,
+    refresh_sha256sums_entry,
+    stage_bundle,
+    write_sidecars,
+)
+from microcosm.build.staging_storage import HuggingFaceDatasetStorage
+from microcosm.build.staging_v2 import (
+    StagingContractError,
+    StagingTelemetryV2,
+    disabled_staging_delivery,
 )
 from microcosm.build.target_materialization import resolve_target_measures
 from microcosm.build.uk_runtime import (
@@ -122,6 +144,11 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_SEED_DEFAULT,
     sample_uk_spine_frame,
 )
+from microcosm.build.uk_runtime.staging import (
+    UK_STAGED_DATASET_PREFIX,
+    UK_STAGED_DATASET_REPOSITORY,
+    UK_STAGING_REPOSITORY,
+)
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import Frame, MassChangeRecord
 
@@ -149,6 +176,23 @@ _L0_LAMBDA = 0.0
 _BUDGET_ITERS = 10
 _UK_CANDIDATE_PIPELINE = "uk-local-candidate"
 _LOCAL_GATE_POLICY_SUFFIX = "local_candidate"
+_STAGING_OPERATION_ID = "uk_rowwise_candidate"
+# Staging telemetry keeps one row per forwarded epoch in
+# calibration_progress.json and one event in events.ndjson, both under the
+# contract's 5 MiB remote cap. A size run at 2,000 epochs solves the dense
+# pool, up to ten full-length L0 probes and the refit: about 24,000 epochs,
+# which would breach the cap mid-run. Forwarding every tenth epoch and the
+# last epoch of each phase keeps the loss curve and stays near 0.8 MB.
+_STAGING_EPOCH_EVERY = 10
+# ...and never more than this many forwarded epochs per run, whatever --epochs
+# says: the stride grows with the run so the cap holds by construction.
+_STAGING_MAX_EPOCH_ROWS = 2400
+_STAGED_DATASET_PHASES = {
+    "uploaded": "dataset_staged",
+    "already_staged": "dataset_staged",
+    "failed": "dataset_stage_failed",
+    "skipped": "dataset_stage_skipped",
+}
 _REPOSITORY = Path(__file__).resolve().parents[1]
 _PAST_CAP_COUNT_KEYS = (
     "n_targets",
@@ -804,7 +848,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "POPULACE_LOGBOOK_PREV_ROW_DIGEST is used, then genesis null."
         ),
     )
-    return parser.parse_args(argv)
+    add_staging_arguments(parser, repository=UK_STAGING_REPOSITORY)
+    add_staged_dataset_arguments(parser, repository=UK_STAGED_DATASET_REPOSITORY)
+    args = parser.parse_args(argv)
+    validate_staging_arguments(parser, args)
+    validate_staged_dataset_arguments(parser, args)
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -825,6 +874,9 @@ def main(argv: list[str] | None = None) -> int:
         # Dry runs plan without solving or writing and record no Logbook
         # row on any path, so they need no chain configuration.
         return _run_candidate(args, attempt=None)
+    # Argument refusals above cost nothing; the credential check reaches the
+    # Hub, so it runs last, still before any input is read.
+    _preflight_staged_dataset(args)
     started_at = time.perf_counter()
     started_ts = datetime.now(UTC)
     digest = preflight_digest(_UK_CANDIDATE_PIPELINE)
@@ -844,25 +896,35 @@ def main(argv: list[str] | None = None) -> int:
             }
         },
     )
-    return _run_candidate(
-        args,
-        attempt={
-            "state": state,
-            "started_at": started_at,
-            "started_ts": started_ts,
-            "code_pin": "unresolved-local-git-code-pin",
-            # Logbook chain configuration is validated before any terminal
-            # work: a malformed or conflicting head refuses the run with no
-            # row and no side effects (#666 adversarial-review finding).
-            "predecessor": resolve_predecessor(args.logbook_prev_row_digest),
-        },
-    )
+    # Logbook chain configuration is validated before any terminal work: a
+    # malformed or conflicting head refuses the run with no row and no side
+    # effects (#666 adversarial-review finding).
+    predecessor = resolve_predecessor(args.logbook_prev_row_digest)
+    # Staging telemetry opens with the attempt, as in the spine builder, so an
+    # early refusal still leaves a failed run under runs/<build_id>/.
+    telemetry = _create_staging_telemetry(args, state=state)
+    try:
+        return _run_candidate(
+            args,
+            attempt={
+                "state": state,
+                "started_at": started_at,
+                "started_ts": started_ts,
+                "code_pin": "unresolved-local-git-code-pin",
+                "predecessor": predecessor,
+            },
+            telemetry=telemetry,
+        )
+    except BaseException as error:
+        _fail_staging_telemetry(telemetry, error)
+        raise
 
 
 def _run_candidate(
     args: argparse.Namespace,
     *,
     attempt: dict[str, object] | None,
+    telemetry: StagingTelemetryV2 | None = None,
 ) -> int:
     """Build the candidate, recording every non-dry terminal outcome.
 
@@ -888,6 +950,13 @@ def _run_candidate(
             "dataset": _pin_from_artifact(input_artifact),
             "ladder": _pin_from_artifact(ladder_artifact),
         }
+        _stage(
+            telemetry,
+            "input_pinning",
+            "completed",
+            dataset_sha256=input_artifact["sha256"],
+            ladder_sha256=ladder_artifact["sha256"],
+        )
         state: AttemptState | None = None
         if attempt is not None:
             unpacked_state = attempt["state"]
@@ -918,6 +987,10 @@ def _run_candidate(
             seed=args.sample_seed,
         )
         args._sampling_receipt = sampling
+        if telemetry is not None and args.sample_fraction == 1.0:
+            # The contract's only sampling statement is "full"; a rung below
+            # f100 stages a null sample, as the spine builder does.
+            telemetry.set_sample({"mode": "full"})
         source_year = _source_year(
             args.source_year,
             time_period=uk_time_period(national_frame),
@@ -943,6 +1016,7 @@ def _run_candidate(
         _refuse_stale_size_checkpoint(args, out_dir)
         ladder = load_uk_oa_ladder(ladder_path)
         target_provenance = ladder_target_provenance(ladder)
+        _stage(telemetry, "target_compilation", "started")
         joint_inputs = _load_joint_target_inputs(args)
         facts = getattr(joint_inputs.get("artifact"), "facts", None)
         if facts is None:
@@ -960,6 +1034,16 @@ def _run_candidate(
             )
         joint_inputs["household_dispersion"] = ladder_vs_chronicle_household_dispersion(
             ladder, joint_inputs["local_registry"].specs
+        )
+        _stage(
+            telemetry,
+            "target_compilation",
+            "completed",
+            local_target_count=len(joint_inputs["local_registry"].specs),
+            national_target_count=len(joint_inputs["national_registry"].specs),
+            census_household_uprating_applied=bool(
+                joint_inputs["census_household_uprating"].get("applied")
+            ),
         )
         if args.release_candidate and not joint_inputs["census_household_uprating"].get(
             "applied"
@@ -984,6 +1068,7 @@ def _run_candidate(
             )
 
         print("cloning through the ladder route...", file=sys.stderr, flush=True)
+        _stage(telemetry, "cloning", "started", clone_count=int(args.n_clones))
         assignment = _clone_with_ladder_binding(
             national_frame,
             ladder,
@@ -1001,6 +1086,13 @@ def _run_candidate(
             raise ValueError(
                 "--dataset-households exceeds the cloned pool; selection never clamps the request."
             )
+        _stage(
+            telemetry,
+            "cloning",
+            "completed",
+            clone_count=int(args.n_clones),
+            pool_rows=int(clone.frame.n("household")),
+        )
         if state is not None:
             append_phase(state, "cloned")
 
@@ -1025,6 +1117,7 @@ def _run_candidate(
             print(_json_text(plan), end="")
             return 0
 
+        _stage(telemetry, "surface_resolution", "started")
         if args.households_only:
             print(
                 "binding Chronicle census household targets...",
@@ -1087,6 +1180,14 @@ def _run_candidate(
         args._bound_families = tuple(bound_families)
         args._joint_inputs_receipt = joint_inputs
         args._measure_resolution = dict(measure_resolution)
+        _stage(
+            telemetry,
+            "surface_resolution",
+            "completed",
+            target_count=int(problem.matrix.shape[0]),
+            bound_family_count=len(bound_families),
+            engine_blocks=int(args.engine_blocks),
+        )
         if state is not None:
             append_phase(state, "targets_bound")
 
@@ -1150,6 +1251,17 @@ def _run_candidate(
                 file=sys.stderr,
                 flush=True,
             )
+        _stage(
+            telemetry,
+            "calibration",
+            "started",
+            target_count=int(problem.matrix.shape[0]),
+            pool_rows=int(problem.matrix.shape[1]),
+            dataset_households=args.dataset_households,
+            epochs=int(args.epochs),
+            epoch_every=_staging_epoch_every(args),
+            resumed_from_checkpoint=resume_checkpoint is not None,
+        )
         solve = solve_uk_rowwise_weights_under_doctrine(
             solve_frame,
             problem,
@@ -1173,6 +1285,13 @@ def _run_candidate(
             checkpoint_identity=checkpoint_identity,
             checkpoint_provenance={"code_pin": code_pin, "build_id": state.build_id},
             progress=_stderr_progress,
+            progress_events=(
+                None
+                if telemetry is None
+                else _thinned_epochs(
+                    telemetry.calibration_progress, every=_staging_epoch_every(args)
+                )
+            ),
         )
         _validate_solve_result(solve, problem=problem)
         if solve.size_receipt is not None and solve.size_receipt.get("checkpoint"):
@@ -1187,6 +1306,15 @@ def _run_candidate(
             elif "resumed_from" in checkpoint:
                 append_phase(state, "size_selection_resumed")
         append_phase(state, "solved")
+        _stage(
+            telemetry,
+            "calibration",
+            "completed",
+            final_loss=float(solve.final_loss),
+            n_nonzero=int(solve.n_nonzero),
+            realized_households=int(solve.frame.n("household")),
+            size_checkpoint=_size_checkpoint_state(solve),
+        )
 
         # The kernel minted the calibration mass record inside calibrate() (the
         # CALIBRATED kind transition is enforced there too); the record names
@@ -1211,6 +1339,7 @@ def _run_candidate(
                 None if args.households_only else joint_inputs["national_registry"]
             ),
         )
+        _stage(telemetry, "gate_battery", "started")
         try:
             gate_report, candidate_gate = _run_local_gate_battery(
                 frame=solve.frame,
@@ -1272,7 +1401,16 @@ def _run_candidate(
         append_phase(
             state, "candidate_gated" if not blocked_failures else "candidate_blocked"
         )
+        _stage(
+            telemetry,
+            "gate_battery",
+            "completed",
+            gate_statuses=_gate_statuses(gate_report),
+            blocking_failure_count=len(blocked_failures),
+            diagnostic_failure_count=len(diagnostic_failures),
+        )
 
+        _stage(telemetry, "holdout", "started", skipped=bool(args.skip_holdout))
         if args.skip_holdout:
             rotated_holdout = {"skipped": True}
         else:
@@ -1296,6 +1434,7 @@ def _run_candidate(
                 baseline_pi_floor=args.baseline_pi_floor,
             )
         args._rotated_holdout = rotated_holdout
+        _stage(telemetry, "holdout", "completed", skipped=bool(args.skip_holdout))
 
         candidate = dataclasses.replace(
             clone,
@@ -1321,6 +1460,7 @@ def _run_candidate(
             ladder_artifact=ladder_artifact,
         )
 
+        _stage(telemetry, "output_bundle", "started")
         manifest = _write_output_bundle(
             args,
             candidate=candidate,
@@ -1340,7 +1480,40 @@ def _run_candidate(
             target_provenance=target_provenance,
             cross_grain=cross_grain,
         )
+        _stage(
+            telemetry,
+            "output_bundle",
+            "completed",
+            output_bytes={
+                key: int(entry["bytes"]) for key, entry in manifest["outputs"].items()
+            },
+        )
         append_phase(state, "published")
+        # The staged dataset and the telemetry receipt are evidence about the
+        # published bundle, so they are appended to the manifest after it is
+        # on disk (the national build record is rewritten the same way); the
+        # copy inside the staged bundle predates them and staged_manifest.json
+        # describes the remote side.
+        staged_dataset = _stage_dataset(
+            args,
+            manifest=manifest,
+            output_paths=output_paths,
+            run_id=state.build_id if telemetry is None else telemetry.run_id,
+            telemetry=telemetry,
+        )
+        append_phase(state, _STAGED_DATASET_PHASES[staged_dataset["status"]])
+        try:
+            _finalize_staging_telemetry(args, telemetry)
+        finally:
+            manifest["staging_delivery"] = _staging_delivery(telemetry)
+            manifest["staged_dataset"] = staged_dataset
+            _replace_manifest(output_paths["manifest"], manifest)
+            if (output_paths["manifest"].parent / SHA256SUMS_FILENAME).is_file():
+                # The uploaded copy lists the manifest as uploaded; the local
+                # copy lists the manifest as it now is, evidence included.
+                refresh_sha256sums_entry(
+                    output_paths["manifest"].parent, output_paths["manifest"].name
+                )
         state.artifact_location = local_artifact_reference(
             output_paths["dataset"],
             repository_hint=_REPOSITORY,
@@ -1390,6 +1563,532 @@ def _run_candidate(
             spool_dir=out_dir / "logbook-spool",
             rung=UK_SAMPLE_RUNG_TOKENS[args.sample_fraction],
         )
+        raise
+
+
+def _hub_api() -> Any:
+    """The Hub client used for telemetry and the staged dataset (test seam)."""
+
+    from huggingface_hub import HfApi
+
+    return HfApi()
+
+
+def _hub_token() -> str | None:
+    """The ambient Hub credential, if any (test seam)."""
+
+    from huggingface_hub import get_token
+
+    return get_token()
+
+
+def _staged_dataset_mode(args: argparse.Namespace) -> str:
+    if args.no_staging or args.no_staged_dataset:
+        return "disabled"
+    if args.staging_local_only:
+        return "local_only"
+    return "local_and_remote"
+
+
+def _preflight_staged_dataset(args: argparse.Namespace) -> None:
+    """Refuse a remote dataset stage the run could not complete.
+
+    The bundle upload is the last step of a multi-hour run, so the credential
+    and the repository are checked before the spine is read. Telemetry stays
+    best-effort with no pre-flight, as on the national command.
+    """
+
+    if args.dry_run or _staged_dataset_mode(args) != "local_and_remote":
+        return
+    repo_id = str(args.staged_dataset_repo_id).strip()
+    hint = "pass --staging-local-only or --no-staged-dataset to keep the bundle local"
+    if not _hub_token():
+        raise ValueError(
+            f"remote dataset staging to {repo_id} needs a Hugging Face write "
+            f"credential (HF_TOKEN or `hf auth login`); {hint}."
+        )
+    storage = HuggingFaceDatasetStorage(repo_id, api=_hub_api())
+    try:
+        storage.head_revision()
+    except Exception as error:
+        # The transport's own message is not chained: it can carry request
+        # URLs and identifiers, and the type name is enough to act on.
+        raise ValueError(
+            f"remote dataset staging cannot reach {repo_id} "
+            f"({type(error).__name__}); {hint}."
+        ) from None
+    _require_write_credential(storage, hint=hint)
+
+
+def _require_write_credential(storage: HuggingFaceDatasetStorage, *, hint: str) -> None:
+    """Refuse a credential that can see the repository but cannot write it.
+
+    A read token, or a fine-grained token scoped to another owner, passes the
+    reachability check and is refused by the Hub with 403 only when the upload
+    starts, hours later. The scope is read from the Hub's own description of
+    the token; when it cannot be read the upload itself is the proof.
+    """
+
+    try:
+        can_write = storage.credential_can_write()
+    except Exception:
+        can_write = None
+    if can_write is False:
+        raise ValueError(
+            f"remote dataset staging to {storage.repo_id} needs a write credential: "
+            "the ambient Hugging Face token is read-only or is not scoped to this "
+            "repository or its owner (a fine-grained token needs repo.write on "
+            f"{storage.repo_id} or on {storage.repo_id.split('/', 1)[0]}); {hint}."
+        )
+    if can_write is None:
+        print(
+            "warning: the Hugging Face credential's write scope could not be read; "
+            "the upload at the end of the run will prove it.",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
+def _create_staging_telemetry(
+    args: argparse.Namespace, *, state: AttemptState
+) -> StagingTelemetryV2 | None:
+    if args.no_staging:
+        return None
+    local_only = bool(args.staging_local_only)
+    out_dir = args.out.expanduser().resolve()
+    return StagingTelemetryV2(
+        run_id=args.staging_run_id or state.build_id,
+        country_code="GB",
+        operation_id=_STAGING_OPERATION_ID,
+        pipeline_id=_UK_CANDIDATE_PIPELINE,
+        pipeline_version=metadata.version("microcosm-build"),
+        candidate_id=args.staging_candidate_id or state.build_id,
+        local_dir=args.staging_dir or out_dir / "staging",
+        run_kind="calibration",
+        delivery_mode="local_only" if local_only else "local_and_remote",
+        repo_id=None if local_only else args.staging_repo_id,
+        upload_interval_seconds=args.staging_upload_interval_seconds,
+        api=None if local_only else _hub_api(),
+    )
+
+
+def _stage(
+    telemetry: StagingTelemetryV2 | None,
+    stage_id: str,
+    event_status: str = "started",
+    **details: Any,
+) -> None:
+    if telemetry is not None:
+        telemetry.stage(stage_id, event_status=event_status, **details)
+
+
+def _staging_epoch_every(args: argparse.Namespace) -> int:
+    """The epoch stride that keeps the forwarded rows under the row budget.
+
+    A dense run solves once; a size run solves the pool, up to ``budget_iters``
+    full-length probes and the refit. The stride is at least
+    ``_STAGING_EPOCH_EVERY`` and grows so at most ``_STAGING_MAX_EPOCH_ROWS``
+    epochs are forwarded, keeping ``calibration_progress.json`` and
+    ``events.ndjson`` under the contract's 5 MiB cap for any ``--epochs``.
+    """
+
+    solves = 1 if args.dataset_households is None else 2 + _BUDGET_ITERS
+    total = int(args.epochs) * solves
+    return max(_STAGING_EPOCH_EVERY, -(-total // _STAGING_MAX_EPOCH_ROWS))
+
+
+def _thinned_epochs(
+    sink: Callable[[Mapping[str, Any]], None], *, every: int = _STAGING_EPOCH_EVERY
+) -> Callable[[dict[str, object]], None]:
+    """Forward every ``every``-th epoch and each phase's last epoch to ``sink``.
+
+    The kernel flags probe epochs with ``budget_search: True``; the staging
+    contract records that field as an integer or null, so the flag becomes 1
+    (the national command never runs a budget search and never met this). A
+    contract or content refusal from the telemetry is reported once and stops
+    the forwarding: the solve must never abort on its own progress report.
+    """
+
+    disabled = False
+
+    def callback(event: dict[str, object]) -> None:
+        nonlocal disabled
+        if disabled or event.get("kind") != "calibration_epoch":
+            return
+        epoch = int(event["epoch"])
+        epochs = int(event["epochs"])
+        if epoch % every != 0 and epoch != epochs:
+            return
+        forwarded = dict(event)
+        budget_search = forwarded.get("budget_search")
+        if isinstance(budget_search, bool):
+            forwarded["budget_search"] = 1 if budget_search else None
+        try:
+            sink(forwarded)
+        except StagingContractError as error:
+            disabled = True
+            print(
+                "warning: staging telemetry refused a calibration progress row "
+                f"({type(error).__name__}); epoch progress is no longer forwarded, "
+                "the solve continues.",
+                file=sys.stderr,
+                flush=True,
+            )
+
+    return callback
+
+
+def _size_checkpoint_state(solve: UKRowwiseDoctrineSolve) -> str | None:
+    if solve.size_receipt is None or not solve.size_receipt.get("checkpoint"):
+        return None
+    checkpoint = solve.size_receipt["checkpoint"]
+    if "written" in checkpoint:
+        return "written"
+    if "resumed_from" in checkpoint:
+        return "resumed"
+    return None
+
+
+def _gate_statuses(gate_report: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        str(gate_id): str(entry.get("status"))
+        for gate_id, entry in gate_report.get("gates", {}).items()
+        if isinstance(entry, Mapping)
+    }
+
+
+def _fail_staging_telemetry(
+    telemetry: StagingTelemetryV2 | None, error: BaseException
+) -> None:
+    if telemetry is None or telemetry.status != "running":
+        return
+    try:
+        telemetry.fail(error)
+        telemetry.validate_local_bundle()
+    except Exception:
+        pass
+
+
+def _finalize_staging_telemetry(
+    args: argparse.Namespace, telemetry: StagingTelemetryV2 | None
+) -> None:
+    if telemetry is None:
+        return
+    try:
+        telemetry.complete(message="UK rowwise candidate staging run completed.")
+    except StagingContractError as error:
+        _warn_telemetry("could not close the staging run", error)
+        return
+    try:
+        if args.staging_read_back:
+            # Requested explicitly, so a failed read-back is the run's failure,
+            # as on the national command.
+            telemetry.verify_remote()
+    finally:
+        try:
+            telemetry.validate_local_bundle()
+        except StagingContractError as error:
+            _warn_telemetry("the local staging bundle does not validate", error)
+
+
+def _warn_telemetry(what: str, error: BaseException) -> None:
+    print(
+        f"warning: {what} ({type(error).__name__}: {error}); the build's own "
+        "evidence is unaffected.",
+        file=sys.stderr,
+        flush=True,
+    )
+
+
+def _staging_delivery(telemetry: StagingTelemetryV2 | None) -> dict[str, Any]:
+    if telemetry is None:
+        return disabled_staging_delivery("--no-staging")
+    return telemetry.delivery_summary
+
+
+def _stage_dataset(
+    args: argparse.Namespace,
+    *,
+    manifest: Mapping[str, Any],
+    output_paths: Mapping[str, Path],
+    run_id: str,
+    telemetry: StagingTelemetryV2 | None,
+) -> dict[str, Any]:
+    """Stage the published bundle under ``staged/<run_id>/``; record, never raise.
+
+    The bundle is every file the manifest registers as an output plus the
+    manifest and two sidecars, verified from disk against the manifest's own
+    digests. Nothing else in the run directory is eligible.
+    """
+
+    mode = _staged_dataset_mode(args)
+    if mode == "disabled":
+        return disabled_staged_dataset(
+            "--no-staging" if args.no_staging else "--no-staged-dataset"
+        )
+    repository = (
+        None if mode == "local_only" else str(args.staged_dataset_repo_id).strip()
+    )
+    _stage(telemetry, "dataset_staging", "started", mode=mode, repository=repository)
+    gate_statuses = _gate_statuses(getattr(args, "_gate_report", {}) or {})
+    bundle = StagedDatasetBundle.from_manifest(
+        output_paths["manifest"].parent,
+        run_id=run_id,
+        manifest_name=MANIFEST_FILENAME,
+        extra_summary={
+            "dataset_households": manifest["parameters"]["dataset_households"],
+            "pool_rows": manifest["solve"]["pool_households"],
+            "realized_households": manifest["solve"]["n_households"],
+            "final_loss": manifest["solve"]["final_loss"],
+            "release_posture": manifest["release_posture"],
+            "gate_statuses": gate_statuses,
+        },
+    )
+    telemetry_reference = (
+        None
+        if telemetry is None
+        else {
+            "repository": telemetry.repo_id,
+            "prefix": telemetry.repo_run_prefix,
+            "mode": telemetry.delivery_mode,
+        }
+    )
+    write_sidecars(
+        bundle,
+        repository=repository,
+        prefix=UK_STAGED_DATASET_PREFIX,
+        telemetry=telemetry_reference,
+    )
+    if mode == "local_only":
+        delivery = local_only_staged_dataset(bundle, prefix=UK_STAGED_DATASET_PREFIX)
+    else:
+        print(
+            f"staging the dataset bundle to {repository} under "
+            f"{bundle.remote_prefix(UK_STAGED_DATASET_PREFIX)}...",
+            file=sys.stderr,
+            flush=True,
+        )
+        storage = HuggingFaceDatasetStorage(repository, api=_hub_api())
+        delivery = stage_bundle(
+            bundle, storage=storage, prefix=UK_STAGED_DATASET_PREFIX
+        )
+    print(_staged_dataset_line(delivery), file=sys.stderr, flush=True)
+    _stage(
+        telemetry,
+        "dataset_staging",
+        "completed",
+        status=delivery["status"],
+        repository=delivery["repository"],
+        revision=delivery["revision"],
+        error_code=delivery["error_code"],
+        file_count=len(delivery["files"]),
+    )
+    _add_staging_artifact(
+        telemetry,
+        "staged_dataset",
+        delivery,
+        artifact_kind="build_metadata",
+        classification="non_row_level",
+    )
+    _add_staging_artifact(
+        telemetry,
+        "fit_summary",
+        _fit_summary(
+            manifest,
+            run_id=run_id,
+            gate_statuses=gate_statuses,
+            staged_dataset=delivery,
+        ),
+        artifact_kind="aggregate_diagnostics",
+        classification="aggregate",
+    )
+    return delivery
+
+
+def _staged_dataset_line(delivery: Mapping[str, Any]) -> str:
+    status = delivery["status"]
+    if status in ("uploaded", "already_staged"):
+        return (
+            f"staged dataset: {status} at {delivery['repository']}/"
+            f"{delivery['prefix']} (revision {delivery['revision']})"
+        )
+    if status == "failed":
+        return (
+            f"staged dataset: failed ({delivery['error_code']}); the bundle and "
+            "its sidecars stay local and can be re-staged with "
+            "tools/stage_uk_rowwise_candidate.py"
+        )
+    return (
+        f"staged dataset: skipped ({delivery['mode']}); sidecars written beside "
+        "the bundle"
+    )
+
+
+def _add_staging_artifact(
+    telemetry: StagingTelemetryV2 | None,
+    logical_name: str,
+    payload: Mapping[str, Any],
+    *,
+    artifact_kind: str,
+    classification: str,
+) -> None:
+    """Attach a reviewed aggregate JSON artifact to the telemetry run.
+
+    A content-policy refusal is reported and skipped: the telemetry is
+    best-effort and must never fail a finished build.
+    """
+
+    if telemetry is None:
+        return
+    with tempfile.TemporaryDirectory(prefix=".staging-artifact.") as scratch:
+        source = Path(scratch) / f"{logical_name}.json"
+        source.write_text(_json_text(payload), encoding="utf-8")
+        try:
+            telemetry.add_artifact(
+                logical_name,
+                source,
+                artifact_kind=artifact_kind,
+                classification=classification,
+            )
+        except StagingContractError as error:
+            print(
+                f"warning: staging artifact {logical_name} was refused by the "
+                f"content policy and is not staged: {error}",
+                file=sys.stderr,
+                flush=True,
+            )
+
+
+def _fit_summary(
+    manifest: Mapping[str, Any],
+    *,
+    run_id: str,
+    gate_statuses: Mapping[str, str],
+    staged_dataset: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Aggregate fit, gate and size evidence shaped for a reviewed artifact.
+
+    The content policy admits JSON objects without arrays of objects, so the
+    per-family rows become mappings keyed by family and anything row-shaped
+    is dropped by :func:`_aggregate_only`.
+    """
+
+    solve = manifest["solve"]
+    fit = manifest.get("fit") or {}
+    size = solve.get("dataset_size")
+    parameters = manifest["parameters"]
+    return {
+        "schema_name": "microcosm.uk.rowwise-fit-summary",
+        "schema_version": 1,
+        "run_id": run_id,
+        "build_kind": manifest["build_kind"],
+        "releasable": manifest["releasable"],
+        "release_posture": _aggregate_only(manifest["release_posture"]),
+        "git_commit": manifest["git_commit"],
+        "git_dirty": manifest["git_dirty"],
+        "parameters": {
+            key: parameters.get(key)
+            for key in (
+                "n_clones",
+                "dataset_households",
+                "seed",
+                "epochs",
+                "sample_fraction",
+                "release_candidate",
+                "skip_holdout",
+                "target_weight_rule",
+            )
+        },
+        "targets": {
+            "count": solve["n_targets"],
+            "by_kind": _aggregate_only(solve["n_targets_by_kind"]),
+        },
+        "pool_rows": solve["pool_households"],
+        "realized_households": solve["n_households"],
+        "loss": {
+            "initial": solve["initial_loss"],
+            "final": solve["final_loss"],
+            "max_abs_relative_error": solve["max_abs_relative_error"],
+            "median_abs_relative_error": solve["median_abs_relative_error"],
+        },
+        "fit_by_family": {
+            "local": _rows_by_key(fit.get("local_by_family"), key="family"),
+            "national": _rows_by_key(fit.get("national_by_family"), key="family"),
+        },
+        "weakest_areas_by_fit": _aggregate_only(fit.get("weakest_areas_by_fit")),
+        "rotated_holdout": _aggregate_only(fit.get("rotated_holdout")),
+        "gates": dict(gate_statuses),
+        "failing_gate_ids": list(manifest.get("failing_gate_ids", [])),
+        "blocking_failure_count": len(manifest.get("blocking_failures", [])),
+        # The receipt's per-row arrays (pool_row_indices, inclusion
+        # probabilities) live in dataset_size_selection.csv and would push the
+        # artifact past the 5 MiB cap on a real run.
+        "dataset_size": None
+        if size is None
+        else _aggregate_only(
+            {
+                key: value
+                for key, value in size.items()
+                if key not in ("pool_row_indices", "inclusion_probabilities")
+            }
+        ),
+        "staged_dataset": {
+            key: staged_dataset[key]
+            for key in ("repository", "prefix", "revision", "status", "error_code")
+        },
+    }
+
+
+def _rows_by_key(rows: Any, *, key: str) -> dict[str, Any]:
+    """Turn a list of row mappings into a mapping keyed by ``row[key]``."""
+
+    if not isinstance(rows, list):
+        return {}
+    keyed: dict[str, Any] = {}
+    for row in rows:
+        if not isinstance(row, Mapping) or key not in row:
+            continue
+        keyed[str(row[key])] = _aggregate_only(
+            {name: value for name, value in row.items() if name != key}
+        )
+    return keyed
+
+
+def _aggregate_only(value: Any) -> Any:
+    """Drop row-shaped data (lists holding mappings) recursively."""
+
+    if isinstance(value, Mapping):
+        kept = {}
+        for name, item in value.items():
+            cleaned = _aggregate_only(item)
+            if cleaned is not _DROPPED:
+                kept[str(name)] = cleaned
+        return kept
+    if isinstance(value, (list, tuple)):
+        if any(isinstance(item, Mapping) for item in value):
+            return _DROPPED
+        return [
+            item
+            for item in (_aggregate_only(entry) for entry in value)
+            if item is not _DROPPED
+        ]
+    return value
+
+
+_DROPPED = object()
+
+
+def _replace_manifest(path: Path, manifest: Mapping[str, Any]) -> None:
+    """Rewrite the published manifest atomically with appended evidence."""
+
+    handle, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary_path = Path(temporary)
+    try:
+        with open(handle, "w", encoding="utf-8") as stream:
+            stream.write(_json_text(manifest))
+        temporary_path.replace(path)
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
         raise
 
 

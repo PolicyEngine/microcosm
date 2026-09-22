@@ -122,6 +122,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_cgt_incidence_clone_mass",
     "uk_stage_cgt_band_donors_support",
     "uk_stage_hmrc_cgt_gains_spine_summary",
+    "uk_stage_hmrc_cgt_asset_type_spine_summary",
     "uk_stage_salary_sacrifice_realization",
     "uk_stage_student_loans_realization",
     "uk_stage_age_tail_targets",
@@ -129,6 +130,10 @@ UK_SPINE_GATE_SCOPE = (
     # Weight-independent like the BRMA enum below, and its column exists from
     # frs_relationships onward (#791).
     "uk_ons_household_type_enum_domain",
+    # Weight-independent; the column exists only from hmrc_cgt_asset_type_spine
+    # onward, so it is checked at the transferred boundary, and its domain is
+    # declared by the stage module (microcosm#725).
+    "uk_capital_gains_asset_type_enum_domain",
     # Weight-independent, and its column exists from frs_brma onward, so the
     # spine checks it at the assembled boundary instead of the release end.
     "uk_brma_enum_domain",

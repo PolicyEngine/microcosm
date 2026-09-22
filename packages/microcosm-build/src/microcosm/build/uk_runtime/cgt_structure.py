@@ -17,6 +17,10 @@ from microcosm.build.stochastic_assignment import stable_identity_uniforms
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
 )
+from microcosm.build.uk_runtime.hmrc_capital_gains import (
+    HMRC_CGT_CONDITIONING_RESOURCE,
+    load_hmrc_cgt_conditioning_facts,
+)
 from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     uk_time_period,
@@ -43,6 +47,12 @@ DONOR_TOTAL = 270
 MIN_DONOR_BAND_LOWER = 12_300
 DONOR_SEED = 1
 DONOR_NEVER_ZERO_WEIGHT = True
+#: Reviewed pins of the retained donor bands on the 2024-25 vintage
+#: (HMRC Table 2.1a, individuals, bands from GBP 12,300): a re-vendored
+#: resource that moves them fails the donor assert until reviewed here.
+DONOR_SIZE_BAND_VINTAGE = "2024-25"
+DONOR_RETAINED_TAXPAYERS = 392_000.0
+DONOR_RETAINED_GAINS_GBP = 118_209_000_000.0
 HOUSEHOLD_IS_CGT_CLONE = "household_is_capital_gains_clone"
 HOUSEHOLD_IS_CGT_BAND_DONOR = "household_is_cgt_band_donor"
 CGT_CLONE_MASS_CHANGE_REASON = (
@@ -66,13 +76,36 @@ def load_advani_summers_distribution() -> Mapping[str, Any]:
 
 
 def load_hmrc_cgt_size_bands() -> Mapping[str, Any]:
-    """Load the committed HMRC Table 2.1a size-band surface."""
+    """HMRC Table 2.1a individuals by size of gain, as the donor stage reads it.
 
-    return json.loads(
-        files("microcosm.build.uk")
-        .joinpath("hmrc_cgt_size_bands.json")
-        .read_text(encoding="utf-8")
-    )
+    Built from the vendored 2024-25 conditioning facts
+    (``hmrc_cgt_conditioning_facts.json``); the hand-extracted 2023-24 copy
+    is retired (microcosm#725) so the donor weights sit on the same vintage
+    as the size-of-gain calibration targets. The rows keep people and
+    pounds, one row per published band.
+    """
+
+    facts = load_hmrc_cgt_conditioning_facts()
+    return {
+        "version": 2,
+        "country": "uk",
+        "source": {
+            "resource": facts.resource,
+            "resource_sha256": facts.resource_sha256,
+            "source_commit": facts.source_commit,
+            "table": "2.1a",
+            "tax_year": facts.tax_year,
+        },
+        "rows": [
+            {
+                "lower_limit": band.lower_bound,
+                "upper_limit": band.upper_bound,
+                "taxpayers": band.taxpayers,
+                "gains_gbp": band.gains,
+            }
+            for band in facts.size_bands
+        ],
+    }
 
 
 @dataclass(frozen=True)
@@ -528,8 +561,8 @@ def _retained_size_bands(resource: Mapping[str, Any]) -> list[dict[str, float]]:
         lower = float(row["lower_limit"])
         if lower < MIN_DONOR_BAND_LOWER:
             continue
-        taxpayers = float(row["taxpayers_thousands"]) * 1_000.0
-        gains = float(row["gains_gbp_millions"]) * 1_000_000.0
+        taxpayers = float(row["taxpayers"])
+        gains = float(row["gains_gbp"])
         if taxpayers <= 0.0:
             raise ValueError(
                 "Retained CGT size bands may not produce a zero initial weight."
@@ -664,7 +697,10 @@ def _assert_cgt_donor_stage_parameters(
             (
                 "stack_band_donor_households",
                 {
-                    "size_band_resource": "hmrc_cgt_size_bands.json",
+                    "size_band_resource": HMRC_CGT_CONDITIONING_RESOURCE,
+                    "size_band_vintage": DONOR_SIZE_BAND_VINTAGE,
+                    "retained_taxpayers": DONOR_RETAINED_TAXPAYERS,
+                    "retained_gains_gbp": DONOR_RETAINED_GAINS_GBP,
                     "incidence_resource": (
                         "advani_summers_capital_gains_distribution.json"
                     ),
@@ -700,3 +736,14 @@ def _assert_cgt_donor_stage_parameters(
     weights = np.asarray([band["taxpayers"] / DONORS_PER_BAND for band in bands])
     if DONOR_NEVER_ZERO_WEIGHT and not (weights > 0.0).all():
         raise ValueError("HMRC retained donor bands imply a zero initial weight.")
+    retained_taxpayers = float(sum(band["taxpayers"] for band in bands))
+    retained_gains = float(sum(band["gains"] for band in bands))
+    if abs(retained_taxpayers - DONOR_RETAINED_TAXPAYERS) > 0.5 or (
+        abs(retained_gains - DONOR_RETAINED_GAINS_GBP) > 0.5
+    ):
+        raise ValueError(
+            "HMRC retained donor-band mass drifted from the reviewed "
+            f"{DONOR_SIZE_BAND_VINTAGE} pins: taxpayers {retained_taxpayers} vs "
+            f"{DONOR_RETAINED_TAXPAYERS}, gains {retained_gains} vs "
+            f"{DONOR_RETAINED_GAINS_GBP}."
+        )
