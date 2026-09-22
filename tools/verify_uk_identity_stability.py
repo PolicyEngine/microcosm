@@ -686,8 +686,8 @@ def e8_identity_receipt(
     stored weights and carrier gains); (3) the student-loan plan column
     recomputed in full (identity-keyed top-ups at the release calibration
     year) in original and permuted row order against the stored column.
-    The A&S prior amounts (overwritten by the Table 3 redraw except the
-    sub-AEA remainder), the redraw's seeded within-band draws (covered by
+    The A&S prior amounts (overwritten by the Table 3 redraw and its
+    sub-AEA remainder mapping), the redraw's seeded within-band draws (covered by
     the merged #560 embedded published-surface tests), and the
     salary-sacrifice QRF and conversion (the pre-conversion state is
     consumed by the stage) are covered by twin-build determinism.
@@ -903,7 +903,7 @@ def e8_identity_receipt(
         },
         "qrf_draw_columns_scope": (
             "excluded: the A&S prior amounts (overwritten by the Table 3 "
-            "redraw except the sub-AEA remainder), the redraw's seeded "
+            "redraw and its sub-AEA remainder mapping), the redraw's seeded "
             "within-band draws (the merged #560 embedded published-surface "
             "tests cover the amounts logic), and the salary-sacrifice QRF "
             "and conversion (the pre-conversion column state is consumed "

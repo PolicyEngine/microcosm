@@ -366,6 +366,13 @@ def test_cgt_summary_allocation_receipt_must_be_finite_and_non_negative() -> Non
                     "ipf_zero_seed_cells": 0,
                 },
                 "fallback_released_mass": released,
+                "remainder": {
+                    "persons": 3,
+                    "mass": 300.0,
+                    "annual_exempt_amount": 3000.0,
+                    "min_amount": 12.5,
+                    "max_amount": 2990.0,
+                },
             },
         }
 
@@ -390,6 +397,67 @@ def test_cgt_summary_allocation_receipt_must_be_finite_and_non_negative() -> Non
             check="cgt_imputation_summary",
             parameters=parameters,
         )
+
+
+def test_cgt_summary_remainder_must_stay_inside_the_exempt_range() -> None:
+    """The sub-AEA remainder receipt (microcosm#970) is fenced on its range."""
+    parameters = {
+        "stage": "hmrc_cgt_gains_spine",
+        "check": "cgt_imputation_summary",
+        "minimum_band_rows": 1,
+    }
+
+    def evidence(remainder: dict) -> dict:
+        return {
+            "stage": "hmrc_cgt_gains_spine",
+            "rows": [{"gain_lower_bound": 12300.0}],
+            "taxpayer_mass": 1.0,
+            "published_taxpayer_mass": 1.0,
+            "remainder_mass": 0.0,
+            "allocation": {
+                "rake": {
+                    "ipf_max_abs_margin_error": 0.0,
+                    "gains_margin_max_abs_error": 0.0,
+                    "ipf_zero_seed_cells": 0,
+                },
+                "fallback_released_mass": 0.0,
+                "remainder": remainder,
+            },
+        }
+
+    def verdict(remainder: dict):
+        return uk_stage_health_gate(
+            evidence=evidence(remainder),
+            stage="hmrc_cgt_gains_spine",
+            check="cgt_imputation_summary",
+            parameters=parameters,
+        )
+
+    inside = {
+        "persons": 2,
+        "mass": 200.0,
+        "annual_exempt_amount": 3000.0,
+        "min_amount": 1.0,
+        "max_amount": 3000.0,
+    }
+    assert _passed(verdict(inside))
+    assert not verdict({**inside, "max_amount": 3000.5}).passed
+    assert not verdict({**inside, "min_amount": 0.0}).passed
+    assert not verdict({**inside, "mass": -1.0}).passed
+    # An empty remainder carries zero amounts and passes.
+    assert _passed(
+        verdict(
+            {
+                "persons": 0,
+                "mass": 0.0,
+                "annual_exempt_amount": 3000.0,
+                "min_amount": 0.0,
+                "max_amount": 0.0,
+            }
+        )
+    )
+    with pytest.raises(ValueError):
+        verdict({**inside, "mass": float("nan")})
 
 
 def test_cgt_summary_minimum_rows_parameter_is_live() -> None:

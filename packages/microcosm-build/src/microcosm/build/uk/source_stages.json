@@ -3611,6 +3611,13 @@
      "resource": "hmrc_cgt_conditioning_facts.json",
      "format": "json",
      "runtime_sha256_required": true
+    },
+    {
+     "role": "capital_gains_within_band_distribution",
+     "kind": "public_aggregate_reference",
+     "resource": "advani_summers_capital_gains_distribution.json",
+     "format": "json",
+     "runtime_sha256_required": true
     }
    ],
    "operations": [
@@ -3725,8 +3732,26 @@
     },
     {
      "kind": "sub_aea_remainder",
-     "policy": "gainers beyond the published taxpayer mass keep their existing amounts capped at the annual exempt amount",
-     "rationale": "Table 3 covers only individuals with a CGT liability; remaining gainers are treated as sub-AEA gainers rather than invented into the liability distribution or deleted."
+     "policy": "gainers beyond the published taxpayer mass take amounts from the Advani-Summers within-band gains distribution restricted to (0, annual exempt amount], rank-preserving within each Advani-Summers total-income band",
+     "rationale": "Table 3 covers only individuals with a CGT liability; the remaining gainers are sub-AEA gainers, so their amounts come from the only published within-band distribution that reaches below the exempt amount, the surface the spine's gainer set was drawn from, rather than from capping the candidate's amounts, and none is invented into the liability distribution or deleted (microcosm#970).",
+     "resource": "advani_summers_capital_gains_distribution.json",
+     "resource_vintage": "2017-18 nominal pounds as published (Advani and Summers 2020, CAGE WP 465, Table A1); no uprating is applied",
+     "banding": "Advani-Summers total-income bands at the person's component-sum income without allowance subtraction, the banding the prior draw uses",
+     "range": "quantiles strictly between the band's degree-1 quantile spline zero crossing and its crossing of the build period's annual exempt amount, so every amount lies in (0, AEA]",
+     "mapping": "remainder gainers take the midpoints of the weight-proportional quantile strata that partition the range, evaluated on the band's spline; zero-weight persons take a nominal stratum of the band's smallest positive weight and carry no mass; no seeded draw is consumed, so the walk and plan draw order is unchanged",
+     "ordering": "existing gains ascending, person_id descending on ties (the allocation ranking reversed, as the within-band draws order their strata)",
+     "quantile_points": [
+      0.05,
+      0.1,
+      0.25,
+      0.5,
+      0.75,
+      0.9,
+      0.95
+     ],
+     "spline_degree": 1,
+     "extrapolation": "ext=0",
+     "deterministic": true
     },
     {
      "kind": "record_mass_conservation_receipt",

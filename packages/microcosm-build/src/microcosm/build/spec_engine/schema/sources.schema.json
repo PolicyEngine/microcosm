@@ -5326,12 +5326,55 @@
       },
       "rationale": {
        "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "resource_vintage": {
+       "type": "string"
+      },
+      "banding": {
+       "type": "string"
+      },
+      "range": {
+       "type": "string"
+      },
+      "mapping": {
+       "type": "string"
+      },
+      "ordering": {
+       "type": "string"
+      },
+      "quantile_points": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "spline_degree": {
+       "type": "integer"
+      },
+      "extrapolation": {
+       "type": "string"
+      },
+      "deterministic": {
+       "type": "boolean"
       }
      },
      "required": [
+      "banding",
+      "deterministic",
+      "extrapolation",
       "kind",
+      "mapping",
+      "ordering",
       "policy",
-      "rationale"
+      "quantile_points",
+      "range",
+      "rationale",
+      "resource",
+      "resource_vintage",
+      "spline_degree"
      ]
     },
     {

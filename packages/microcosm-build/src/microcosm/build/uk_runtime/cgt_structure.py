@@ -2,18 +2,27 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from importlib.resources import files
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from scipy.interpolate import UnivariateSpline
 
 from microcosm.build.source_manifest import SourceOperationSpec, SourceStageSpec
 from microcosm.build.stochastic_assignment import stable_identity_uniforms
+from microcosm.build.uk_runtime.advani_summers import (
+    ADVANI_SUMMERS_RESOURCE,
+    CGT_QUANTILE_POINTS,
+    advani_summers_band_index,
+    load_advani_summers_distribution,
+)
+from microcosm.build.uk_runtime.advani_summers import (
+    advani_summers_rows as _distribution_rows,
+)
+from microcosm.build.uk_runtime.advani_summers import (
+    draw_banded_priors as _draw_banded_priors,
+)
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
 )
@@ -38,8 +47,6 @@ from microcosm.frame import Frame, MassChangeRecord, WeightKind
 CGT_CLONE_MASS_SPLIT = 0.5
 CGT_PRIOR_SEED = 0
 CGT_PRIOR_SALT = "cgt_prior_amount"
-CGT_QUANTILE_POINTS = (0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95)
-CGT_PRIOR_PERCENTILE_COLUMNS = ("p05", "p10", "p25", "p50", "p75", "p90", "p95")
 CGT_ADULT_MINIMUM_AGE = 16
 DONORS_PER_BAND = 30
 DONOR_BAND_COUNT = 9
@@ -63,16 +70,6 @@ CGT_DONOR_MASS_CHANGE_REASON = (
     "Stack 30 positive-weight HMRC Table 2.1a support households per retained "
     "gain band; published donor mass is added explicitly."
 )
-
-
-def load_advani_summers_distribution() -> Mapping[str, Any]:
-    """Load the committed Advani-Summers incidence and quantile surface."""
-
-    return json.loads(
-        files("microcosm.build.uk")
-        .joinpath("advani_summers_capital_gains_distribution.json")
-        .read_text(encoding="utf-8")
-    )
 
 
 def load_hmrc_cgt_size_bands() -> Mapping[str, Any]:
@@ -492,62 +489,13 @@ def _component_sum_income(person: pd.DataFrame) -> np.ndarray:
     return numeric.sum(axis=1).to_numpy(dtype=float)
 
 
-def _distribution_rows(resource: Mapping[str, Any]) -> list[Mapping[str, Any]]:
-    rows = resource.get("rows")
-    if not isinstance(rows, list) or not rows:
-        raise ValueError("Advani-Summers resource must contain a non-empty rows list.")
-    minimums = [float(row["minimum_total_income"]) for row in rows]
-    if minimums != sorted(minimums) or minimums[0] != 0.0:
-        raise ValueError("Advani-Summers income bands must be sorted and start at 0.")
-    # Fail closed on non-monotone quantile rows: the prior draw interpolates
-    # and extrapolates these values as a quantile function, so a malformed
-    # row (the class the corrected percentile-69 dropped digit belonged to)
-    # would silently fabricate loss-makers instead of failing the build.
-    for row in rows:
-        knots = [float(row[column]) for column in CGT_PRIOR_PERCENTILE_COLUMNS]
-        if any(late < early for early, late in zip(knots, knots[1:], strict=False)):
-            raise ValueError(
-                "Advani-Summers quantile columns must be non-decreasing; "
-                f"row with minimum_total_income {row['minimum_total_income']!r} "
-                "is not a valid quantile function."
-            )
-    return rows
-
-
-def _draw_banded_priors(
-    income: np.ndarray,
-    draws: np.ndarray,
-    *,
-    distribution: Mapping[str, Any],
-) -> np.ndarray:
-    rows = _distribution_rows(distribution)
-    minimums = np.asarray([row["minimum_total_income"] for row in rows], dtype=float)
-    indexes = np.clip(
-        np.searchsorted(minimums, income, side="right") - 1, 0, len(rows) - 1
-    )
-    values = np.zeros(len(income), dtype=float)
-    for index, row in enumerate(rows):
-        mask = indexes == index
-        if not mask.any():
-            continue
-        knots = np.asarray(
-            [row[column] for column in CGT_PRIOR_PERCENTILE_COLUMNS], dtype=float
-        )
-        spline = UnivariateSpline(CGT_QUANTILE_POINTS, knots, k=1, s=0, ext=0)
-        values[mask] = spline(draws[mask])
-    return values
-
-
 def _incidence_propensity(
     income: np.ndarray,
     *,
     distribution: Mapping[str, Any],
 ) -> np.ndarray:
     rows = _distribution_rows(distribution)
-    minimums = np.asarray([row["minimum_total_income"] for row in rows], dtype=float)
-    indexes = np.clip(
-        np.searchsorted(minimums, income, side="right") - 1, 0, len(rows) - 1
-    )
+    indexes = advani_summers_band_index(rows, income)
     rates = np.asarray([row["percent_with_gains"] for row in rows], dtype=float)
     return rates[indexes]
 
@@ -665,7 +613,7 @@ def _assert_cgt_incidence_stage_parameters(stage: SourceStageSpec) -> None:
             (
                 "draw_capital_gains_prior_from_banded_quantiles",
                 {
-                    "resource": "advani_summers_capital_gains_distribution.json",
+                    "resource": ADVANI_SUMMERS_RESOURCE,
                     "income_proxy_components": list(
                         UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS
                     ),
@@ -701,9 +649,7 @@ def _assert_cgt_donor_stage_parameters(
                     "size_band_vintage": DONOR_SIZE_BAND_VINTAGE,
                     "retained_taxpayers": DONOR_RETAINED_TAXPAYERS,
                     "retained_gains_gbp": DONOR_RETAINED_GAINS_GBP,
-                    "incidence_resource": (
-                        "advani_summers_capital_gains_distribution.json"
-                    ),
+                    "incidence_resource": ADVANI_SUMMERS_RESOURCE,
                     "minimum_band_lower": MIN_DONOR_BAND_LOWER,
                     "donors_per_band": DONORS_PER_BAND,
                     "expected_band_count": DONOR_BAND_COUNT,

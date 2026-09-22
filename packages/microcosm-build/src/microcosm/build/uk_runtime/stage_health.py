@@ -817,6 +817,47 @@ def _cgt_imputation_summary_gate(
         details["ipf_max_abs_margin_error"] = rake.get("ipf_max_abs_margin_error")
         details["gains_margin_max_abs_error"] = rake.get("gains_margin_max_abs_error")
         details["fallback_released_mass"] = released
+        # The sub-AEA remainder receipt (microcosm#970): every remainder
+        # amount must sit strictly above zero and at or below the exempt
+        # amount, or the projection fence downstream measures the wrong
+        # population. Optional so receipts predating the mapping still read.
+        remainder = allocation.get("remainder")
+        if remainder is not None:
+            if not isinstance(remainder, Mapping):
+                raise ValueError(f"{stage}.allocation.remainder must be a mapping.")
+            persons = _finite_number(
+                remainder.get("persons"), label=f"{stage}.allocation.remainder.persons"
+            )
+            remainder_mass = _finite_number(
+                remainder.get("mass"), label=f"{stage}.allocation.remainder.mass"
+            )
+            if persons < 0.0 or remainder_mass < 0.0:
+                failures.append(
+                    f"{stage}: allocation.remainder count or mass is negative."
+                )
+            if persons > 0.0:
+                exempt = _finite_number(
+                    remainder.get("annual_exempt_amount"),
+                    label=f"{stage}.allocation.remainder.annual_exempt_amount",
+                )
+                low = _finite_number(
+                    remainder.get("min_amount"),
+                    label=f"{stage}.allocation.remainder.min_amount",
+                )
+                high = _finite_number(
+                    remainder.get("max_amount"),
+                    label=f"{stage}.allocation.remainder.max_amount",
+                )
+                if not low > 0.0:
+                    failures.append(
+                        f"{stage}: allocation.remainder.min_amount is not positive."
+                    )
+                if high > exempt:
+                    failures.append(
+                        f"{stage}: allocation.remainder.max_amount exceeds the "
+                        "annual exempt amount."
+                    )
+            details["remainder_mass"] = remainder_mass
     return (
         _fail(stage, check, failures, details)
         if failures

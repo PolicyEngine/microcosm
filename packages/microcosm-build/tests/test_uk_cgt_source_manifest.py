@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 from microcosm.build.country_spec import load_country_spec
+from microcosm.build.uk_runtime.advani_summers import (
+    ADVANI_SUMMERS_RESOURCE,
+    CGT_QUANTILE_POINTS,
+)
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_IMPUTATION_SEED,
+    UK_CGT_REMAINDER_POLICY,
     UK_CGT_SPINE_MASS_CONSERVATION_REASON,
     UK_CGT_SPINE_STAGE_NAME,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
+)
+from microcosm.build.uk_runtime.cgt_structure import (
+    CGT_ANCHOR_MASS_CHANGE_REASON,
+    CGT_INCIDENCE_ANCHOR_STAGE_NAME,
+    cgt_incidence_anchor_operation_parameters,
 )
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_BUILD_PERIOD,
@@ -137,3 +147,59 @@ def test_every_source_stage_family_requires_its_declared_receipt() -> None:
         assert family["output_weight_kind"] == "importance", name
     for name, family in manifest.family_coverage.items():
         assert str(family["required_mass_change_reason"]).strip(), name
+
+
+def test_manifest_declares_the_advani_summers_remainder_surface() -> None:
+    """The sub-AEA remainder reads the within-band surface the manifest pins
+    (microcosm#970); the artifact and the operation name the same resource."""
+    artifacts = {artifact["role"]: artifact for artifact in _stage().artifacts}
+    surface = artifacts["capital_gains_within_band_distribution"]
+    remainder = _operations()["sub_aea_remainder"]
+
+    assert surface["kind"] == "public_aggregate_reference"
+    assert surface["resource"] == ADVANI_SUMMERS_RESOURCE
+    assert surface["format"] == "json"
+    assert surface["runtime_sha256_required"] is True
+    assert remainder["policy"] == UK_CGT_REMAINDER_POLICY
+    assert remainder["resource"] == ADVANI_SUMMERS_RESOURCE
+    assert remainder["quantile_points"] == list(CGT_QUANTILE_POINTS)
+    assert remainder["spline_degree"] == 1
+    assert remainder["extrapolation"] == "ext=0"
+    assert remainder["deterministic"] is True
+    assert "no uprating" in remainder["resource_vintage"]
+
+
+def test_incidence_anchor_family_requires_its_conserving_receipt() -> None:
+    """The #970 anchor is a weights-only spine stage the terminal gate demands."""
+    manifest = load_uk_release_input_coverage_manifest()
+    family = manifest.family_coverage[CGT_INCIDENCE_ANCHOR_STAGE_NAME]
+
+    assert family["status"] == "required_at_build"
+    assert family["outputs"] == []
+    assert family["rewrites"] == []
+    assert family["output_weight_kind"] == "importance"
+    assert family["mass_change_semantics"] == "mass_conserving"
+    assert family["required_mass_change_reason"] == CGT_ANCHOR_MASS_CHANGE_REASON
+    assert CGT_INCIDENCE_ANCHOR_STAGE_NAME in manifest.required_build_stages
+
+
+def test_incidence_anchor_manifest_operations_match_the_stage_implementation() -> None:
+    stage = load_country_spec("uk").sources.stage_map()[CGT_INCIDENCE_ANCHOR_STAGE_NAME]
+    declared = [
+        (operation.kind, dict(operation.parameters)) for operation in stage.operations
+    ]
+
+    assert declared == [
+        (kind, dict(parameters))
+        for kind, parameters in cgt_incidence_anchor_operation_parameters()
+    ]
+    assert declared[-1][1]["reason"] == CGT_ANCHOR_MASS_CHANGE_REASON
+    assert declared[-1][1]["declared_factor"] == 1.0
+    assert stage.outputs == () and stage.rewrites == ()
+    roles = {artifact["role"]: artifact for artifact in stage.artifacts}
+    assert roles["capital_gains_incidence_and_quantiles"]["resource"] == (
+        ADVANI_SUMMERS_RESOURCE
+    )
+    assert (
+        "gov.hmrc.cgt.annual_exempt_amount" in roles["policy_parameters"]["parameters"]
+    )
