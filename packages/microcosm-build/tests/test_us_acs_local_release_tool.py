@@ -232,6 +232,210 @@ def test_do_finalize_requires_calibration_diagnostics(tmp_path: Path) -> None:
         module.do_finalize(args)
 
 
+def test_local_hours_gate_refuses_missing_source_audit() -> None:
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match="staging input-null audit"):
+        module._require_local_hours(None, {})
+
+
+def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None:
+    from microcosm.build.gates import GateResult
+
+    module = _load_tool_module()
+    seen = []
+
+    def failed_gate(frame, *, source_null_audit):
+        seen.append((frame, source_null_audit))
+        return GateResult(
+            name="acs_local_hours_signal",
+            passed=False,
+            failures=("acs_2024_1yr: unresolved hours",),
+        )
+
+    monkeypatch.setattr(module, "acs_local_hours_signal_gate", failed_gate)
+    marker = object()
+    audit = [{"entity": "person", "column": "weekly_hours_worked_before_lsr"}]
+    with pytest.raises(SystemExit, match="acs_2024_1yr: unresolved hours"):
+        module._require_local_hours(marker, {"reviewed_engine_input_nulls": audit})
+    assert seen == [(marker, audit)]
+
+
+def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report):
+    """Every package-stage input, with the finalize report's hours entry given.
+
+    ``hours_report`` is what ``gate_summary.json`` records under
+    ``acs_local_hours_signal`` (``None`` omits the key, as a report finalized
+    before the gate existed would). The staging frame and the hours gate are
+    stubbed: the test is about the binding, not the classification.
+    """
+    from microcosm.build.gates import GateResult
+
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    staging = tmp_path / "staging.h5"
+    staging.write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [],
+                "reviewed_limitations": [],
+                # An uncapped staging run, so the package stage's cap check
+                # (which runs first) lets these inputs reach the hours gates.
+                "orchestration": {"max_households": None},
+            }
+        )
+    )
+    out_h5 = tmp_path / "out.h5"
+    out_h5.write_bytes(b"artifact")
+    artifact_sha = module._sha256(out_h5)
+    gates = {
+        "us_puma_ladder_gate": {"passed": True, "failures": []},
+        # The general hours gate, bound to these bytes: the package stage
+        # requires it before it reaches the ACS local-hours re-check.
+        "hours_worked_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+    }
+    if hours_report is not None:
+        gates["acs_local_hours_signal"] = hours_report
+    evidence = {
+        "calibration_diagnostics.json": {"households": 1},
+        "gate_summary.json": {"gates": gates, "reviewed_limitations": []},
+        "run_identity.json": {
+            "staging_sha256": module._sha256(staging),
+            "population_cells_dropped": [],
+        },
+        "spine_qa.json": {
+            "plain_consumption": True,
+            "artifact_sha256": artifact_sha,
+            "per_spine": {},
+        },
+        "consumer_export.json": {"staging_sha256": module._sha256(staging)},
+        "held_back_columns.json": {"total": 0},
+        "reviewed_null_fills.json": {"columns_filled": []},
+        "materialize_rss.json": {"materialize_peak_rss_gb": 1.0, "hh_chunk": 1},
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, payload in evidence.items():
+        (ckpt / name).write_text(json.dumps(payload))
+    (tmp_path / "out.summary.json").write_text(json.dumps({"simulation_ready": True}))
+    monkeypatch.setattr(module, "_load_staging_frame", lambda *_a, **_k: object())
+    monkeypatch.setattr(
+        module,
+        "acs_local_hours_signal_gate",
+        lambda frame, *, source_null_audit: GateResult(
+            name="acs_local_hours_signal",
+            passed=True,
+            failures=(),
+            details={"per_spine": {"acs_2024_1yr": {"rows": 1}}},
+        ),
+    )
+    return module._parse_args(
+        [
+            "--stage",
+            "package",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(ckpt),
+            "--out-h5",
+            str(out_h5),
+            "--out",
+            str(tmp_path / "release"),
+            "--allow-dirty",
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "hours_report",
+    [None, {"passed": False, "failures": ["invented"]}, {"passed": "true"}],
+    ids=["finalized-before-the-gate", "finalize-failed", "truthy-not-true"],
+)
+def test_package_requires_a_passing_hours_gate_in_the_finalize_report(
+    tmp_path: Path, monkeypatch, hours_report
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module, tmp_path, monkeypatch, hours_report=hours_report
+    )
+    with pytest.raises(SystemExit, match="Re-run --stage finalize"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+
+
+def test_package_binds_the_hours_gate_to_the_packaged_bytes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    result = module.do_package(args)
+    release_dir = Path(result["release_dir"])
+    expected_sha = module._sha256(args.out_h5)
+    for name in ("build_manifest.json", "gate_summary.json"):
+        gate = json.loads((release_dir / name).read_text())["gates"][
+            "acs_local_hours_signal"
+        ]
+        assert gate["passed"] is True
+        assert gate["artifact_sha256"] == expected_sha
+        assert gate["checked_at_stage"] == "package"
+        assert gate["detail"] == {"per_spine": {"acs_2024_1yr": {"rows": 1}}}
+    # The cap check that runs before the hours gates records what it passed.
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build_manifest["staging_orchestration"]["max_households"] is None
+
+
+def test_package_refuses_when_the_packaged_bytes_fail_the_hours_gate(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A passing finalize entry does not stand in for the package-time re-check.
+
+    The re-check runs on the calibrated H5 being packaged; if it fails, nothing
+    ships: no manifest, no package result, no artifact at the release root.
+    """
+    from microcosm.build.gates import GateResult
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    loaded = []
+
+    def load_frame(path, *_a, **_k):
+        loaded.append(Path(path))
+        return object()
+
+    monkeypatch.setattr(module, "_load_staging_frame", load_frame)
+    monkeypatch.setattr(
+        module,
+        "acs_local_hours_signal_gate",
+        lambda frame, *, source_null_audit: GateResult(
+            name="acs_local_hours_signal",
+            passed=False,
+            failures=("acs_2024_1yr: invented unresolved hours",),
+        ),
+    )
+    with pytest.raises(
+        SystemExit, match="Local hours coverage failed: acs_2024_1yr: invented"
+    ):
+        module.do_package(args)
+    assert loaded == [Path(args.out_h5)]
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
 _UNSET = object()
 
 
@@ -415,6 +619,7 @@ def _finalize_args(module, tmp_path: Path):
         json.dumps(
             {
                 "reviewed_limitations": [],
+                "reviewed_engine_input_nulls": [],
                 # The current staging builder records its cap; an uncapped run
                 # is what the package-stage tests built on this fixture need.
                 "orchestration": {"max_households": None},
@@ -449,6 +654,20 @@ def _finalize_args(module, tmp_path: Path):
     )
 
 
+def _stub_local_hours_gate(module, monkeypatch) -> None:
+    """Make the ACS local-hours classification pass; its own tests cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    monkeypatch.setattr(
+        module,
+        "acs_local_hours_signal_gate",
+        lambda frame, *, source_null_audit: GateResult(
+            name="acs_local_hours_signal", passed=True, failures=(), details={}
+        ),
+    )
+
+
 def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
     """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
 
@@ -464,6 +683,7 @@ def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=T
         ),
     )
     monkeypatch.setattr(module, "spine_composition", lambda *a, **k: {})
+    _stub_local_hours_gate(module, monkeypatch)
     if frame is not None:
         monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
     if identity:
@@ -630,9 +850,10 @@ def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None
     )
 
 
-def _package_args_with_hours(module, tmp_path, *, gate_state):
+def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
     """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
 
+    _stub_local_hours_gate(module, monkeypatch)
     args = _finalize_args(module, tmp_path)
     args.out = tmp_path / "release"
     args.allow_dirty = True
@@ -647,7 +868,17 @@ def _package_args_with_hours(module, tmp_path, *, gate_state):
         del gate["artifact_sha256"]
     elif gate_state == "stale":
         gate["artifact_sha256"] = "0" * 64
-    gates = {} if gate_state == "missing" else {"hours_worked_signal": gate}
+    local_gate = {
+        "passed": True,
+        "failures": [],
+        "detail": {},
+        "artifact_sha256": artifact_sha,
+    }
+    gates = (
+        {}
+        if gate_state == "missing"
+        else {"hours_worked_signal": gate, "acs_local_hours_signal": local_gate}
+    )
     args.gate_report.write_text(json.dumps({"gates": gates}))
     args.out_summary.write_text(json.dumps({"simulation_ready": True}))
     evidence = {
@@ -673,19 +904,23 @@ def _package_args_with_hours(module, tmp_path, *, gate_state):
     "gate_state", ["missing", "failed", "truthy", "unbound", "stale"]
 )
 def test_package_requires_current_hours_gate_even_with_green_old_summary(
-    tmp_path, gate_state
+    tmp_path, monkeypatch, gate_state
 ):
     module = _load_tool_module()
-    args = _package_args_with_hours(module, tmp_path, gate_state=gate_state)
+    args = _package_args_with_hours(
+        module, tmp_path, monkeypatch, gate_state=gate_state
+    )
     with pytest.raises(SystemExit, match="hours_worked_signal"):
         module.do_package(args)
     assert not (args.out / "package_result.json").exists()
 
 
 @requires_pytables
-def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(tmp_path):
+def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
+    tmp_path, monkeypatch
+):
     module = _load_tool_module()
-    args = _package_args_with_hours(module, tmp_path, gate_state="passed")
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
     result = module.do_package(args)
     release_dir = Path(result["release_dir"])
     gate = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
@@ -704,7 +939,7 @@ def test_package_rechecks_final_bytes_after_copy_or_reuse(
     import shutil as real_shutil
 
     module = _load_tool_module()
-    args = _package_args_with_hours(module, tmp_path, gate_state="passed")
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
     root_copy = args.out / module.ARTIFACT_FILENAME
     original_sha = module._sha256
     root_hashes = []

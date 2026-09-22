@@ -85,7 +85,9 @@ _PERSON_REQUIRED = (
     "INTP",
     "PWGTP",
 )
-_PERSON_OPTIONAL: tuple[str, ...] = ()
+# Preserve source hours and their universe/allocation evidence when supplied.
+# Older/minimal source fixtures remain loadable; absence is not a zero.
+_PERSON_OPTIONAL: tuple[str, ...] = ("WKHP", "WKL", "FWKHP")
 
 # Temporary aliases consumed only by microunit's dependent gross-income test.
 # ACS combined sources stay combined: INTP is placed on one gross-income
