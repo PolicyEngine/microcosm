@@ -596,3 +596,63 @@ $ .venv/bin/python tools/ci_test_groups.py --verify     verification=ok, exit 0
 $ ruff check / ruff format --check on the four changed .py files
 All checks passed! / 4 files already formatted
 ```
+
+## 9. 2026-09-22: the age-band follow-up (Max's ruling 2)
+
+Section 7's "still open" item is closed on branch
+`us-restated-age-band-filters`, stacked on this branch at `01dc806f4`. It
+adds `age` to `RESTATED_LEDGER_FILTER_CONCEPTS` under a third rule,
+`age_band`, in `tools/build_us_fiscal_refresh_release.py`.
+
+**What the materializer applies, read at `01dc806f4`.** Both age paths in
+`_materialize_target_frame` read `age_lower_bound` / `age_upper_bound`
+through `_as_bound` into `lower <= age < upper`: `population_age` in
+`_population_age_household_values`, and the `policyengine_variable` branch
+entered whenever either key is present (the SSA SSI by-age counts). The
+compiled bounds come from `us_runtime.fiscal_targets._age_bounds`, which
+takes the value of any `>`/`>=` row as the lower edge and any `<`/`<=` row as
+the upper edge, **dropping the operator**. The restated key keeps it:
+`ledger_targets._constraint_bound_filters` stamps `age_lower_bound` only for
+`>=` and `age_upper_bound` only for `<`, and `>`/`<=` as
+`_lower_bound_exclusive` / `_upper_bound_inclusive`.
+
+**The rule.** A restated `age_{lower,upper}_bound` is accepted only when it
+parses to the same number as the compiled edge on its own side and the spec's
+materializer is `population_age` or `policyengine_variable`. Refused, naming
+the values: a disagreeing edge, no compiled counterpart, an exact-age key
+(`ledger_filter_age=<v>`), any other materializer, and a spec carrying
+`ledger_filter_age` at all (age is then a dimension, so
+`_constraint_bound_filters` stamped none of the age rows and the bound came
+from the operator-less dimension stamp). `_exclusive` / `_inclusive` keys
+are not restated concepts and keep the bare-key refusal whatever their value.
+A test that runs real facts through `_dynamic_us_fiscal_target_references`
+and `compile_ledger_target_references` shows why that matters: an
+`age <= 9` row compiles to `age_upper_bound=9`, which the materializer reads
+as `age < 9`. The AGI and age rules share one edge comparison,
+`_restated_band_edge_refusal`.
+
+**The pinned feeds, measured.** Both exports carry 1,493 facts with an age
+constraint. Every row is `role: filter`, an integer value, `>=` or `<`, at
+most one per side, and no fact has an age-like dimension key. Counted by a
+throwaway scan of the two JSONL files, not committed.
+
+**Counts.** From `age_band_rule_receipt.json`, written by the committed
+`measure_age_band_rule.py` (receipt `script_sha256` `9a7a77ac…`). It ran at
+`b43aec644` with only the receipt untracked, took 35.4 s and 32.6 s to
+compile, and peaked at 2.9 GB RSS. The whole compiled registry
+(`compile_us_fiscal_target_registry(..., age_targets=True)`) has 32,866
+targets on each feed:
+
+| Arm | Refused targets | Refusal entries | SOI silent skips |
+|---|---:|---:|---:|
+| `rule` (this follow-up) | **0** | 0 | 0 |
+| `without_age_band` (#969 alone) | **939** | 1,825 | 0 |
+| `reverted` (`main`'s behaviour) | 3,208 | 5,116 | 2,269 |
+
+The two feeds (`b8543739…` and `4d1dba8c…`) give identical counts. The 939
+are the targets carrying a restated age key: 936 `census_population` /
+`population_age` / `population_age` and 3 `ssa` /
+`ssa_ssi_age_band_recipients` / `policyengine_variable`. The only
+`ledger_filter_age*` keys present are `_lower_bound` (939) and
+`_upper_bound` (886). The `without_age_band` and `reverted` rows equal the
+section 8 receipt's `rule` and `reverted` rows.
