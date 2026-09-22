@@ -11,6 +11,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
+# Tests that write real H5 bytes go through pandas' HDFStore, which needs
+# pytables; the base wheel gate installs the shards without it.
+requires_pytables = pytest.mark.skipif(
+    importlib.util.find_spec("tables") is None,
+    reason="requires pytables (the build environment)",
+)
+
 
 def _load_tool_module():
     root = Path(__file__).resolve().parents[3]
@@ -590,6 +597,7 @@ def test_do_finalize_hours_gate_passes_on_plausible_surface(
     assert report["gates"]["hours_worked_signal"]["passed"] is True
 
 
+@requires_pytables
 def test_finalize_binds_the_hours_gate_to_the_calibrated_artifact_bytes(
     tmp_path, monkeypatch
 ) -> None:
@@ -624,6 +632,7 @@ def test_finalize_binds_the_hours_gate_to_the_calibrated_artifact_bytes(
     assert hashed == [gate["artifact_sha256"]] * 2
 
 
+@requires_pytables
 def test_finalize_refuses_artifact_changed_during_hours_validation(
     tmp_path, monkeypatch
 ) -> None:
@@ -646,6 +655,7 @@ def test_finalize_refuses_artifact_changed_during_hours_validation(
     assert not args.out_summary.exists()
 
 
+@requires_pytables
 def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None:
     """A finalize-written report must satisfy the package stage's binding."""
 
@@ -739,6 +749,7 @@ def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
     return args
 
 
+@requires_pytables
 @pytest.mark.parametrize(
     "gate_state", ["missing", "failed", "truthy", "unbound", "stale"]
 )
@@ -754,6 +765,7 @@ def test_package_requires_current_hours_gate_even_with_green_old_summary(
     assert not (args.out / "package_result.json").exists()
 
 
+@requires_pytables
 def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
     tmp_path, monkeypatch
 ):
@@ -769,6 +781,7 @@ def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
     assert gate["artifact_sha256"] == result["root_artifact"]["sha256"] == copied_sha
 
 
+@requires_pytables
 @pytest.mark.parametrize("copy_state", ["new", "already_present", "no_copy"])
 def test_package_rechecks_final_bytes_after_copy_or_reuse(
     tmp_path, monkeypatch, copy_state
