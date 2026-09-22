@@ -76,6 +76,6 @@ short) is a separate decision this branch does not take.
 
 ## Status
 
-Code, manifests, fixtures, pins and the licensed receipts above are on the branch. Still open: the
-full `microcosm-build` shard on the final tree, the dashboard measurement (after the staged upload), and María's
-ruling on demoted donors.
+Code, manifests, fixtures, pins and the licensed receipts above are on the branch. The full `microcosm-build`
+shard on the final tree passed (8,458 tests, 0 failures, 0 errors, 48 licensed or network-gated skips, 2 h 47 min).
+Still open: the dashboard measurement (after the staged upload) and María's ruling on demoted donors.
