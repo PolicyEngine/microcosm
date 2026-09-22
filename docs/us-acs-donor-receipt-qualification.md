@@ -216,28 +216,30 @@ build evidence only.
 
 ## What changes in the HDF file
 
-`append_boolean_fields` (`tools/build_us_acs_donor_receipt_qualification.py:486`)
+`append_boolean_fields` (`tools/build_us_acs_donor_receipt_qualification.py:427`)
 copies the parent byte-for-byte into a new file, and then, in the copy, for each
-of the `person` and `spm_unit` groups (`_append_group_fields`, `:549-606`):
+of the `person` and `spm_unit` groups (`_append_group_fields`, `:490-547`):
 
 - **Replaces the group's `table` dataset** with a new one of the same shape and
   chunking and no filters, whose compound record type is the old type widened
-  by one HDF bitfield8 field per appended column, in plan order (`:557-562`).
+  by one HDF bitfield8 field per appended column, in plan order (`:498-503`).
   The existing record bytes are copied verbatim, never re-encoded through
   pandas; every pre-existing field, including every weight and identifier
   field, keeps its type, offset and bytes.
-- **Copies every pre-existing table attribute exactly** (`:594-595`) and **adds
-  five per appended column** (`:596-600`; `_new_table_attributes`, `:446`):
+- **Copies every pre-existing table attribute exactly** (`:535-536`) and **adds
+  five per appended column** (`:537-541`; `_new_table_attributes`,
+  `microcosm/data/h5_boolean_append.py:84`):
   `FIELD_<n>_NAME`, `FIELD_<n>_FILL`, `<column>_dtype`, `<column>_kind` and
   `<column>_meta`.
 - **Rewrites four pandas column-registration attributes on the group**
-  (`:601-604`): `data_columns`, `info`, `non_index_axes` and `values_cols`,
+  (`:542-545`): `data_columns`, `info`, `non_index_axes` and `values_cols`,
   each to its old value with the new column names appended (for `info`, added
-  as empty entries; `_registration_value`, `:422`).
+  as empty entries; `_registration_value`, `h5_boolean_append.py:60`).
 
 Every other HDF object and attribute — the root, every other group and entity
 table, every pandas index dataset of every table, and every other attribute on
-the two groups — is left untouched. `compare_boolean_append` (`:672`) then
+the two groups — is left untouched. `compare_boolean_append`
+(`h5_boolean_append.py:189`) then
 proves all of this against the parent: an identical object inventory (hard
 links only, no aliases), each change exactly as planned, and every other object
 and attribute exact in datatype identity (including bitfields), shape, storage,
@@ -246,13 +248,21 @@ object addresses and object-header metadata are not claimed identical, and the
 receipt's preservation report lists the replaced tables, the added attributes
 and the rewritten registration attributes rather than claiming an unqualified
 byte identity. The child is then reloaded through the maintained loader and
-compared column by column, weights included (`verify_reload`, `:831`).
+compared column by column, weights included (`verify_reload`, `:564`).
+
+The verifier and the helpers the writer shares with it live in
+`microcosm/data/h5_boolean_append.py` rather than in this tool, because the
+reported-receipt source-enrichment release replays the same comparison against
+the actual parent and child before it can be certified or published (see
+[the release runbook](us-reported-receipt-source-enrichment.md)). The tool
+imports them, and `DonorQualificationError` is that module's
+`BooleanAppendError`, so every refusal is still one type.
 
 ## How the result is exposed
 
 Everything is built and verified inside a private staging directory
-(`.donor-receipt-qualification-*`, mode 0700) beside the output (`:1061-1066`).
-Only after every check has passed, `_expose_without_overwrite` (`:960`) reserves
+(`.donor-receipt-qualification-*`, mode 0700) beside the output (`:794-799`).
+Only after every check has passed, `_expose_without_overwrite` (`:693`) reserves
 the output name with an exclusive `os.mkdir`, which fails if anything —
 including a dangling symlink — is already there, and then renames the staging
 directory onto that empty reservation. POSIX `rename(2)` replaces a directory
@@ -270,8 +280,8 @@ removes anything already at the output path other than an empty directory.
 Refusals 1–7, 10 and 11 happen before anything is written. Refusals 8, 9 and 12
 happen after the tool has created its private staging directory beside the
 output, and may follow writing the child H5 and receipt into it; that staging
-directory is removed on failure (`:1115-1116`). The output's parent directory
-is created, if missing, just before the staging directory (`:1061`) and is not
+directory is removed on failure (`:848-849`). The output's parent directory
+is created, if missing, just before the staging directory (`:794`) and is not
 removed.
 
 The tool refuses when:
@@ -287,7 +297,7 @@ The tool refuses when:
    role-carrying file has none, so the second parent is the better ACS donor.
    The receipt records which lineage was qualified;
 2. the output directory already exists or is a symlink, checked before any
-   work (`:1001`);
+   work (`:734`);
 3. any of `receives_wic`, `receives_snap`, `receives_tanf` already exists on any
    entity table;
 4. `PAW_TYP` already exists on `person` — it would silently bypass the pinned
@@ -323,13 +333,14 @@ records aggregate facts only — never a row value, identifier or array:
 
 - parent and child SHA-256, and the child's filename;
 - the SHA-256 of every source file whose code decides a receipt value, each
-  required to be the module this process imported (`_PRODUCER_FILES`, `:145`):
+  required to be the module this process imported (`_PRODUCER_FILES`, `:156`):
   this tool; `us_runtime/cps_carried.py`,
   `public_assistance_type_source.py`, `education_assistance_source.py`,
   `support_provenance.py`, `h5_io.py` and `acs_transfer.py` (whose
   `resolve_acs_donor_channel` decides the gate-selected channel); the Frame's
   `bundle.py` and `schema.py` (`Frame.select` and the group membership it
-  prunes by); and `microcosm/data/h5_enrichment.py`. Also the git commit and
+  prunes by); `microcosm/data/h5_enrichment.py`; and
+  `microcosm/data/h5_boolean_append.py` (the verifier). Also the git commit and
   dirty flag, and runtime library versions;
 - the archive pins used per income year and the loader's measured
   `source_audit`;
@@ -355,3 +366,14 @@ env -u UV_FROZEN uv run --no-sync python tools/build_us_acs_donor_receipt_qualif
 directory `fetch_asec_education_assistance_source` caches into. The tool never
 downloads: it requires the pinned members to be present locally and verifies
 them by digest.
+
+## Publishing a qualified child
+
+The tool never publishes. A child qualified from the pinned national default
+(`populace-us-2024-spm-20260915`, run on that parent under its published name
+`populace_us_2024.h5` so the child is `populace_us_2024_receipt_qualified.h5`)
+can be packaged as its own `source_enrichment` release, with this receipt
+carried verbatim as its source evidence, so the ACS local chain can stage from
+a published donor with `--donor-release-manifest` (microcosm#978). A child of
+the bare Build P parent cannot: the release lane pins the national default's
+digest. See [the reported-receipt source-enrichment runbook](us-reported-receipt-source-enrichment.md).
