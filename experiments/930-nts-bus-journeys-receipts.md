@@ -166,15 +166,178 @@ inputs); the gate battery (53 gates, four new); the gate-battery and certificati
 re-pinned in `microcosm-data` after every `gates.json` edit; `tools/ci_test_groups.py --verify`
 ok. Export surface gains `household.household_local_bus_trips`.
 
-## Part E — licensed measurement (pending María's NTS SN 5340 download)
+## Part E — the tabs land: pins and the verified codebook (C10, commit `2b7368cc`, 2026-09-22)
 
-Not run. In order once the tabs are at `data/ukds/nts_2002_24/`: pin the three artifacts in
-`sources.yaml`; spine-t with the #791 twin recipe (`build_791.sh`, the three tabs added) under
-`data/ukds/acceptance/930-nts-bus/spine-t/`; the stage gates and their receipts (band shares vs
-NTS0313, trips per person by series, quintile and age vs NTS0705a/NTS0303/NTS0601, vehicle
-shares vs NTS0205, the eligible trip share beside C/B, frame-implied boardings vs BUS01, the
-design-weight fares by target cell against the #904 targets without a rake, the ONS 07.3.2 upper
-bound, the support-per-journey reading); the twin diff against spine-s5 under its expectation
-(only the new cells and `bus_fare_spending` outside Wales may move); the E6 support bounds for
-the new stage; the national calibration round (after #937 or with the round-5 scratch
-register) and the Part C anatomy per bus row.
+María placed SN 5340 (19th edition, November 2025; End User Licence) under
+`data/ukds/nts_2002_24/tab/`. The branch was rebased onto main `87e0ac07` first (clean: main had
+moved only the calibration attempt-id minting and the data contract since `ce76b358`). The three
+tabs are pinned by size and digest and verified at runtime through the FRS spine's pinned-tab reader:
+
+- `household_eul_2002-2024.tab` 117,993,975 bytes, sha256 `b70252b6…`
+- `individual_eul_2002-2024.tab` 270,677,548 bytes, sha256 `e8b56849…`
+- `trip_eul_2002-2024.tab` 1,055,711,332 bytes, sha256 `878b61c9…`
+
+The declared codebook was checked against the deposited lookup tables (variables and response
+levels) and the data extract user guide. Three corrections, each declared, receipted and tested:
+
+- The frequency-of-use question is `OrdBus2Freq_B01ID` ("How frequently use local buses", asked
+  since 2019; `OrdBusFreq_B01ID` ended in 2018; the declared `LocalBusFreq_B01ID` never existed).
+  Its ten codes fold onto the seven NTS0313 bands (1–3 → three or more times a week, 4 → once or
+  twice a week, 5, 6, 7, 8 one band each, 9 and 10 → less than once a year or never). Code -9
+  (not applicable, proxy responses; 2,122 persons in 2022–24, none of them under-5s) is declared a
+  non-user because the published NTS0313 shares reproduce only with those persons in the base:
+  the 2024 at-least-yearly share is 0.526 without them, 0.505 with them, published 0.505 (and
+  0.556 vs 0.500 for the 60-and-over series, published 0.500). Code -8 (no answer) is dropped and
+  receipted (41 persons in the declared years).
+- `Age_B01ID` carries 21 bands (under 1 to 85+). The codebook now maps each code to its lower age
+  and the declared edges (0, 5, 11, 17, 21, 30, 40, 50, 60, 70) band donor and recipient alike;
+  every NTS band lies inside one declared band. The earlier one-to-one assumption (code minus one
+  as the ordinal) would have put a 5-to-10-year-old in the fourth declared band while the frame
+  put the same child in the second, misaligning the QRF's first predictor.
+- The trip weight is `W5`, which already carries the diary household weight W2 (the user guide's
+  trips per person per year is 52.14 × Σ(JJXSC × W5) / Σ W2 on the diary sample; W5xHH, the
+  earlier declaration, is the within-household factor only, and W5 / (W2 × W5xHH) has median
+  0.99 and a 1st–99th percentile range of 0.90–1.24 on the 2022–24 bus trips). Each person's
+  counted trips are divided by W2 before the W2-weighted mean (`trip_weight_basis:
+  household_and_trip`, a declared and receipted basis). Interview-only households (W2 of zero;
+  3,074 of 20,564 in 2022–24) leave the donor, as the guide prescribes for trip measures.
+
+Also verified unchanged: `HHoldGOR_B02ID` 1–9 are the English regions (10 Wales and 11 Scotland
+occur only before 2013), `HHIncome2002_B02ID` 1–3 at £25,000 and £50,000 (-8 dropped, 33
+households), `Sex_B01ID` 2 = female, `MainMode_B04ID` 7 = bus in London and 8 = other local bus,
+`NumCarVan` the raw count (clipped 0–5), `HHoldNumPeople`, `JJXSC` ∈ {0, 1, 7}.
+
+The E6 bounds `uk/nts_bus_travel_support_bounds.json` (band 0–6, each trip column 0–2,000 after
+outward rounding, from the pinned tabs through the stage's own cleaning) join the terminal
+`uk_support` gate; the H2 fixture's synthetic tabs follow the verified codebook (oracle identity
+on this machine `6c5dffbc…`); coverage manifest and digests regenerated.
+
+## Part F — spine-t and its twin (2026-09-22)
+
+Twin recipe `data/ukds/acceptance/930-nts-bus/build_930.sh` (the #791 recipe on the post-#939 tool:
+no `--cgt-ods`, `--no-staging`). Control spine-u from main `87e0ac07` in a scratch worktree with its
+own venv (uk extra), 299 s, 20 of 20 stage gates, sha256 `16814f8b…`. Candidate spine-t from
+`2b7368cc` with the three tabs, 369 s, engine 2.98.0, 24 of 24 stage gates (the four #930 gates
+among them), sha256 `bbbf40e4…`.
+
+Stage receipts on spine-t (design weights, the FRS 2024-25 sample of 34,966 persons in 16,288
+households before the CGT incidence clone):
+
+- Donor: 17,457 diary households, 39,047 persons over 2022–24 (weighted 41,280), region
+  unmapped 0, income missing 33, frequency -8 dropped 41, age unmapped 0. Donor trips per
+  person 13.73 (bus in London) and 26.05 (other local bus) against the published 2024 rates
+  13.12 and 28.07 (the pooled donor years straddle the post-pandemic recovery).
+- Band draw: regime-gated QRF, zero-inflated positive regime, 14 predictors (age band, sex, cars,
+  household size, income band, nine region indicators), identity-keyed uniforms; donor band
+  shares reproduce the NTS0313 shape (non-user 0.511, three-or-more-a-week 0.127).
+- Incidence on the frame: person user share 0.5047 against NTS0313 2024 0.5049; 60-and-over user
+  share 0.5010 against NTS0621 0.5004; household user share 0.723. `bus_travel_facts` passes at
+  a 0.05 tolerance with a deviation of 0.0002.
+- Trip rates on the frame: 12.42 bus-in-London trips per person (−5.3 % on NTS0303's 13.12) and
+  31.11 other-local-bus trips (+10.8 % on 28.07), inside the 15 % fence; by age the rest-of-England
+  series peaks at 17–20 (70.7 trips) and 70-and-over (37.9), the London series at 21–29 (20.5).
+- Band means (diary, per band and residence group): London residents in the top band average
+  206 bus-in-London trips a year, the once-or-twice-a-week band 62, non-users 13; rest-of-England
+  top band 2.0 London trips; no cell fell back to the all-England mean.
+- Eligibility (statutory age rule): 10,874 eligible persons (England outside London 5,739 of
+  22,466; London 1,311 of 2,860; Scotland 1,929 of 3,325; Wales 1,007 of 2,370; Northern Ireland
+  888 of 3,945). The donor's eligible share of trips is 0.442 for the London series and 0.168 for
+  other local bus (age-band lower bounds).
+- Vehicle shares (frame vs NTS0205 2024, receipt line): no car 0.236 vs 0.218, one car 0.463 vs
+  0.442, two-plus 0.301 vs 0.340. A `was_wealth` finding, as the plan said; not fenced here.
+- Support clip: 0 rows clipped on the four columns (donor maxima 1,690 and 1,818 trips).
+
+Pricing on spine-t (lcfs `bus_pricing`, gate `uk_stage_lcfs_consumption_bus_pricing` passing at
+1e-9): 32,596 persons priced, 9,867 eligible persons zero-priced, 15,112 households priced, 1,176
+Wales households keep the raw draw. Design-weight fares against the bound receipts, the #930
+acceptance line:
+
+- England outside London: frame £2,316m against BUS05ai £2,070m, frame / R 1.119; frame-implied
+  boardings over BUS01 1.018; frame eligible trip share 0.209 beside the publisher's concessionary
+  boarding share 0.281.
+- London series: £1,215m against £1,347m, 0.902; boardings ratio 1.101; eligible share 0.405
+  beside 0.273.
+- Scotland: £558m against £391m, 1.428; boardings ratio 1.534; eligible share 0.581 beside 0.550.
+- Northern Ireland: £264m against £150m, 1.757; boardings ratio 1.938; eligible share 0.213
+  beside 0.132.
+
+Reading: the two England cells sit inside the 25 % fence without any rake (the algebra's two
+factors are 1.02 × 1.10 for England outside London and 1.10 × 0.82 for London: the composition
+check is near one, the concession check says the frame's London eligible share is above the
+publisher's boarding share). The two devolved cells are outside it, and the boardings ratio says
+why: their persons are predicted on a declared proxy region (`region_remap`: Scotland and Northern
+Ireland → North East, a high-bus region), so the frame gives them 1.5× and 1.9× the boardings the
+publisher counts. That is a translation choice, not a level the stage set; the receipts carry it
+for María's ruling (a different proxy region, or the devolved trip rates scaled to the published
+boardings, are the candidate fixes). The weighted fares total moves from £2,783m (the #890 raked
+level on the same frame) to £4,354m before calibration, of which £2,316m + £1,215m is England.
+
+Support-per-journey diagnostic (ETB, recorded, not applied): England outside London value-side
+£1,807m against the raked £1,895m (0.953); London £1,308m against £1,130m (1.158; the frame's
+eligible boarding share 0.410 against the publisher's 0.273 drives it). The `fact_rake` gate
+passes on all five cells at 1e-6.
+
+Twin diff (`twin_diff_930.sh`, expectation `spine-t-payload-expectation.json`): compare and
+classify report nine observed differences, seven expected (the five new person columns at
+positions 99–103 of 104, the household sum at position 40 of 75, and `bus_fare_spending` values),
+two unexpected, both the `column_order` structural surface the classifier cannot declare
+expected; adjudicated as the #791 twin was, by the position-wise check that every shared column
+keeps its order (person 99 shared, household 74, benunit 22) and no shared column other than
+`bus_fare_spending` moves. `bus_fare_spending`: 3,806 Wales rows byte-equal, 42,540 of 49,040
+other rows changed (the remainder are zero both sides). Weights, indices, row counts, root
+attributes and every other column byte-equal.
+
+## Part G — national calibration on spine-t and the stretch anatomy (2026-09-22)
+
+`calibrate_930.sh`: the rowwise driver's national release role (`tools/build_uk_rowwise_candidate.py
+--release-role national`, the seam that replaced the retired calibration runner under #823; doctrine
+solve, no flags: 1,500 epochs, `family_equal`, learning rate 0.02, seed 0), input spine-t sha256
+`bbbf40e4…`, the branch's own Chronicle artifact `7846605` (facts `8dc4336d…`, manifest
+`0ff28c71…`), staging local-only, release id `uk-930-spine-t-calibration`, code `2b7368cc` clean.
+473 s. Outputs under `data/ukds/acceptance/930-nts-bus/calibration-t/`: `microcosm_uk_2024_25.h5`
+sha256 `e6919c04…`, `calibration_diagnostics.json` `e24078e2…`, the frozen
+`national_target_registry.json`, the terminal gate report and the Part C sidecars
+(`target_support_matrix.npz`, `target_support_vectors.npz`, `target_support_manifest.json`).
+
+- Terminal battery: all six gates pass, nothing blocked, `release_candidate: false` (the national
+  role never signs shippability). The H5 was written.
+- Fit: 638 compiled targets on 52,846 records (all carrying weight); loss 0.3065 → 0.01036;
+  96.55 % of rows within 10 %; ESS 9,231; realised max weight ratio 10.0 (the cap); top-1 %
+  weight share 0.162. The v20 twin on main `ce76b358` (same register, 638 rows): loss 0.3009 →
+  0.01041, 96.39 % within 10 %, ESS 9,305, top-1 % 0.163. The structural change costs nothing in
+  fit: loss and the within-10 % share move a hair in #930's favour, ESS 0.8 % against. The eight
+  rows still beyond 10 % after the solve are the same eight on both (income tax −13 %, VAT +18 %,
+  CGT liability +10 %, child benefit +19 %, council tax −12 %, ESA −10 %, the two HMRC
+  self-employment bands +25 % and +18 %): none is a bus row, none moved with #930.
+- Bus rows, design weights → final (the #930 acceptance reading, now a measurement instead of
+  the rake's tautology): England fare receipts (£3,612m, BUS0415-aligned to 2025) −10.9 % → 0.0 %
+  (v20, raked at base year then uprated: −6.1 %); London fare receipts (£1,347m) −21.6 % → +0.1 %
+  (v20 −2.6 %); Scotland passenger revenue (£391m) +27.8 % → −0.1 % (v20 −1.7 %); Northern
+  Ireland passenger receipts (£150m) +69.6 % → 0.0 % (v20 −4.0 %). Net support rows (England
+  +4.7 %, London +3.8 %, Scotland +1.3 %, Wales +3.8 %) are unchanged from v20, as the ETB rake
+  is kept. The two England fare rows sit inside the 25 % fence without a rake; the two devolved
+  rows do not, for the proxy-region reason Part F gives.
+- Stretch anatomy (`tools/diagnose_uk_target_support.py`, thresholds 3× and 5×): the England
+  fare row's final mass on households stretched beyond 3× their design weight is 47.6 % against
+  the frame-wide 46.6 %, beyond 5× 36.2 % against 36.4 %, on 25,682 carriers with a top-1 carrier
+  share of 0.6 % and a median weight ratio of 0.46. The row is carried by the frame at large, not
+  by a stretched tail: this is the #890 acceptance line, measured for the first time, and it
+  passes. London fares: 55.2 % beyond 3× (46.6 %), 41.6 % beyond 5× (36.4 %), 2,875 carriers,
+  top-1 1.5 %. Scotland (13.5 % beyond 3×) and Northern Ireland (12.6 %) sit on down-weighted
+  carriers (median ratio ~0.5) because their design-weight estimates were above target. The
+  frame-wide 46.6 % beyond 3× is a property of this calibration campaign (the 10× cap binds), not
+  of #930.
+- Score against the incumbent: not run. The in-tree `score_uk_national_candidate.py` refuses
+  the incumbent `enhanced_frs_2024_25.h5` (`e433e532…`) at the frame bundle's global-column rule
+  (`region`, `country`, `esa_contrib` on both person and household), and the evaluation repo's
+  `score_uk_pass2.py` (the v22 recipe) has drifted from this tree's scorer signature
+  (`band_edge_registry`). The rule-1 score belongs to the #823 assessment lane, which carries
+  that machinery; #930's acceptance is the fit, the bus rows and the anatomy above.
+
+Rulings this measurement puts to María: (1) the devolved proxy: Scotland and Northern Ireland
+persons are predicted on North East's bus profile and price to 1.43× and 1.76× their receipts at
+design weights (the calibration closes them, at the cost the anatomy shows is modest); the
+alternatives are a different declared proxy region, or scaling the devolved series' trips to the
+published boardings ratio; (2) whether the ETB support rake now retires in favour of the
+support-per-journey value side (0.95 and 1.16 of the raked levels); (3) the vehicle-share gap
+(frame two-plus-car households 0.301 against NTS0205's 0.340) as a `was_wealth` follow-up.
