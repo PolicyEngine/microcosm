@@ -412,8 +412,10 @@ written by the committed
 `experiments/us-labelled-filter-support/measure_restated_filter_arms.py`
 (the receipt's `script_sha256`, `00d09505…`, is the committed script's; it ran
 at `fb1a09646`, which is `b10e117a0` plus a `REPORT.md` edit, so the code it
-measured is `b10e117a0`'s; one process, 113 s wall, 3.0 GB peak RSS for both
-feeds). Regenerate with:
+measured is `b10e117a0`'s; one process for both feeds, 3.0 GB peak RSS per
+the receipt's `max_rss_bytes`; the receipt records compile-and-select time
+per feed, 39.2 s and 41.2 s, but no total wall time — the 113 s total was
+read off the terminal and is not recorded). Regenerate with:
 
 ```
 uv run python experiments/us-labelled-filter-support/measure_restated_filter_arms.py \
