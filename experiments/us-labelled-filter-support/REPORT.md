@@ -396,7 +396,9 @@ branch as `b10e117a0` with no conflicts
 (`tools/build_us_fiscal_refresh_release.py` and
 `packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py` changed on
 both sides and auto-merged), and #969 was retargeted to `main`. Against
-`origin/main` the branch now differs in six files: this report, the census
+`origin/main` the branch then differed in six files (eight after the
+measurement script and its receipt below were added, and still eight after
+`origin/main` `2b85b7b22` was merged in as `b6e0b04cd`): this report, the census
 script, the fixture, the changelog fragment, the test module, and
 `tools/build_us_fiscal_refresh_release.py`, where the difference is the rule,
 its constants, one docstring and the two call sites. No `packages/*/src` file
@@ -476,6 +478,29 @@ historical rows cite `_buildp-runtime/logs/acs-local/release_chain.log`.
 
 ### Tests
 
-`test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters`
-ran against the pinned feed rather than skipping, and the module passed:
-245 tests, exit 0.
+Run at `b6e0b04cd`, the merge of `origin/main` `2b85b7b22` (#976, which
+touches only `reform_validation.py`, its test module and a changelog
+fragment) into this branch; no conflicts.
+
+```
+$ MICROCOSM_US_CHRONICLE_FACTS=<consumer_facts_us_c5e5bf8.jsonl> \
+    .venv/bin/python -m pytest packages/microcosm-build/tests/test_us_fiscal_refresh_builder.py
+245 dots, no skips, exit 0     # the pinned-feed state-surface arm ran
+
+$ .venv/bin/python -m pytest <the 29 other test modules that import
+    tools/build_us_fiscal_refresh_release.py or ledger_targets>
+11 failed, 1405 passed, 13 skipped, 4 errors in 1681.84s
+```
+
+Every one of the 15 failures and errors was in
+`test_us_multispine_pool_tool.py` (a module this branch does not change) and
+every traceback ends in `OSError: [Errno 28] No space left on device` or
+pytest failing to create its temp directory: the machine's disk filled during
+the run. Re-running those tests with the disk clear passed:
+`-k` over the seven affected test functions, 22 passed, exit 0.
+
+```
+$ .venv/bin/python tools/ci_test_groups.py --verify     verification=ok, exit 0
+$ ruff check / ruff format --check on the four changed .py files
+All checks passed! / 4 files already formatted
+```
