@@ -77,6 +77,16 @@ _INCOME_ANCHOR_LEDGER_ONLY_RATIONALE = (
     "index; the incumbent registry binds neither (chronicle#282)."
 )
 
+_SPI_REGION_LEDGER_ONLY_RATIONALE = (
+    "Coverage the incumbent lacks (microcosm#280 lane, María's ruling of "
+    "2026-09-22 that the regions bind uprated): the SPI 2023-24 Table 3.11 "
+    "Income Tax payers, total income and Income Tax liabilities by ten regional "
+    "total-income bands, one row per region-tier area (microcosm#905), each "
+    "moved to the 2025 calibration year by HMRC's projected growth for the same "
+    "measure in the Table 2.5 band(s) the regional band spans; the incumbent "
+    "registry has no regional SPI band metric (chronicle#282)."
+)
+
 _ESA_CUBE_DRIFT_RATIONALE = (
     "Source class (microcosm#280 lane): ours binds DWP's Stat-Xplore ESA "
     "caseload by payment type as the mean of the four quarterly points inside "
@@ -584,6 +594,8 @@ def _add_signed_rationale_notes(
             row["reason"] = _INCOME_ANCHOR_LEDGER_ONLY_RATIONALE
         elif name in _ESA_CUBE_ROWS and row.get("kind") == "calibration_drift":
             row["reason"] = _ESA_CUBE_DRIFT_RATIONALE
+        elif name.startswith("hmrc.spi_region.") and row.get("kind") == "ledger_only":
+            row["reason"] = _SPI_REGION_LEDGER_ONLY_RATIONALE
         elif (
             name.startswith(_CGT_BAND_INCUMBENT_PREFIXES)
             and row.get("kind") == "calibration_drift"

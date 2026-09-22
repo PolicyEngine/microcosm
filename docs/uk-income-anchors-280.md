@@ -106,12 +106,29 @@ Credit (income based 499k in February to 30k in November), so a single point
 would misstate the year; the calendar mean is what the FRS 2024-25 base can be
 asked to represent.
 
+## The region tier
+
+The SPI Table 3.11 rows (income and tax by region and country, all taxpayers)
+bind on the twelve-area region tier (microcosm#905) as the `hmrc_spi_region`
+family: Income Tax payers, total income and Income Tax liabilities by the ten
+regional total-income bands, one reference per area scoped by the household-
+region predicate the generator stamps, sliced on the engine's `total_income`
+by the row's own band edges. The publisher's regional bands stop at 200,000
+and over. Each row moves to 2025 by HMRC's projected growth for the same
+measure in the Table 2.5 band(s) the regional band spans (Income Tax
+liabilities statistics, July 2026): payers by `taxpayer_count_growth`, total
+income by `total_income_growth`, liabilities by `total_tax_growth`, all read
+from the vendored `hmrc_itl_taxpayer_counts.json`, which now carries the
+three Table 2.5 measures. Two SPI bands share the 30-50k and 50-100k Table
+2.5 bands; the 200k-and-over row takes the window over 200k-500k, 500k-1m,
+1m-2m and 2m-and-over together. Ruled by María on 2026-09-22: the regions bind
+uprated, not as diagnostics. Table 2.2 publishes taxpayer counts by region only
+and is not bound.
+
 ## Not done here
 
 - The OBR fiscal-year rows still bind FY2025-26 alone; moving them to the
   calendar window is a separate ruling on 35 targets.
-- The SPI Table 3.11 region rows (the region tier) follow in the next increment
-  with the same indices; Table 2.2 carries taxpayer counts by region only.
 - The property-income amount rows stay signed out: the spine's
   `property_income` is the FRS rent received (sub-lets, lodgers, royalties)
   while the SPI concept is landlords' net income after expenses.

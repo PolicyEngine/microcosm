@@ -3,7 +3,7 @@
   "country": "uk",
   "kind": "uk_vendored_ledger_facts",
   "resource": "hmrc_itl_taxpayer_counts.json",
-  "purpose": "HMRC Income Tax liabilities statistics (15 July 2026) Table 2.5 Income Tax payers by range of total income: the 2023-24 outturn and HMRC's 2024-25, 2025-26 and 2026-27 projections for the eleven published bands and the all-ranges total. Consumed by the SPI count-row uprating applier (hmrc.itl_2026.taxpayer_count_growth_by_total_income_band), which moves each SPI 2023-24 count band by the calendar-year window of the two overlapping tax years over 2023-24 in the Table 2.5 band that contains it.",
+  "purpose": "HMRC Income Tax liabilities statistics (15 July 2026) Table 2.5 by range of total income: Income Tax payers, total income and Income Tax liabilities for the 2023-24 outturn and HMRC's 2024-25, 2025-26 and 2026-27 projections, the eleven published bands and the all-ranges total. Consumed by the Table 2.5 growth appliers (hmrc.itl_2026.{taxpayer_count,total_income,total_tax}_growth_by_total_income_band), which move a 2023-24 SPI band row by the calendar-2025 window of the two overlapping projections over 2023-24 in the Table 2.5 band(s) the SPI band spans.",
   "consumers": [
     "uk_runtime.hmrc_uprating"
   ],
@@ -34,9 +34,33 @@
         "period_type": "tax_year"
       },
       "row_count": 48
+    },
+    {
+      "label": "itl_2026_table_2_5_total_income_amount_by_band",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_income_before_tax_amount",
+        "source_measure_id": "total_income_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "period_type": "tax_year"
+      },
+      "row_count": 48
+    },
+    {
+      "label": "itl_2026_table_2_5_total_tax_amount_by_band",
+      "selector": {
+        "source_name": "hmrc",
+        "source_concept": "hmrc.spi_total_tax_amount",
+        "source_measure_id": "total_tax_amount",
+        "groupby_dimension": "hmrc.total_income_band",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "period_type": "tax_year"
+      },
+      "row_count": 48
     }
   ],
-  "row_count": 48,
+  "row_count": 144,
   "rows": [
     {
       "aggregate_fact_key": "ledger_aggregate_fact_v2_e82593fe33b635cef01ba303",
@@ -2229,6 +2253,4390 @@
         "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
       },
       "value": 7490000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_346c64aae48457213171ea9b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ac4fdb28f73cb10a197cd723",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_2.all_ranges.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "all_ranges",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 1530000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f072e027207a1b5e09b8f0bd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_1c18d8d157f16d53dfdd0450",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_1.band_1000000_2000000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_1000000_2000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 1000000,
+        "total_income_upper_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 23700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_99ac6ae7da4075cdbf6363f2",
+      "semantic_fact_key": "ledger_semantic_fact_v2_708253caed7043b938be3ce3",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_2.band_100000_150000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_100000_150000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 100000,
+        "total_income_upper_bound": 150000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 105000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2cb8bdff124d05e5faad1d20",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ac076fb7276fc936e3efff99",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.band_12570_15000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_12570_15000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 12570,
+        "total_income_upper_bound": 15000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 39000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9fc96edb42e4d047967456f4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b7dd3fabc3e46e93bae81886",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_4.band_150000_200000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_4",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_150000_200000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 150000,
+        "total_income_upper_bound": 200000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 50500000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d6a1890383f7d2b4b020212a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_58fc3d43724127d17726fc6a",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.band_15000_20000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_15000_20000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 15000,
+        "total_income_upper_bound": 20000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 96400000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_eab6881433f28150964636bc",
+      "semantic_fact_key": "ledger_semantic_fact_v2_83dee599172f450061f05b78",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_1.band_2000000_plus.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_2000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 46200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f680a9cfb1725bcebd203d0a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7674b42d1d92ac7f05028d6a",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_4.band_200000_500000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_4",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_200000_500000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 200000,
+        "total_income_upper_bound": 500000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 89300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c76a674db28766f7c6eabd20",
+      "semantic_fact_key": "ledger_semantic_fact_v2_47b1ff4d40cb98d5d76051e5",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.band_20000_30000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_20000_30000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 20000,
+        "total_income_upper_bound": 30000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 253000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_43ebf82737dc6f2c01b57fa9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4cb3370c5fb867ba7bebc66f",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_3.band_30000_50000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_30000_50000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 30000,
+        "total_income_upper_bound": 50000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 416000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b97563770d5d51b3b7f0bb1a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_954a305adf8c36b22cb1253c",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_1.band_500000_1000000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_500000_1000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 500000,
+        "total_income_upper_bound": 1000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 36200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c9cfe41bde588501dbb94713",
+      "semantic_fact_key": "ledger_semantic_fact_v2_82f32d6baef97aea75e8b63d",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_3.band_50000_100000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_50000_100000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 50000,
+        "total_income_upper_bound": 100000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 375000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_871c62260e066543fae4f2ee",
+      "semantic_fact_key": "ledger_semantic_fact_v2_8f53f95ba440494c0e74f58c",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_2.all_ranges.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "all_ranges",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 1660000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a8fca8452c2803a38d569cb1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9c7630e9ad4f85a015f76b04",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_1.band_1000000_2000000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_1000000_2000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 1000000,
+        "total_income_upper_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 26700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_745c88d010ee4bdf665218c7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_97eac06598b7ab0b7cd1c237",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_5.band_100000_150000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_5",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_100000_150000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 100000,
+        "total_income_upper_bound": 150000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 120000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_af3105b1f94ed6c26a1c13f9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ea60d1d536693f73bfebe41d",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.band_12570_15000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_12570_15000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 12570,
+        "total_income_upper_bound": 15000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 41700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_22374cc5dc8b76245f11e7d3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_582713857d67f1e414f9383e",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_3.band_150000_200000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_150000_200000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 150000,
+        "total_income_upper_bound": 200000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 52600000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_7e21056f4b580aabb196ed26",
+      "semantic_fact_key": "ledger_semantic_fact_v2_37f0e75f38447c1e2a9a82f4",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.band_15000_20000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_15000_20000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 15000,
+        "total_income_upper_bound": 20000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 94500000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f891477f2a0f11e5fa15011b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a9d0bc46087be44b71dd7341",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_1.band_2000000_plus.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_2000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 52100000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9d05141010b0a351e1b7fd67",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9bae4faea88be255991633a3",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_3.band_200000_500000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_200000_500000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 200000,
+        "total_income_upper_bound": 500000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 103000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_bccf0f7329ddada23315f98b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_09f6bd26568c8bc015ea3417",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.band_20000_30000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_20000_30000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 20000,
+        "total_income_upper_bound": 30000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 256000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_762548d5c8cb85d751b74dab",
+      "semantic_fact_key": "ledger_semantic_fact_v2_187e1426195b6f19dda1fa18",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_4.band_30000_50000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_4",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_30000_50000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 30000,
+        "total_income_upper_bound": 50000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 446000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fc4347186b2867a342714254",
+      "semantic_fact_key": "ledger_semantic_fact_v2_876aa17de81ef90498f52cc1",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_1.band_500000_1000000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_500000_1000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 500000,
+        "total_income_upper_bound": 1000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 41500000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f2128591ebc81113cc22ece0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e0191d1be8cef96057f259d9",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_2.band_50000_100000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_50000_100000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 50000,
+        "total_income_upper_bound": 100000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 424000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e7e37d19a4e65ac0ffd032e8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4f1f342f3597075e7a6bd117",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_2.all_ranges.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "all_ranges",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 1760000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_082f58aced9f31b41d675e89",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7563d366f9338b15e2cd7b68",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_1.band_1000000_2000000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_1000000_2000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 1000000,
+        "total_income_upper_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 29000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4206ac3d1e306760a8cd90fe",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7b2cf53ff432e0d8791ca9e5",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_5.band_100000_150000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_5",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_100000_150000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 100000,
+        "total_income_upper_bound": 150000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 133000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_5740a6c464861ca01edbd05d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f3c86605d038004a20b0060a",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.band_12570_15000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_12570_15000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 12570,
+        "total_income_upper_bound": 15000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 40700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9dec94f99ff43c604bd0feeb",
+      "semantic_fact_key": "ledger_semantic_fact_v2_ad9f3074addd8b8b1a7dd18b",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_3.band_150000_200000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_150000_200000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 150000,
+        "total_income_upper_bound": 200000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 60500000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c837e9b3bf684218fe68ebad",
+      "semantic_fact_key": "ledger_semantic_fact_v2_70f3a531c4552d53d1099678",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.band_15000_20000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_15000_20000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 15000,
+        "total_income_upper_bound": 20000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 94100000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c0f84c920d7ec18ec2904a46",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b027dc5e8d8ee4ccb31e5c8b",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_1.band_2000000_plus.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_2000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 56200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_a3d99427060437f8ee20ad67",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4f3c3c44843d084d716d2c9f",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_3.band_200000_500000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_200000_500000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 200000,
+        "total_income_upper_bound": 500000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 110000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_94d7a54a82d09ffcfdd550da",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4e44a7b433eb516bee8cc895",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.band_20000_30000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_20000_30000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 20000,
+        "total_income_upper_bound": 30000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 253000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_48ee9145e8905c8c3a645c18",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d8c8251cbbbdf08bdef4d6da",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_4.band_30000_50000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_4",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_30000_50000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 30000,
+        "total_income_upper_bound": 50000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 472000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8e0a8f6f4b49892884b60d7c",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2c0b73299b104411fcfe4527",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_1.band_500000_1000000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_500000_1000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 500000,
+        "total_income_upper_bound": 1000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 45300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1cc7e9aefd34df9b8e1434f7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_69e79602d68d18d5f7bae6ca",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_2.band_50000_100000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_50000_100000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 50000,
+        "total_income_upper_bound": 100000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 466000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9d5599152e6aa5ad5238ef69",
+      "semantic_fact_key": "ledger_semantic_fact_v2_01621faabbc2f42dc6fc2142",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_2.all_ranges.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "all_ranges",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 1830000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_333b68e429bf3cef38149504",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f1d27b4fe527d1f29228620e",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_1.band_1000000_2000000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_1000000_2000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 1000000,
+        "total_income_upper_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 30700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_82019c2aabd0df93ac7074c8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_412f8728d0be1ac3700213b6",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_5.band_100000_150000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_5",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_100000_150000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 100000,
+        "total_income_upper_bound": 150000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 142000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9b56547b0712010846cb34d7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_34b95eef958762588407d1fa",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.band_12570_15000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_12570_15000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 12570,
+        "total_income_upper_bound": 15000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 40000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_ac0382cd5daa0b576d8cfbd4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_66b92e016bf42b0c22b28e13",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_3.band_150000_200000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_150000_200000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 150000,
+        "total_income_upper_bound": 200000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 63900000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_082378ab9033c5d27299a7b1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_23f626449d45868965338d6d",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.band_15000_20000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_15000_20000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 15000,
+        "total_income_upper_bound": 20000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 95900000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8e66974bc4433b710eb14271",
+      "semantic_fact_key": "ledger_semantic_fact_v2_66057a020f2a39bdb1826c29",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_1.band_2000000_plus.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_2000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 59200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_48f2ebcbddf3500e03cf05e3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f27f78f3b3edb8a6ac424c4b",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_3.band_200000_500000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_200000_500000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 200000,
+        "total_income_upper_bound": 500000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 116000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_78a7034a5aaa785416a17a05",
+      "semantic_fact_key": "ledger_semantic_fact_v2_76311b447ae80c9a4f9192a3",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.band_20000_30000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_20000_30000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 20000,
+        "total_income_upper_bound": 30000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 254000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b3c2943554f76877849e08e8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_2e36579d513b0b3022aafc4c",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_4.band_30000_50000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_4",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_30000_50000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 30000,
+        "total_income_upper_bound": 50000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 490000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_8e875a0b1de27ad2bd8521e6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_840dc0900c8ab8f4fc423b95",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_1.band_500000_1000000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_500000_1000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 500000,
+        "total_income_upper_bound": 1000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 48300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0a11261a09cfdec8baf75a0f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_781b8493d6229a13b8bd13fe",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_2.band_50000_100000.total_income_amount",
+      "concept": "hmrc.spi_total_income_before_tax_amount",
+      "measure_id": "total_income_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_50000_100000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 50000,
+        "total_income_upper_bound": 100000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 492000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6a14b2ff4d78e06842377e73",
+      "semantic_fact_key": "ledger_semantic_fact_v2_282d954cff8522d43983b368",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_2.all_ranges.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "all_ranges",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 274000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1dae0f23a33ae70af2b37486",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c4cfc57c1ed1689b8cfee3a0",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_1.band_1000000_2000000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_1000000_2000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 1000000,
+        "total_income_upper_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 9570000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_61bd20505996e0a058f009c4",
+      "semantic_fact_key": "ledger_semantic_fact_v2_685baa5355350d17bc474390",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_2.band_100000_150000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_100000_150000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 100000,
+        "total_income_upper_bound": 150000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 30600000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c4eb08d9a9da914f94f09b37",
+      "semantic_fact_key": "ledger_semantic_fact_v2_281147ee2c84f950ff79d5c0",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.band_12570_15000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_12570_15000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 12570,
+        "total_income_upper_bound": 15000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 590000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_04a4c486821bde39478f40ee",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e22a3f94e1e46ab9e42fecb4",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_4.band_150000_200000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_4",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_150000_200000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 150000,
+        "total_income_upper_bound": 200000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 17200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2d8637e72b961e2206f5a863",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c890407c057bb59efe5d3726",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.band_15000_20000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_15000_20000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 15000,
+        "total_income_upper_bound": 20000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 4640000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_537aef8b954e9660a29e55ea",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d52d4df31a49eb6cb814ffae",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_1.band_2000000_plus.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_2000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 18100000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_dcaebba43ee29e9b01ff2e72",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a2971da80d3958f0fbac7ef6",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_4.band_200000_500000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_4",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_200000_500000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 200000,
+        "total_income_upper_bound": 500000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 33900000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b4f44946b82c7ff86980a371",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f28ea0434cfa6a8a9751ae01",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.band_20000_30000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_20000_30000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 20000,
+        "total_income_upper_bound": 30000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 22700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_fea8b8b22f7ba32df3e59523",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a05d39bd0494d3039ac80cbf",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_3.band_30000_50000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_30000_50000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 30000,
+        "total_income_upper_bound": 50000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 51200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9dbbfecdcba0d8adc3c0eb12",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7e8297f315d3f31839e7221b",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_1.band_500000_1000000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_500000_1000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 500000,
+        "total_income_upper_bound": 1000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 14700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_9fd4e1e2f45d0989d916b3d9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f463d2f6f84cc469cc677c6f",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2023.subset_3.band_50000_100000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2023
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2023.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_50000_100000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 50000,
+        "total_income_upper_bound": 100000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 70800000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2e2fc389460395d1f15e286f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0147dcebf97faa3a9774cc3c",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_2.all_ranges.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "all_ranges",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 304000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6a0936583bbb408e01773cc3",
+      "semantic_fact_key": "ledger_semantic_fact_v2_f54a720ba89673d7976d9129",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_1.band_1000000_2000000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_1000000_2000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 1000000,
+        "total_income_upper_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 10800000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_031be41a36d379470dcd1606",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7d909625e427c98d2bac31a0",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_5.band_100000_150000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_5",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_100000_150000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 100000,
+        "total_income_upper_bound": 150000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 35000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3522bfbb6593c40d0b6daf7b",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e477eeafcbf6b20460ed26c2",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.band_12570_15000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_12570_15000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 12570,
+        "total_income_upper_bound": 15000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 632000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2a54888090da9feef5edbbac",
+      "semantic_fact_key": "ledger_semantic_fact_v2_df167c745067b2173fae6efe",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_3.band_150000_200000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_150000_200000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 150000,
+        "total_income_upper_bound": 200000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 17900000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_37eeaa9c4eaf060cb91f0f45",
+      "semantic_fact_key": "ledger_semantic_fact_v2_0964176a7b371ad4874a6961",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.band_15000_20000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_15000_20000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 15000,
+        "total_income_upper_bound": 20000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 4540000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1cc784c08e2a4f53dbb568fd",
+      "semantic_fact_key": "ledger_semantic_fact_v2_cd961f2a66704c19b892041f",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_1.band_2000000_plus.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_2000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 20600000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0f5fca6053ab562ac38e55d9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a296b15205a407be4dfa7935",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_3.band_200000_500000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_200000_500000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 200000,
+        "total_income_upper_bound": 500000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 39200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_15d41a6620589d5d21028313",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5b30ca996a536290142dfd2a",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.band_20000_30000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_20000_30000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 20000,
+        "total_income_upper_bound": 30000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 23100000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_d14b136fa84d8972277e872f",
+      "semantic_fact_key": "ledger_semantic_fact_v2_4a9850a7c2a02b6f2414e625",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_4.band_30000_50000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_4",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_30000_50000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 30000,
+        "total_income_upper_bound": 50000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 55300000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_75c480f9388de04b3bc32b5d",
+      "semantic_fact_key": "ledger_semantic_fact_v2_04e13becaaada516058d291e",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_1.band_500000_1000000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_500000_1000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 500000,
+        "total_income_upper_bound": 1000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 16900000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4176e91fe3cbe9ab2f580616",
+      "semantic_fact_key": "ledger_semantic_fact_v2_936f769550b74b472589506f",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2024.subset_2.band_50000_100000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2024
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2024.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_50000_100000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 50000,
+        "total_income_upper_bound": 100000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 79800000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_28e8c32819b785d2314412ff",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d7b916d24973a2017fb9db1c",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_2.all_ranges.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "all_ranges",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 329000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_4c0d2c52c414e75deb891a7a",
+      "semantic_fact_key": "ledger_semantic_fact_v2_a4086561ffc970f024c07f32",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_1.band_1000000_2000000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_1000000_2000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 1000000,
+        "total_income_upper_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 11800000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_69742f8204cc9ac1ef2c8e9e",
+      "semantic_fact_key": "ledger_semantic_fact_v2_959af8be66284829fc68f501",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_5.band_100000_150000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_5",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_100000_150000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 100000,
+        "total_income_upper_bound": 150000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 39000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0ab1c9f2169012fe9630ef63",
+      "semantic_fact_key": "ledger_semantic_fact_v2_7efcb4ccf6cc0744108966c7",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.band_12570_15000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_12570_15000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 12570,
+        "total_income_upper_bound": 15000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 657000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2954bada0d66920670eb5dec",
+      "semantic_fact_key": "ledger_semantic_fact_v2_10612880263bc0c91a38bfd0",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_3.band_150000_200000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_150000_200000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 150000,
+        "total_income_upper_bound": 200000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 20700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_11307d6a9a99ba80374bdf15",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e35ad3793b736145efd7582d",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.band_15000_20000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_15000_20000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 15000,
+        "total_income_upper_bound": 20000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 4530000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2d60cb91572bce26d6ec18e0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_74b0d577f12b67fa64e97a0e",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_1.band_2000000_plus.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_2000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 22200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_919c63d863e7b92dc22868a9",
+      "semantic_fact_key": "ledger_semantic_fact_v2_c5d3d17306a930b365313d0d",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_3.band_200000_500000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_200000_500000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 200000,
+        "total_income_upper_bound": 500000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 41700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_0ef61cad9a110b5774ccea20",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9b65db7a082393c10b0b9388",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.band_20000_30000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_20000_30000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 20000,
+        "total_income_upper_bound": 30000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 23000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_1e89268f4fb8c2499ad07d88",
+      "semantic_fact_key": "ledger_semantic_fact_v2_db29b3519958bf29ef5d62ae",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_4.band_30000_50000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_4",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_30000_50000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 30000,
+        "total_income_upper_bound": 50000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 58800000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_76841022d640a76385d5a2e7",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d9b1201f8ff0b3131f1234f4",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_1.band_500000_1000000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_500000_1000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 500000,
+        "total_income_upper_bound": 1000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 18500000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_e5bde95ce263d795f9583630",
+      "semantic_fact_key": "ledger_semantic_fact_v2_5f2ccfffb54f2b5ac8355660",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2025.subset_2.band_50000_100000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2025
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2025.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_50000_100000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 50000,
+        "total_income_upper_bound": 100000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 88100000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_474bfc5cc5bff8dcceea06d5",
+      "semantic_fact_key": "ledger_semantic_fact_v2_d6b7fafeec483a617e355a47",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_2.all_ranges.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "all_ranges",
+        "table_record_kind": "total"
+      },
+      "dimensions": {},
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 347000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_cc8821a9c7b02c9c66a48216",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e735e29135bd61e259c1ed45",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_1.band_1000000_2000000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_1000000_2000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 1000000,
+        "total_income_upper_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 12500000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_66a597282dd50f285b5a0bb1",
+      "semantic_fact_key": "ledger_semantic_fact_v2_6b90b0c9b4a6ed1491acf365",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_5.band_100000_150000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_5",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_100000_150000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 100000,
+        "total_income_upper_bound": 150000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 41900000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c02ebd0a54aa416259523ed0",
+      "semantic_fact_key": "ledger_semantic_fact_v2_71ba44a00392687acd282934",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.band_12570_15000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_12570_15000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 12570,
+        "total_income_upper_bound": 15000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 651000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_586da80d1c972df96ef648da",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9410f7c6a4dcd27f9bb493ef",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_3.band_150000_200000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_150000_200000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 150000,
+        "total_income_upper_bound": 200000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 21900000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_df712ec1050aff82b13b21a6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_9ebd95be99b60f8bc58460aa",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.band_15000_20000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_15000_20000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 15000,
+        "total_income_upper_bound": 20000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 4640000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_3a0b58ae7659f18967ac5c59",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bc370466c8234ba4d56403d4",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_1.band_2000000_plus.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_2000000_plus",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 2000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 23400000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_f8595e7f64cf243317b21db8",
+      "semantic_fact_key": "ledger_semantic_fact_v2_431f96efdb21d5f3710004c0",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_3.band_200000_500000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_3",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_200000_500000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 200000,
+        "total_income_upper_bound": 500000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 44000000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_2b26a7516852c67878475503",
+      "semantic_fact_key": "ledger_semantic_fact_v2_bfdb0ee8c467c28fe5098224",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.band_20000_30000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_20000_30000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 20000,
+        "total_income_upper_bound": 30000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 23200000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_c6b27ca88f6ff048c0a29afe",
+      "semantic_fact_key": "ledger_semantic_fact_v2_e2944de19bb07333f9baf12f",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_4.band_30000_50000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_4",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_30000_50000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 30000,
+        "total_income_upper_bound": 50000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 61400000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_6bc3e12307c9a374f92df919",
+      "semantic_fact_key": "ledger_semantic_fact_v2_56712da68daf8af6c488fa64",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_1.band_500000_1000000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_1",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_500000_1000000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 500000,
+        "total_income_upper_bound": 1000000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 19700000000
+    },
+    {
+      "aggregate_fact_key": "ledger_aggregate_fact_v2_b5753ecae661e940ac6ca0d6",
+      "semantic_fact_key": "ledger_semantic_fact_v2_b1bde87f1db2f615b099ea93",
+      "source_record_id": "hmrc.itl_2026.table_2_5.ty2026.subset_2.band_50000_100000.total_tax_amount",
+      "concept": "hmrc.spi_total_tax_amount",
+      "measure_id": "total_tax_amount",
+      "unit": "gbp",
+      "aggregation": "sum",
+      "entity": {
+        "name": "person",
+        "role": "taxpayer"
+      },
+      "geography": {
+        "id": "K02000001",
+        "level": "country",
+        "vintage": "current"
+      },
+      "period": {
+        "type": "tax_year",
+        "value": 2026
+      },
+      "period_coverage": {
+        "start_date": null,
+        "end_date": null,
+        "basis": null
+      },
+      "layout": {
+        "record_set_id": "hmrc.itl_2026.table_2_5.ty2026.subset_2",
+        "groupby_dimension": "hmrc.total_income_band",
+        "groupby_value_id": "band_50000_100000",
+        "table_record_kind": "detail"
+      },
+      "dimensions": {
+        "total_income_lower_bound": 50000,
+        "total_income_upper_bound": 100000
+      },
+      "source": {
+        "source_name": "hmrc",
+        "source_table": "HMRC Income Tax liabilities statistics, collated Tables 2.1 to 2.6: tax year 2023-24 to tax year 2026-27",
+        "source_file": "Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods",
+        "source_sha256": "40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2",
+        "vintage": "itl_july_2026",
+        "raw_r2_key": "raw/uk/hmrc/hmrc-income-tax-liabilities-july-2026/2026/40e1c7bb75d484132e8329fcac75f16e1a96305302fc422ee446a688d52bdbc2/Collated_Income_Tax_liabilities_statistics_tables_-_2.1_to_2.6.ods"
+      },
+      "value": 93700000000
     }
   ]
 }
