@@ -95,7 +95,20 @@
     "epochs": 800,
     "source": "calibration_diagnostics.json in this directory"
    },
-   "published": false
+   "published": false,
+   "artifact_bytes": 9821668812,
+   "runtime": {
+    "policyengine-us": "2.2.1",
+    "policyengine-core": "3.32.5",
+    "spm-calculator": "1.0.0",
+    "source": "build_manifest.json \u2192 runtime for the first two; spm-calculator from the workspace lock (uv.lock) at build_sha cadaf4180, branch local-acs-hours-rebuild-20260921"
+   },
+   "publish_attempt": {
+    "at": "2026-09-22T14:56Z",
+    "command": "tools/publish_release.sh <release_dir> --no-latest --artifact-root <run> --repo-id policyengine/populace-us",
+    "result": "refused by the release contract before any remote mutation: us_source_coverage.json is missing the local-area provenance key donor_release, because the donor is a receipt-qualified child of a published release rather than a published release staged with --donor-release-manifest",
+    "reached_hub": false
+   }
   }
  },
  "incumbent": {

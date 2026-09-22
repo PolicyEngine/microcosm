@@ -12,11 +12,11 @@ uploaded, published or certified, and `tools/publish_release.sh` was not run.
 
 | Input | Identity |
 | --- | --- |
-| Donor | `populace_us_2024_receipt_qualified.h5`, sha256 `009469727409e58c0c9c1252581292497b688b76f1d59b51947483fb0f89221c`: the published national default (`6496cc43…`; the Hub signs these bytes under two release names, `populace-us-2024-spm-20260909`, which `latest.json` names at the acquisition revision `8ab57ffc`, and `populace-us-2024-spm-20260915`, the name `donor-receipt-qualification.json` carries) qualified by #972 with `receives_wic`, `receives_snap`, `receives_tanf` (receipt: `donor-receipt-qualification.json`) |
+| Donor | `populace_us_2024_receipt_qualified.h5`, sha256 `009469727409e58c0c9c1252581292497b688b76f1d59b51947483fb0f89221c`: the published national default (`6496cc43…`; the Hub signs these bytes under two release names, `populace-us-2024-spm-20260909`, which `latest.json` named at the acquisition revision recorded in `spm-composition-counts.json` → `parent_acquisition`, and `populace-us-2024-spm-20260915`, the name `donor-receipt-qualification.json` carries) qualified by #972 with `receives_wic`, `receives_snap`, `receives_tanf` (receipt: `donor-receipt-qualification.json`) |
 | ACS 2024 1-year archives | household `8281008e…`, person `afdc6d90…` (the pinned source manifest) |
 | PUMA ladder | `us_puma_ladder_2020.npz`, sha256 `39a2ab2a…` |
 | Calibration feed | the labelled Chronicle consumer artifact `chronicle_us_b571381`, facts sha256 `4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f`, passed to the materialize stage as `--feed-sha256`; `feed-receipt.json` carries the artifact's digests and its value comparison against the feed #955 pins (39,158 facts each; every value and cell identical; metadata differs on 994 source rows and 166 compiled specs from the chronicle#277 authority fix) |
-| Engine | policyengine-us 2.2.1, policyengine-core 3.32.5, spm-calculator 1.0.0 (the workspace lock) |
+| Engine | policyengine-us 2.2.1, policyengine-core 3.32.5 (`build_manifest.json` → `runtime`); spm-calculator 1.0.0 from the workspace lock at build sha `cadaf4180`, branch `local-acs-hours-rebuild-20260921` (recorded in `hours-comparison-vs-buildo.json` → `candidate.release.runtime`) |
 
 Staging settings (recorded in `build_manifest.json` → `staging_orchestration`):
 uncapped, 32 trees, 8 targets per fit, ACS share 0.5, seed 0, under-15 hours
@@ -67,10 +67,13 @@ snapshot churn; neither was a gate refusal.
   (5,273 single-member; oldest member under 15 in 1,946, aged 15–17 in
   3,328), equal on every field to the published Build O file (the
   `incumbent` block). The `decomposition` block reconciles the count from two
-  independent measurements of the inputs: the ACS spine before transfer has
-  5,246 unresolved units, all group-quarters minors (1,946 under 15, 3,300
-  aged 15–17; 0 in housing units), and the national donor has 28 under the
-  head/spouse fallback; 5,246 + 28 = 5,274 and 3,300 + 28 = 3,328. The
+  independent measurements: the ACS spine before transfer has 5,246
+  unresolved units, all group-quarters minors (1,946 under 15, 3,300 aged
+  15–17; 0 in housing units), and the July Build P donor, which shares this
+  donor's population, has 28 under the head/spouse fallback (the qualified
+  donor itself was measured only with its native role column: 0 unresolved,
+  the same 28 units without a member aged 18 or over); 5,246 + 28 = 5,274
+  and 3,300 + 28 = 3,328. The
   consumer file carries no independence-role column (the export holds it
   back on this tree), so the engine's head/spouse fallback applies on both
   spines. The engine-side measurement universe
@@ -84,13 +87,18 @@ snapshot churn; neither was a gate refusal.
 verbatim. Six of its twelve entries are carried here and match it
 (`build_manifest.json`, `calibration_diagnostics.json`, `gate_summary.json`,
 `release_manifest.json`, `spine_qa.json`, `us_source_coverage.json`); the
-other six (the 9.8 GB artifact, `consumer_export.json`,
+other six (the artifact, 9,821,668,812 bytes per `hours-comparison-vs-buildo.json` → `candidate.release.artifact_bytes`, `consumer_export.json`,
 `consumer_reviewed_null_fills.json`, `held_back_columns.json`,
 `reviewed_null_fills.json`, `run_identity.json`) are not, so `sha256sum -c`
 reports them missing. `release_manifest.json` names `policyengine/populace-us`
 and this build's id in its `repo_id` and `revision` fields; those are the
-coordinates a publish would use, and since the publish step was not run no
-such revision exists on the Hub. `feed-receipt.json`,
+coordinates a publish would use. A publish was attempted on 2026-09-22 with
+the manifest's own recipe and was refused by the release contract before
+any remote mutation: `us_source_coverage.json` carries no `donor_release`,
+because the donor is a receipt-qualified child of a published release rather
+than a published release staged with `--donor-release-manifest` (recorded in
+`hours-comparison-vs-buildo.json` → `candidate.release.publish_attempt`).
+Nothing reached the Hub, so no such revision exists there. `feed-receipt.json`,
 `hours-comparison-vs-buildo.json` and `spm-composition-counts.json` were
 written by this record's counts-only measurement scripts, not by the release
 tool.
