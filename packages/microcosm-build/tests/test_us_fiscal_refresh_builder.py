@@ -5422,6 +5422,8 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
         "telemetry",
         "puf_tail",
         "spm_missing_pool",
+        "qrf_tail_register",
+        "qrf_tail_register_clean",
     ],
 )
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
@@ -5452,9 +5454,21 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     every later terminal group runs, and release artifacts stay suppressed.
     ``spm_missing_pool``: a prepared pool without the source role fails at
     the real SPM signal gate before calibration or terminal coverage checks.
+    ``qrf_tail_register``: the per-run tail register carries a stale and an
+    absent entry under earlier failures; the mismatch rides the batch as its
+    own line (it used to collapse into one "evaluation error" line that nulled
+    the gate) while the tail JSON, the gate's own failures, and the
+    final-weight evidence all survive.
+    ``qrf_tail_register_clean``: the same register mismatch is the run's ONLY
+    terminal failure — every other group passes. This is the route A
+    premortem path: the old register raise escaped the batch here, before the
+    tail JSON and the #568 final-weight sidecar were written. The run must
+    now reach the batched raise with both on disk.
     """
     builder = _load_builder_module()
     prepared_pool = terminal_mode in {"puf_tail", "spm_missing_pool"}
+    qrf_tail_register_modes = {"qrf_tail_register", "qrf_tail_register_clean"}
+    clean_run = terminal_mode == "qrf_tail_register_clean"
     release_id = (
         "populace-us-2024-k2-gate-failure-test"
         if terminal_mode == "puf_tail"
@@ -5649,6 +5663,17 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "--incumbent-diagnostics",
             str(tmp_path / "missing-incumbent.json"),
         ]
+    if terminal_mode in qrf_tail_register_modes:
+        tail_register = tmp_path / "qrf_tail_exclusions.json"
+        tail_register.write_text(
+            json.dumps(
+                {
+                    "estate_income": "measured concentrated on another lineage",
+                    "bond_assets": "measured concentrated on another lineage",
+                }
+            )
+        )
+        argv += ["--qrf-tail-concentration-exclusions", str(tail_register)]
     monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
 
@@ -5717,6 +5742,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "telemetry",
         "puf_tail",
         "spm_missing_pool",
+        "qrf_tail_register",
+        "qrf_tail_register_clean",
     }:
         monkeypatch.setattr(
             builder,
@@ -5746,6 +5773,24 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             reviewed_exclusions,
         ):
             captured["terminal_gate_events"].append("qrf_tail_concentration")
+            if terminal_mode in qrf_tail_register_modes:
+                # The real gate on a dispersed column: estate_income is
+                # checked and below threshold (stale), bond_assets never
+                # reaches the gate (absent), so the register mismatches.
+                captured["qrf_tail_register_seen"] = dict(reviewed_exclusions)
+                dispersed = np.zeros(12_000)
+                dispersed[:600] = 1_000.0
+                return (
+                    builder.tail_concentration_gate(
+                        {"estate_income": dispersed},
+                        {"estate_income": np.ones(12_000)},
+                        reviewed_exclusions=reviewed_exclusions,
+                    ),
+                    {
+                        "checked_sparse_columns": ["estate_income"],
+                        "absent_columns": ["bond_assets"],
+                    },
+                )
             return (
                 builder.GateResult(
                     name="qrf_tail_concentration",
@@ -5769,6 +5814,16 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             builder,
             "_qrf_tail_concentration_gate",
             fake_qrf_tail_concentration_gate,
+        )
+    if clean_run:
+        # The household-only fake export frame cannot be classified, which
+        # the batched SPM composition gate records as a failure line. The
+        # clean run needs an empty batch before the tail gate, so the
+        # composition passes here.
+        monkeypatch.setattr(
+            builder,
+            "_spm_composition_gate_failures",
+            lambda frame, *, stage: ([], {"evaluated": True, "fixture": stage}),
         )
     # The consistency/contract preflights hit the installed policyengine-us
     # (absent in CI); this test pins diagnostics ordering, not engine metadata.
@@ -6967,9 +7022,10 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["other_health_insurance_gate_called"] = True
         calls = captured.setdefault("other_health_gate_calls", 0) + 1
         captured["other_health_gate_calls"] = calls
-        if calls == 1:
+        if calls == 1 or clean_run:
             # Staging call on the base frame passes: the pre-solve gate
-            # fails fast by design (nothing to preserve yet).
+            # fails fast by design (nothing to preserve yet). The clean run
+            # passes the export-frame call too.
             return builder.GateResult(
                 name="other_health_insurance_premiums_signal",
                 passed=True,
@@ -7164,7 +7220,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         # own early failure. Other modes retain the microcosm#547 delivery
         # cofailure and its written retry basis.
         captured.setdefault("ssi_event_order", []).append("delivery_gate")
-        passes = terminal_mode in {"integrity", "retirement", "puf_tail"}
+        passes = terminal_mode in {
+            "integrity",
+            "retirement",
+            "puf_tail",
+            "qrf_tail_register_clean",
+        }
         return builder.GateResult(
             name="ssi_take_up_delivery",
             passed=passes,
@@ -7200,6 +7261,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     )
 
     def fake_release_gate_failures(*args, **kwargs):
+        if clean_run:
+            return []
         if terminal_mode == "crash":
             raise RuntimeError("release-gate evaluation exploded [crash-sentinel]")
         if terminal_mode == "retirement":
@@ -7286,16 +7349,31 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "Bernoulli-law violation [final-integrity-sentinel]"
             )
             assert "SSI take-up delivery failed:" not in message
+        elif clean_run:
+            # The register mismatch is the run's only terminal failure, yet
+            # it reaches the batched raise (the old register raise escaped
+            # before it): the gate's own stale line, then the register line.
+            assert message == (
+                "Release gates failed: QRF tail concentration failed: Stale "
+                "reviewed exclusions — the column is below the concentration "
+                "threshold now, remove the exclusion: ['estate_income'].; "
+                + builder._qrf_tail_register_failures(
+                    {"stale": ["estate_income"], "unused": ["bond_assets"]}
+                )[0]
+            )
         else:
             assert message.startswith(
                 "Release gates failed: SSI take-up delivery failed: "
                 "18_64 delivered over envelope [cofailure-sentinel]"
             )
-        assert (
-            "Other health insurance signal failed on the export frame: "
-            "premiums signal flattened [cofailure-sentinel]" in message
-        )
-        if terminal_mode != "crash":
+        if not clean_run:
+            assert (
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]" in message
+            )
+        if clean_run:
+            pass
+        elif terminal_mode != "crash":
             assert "ctc failed" in message
             if terminal_mode == "telemetry":
                 assert (
@@ -7307,6 +7385,19 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             assert "health-input exploded [crash-sentinel]" in message
             assert "release-gate evaluation exploded [crash-sentinel]" in message
             assert "ctc failed" not in message
+        if terminal_mode in qrf_tail_register_modes:
+            # Both the gate's own stale line and the distinct register line
+            # ride the batch; the register never collapses into an
+            # "evaluation error" that nulls the gate.
+            assert "QRF tail concentration failed: Stale reviewed exclusions" in message
+            assert (
+                f"{builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX} the per-run "
+                "exclusion register must exactly match" in message
+            )
+            assert "['estate_income']" in message
+            assert "['bond_assets']" in message
+            assert "evaluation error" not in message
+            assert "QRF tail-concentration evaluation failed" not in message
     else:  # pragma: no cover - defensive assertion
         raise AssertionError("Expected post-calibration gate failure.")
 
@@ -7406,6 +7497,21 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     # H5s land under the out root (not the release dir), so sweep the tree.
     assert not list(out.rglob("*.h5"))
     assert not list(release_dir.glob("*manifest*"))
+    if terminal_mode in qrf_tail_register_modes:
+        assert captured["qrf_tail_register_seen"] == {
+            "estate_income": "measured concentrated on another lineage",
+            "bond_assets": "measured concentrated on another lineage",
+        }
+        tail_payload = json.loads(
+            (release_dir / "qrf_tail_concentration.json").read_text()
+        )
+        assert tail_payload["surface"]["register_mismatch"] == {
+            "stale": ["estate_income"],
+            "unused": ["bond_assets"],
+        }
+        tail_details = tail_payload["tail_concentration"]["details"]
+        assert tail_details["top_share"]["estate_income"] == pytest.approx(1 / 6)
+        assert tail_details["dormant_exclusions"] == ["bond_assets"]
     if terminal_mode == "telemetry":
         assert captured["telemetry_crashed"] is True
         assert captured["weeks_unemployed_telemetry"] == {
@@ -7417,7 +7523,14 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "source_sha256": builder.ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
             "source_rows": 2,
         }
-    if terminal_mode in {"integrity", "retirement", "telemetry", "puf_tail"}:
+    if terminal_mode in {
+        "integrity",
+        "retirement",
+        "telemetry",
+        "puf_tail",
+        "qrf_tail_register",
+        "qrf_tail_register_clean",
+    }:
         assert captured["terminal_gate_events"] == [
             "input_coverage",
             "input_mass_parity",
@@ -7458,6 +7571,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 "premiums signal flattened [cofailure-sentinel]",
                 "ctc failed",
             ]
+        elif clean_run:
+            # Nothing failed before the terminal tail gate.
+            expected_gate_failures = []
         else:
             # The retry line carries the written artifact's sha256 — the
             # required --ssi-take-up-prior-weight-basis-sha256 pin, handed out
@@ -7700,7 +7816,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "integrity_gate",  # persisted-flag recheck on the export frame
         "delivery_gate",  # enforced-band delivery, after the artifact exists
     ]
-    if terminal_mode not in {"integrity", "retirement"}:
+    if terminal_mode not in {"integrity", "retirement", "qrf_tail_register_clean"}:
         # A delivery miss rewrites the final measurement as the retry basis.
         expected_ssi_event_order.append("write:us_ssi_take_up.json")
     assert captured["ssi_event_order"] == expected_ssi_event_order
@@ -12779,6 +12895,372 @@ def test_allow_qrf_tail_concentration_flag_parses(monkeypatch) -> None:
         ],
     )
     assert builder._parse_args().allow_qrf_tail_concentration
+
+
+# --- QRF tail register mismatch is a batched, evidence-preserving failure ---
+
+
+def _qrf_dispersed_values() -> np.ndarray:
+    # 500 equal carriers of 12,000 person records: top-100 share is 20%.
+    values = np.zeros(12_000)
+    values[:500] = 2_979.0
+    return values
+
+
+def _qrf_build_m_values() -> np.ndarray:
+    # The Build M point mass: the top 100 carriers hold ~98% of the mass.
+    values = np.zeros(12_000)
+    values[:100] = 594_484.0
+    values[100:500] = 2_979.0
+    return values
+
+
+def _qrf_tail_register(tmp_path, entries: dict[str, str]) -> Path:
+    path = tmp_path / "qrf_tail_exclusions.json"
+    path.write_text(json.dumps(entries))
+    return path
+
+
+class _RecordingTelemetry:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, str, dict]] = []
+
+    def stage(self, stage, **details):
+        self.events.append(("stage", stage, dict(details)))
+
+    def attach_artifact(self, name, path, **details):
+        self.events.append(("attach_artifact", name, {"path": Path(path)}))
+
+
+def _record_qrf_tail(builder, tmp_path, frame, *, register, allow, failures):
+    recorder = _RecordingTelemetry()
+    register_failures = builder._record_qrf_tail_concentration_gate(
+        frame,
+        exclusions_path=register,
+        allow_concentration=allow,
+        terminal_gate_failures=failures,
+        release_dir=tmp_path,
+        telemetry=builder._TerminalBatchTelemetry(recorder, failures),
+    )
+    return register_failures, recorder
+
+
+def test_qrf_tail_register_mismatch_splits_stale_and_unused_entries() -> None:
+    builder = _load_builder_module()
+    register = {
+        "non_sch_d_capital_gains": "checked, now dispersed",
+        "taxable_interest_income": "dense in this export",
+        "short_term_capital_gains": "absent from this export",
+        "not_a_qrf_output": "never a checked column",
+    }
+    gate, _ = builder._qrf_tail_concentration_gate(
+        _qrf_export_frame(builder, _qrf_dispersed_values()),
+        reviewed_exclusions=register,
+    )
+
+    mismatch = builder._qrf_tail_register_mismatch(register, gate)
+
+    assert mismatch == {
+        "stale": ["non_sch_d_capital_gains"],
+        "unused": [
+            "not_a_qrf_output",
+            "short_term_capital_gains",
+            "taxable_interest_income",
+        ],
+    }
+    [line] = builder._qrf_tail_register_failures(mismatch)
+    assert line.startswith(builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX)
+    assert "['non_sch_d_capital_gains']" in line
+    assert "'taxable_interest_income'" in line
+    # A register that matches the concentrated surface exactly is clean.
+    concentrated, _ = builder._qrf_tail_concentration_gate(
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        reviewed_exclusions={"non_sch_d_capital_gains": "tracked #481"},
+    )
+    matched = builder._qrf_tail_register_mismatch(
+        {"non_sch_d_capital_gains": "tracked #481"}, concentrated
+    )
+    assert matched == {"stale": [], "unused": []}
+    assert builder._qrf_tail_register_failures(matched) == []
+
+
+def test_qrf_tail_register_mismatch_on_a_clean_run_is_batched_not_raised(
+    tmp_path,
+) -> None:
+    """The route A premortem blocker: a register mismatch that is the run's
+    FIRST terminal failure used to raise before the batched path, losing the
+    tail evidence and the #568 weight sidecar. It must now be one more batched
+    failure with qrf_tail_concentration.json on disk."""
+    builder = _load_builder_module()
+    register = _qrf_tail_register(
+        tmp_path,
+        {
+            "non_sch_d_capital_gains": "checked, now dispersed",
+            "taxable_interest_income": "dense in this export",
+        },
+    )
+    failures: list[str] = []
+
+    register_failures, recorder = _record_qrf_tail(
+        builder,
+        tmp_path,
+        _qrf_export_frame(builder, _qrf_dispersed_values()),
+        register=register,
+        allow=False,
+        failures=failures,
+    )
+
+    assert len(register_failures) == 1
+    assert register_failures[0].startswith(builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX)
+    # The gate's own stale failure and the register line both ride the batch.
+    assert failures == [
+        "QRF tail concentration failed: Stale reviewed exclusions — the "
+        "column is below the concentration threshold now, remove the "
+        "exclusion: ['non_sch_d_capital_gains'].",
+        *register_failures,
+    ]
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["enforced"] is True
+    details = payload["tail_concentration"]["details"]
+    assert details["top_share"]["non_sch_d_capital_gains"] == pytest.approx(0.2)
+    assert details["carrier_counts"] == {"non_sch_d_capital_gains": 500}
+    assert payload["surface"]["register_mismatch"] == {
+        "stale": ["non_sch_d_capital_gains"],
+        "unused": ["taxable_interest_income"],
+    }
+    assert payload["surface"]["reviewed_exclusions_file"] == str(register)
+    assert payload["surface"]["reviewed_exclusions_sha256"] == (
+        hashlib.sha256(register.read_bytes()).hexdigest()
+    )
+    assert [event[:2] for event in recorder.events] == [
+        ("attach_artifact", "qrf_tail_concentration"),
+        ("stage", "export_dataset"),
+    ]
+    stage_details = recorder.events[1][2]
+    assert stage_details["status"] == "failed"
+    assert stage_details["failures"][-1] == register_failures[0]
+
+
+def test_qrf_tail_register_mismatch_under_earlier_failures_keeps_evidence(
+    tmp_path,
+) -> None:
+    """The degraded path: with earlier failures the old raise became an
+    ``evaluation error`` line and nulled the gate, so the JSON and the gate's
+    own failures were dropped. Now both are recorded."""
+    builder = _load_builder_module()
+    register = _qrf_tail_register(
+        tmp_path, {"short_term_capital_gains": "absent from this export"}
+    )
+    failures = ["Input mass parity failed: long_term_capital_gains +230.7%"]
+
+    _record_qrf_tail(
+        builder,
+        tmp_path,
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        register=register,
+        allow=False,
+        failures=failures,
+    )
+
+    assert failures[0].startswith("Input mass parity failed:")
+    assert failures[1].startswith(
+        "QRF tail concentration failed: non_sch_d_capital_gains: top 100"
+    )
+    assert failures[2].startswith(builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX)
+    assert "['short_term_capital_gains']" in failures[2]
+    assert len(failures) == 3
+    assert not any("evaluation" in line for line in failures)
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["tail_concentration"]["details"]["top_share"][
+        "non_sch_d_capital_gains"
+    ] == pytest.approx(0.98, abs=0.01)
+    assert payload["surface"]["register_mismatch"]["unused"] == [
+        "short_term_capital_gains"
+    ]
+
+
+def test_qrf_tail_register_mismatch_refuses_whatever_the_allow_flag_says(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    register = _qrf_tail_register(
+        tmp_path, {"short_term_capital_gains": "absent from this export"}
+    )
+    failures: list[str] = []
+
+    register_failures, recorder = _record_qrf_tail(
+        builder,
+        tmp_path,
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        register=register,
+        allow=True,
+        failures=failures,
+    )
+
+    # --allow-qrf-tail-concentration waives the concentrated column, never
+    # the register mismatch (the replaced raise ignored the flag too).
+    assert failures == register_failures
+    assert len(failures) == 1
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["enforced"] is False
+    assert payload["tail_concentration"]["passed"] is False
+    assert recorder.events[-1][2]["failures"] == register_failures
+
+
+def test_qrf_tail_matching_register_records_a_clean_pass(tmp_path) -> None:
+    builder = _load_builder_module()
+    register = _qrf_tail_register(tmp_path, {"non_sch_d_capital_gains": "#481"})
+    failures: list[str] = []
+
+    register_failures, recorder = _record_qrf_tail(
+        builder,
+        tmp_path,
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        register=register,
+        allow=False,
+        failures=failures,
+    )
+
+    assert register_failures == []
+    assert failures == []
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["tail_concentration"]["passed"] is True
+    assert payload["surface"]["register_mismatch"] == {"stale": [], "unused": []}
+    assert [event[:2] for event in recorder.events] == [
+        ("attach_artifact", "qrf_tail_concentration")
+    ]
+
+
+def test_qrf_tail_evaluation_crash_keeps_the_degraded_contract(tmp_path) -> None:
+    builder = _load_builder_module()
+    bad_register = _qrf_tail_register(tmp_path, {"non_sch_d_capital_gains": " "})
+    frame = _qrf_export_frame(builder, _qrf_dispersed_values())
+
+    # A clean run still propagates a genuine evaluation crash.
+    with pytest.raises(ValueError, match="non-empty"):
+        _record_qrf_tail(
+            builder, tmp_path, frame, register=bad_register, allow=False, failures=[]
+        )
+
+    failures = ["ctc failed"]
+    assert (
+        _record_qrf_tail(
+            builder,
+            tmp_path,
+            frame,
+            register=bad_register,
+            allow=False,
+            failures=failures,
+        )[0]
+        == []
+    )
+    assert failures[1].startswith(
+        "QRF tail-concentration evaluation failed under earlier gate failures: "
+        "ValueError:"
+    )
+    assert not (tmp_path / "qrf_tail_concentration.json").exists()
+    # A crash is not the standing-owned #481/#487 tail defect.
+    with pytest.raises(RuntimeError, match="match no\\s+owner"):
+        builder._evidence_known_failures(
+            failures[1:], builder.US_EVIDENCE_FAILURE_OWNERS
+        )
+
+
+def test_evidence_release_refuses_a_qrf_tail_register_mismatch_even_when_owned(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    lines = builder._qrf_tail_register_failures(
+        {"stale": ["estate_income"], "unused": ["bond_assets"]}
+    )
+
+    # Never standing-owned: the prefix is not "QRF tail concentration failed:".
+    assert "QRF tail concentration failed:" not in lines[0]
+    with pytest.raises(RuntimeError, match="match no\\s+owner"):
+        builder._evidence_known_failures(lines, builder.US_EVIDENCE_FAILURE_OWNERS)
+    # Even a per-run adjudication that owns the line cannot carry it into an
+    # evidence export: a register mismatch is fixed in the register.
+    owners = tmp_path / "owners.json"
+    owners.write_text(
+        json.dumps(
+            {
+                builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX: (
+                    "PolicyEngine/microcosm#900"
+                )
+            }
+        )
+    )
+    patterns = builder._load_evidence_failure_owner_patterns(owners)
+    assert builder._evidence_known_failures(lines, patterns)
+    refusal = builder._qrf_tail_register_evidence_refusal(lines)
+    assert isinstance(refusal, RuntimeError)
+    assert "cannot be owned" in str(refusal)
+    assert lines[0] in str(refusal)
+    assert builder._qrf_tail_register_evidence_refusal([]) is None
+
+
+def test_qrf_tail_register_refusal_is_wired_into_the_evidence_batch() -> None:
+    """Structural pin (the #506/#568 AST pattern): _main() resolves the tail
+    register refusal under --evidence-release, from the helper's return value,
+    before the batched path writes the #568 weight sidecar; and no raise
+    remains between the tail helper and the batched raise."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(main_fn):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    def _calls(name: str) -> list[ast.Call]:
+        return [
+            node
+            for node in ast.walk(main_fn)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == name
+        ]
+
+    def _ancestor_if_tests(node: ast.AST) -> list[str]:
+        tests = []
+        while node in parents:
+            node = parents[node]
+            if isinstance(node, ast.If):
+                tests.append(ast.unparse(node.test))
+        return tests
+
+    [record] = _calls("_record_qrf_tail_concentration_gate")
+    record_assign = parents[record]
+    assert isinstance(record_assign, ast.Assign)
+    assert ast.unparse(record_assign.targets[0]) == "qrf_tail_register_failures"
+    [refusal] = _calls("_qrf_tail_register_evidence_refusal")
+    assert ast.unparse(refusal.args[0]) == "qrf_tail_register_failures"
+    assert "args.evidence_release" in _ancestor_if_tests(refusal)
+    [sidecar] = _calls("_write_final_household_weight_evidence")
+    assert record.lineno < refusal.lineno < sidecar.lineno
+    batched_raise = next(
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
+        and node.lineno > sidecar.lineno
+    )
+    early_raises = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and record.lineno < node.lineno < sidecar.lineno
+        and ast.unparse(node) != "raise evidence_refusal"
+    ]
+    assert not early_raises, [ast.unparse(node) for node in early_raises]
+    assert batched_raise.lineno > sidecar.lineno
 
 
 # --- SSI take-up delivered-weight prior basis + delivery gate (#507/#508) ---
