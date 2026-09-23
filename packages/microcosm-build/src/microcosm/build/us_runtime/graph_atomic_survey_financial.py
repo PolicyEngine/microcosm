@@ -38,6 +38,7 @@ from microcosm.graph.artifact_edges import numeric_scope, typed_contracts
 from microcosm.graph.executor import (
     _all_node_keys,
     _apply_result,
+    _observer_snapshot,
     _project_context,
     _source_paths_and_keys,
 )
@@ -48,6 +49,11 @@ from microcosm.graph.serialize import graph_to_json
 from . import _survey_population_witness as observation
 from . import graph_atomic_survey_population as atomic
 from . import graph_current_survey_predictors as financial
+from .survey_population_replay import (
+    replayed_population_seal,
+    same_replayed_population_seals,
+    seal_identity,
+)
 
 values = financial.values
 codec = financial.codec
@@ -673,6 +679,17 @@ def require_complete_property_taxes(run):
 def _node_population_stamp(
     compiled, node_id, population, completion_boundary=None, *, manifest=False
 ):
+    if type(population) is tuple:
+        # A node the run sealed and dropped rather than retained. The stamp is
+        # re-derived from the retained seal record exactly as the Population
+        # arm re-derives it from the retained object, so
+        # FINANCIAL_NODE_POPULATION_CHANGED keeps a defined, non-vacuous
+        # meaning on both arms: something the run retained about this node's
+        # population is not what it was at issuance.
+        require(
+            completion_boundary is None and not manifest, "FINANCIAL_SEALED_NODE_SCOPE"
+        )
+        return seal_identity(population)
     if completion_boundary is None:
         return reconstruction._population_stamp(population)
     # Dispatch through the maintained module, never an arbitrary boundary method.
@@ -732,7 +749,14 @@ def _compact_capsule_seal(state):
 def _node_population_seals(
     compiled, node_populations, completion_boundary=None, *, retained_node_ids=None
 ):
-    """Retain the existing pair format with an exact compiled-order binding."""
+    """Retain the existing pair format with an exact compiled-order binding.
+
+    A value is either a ``Population`` the run retained -- stamped as before --
+    or, under the default ``"all"`` retention profile, the content seal of one
+    it sealed on arrival and dropped. The roster still binds to
+    ``compiled.order`` exactly (or to the compact profile's
+    ``retained_node_ids``), so a gap is still refused.
+    """
     if not node_populations and completion_boundary is None:
         return ()  # Preserve the existing optional path for non-completion runs.
     require(
@@ -1787,6 +1811,7 @@ def run_atomic_survey_financial(
     resume="auto",
     return_values=False,
     _population_retention="all",
+    _retain_every_node_population=False,
 ):
     """Complete finances after the existing atomic geography prefix."""
     return _run_survey_financial(
@@ -1807,6 +1832,7 @@ def run_atomic_survey_financial(
         resume=resume,
         return_values=return_values,
         _population_retention=_population_retention,
+        _retain_every_node_population=_retain_every_node_population,
         _prefix_mode=_ATOMIC,
     )
 
@@ -1829,6 +1855,7 @@ def run_pre_geography_survey_financial(
     resume="auto",
     return_values=False,
     _population_retention="all",
+    _retain_every_node_population=False,
 ):
     """Complete finances on genuine clones before assigning atomic geography."""
     return _run_survey_financial(
@@ -1849,6 +1876,7 @@ def run_pre_geography_survey_financial(
         resume=resume,
         return_values=return_values,
         _population_retention=_population_retention,
+        _retain_every_node_population=_retain_every_node_population,
         _prefix_mode=_PRE_GEOGRAPHY,
     )
 
@@ -1873,8 +1901,20 @@ def _run_survey_financial(
     resume="auto",
     return_values=False,
     _population_retention="all",
+    _retain_every_node_population=False,
 ):
-    """Verify one of the two explicit prefixes and the same financial operations."""
+    """Verify one of the two explicit prefixes and the same financial operations.
+
+    The private ``_retain_every_node_population`` flag names the one caller
+    whose declared consumers are every node rather than the compact roster
+    below: under the default ``"all"`` retention profile the completion host
+    reads this run's whole per-node population roster as its own expected
+    populations (``graph_survey_completion_host.py``, ``base_expected``) and
+    hands them to ``_states``, which needs the frames themselves. The
+    recursive base call below sets it for that profile; nothing else does.
+    The compact profile witnesses instead, so it refuses the flag. See
+    docs/us-native-retention-seal.md.
+    """
     _prefix_names(_prefix_mode)
     # One verification epoch for the whole financial run. The existing atomic
     # prefix opens its own nested scope; the raw four-node clone prefix uses
@@ -1889,6 +1929,14 @@ def _run_survey_financial(
             type(source_qualified_development_inputs) is bool, "DEVELOPMENT_INPUTS_FLAG"
         )
         require(type(return_values) is bool, "RETURN_VALUES_FLAG")
+        require(
+            type(_retain_every_node_population) is bool
+            and not (_retain_every_node_population and child_property is not None)
+            and not (
+                _retain_every_node_population and _population_retention == "compact"
+            ),
+            "RETAIN_EVERY_NODE_POPULATION_FLAG",
+        )
         require(type(person_status) is bool, "PERSON_STATUS_FLAG")
         require(type(rebase_property_taxes) is bool, "PROPERTY_TAX_FLAG")
         require(
@@ -1926,6 +1974,7 @@ def _run_survey_financial(
                 resume=resume,
                 return_values=True,
                 _population_retention=_population_retention,
+                _retain_every_node_population=_population_retention == "all",
             )
             result = extension.extend(
                 base,
@@ -2301,27 +2350,64 @@ def _run_survey_financial(
         )
         receipts[financial.PROJECTION_NODE] = qualified.evidence
         receipts[columns_node.id] = qualified.evidence
-        observed, observed_stamps = {}, {}
-        witnessed = {} if _population_retention == "compact" else None
-        retained_nodes = (
-            None
-            if witnessed is None
-            else _compact_retained_roster(
-                compiled,
-                property_income,
-                rebase_property_taxes,
-            )
+        # Retention, declared rather than universal. Nineteen detached
+        # populations between the observation and the replay comparison below
+        # are ~290 GiB at full source; the comparison itself needs only what
+        # ``same_replayed_population`` compares, which the seal carries in
+        # space proportional to columns. What cannot be sealed is object
+        # IDENTITY: ``result.financial_population is observed[final_node]``
+        # further down is an identity check, and the extension host has its
+        # own. Those consumers are named here, before the run, and only they
+        # are retained -- detached with the executor's own snapshot function,
+        # so the object a caller receives is exactly what it is today.
+        # See docs/us-native-retention-seal.md.
+        # The declared consumers are the compact profile's own retained roster:
+        # the financial attach, the development attach when this run has one
+        # (it becomes ``final_node`` below), the property attach and the tax
+        # gate. Both profiles name the same identity consumers from one place.
+        retained_nodes = _compact_retained_roster(
+            compiled,
+            property_income,
+            rebase_property_taxes,
         )
+        declared_consumers = (
+            frozenset(compiled.order)
+            if _retain_every_node_population
+            else frozenset(retained_nodes)
+        )
+        observed, observed_stamps = {}, {}
+        # The compact profile witnesses every node and retains its roster; the
+        # default profile seals every node and retains the declared consumers.
+        witnessed = {} if _population_retention == "compact" else None
+        observed_seals, observed_seal_ids = {}, {}
 
         def observe(node_id, population):
-            require(node_id not in observed, "ATOMIC_OBSERVER_DUPLICATE")
             if witnessed is not None:
+                require(node_id not in observed, "ATOMIC_OBSERVER_DUPLICATE")
                 require(node_id not in witnessed, "ATOMIC_OBSERVER_DUPLICATE")
                 witnessed[node_id] = observation.population_witness(population)
                 if node_id not in retained_nodes:
                     return
-            observed[node_id] = population
-            observed_stamps[node_id] = reconstruction._population_stamp(population)
+                observed[node_id] = population
+                observed_stamps[node_id] = reconstruction._population_stamp(population)
+                return
+            require(node_id not in observed_seals, "ATOMIC_OBSERVER_DUPLICATE")
+            # Seal exactly the object this run goes on to hold. For a declared
+            # consumer that is the detached snapshot, which is what the
+            # comparison ran against before this change; for every other node
+            # there is no snapshot to take, and the live population seals to
+            # the same record because the detachment preserves content --
+            # pinned by test_an_observer_snapshot_preserves_the_replay_seal.
+            # The executor hands the live population (detach=False below) and
+            # sealing is read-only, so this allocates one copy per declared
+            # consumer and none at all for the rest.
+            if node_id in declared_consumers:
+                population = _observer_snapshot(population)
+                observed[node_id] = population
+                observed_stamps[node_id] = reconstruction._population_stamp(population)
+            seal = replayed_population_seal(population)
+            observed_seals[node_id] = seal
+            observed_seal_ids[node_id] = seal_identity(seal)
 
         manifest = run_graph(
             compiled,
@@ -2330,14 +2416,30 @@ def _run_survey_financial(
             kernels=kernels,
             resume=resume,
             _population_observer=observe,
+            # The default profile's observer seals and drops; it retains only
+            # the declared consumers, and it detaches those itself, so the
+            # executor's own per-node pickle round trip is not needed. The
+            # compact profile keeps the executor's detachment: its witness
+            # observer and its non-retention test were written against the
+            # detached snapshot.
+            _population_observer_detach=witnessed is not None,
             _verification_epoch=verification,
         )
         require(
-            tuple(observed if witnessed is None else witnessed) == compiled.order,
+            tuple(observed_seals if witnessed is None else witnessed) == compiled.order,
             "ATOMIC_OBSERVER_ROSTER",
         )
         if witnessed is not None:
             require(tuple(observed) == retained_nodes, "COMPACT_BOUNDARY_ROSTER")
+        else:
+            require(
+                set(observed) == declared_consumers
+                and all(
+                    seal_identity(observed_seals[node_id]) == recorded
+                    for node_id, recorded in observed_seal_ids.items()
+                ),
+                "ATOMIC_OBSERVER_RETENTION",
+            )
         loaded = _artifacts(manifest, compiled, store, kernels, keys, implementations)
         require(
             all(loaded[k] == v for k, v in prefix_artifacts.items()),
@@ -2497,7 +2599,11 @@ def _run_survey_financial(
             else:
                 population = current[version]
             expected[node_id] = current[version] = population
-            if witnessed is not None and node_id not in observed:
+            if witnessed is None:
+                same_replayed_population_seals(
+                    replayed_population_seal(population), observed_seals[node_id]
+                )
+            elif node_id not in observed:
                 observation.same_population_witness(population, witnessed[node_id])
             else:
                 atomic.same_replayed_population(population, observed[node_id])
@@ -2536,6 +2642,7 @@ def _run_survey_financial(
         if development_boundary is not None:
             final_node = _development_module().ATTACH_NODE
         legacy_population = observed[financial.ATTACH_NODE]
+        require(final_node in observed, "ATOMIC_OBSERVER_RETENTION")
         result_type = (
             AtomicSurveyFinancialRunValues
             if _prefix_mode == _ATOMIC
@@ -2675,10 +2782,19 @@ def _run_survey_financial(
                     node_id not in observed
                     or reconstruction._population_stamp(observed[node_id])
                     == observed_stamps[node_id]
+                )
+                and (
+                    witnessed is not None
+                    or seal_identity(observed_seals[node_id])
+                    == observed_seal_ids[node_id]
                 ),
                 "ATOMIC_FINAL_POPULATION_MUTATION",
             )
-            if witnessed is not None and node_id not in observed:
+            if witnessed is None:
+                same_replayed_population_seals(
+                    replayed_population_seal(population), observed_seals[node_id]
+                )
+            elif node_id not in observed:
                 observation.same_population_witness(population, witnessed[node_id])
             else:
                 atomic.same_replayed_population(population, observed[node_id])
@@ -2708,7 +2824,14 @@ def _run_survey_financial(
             property_population=property_population,
             person_status_boundary=status_boundary,
             development_boundary=development_boundary,
-            node_populations=observed,
+            node_populations=(
+                observed
+                if witnessed is not None
+                else {
+                    node_id: observed.get(node_id, seal)
+                    for node_id, seal in observed_seals.items()
+                }
+            ),
             retention_profile=_population_retention,
             node_witnesses=witnessed,
             node_population_inputs=population_inputs,

@@ -1,3 +1,225 @@
+# Retention: replay by content seal, not by retained population
+
+Lane: `native-retention-seal`, off `origin/native-scale-transport` at
+`a64f7b733`, worktree `~/PolicyEngine/_worktrees/microcosm-native-retention`.
+Started 2026-09-17. Everything below the `---` rule at the end of this section
+is prior-lane history; see "Root journals are history, not state" in
+`CLAUDE.md`.
+
+## State
+
+Implemented; both required runs have run. The 1/1000 cold run **and its
+required replay completed** and export byte-identical bytes (identical manifest
+key, 0 store paths added or changed), at 1,714.92 CPU-s against the transport
+after-run's 1,907.58. The **1/15 run refused** 605.65 CPU-s in, at 8.28 GB,
+having run no node: `PREPARATION_ISSUANCE_REFUSED`, the catch-all that discards
+its cause. The predicted cause is a 1 MiB canonical-JSON cap on the
+selected-ACS-`SERIALNO` list — **below** the row-count ceiling the base branch
+lifted, and in no census — and a non-invasive 1/15 diagnostic is running to
+name it rather than infer it. The discrimination battery is 116 comparisons,
+116 agreements, 0 disagreements. Draft PR #950 is open and stays draft.
+
+## Done
+
+- Verified worktree/branch/head; synced `uv sync --all-packages --locked --extra us`.
+- Read both authorities in full and the code at this head.
+- `docs/us-native-retention-seal.md` — the four required answers.
+- `survey_population_replay.py` — the purpose-built seal, beside the
+  comparison it replaces.
+- `test_us_survey_population_replay.py` — every mutation now runs through BOTH
+  the object comparison and the seal, and must reach the same verdict with the
+  same code; plus the discriminations the first battery missed.
+- `executor.py` — `run_graph(_population_observer_detach=False)`, its own
+  commit, four tests, no US import.
+- `graph_atomic_survey_financial.py` — declared-consumer retention, both
+  comparisons sealed, `_node_population_stamp` on both arms.
+- Repaired a **stale implementation contract inherited from the transport
+  branch** and added the guard that would have caught it.
+- Armed both runs with their gates and their source trees, and ran both.
+- The 1/1000 cold run plus required replay, under a byte-identical copy of the
+  transport lane's committed harness: `COMPLETED_NINETEEN_NODE_AND_REQUIRED_REPLAY`,
+  every node a store hit on the replay, manifest key identical, store bytes
+  identical. Recorded with the three causes that move the key off the base
+  branch's `bd511d92…`, one of which is this lane's own executor commit.
+- The 1/10 refusal diagnostic, three rounds, the third non-invasive: the cause
+  the three nested catch-alls discard is
+  `ACSCoverageAuthenticationError: CANONICAL_SIZE`, and the ceiling it belongs
+  to was computed from measured inputs and committed **before** the 1/15 run.
+- The 1/15 run: refused as predicted, recorded with its CPU, wall, peak RSS and
+  the fact that no node ran.
+- Found and recorded a defect in the 1/15 harness's own receipt: `sample.fraction`
+  and the `scope` sentence were left as the tenth harness's while the call site
+  ran `Fraction(1, 15)`. The harness stays as it ran; the 1/15 diagnostic
+  harness corrects both fields and says so.
+
+## Pull request
+
+**[PolicyEngine/microcosm#950](https://github.com/PolicyEngine/microcosm/pull/950)**
+— draft, base `native-scale-transport`, `MERGEABLE`. It stays draft.
+
+## Done (2026-09-17, second session)
+
+- **The 1/15 refusal is named from the run's own raises.** The measurement
+  refused with the catch-all; `harness19_diag_fifteenth.py` (the 1/15 harness
+  plus the committed `sys.monitoring` RAISE block, diffed both ways) re-ran it
+  and the trace ends in `ACSCoverageAuthenticationError: CANONICAL_SIZE` from
+  `issue_acs_native_coverage` with exactly two `visit` frames — the same guard
+  and signature as 1/10. The prediction committed before the run is confirmed.
+- Recorded a defect in the 1/15 harness's own receipt: `sample.fraction` and
+  the `scope` sentence were left as the tenth's while the call site ran
+  `Fraction(1, 15)`. The harness stays as it ran; the diagnostic corrects both.
+- Corrected the guard's citation: `acs_native_coverage_binding.py:563-565`,
+  not `:562-564`, in the report and the ceiling receipt's generator.
+- **Pinned five of the six refusal codes this change adds**, which had none,
+  and verified each of the three seal tests goes red against its own reverted
+  guard. `ATOMIC_OBSERVER_RETENTION` stays unpinned and both documents now say
+  why, including that its second conjunct is a self-comparison that cannot
+  fire. That is report question 7.
+- **`battery_receipt.py`** rebuilds the battery's receipt from its own rows and
+  reproduces the committed one exactly; the design note's stale 109 comparisons
+  and eleven accepted pairs are corrected to 116 and fourteen.
+- **The identity receipt now emits every ordered pair.** Section 7c had cited
+  `transport_after → us_only` for "the US half moves no key", and that row says
+  the opposite; `base → us_only` is the row, and it did not exist. Regenerating
+  at this head also re-ran the contract arm: ten of ten accepted.
+- Verified, rather than assumed: both measured trees carry `packages/*/src`
+  byte-identical to this head; §7a's table regenerates cell for cell; §7b's
+  replay proof and §7d's RSS phase split match the artifacts exactly; the §2
+  battery table matches the receipt row for row; and the base branch's
+  `bd511d92…` key is the one the brief quoted.
+- Report restructured to the brief's order — tests (9), PR (10), questions (11),
+  caveats (12) — and five wrong cross-references repointed, including §12's
+  claim that the committed 1/10 trace came from a round that patches the
+  catch-all. It came from the round that patches nothing.
+
+## Done (2026-09-17, second session) — the adversarial pass
+
+**68 agents over six review dimensions, every finding put to two independent
+verifiers whose default answer is refuted: 31 findings, 25 survived.** Five
+answered in code, four in tests, sixteen in the documents, none left open.
+Receipt: `experiments/native-retention-seal/adversarial-verification-receipt.json`.
+
+The three that mattered, each reproduced before being believed and again after
+being fixed:
+
+- **The seal ACCEPTED a pair the comparison refuses.** An object-axis value
+  carrying its own `__eq__` has equal codec bytes to the plain int of the same
+  value and is not `==` to it. That is the dangerous direction — a run
+  accepting a replay the comparison refuses.
+- **The seal REFUSED a pair the comparison accepts.** pandas holds `None` and
+  every NaN interchangeable on an object axis; the codec spelled them apart, so
+  a green run would have turned red.
+- **A masked-integer axis folded through float64**, because `np.asarray` on a
+  masked integer array returns float64 with NA as NaN — lossy above `2**53`,
+  and the refusal code moved.
+
+The fold now reproduces the equivalence classes `Index.equals` actually has,
+**measured** rather than read off pandas' source, and refuses `AXIS` at seal
+construction for the one case a digest cannot represent. 124 new battery cases
+pin all three; each half of the fix was reverted to confirm its own cases go
+red.
+
+**And the change broke a gate that passes at the base.**
+`test_us_spine_blindness.py::test_runtime_population_operators_are_source_spine_blind`
+refuses a statically unresolvable subscript on a name it infers to be a column
+container; every seal record is a positional tuple, so it reported 48 sites.
+Verified both ways: `1 passed` at `a64f7b733`, red here. The records are now
+unpacked into named fields, the one dynamic `getattr` reads through a literal
+reader per comparable, and the gate passes (`1 passed in 217.42s`). Nothing
+moved: no record changed shape, order or `repr`.
+
+**Two tests were vacuous.** An executor test's default-mode arm compared one
+run's objects against another run's; the dtype census asserted the same
+predicate twice and called no seal function. Both now fail against the defect
+they pin.
+
+**Four documents described mechanisms that are not in the code** — a dtype
+token, a `_comparables` digest, a `repr()` fallback and the residual risk built
+on it — and the design note's own §4(1) had argued the token would be wrong.
+
+## Next
+
+1. The **quiet-machine 1/1000 re-run at the finished head** (pid 7656, launched
+   2026-09-18T01:58:01Z at 79.8 GB available, head `6e3b3091c`). It re-proves
+   the replay at the head that ships and answers question 5's request for a
+   repeat without contention. `RUN-RECORD-after2.txt` states what it must
+   reproduce before the outcome.
+2. The 21-file dependent battery, **re-run clean**. The first run had three red
+   files: the spine-blindness failure was real and is fixed; the completion-host
+   and person-status results were invalidated by my own concurrent edits to
+   `survey_population_replay.py` during the run, which an implementation hash
+   is over — the report says so rather than quoting them.
+3. The final CI-shaped verification at the finished head, the PR body, and the
+   report's remaining open questions (now eight).
+
+## Inherited defect, repaired here (for the report and for Max)
+
+`survey_population_preparation._spill_roster` gained a `Path.read_bytes` on
+`native-scale-transport` at **`b6081efcb`** ("Hash a spill segment that was
+already there"). That added a `resource_accesses` entry, leaving
+`graph_implementation_inventory.json`'s declared `resource_accesses_sha256`
+stale, so `implementation_manifest("authenticated_survey_population_v1")`
+**refused** — and `SurveyPopulationCreateKernel.implementation_hash` calls it.
+**No 19-node graph run was possible at `a64f7b733`.** Bisected across
+`5ff889814` → `5307249b3` (both clean) → `baaf4270c` onward (all refusing).
+The transport report's §4 "No committed pin moves" was recomputed before
+`b6081efcb` and is stale at its own tip. Repaired in `43fb39270`, guarded by
+`test_us_implementation_inventory_contracts.py` (135 assertions; reverting the
+re-pin turns both arms red, verified).
+
+## What moves, measured exactly
+
+`experiments/native-retention-seal/implementation-identity-receipt.json`:
+
+| comparison | roster module digests that move |
+|---|---|
+| `a64f7b733` → US-only commits | **none** |
+| `a64f7b733` → head with the executor commit | `microcosm.graph/executor.py`, in **all ten** stages |
+
+`survey_population_replay.py`, `graph_atomic_survey_financial.py` and
+`survey_atomic_geography.py` are in no stage roster; `executor.py` is in every
+one. The re-pin above moves `inventory_sha256`, which is also in every stage
+manifest.
+
+## Findings, proved by running code at this head
+
+**Neither existing seal is the seal.** The transport report's §10 question 2(b)
+says "`_population_stamp` already folds everything `same_replayed_population`
+compares except the *type* assertions". That sentence is wrong in **both**
+directions, and both halves are proved by scripts committed under
+`experiments/native-retention-seal/`:
+
+1. **`_population_stamp` is too strict.**
+   `probe_stamp_vs_comparison.py` builds a US_SCHEMA population, round-trips its
+   frame through `ContentStore.put_frame`/`load_frame`, and gets:
+   `same_replayed_population` **ACCEPTS** (the store zeroed `_data` under the
+   null mask, which `NONCANONICAL_NULL_BACKING`,
+   `survey_population_replay.py:79-82`, deliberately permits) while
+   `_population_stamp(expected) != _population_stamp(actual)`. So a
+   stamp-equality seal would **refuse a required replay**. Its own docstring
+   says so (`survey_atomic_geography.py:231-237`).
+2. **`_frame_identity` is too weak.** `probe_frame_identity_gaps.py` finds three
+   discriminations `same_replayed_frame` makes that `_frame_identity` does not:
+   float64 NaN **payload bits** (two quiet NaNs; `NATIVE_BITS`), quiet versus
+   signalling NaN (`NATIVE_BITS`), and
+   `DataFrame.flags.allows_duplicate_labels` (`TABLE_TYPE_OR_FLAGS`). `_cell`
+   maps every NaN to `None`, so `_frame_identity` spells all of them `null`.
+   It also cannot be applied to a non-US_SCHEMA frame at all (`FRAME_TYPE`).
+
+**Therefore the seal is purpose-built and lives in `survey_population_replay.py`,
+beside the comparison it replaces**, folding exactly the bytes each comparison
+compares — no more, no less.
+
+**A fourth gap, from pandas rather than from this repo.**
+`pd.DatetimeIndex._comparables == ['name', 'freq']`, and two DatetimeIndexes with
+equal values, dtype and name but different `freq` are **not** `identical()` while
+their bytes are equal. Any seal that folds only (class, dtype, name, bytes)
+misses it. The seal folds `type(index)._comparables` generically.
+
+**Admitted dtypes are narrow**, which bounds the problem: `_series` refuses
+`CategoricalDtype`, `Float64Dtype` and `DatetimeTZDtype` with
+`UNSUPPORTED_EXTENSION_DTYPE`; only masked integer/boolean, `StringDtype`,
+`object` and plain numpy dtypes get through.
 # US engine lock → policyengine-us 2.2.1
 
 Lane: `engine-lock-pe-us-2.2.1`, off `origin/main` at `51c3143829b88382270f5af0714ae28fba14f803`,
