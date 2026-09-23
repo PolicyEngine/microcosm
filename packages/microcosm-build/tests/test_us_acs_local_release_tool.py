@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
+import os
 import shlex
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -316,7 +319,11 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
         "consumer_export.json": {"staging_sha256": module._sha256(staging)},
         "held_back_columns.json": {"total": 0},
         "reviewed_null_fills.json": {"columns_filled": []},
-        "materialize_rss.json": {"materialize_peak_rss_gb": 1.0, "hh_chunk": 1},
+        "materialize_rss.json": {
+            "soi_mode": "totals",
+            "materialize_peak_rss_gb": 1.0,
+            "hh_chunk": 1,
+        },
         "consumer_reviewed_null_fills.json": {"columns_filled": []},
     }
     for name, payload in evidence.items():
@@ -439,14 +446,19 @@ def test_package_refuses_when_the_packaged_bytes_fail_the_hours_gate(
 _UNSET = object()
 
 
-def _package_args_before_evidence(module, tmp_path: Path, *, max_households=_UNSET):
+def _package_args_before_evidence(
+    module, tmp_path: Path, *, max_households=_UNSET, soi_mode="totals"
+):
     """The package stage's inputs up to (not including) the qa/consumer evidence.
 
     ``max_households`` is what the staging summary records under
-    ``orchestration``; the sentinel omits the block entirely.
+    ``orchestration``; the sentinel omits the block entirely. ``soi_mode`` is
+    what ``materialize_rss.json`` records; the sentinel omits the file.
     """
     ckpt = tmp_path / "ckpt"
     ckpt.mkdir()
+    if soi_mode is not _UNSET:
+        (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": soi_mode}))
     staging = tmp_path / "staging.h5"
     staging.write_bytes(b"staging")
     summary: dict = {}
@@ -537,6 +549,7 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     out_h5.write_bytes(b"artifact")
     (ckpt / "calibration_diagnostics.json").write_text(json.dumps({"households": 1}))
     (ckpt / "gate_summary.json").write_text(json.dumps({"gates": {}}))
+    (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": "totals"}))
     (ckpt / "run_identity.json").write_text(
         json.dumps(
             {
@@ -576,6 +589,255 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     )
     with pytest.raises(SystemExit, match="consumer_export.json is missing"):
         module.do_package(args)
+
+
+# ---------------------------------------------------------------------------
+# SOI target surface: state (Build O contract) by default; totals and full opt-in
+# ---------------------------------------------------------------------------
+
+
+def _materialize_argv(tmp_path: Path, *extra: str) -> list[str]:
+    return [
+        "--stage",
+        "materialize",
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--checkpoint-dir",
+        str(tmp_path / "ckpt"),
+        "--feed",
+        str(tmp_path / "facts.jsonl"),
+        *extra,
+    ]
+
+
+def test_soi_mode_defaults_to_state_and_totals_and_full_are_explicit_opt_ins(
+    tmp_path: Path,
+) -> None:
+    """Max's ruling of 2026-09-22: the ACS local default is Build O's
+    state-geography SOI contract; ``totals`` and ``full`` are reachable only by
+    asking for them."""
+
+    module = _load_tool_module()
+    assert module.SOI_MODES == ("state", "totals", "full")
+    assert module.DEFAULT_SOI_MODE == module.SOI_MODE_STATE == "state"
+    assert module._parse_args(_materialize_argv(tmp_path)).soi_mode == "state"
+    for mode in ("totals", "full"):
+        assert (
+            module._parse_args(_materialize_argv(tmp_path, "--soi-mode", mode)).soi_mode
+            == mode
+        )
+    signature = inspect.signature(module.state_admin_specs)
+    assert signature.parameters["soi_mode"].default == "state"
+    with pytest.raises(SystemExit):
+        module._parse_args(_materialize_argv(tmp_path, "--soi-mode", "ful"))
+
+
+_HT2_BROAD = "irs_soi.historic_table_2.state_broad_totals.v1"
+_HT2_AGI = "irs_soi.historic_table_2.state_agi_counts_and_amounts.v1"
+_CD_FILE = "irs_soi.congressional_district_2022.all_returns.v1"
+
+
+def _spec(
+    role: str | None,
+    *,
+    state: bool = True,
+    geography: str | None = "state",
+    record_set: str | None = _HT2_BROAD,
+) -> SimpleNamespace:
+    metadata: dict[str, str] = {}
+    if state:
+        metadata["state_fips"] = "06"
+    if role is not None:
+        metadata["target_role"] = role
+    if geography is not None:
+        metadata["ledger_geography_level"] = geography
+    if record_set is not None:
+        metadata["ledger_layout_record_set_spec_id"] = record_set
+    return SimpleNamespace(metadata=metadata)
+
+
+def test_state_soi_surface_is_build_o_contract_by_record_set_and_geography() -> None:
+    """``state`` keeps state-geography specs outside the district file, of any
+    role (AGI-band rows included), and refuses to guess on missing metadata."""
+
+    module = _load_tool_module()
+    state = module.soi_surface_predicate("state")
+
+    for role in ("soi_fiscal_distribution", "aca_ptc_returns", "aca_spending", None):
+        assert state(_spec(role)), role
+        assert state(_spec(role, record_set=_HT2_AGI)), role
+    # The TY2023 congressional-district file is excluded even at state geography
+    # (its <st>_total rows restate the Historic Table 2 totals a year later).
+    assert not state(_spec("soi_fiscal_distribution", record_set=_CD_FILE))
+    assert not state(_spec("aca_ptc_returns", record_set=_CD_FILE))
+    # District geography is excluded even from Historic Table 2.
+    assert not state(
+        _spec("soi_fiscal_distribution", geography="congressional_district")
+    )
+    # No state_fips: never on the state surface.
+    assert not state(_spec("soi_fiscal_distribution", state=False))
+    # Missing either key: the mode cannot tell which contract the spec is in.
+    assert not state(_spec("soi_fiscal_distribution", geography=None))
+    assert not state(_spec("soi_fiscal_distribution", record_set=None))
+    assert not state(_spec("soi_fiscal_distribution", record_set=""))
+
+
+def test_soi_surface_predicate_drops_soi_fiscal_distribution_only_in_totals() -> None:
+    module = _load_tool_module()
+    totals = module.soi_surface_predicate("totals")
+    full = module.soi_surface_predicate("full")
+
+    band = _spec("soi_fiscal_distribution")
+    assert not totals(band)
+    assert full(band)
+    for role in ("aca_ptc_returns", "aca_spending", None):
+        assert totals(_spec(role)) and full(_spec(role)), role
+    # Neither mode reaches past the state surface.
+    for mode_predicate in (totals, full):
+        assert not mode_predicate(_spec("aca_spending", state=False))
+        assert not mode_predicate(_spec("soi_fiscal_distribution", state=False))
+
+
+def test_unknown_soi_mode_is_refused_before_the_feed_is_read(tmp_path: Path) -> None:
+    """A typo must never fall through to either surface (the old predicate
+    treated every value other than ``full`` as totals)."""
+
+    module = _load_tool_module()
+    missing_feed = tmp_path / "never-read.jsonl"
+    for call in (
+        lambda: module.soi_surface_predicate("ful"),
+        lambda: module.state_admin_specs(missing_feed, ["soi"], soi_mode="ful"),
+        lambda: module.release_refresh_recipe("ful"),
+    ):
+        with pytest.raises(ValueError, match="soi_mode must be one of"):
+            call()
+
+
+@pytest.mark.parametrize("soi_mode", ["state", "totals", "full"])
+def test_release_refresh_recipe_reproduces_its_soi_mode(
+    tmp_path: Path, soi_mode: str
+) -> None:
+    """The recipe names the mode, so re-running it cannot drift with the
+    parser default."""
+
+    module = _load_tool_module()
+    recipe = shlex.split(module.release_refresh_recipe(soi_mode))
+    assert recipe[:3] == ["uv", "run", "tools/build_us_acs_local_release.py"]
+    assert recipe[recipe.index("--soi-mode") + 1] == soi_mode
+    args = module._parse_args(recipe[3:])
+    assert args.soi_mode == soi_mode
+    assert args.stages == ["materialize", "calibrate", "qa", "finalize", "package"]
+
+
+@pytest.mark.parametrize(
+    ("recorded", "message"),
+    [
+        (_UNSET, r"records soi_mode=None"),
+        ("bands", r"records soi_mode='bands'"),
+    ],
+    ids=["not-recorded", "unknown"],
+)
+def test_package_refuses_a_checkpoint_without_a_known_soi_mode(
+    tmp_path: Path, recorded, message
+) -> None:
+    module = _load_tool_module()
+    args = _package_args_before_evidence(
+        module, tmp_path, max_households=None, soi_mode=recorded
+    )
+    with pytest.raises(SystemExit, match=message):
+        module.do_package(args)
+    assert not (args.out / "releases").exists(), "a refusal leaves no release"
+
+
+@pytest.mark.parametrize("recorded", ["state", "totals", "full"])
+def test_package_records_the_materialized_soi_mode_not_the_parser_default(
+    tmp_path: Path, monkeypatch, recorded: str
+) -> None:
+    """The package invocation passes no ``--soi-mode`` (so the parser says
+    ``state``); the manifest and recipe must carry what materialize used."""
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    assert args.soi_mode == "state"
+    (args.checkpoint_dir / "materialize_rss.json").write_text(
+        json.dumps({"soi_mode": recorded, "hh_chunk": 1})
+    )
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["materialize"]["soi_mode"] == recorded
+    for manifest in (build_manifest, release_manifest):
+        recipe = shlex.split(manifest["refresh_recipe"]["release"])
+        assert recipe[recipe.index("--soi-mode") + 1] == recorded
+
+
+def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
+    """On the real feed: the default ``state`` surface is Build O/P's
+    3,972-spec admin contract, built only from the three Historic Table 2
+    state tables at state geography; ``totals`` holds no
+    ``soi_fiscal_distribution`` spec; ``full`` adds exactly those specs to
+    ``totals`` and contains ``state``.
+
+    The pinned consumer-facts feed is a 164 MB public aggregate export that
+    no CI lane carries, so this runs only when ``MICROCOSM_US_CHRONICLE_FACTS``
+    points at it (the convention of the #969 state-surface arm). Three
+    registry compiles; about 3 GB peak RSS.
+    """
+
+    feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
+    if not feed or not Path(feed).exists():
+        pytest.skip(
+            "set MICROCOSM_US_CHRONICLE_FACTS to the pinned consumer-facts feed"
+        )
+
+    module = _load_tool_module()
+    families = ["snap", "medicaid", "soi"]
+    state_registry, _ = module.state_admin_specs(feed, families)
+    totals_registry, _ = module.state_admin_specs(feed, families, soi_mode="totals")
+    full_registry, _ = module.state_admin_specs(feed, families, soi_mode="full")
+    state_specs = state_registry.specs
+    totals_names = {spec.name for spec in totals_registry.specs}
+    full_by_name = {spec.name: spec for spec in full_registry.specs}
+
+    # Build P's ACS local contract: 102 SNAP + 51 Medicaid + 3,819 SOI admin
+    # specs (4,459 with the 487 population marginals); Build O's 4,461 plus the
+    # Vermont under-$1 taxable-interest pair the compiler now excludes.
+    families_count = {}
+    for spec in state_specs:
+        families_count[spec.family] = families_count.get(spec.family, 0) + 1
+    assert families_count == {"usda_snap": 102, "cms_medicaid": 51, "irs_soi": 3819}
+    soi = [spec for spec in state_specs if spec.family == "irs_soi"]
+    record_sets = {}
+    for spec in soi:
+        key = spec.metadata["ledger_layout_record_set_spec_id"]
+        record_sets[key] = record_sets.get(key, 0) + 1
+    assert record_sets == {
+        "irs_soi.historic_table_2.state_broad_totals.v1": 2397,
+        "irs_soi.historic_table_2.state_agi_counts_and_amounts.v1": 912,
+        "irs_soi.historic_table_2.state_eitc.v1": 510,
+    }
+    assert {spec.metadata["ledger_geography_level"] for spec in soi} == {"state"}
+    assert {spec.name for spec in state_specs} <= set(full_by_name)
+
+    assert not [
+        spec
+        for spec in totals_registry.specs
+        if spec.metadata.get("target_role") == "soi_fiscal_distribution"
+    ]
+    assert totals_names < set(full_by_name)
+    added = [full_by_name[name] for name in set(full_by_name) - totals_names]
+    assert added
+    assert {(spec.family, spec.metadata.get("target_role")) for spec in added} == {
+        ("irs_soi", "soi_fiscal_distribution")
+    }
 
 
 def _staging_frame_with_hours(weekly: list[float], last_week: list[float]):
@@ -636,6 +898,9 @@ def _finalize_args(module, tmp_path: Path):
             {"final_loss": 0.1, "initial_loss": 0.5, "mass_conserved_ratio": 1.0}
         )
     )
+    # Every checkpoint materialize writes records its SOI mode; package
+    # refuses one that does not.
+    (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": "totals"}))
     ladder = tmp_path / "ladder.npz"
     ladder.write_bytes(b"ladder-bytes")
     return module._parse_args(
