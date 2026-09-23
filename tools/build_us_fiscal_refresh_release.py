@@ -1628,6 +1628,21 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--target-surface",
+        choices=TARGET_SURFACE_MODES,
+        default=TARGET_SURFACE_FULL,
+        help=(
+            "Which compiled fiscal targets the release calibrates to. "
+            f"'{TARGET_SURFACE_FULL}' (default) calibrates every compiled "
+            f"target. '{TARGET_SURFACE_NATIONAL_STATE}' drops every "
+            "congressional-district-classified target (the CD geography rows "
+            "and the rows sourced from the SOI congressional-district file) "
+            "after the target-parity and profile-coverage gates have run on "
+            "the full compiled surface, as the July national releases "
+            "calibrated; the drop is recorded in both manifests."
+        ),
+    )
+    parser.add_argument(
         "--gate-congressional-district-targets",
         action="store_true",
         help=(
@@ -6990,6 +7005,46 @@ def _target_family(target: object | None) -> str:
     return ""
 
 
+TARGET_SURFACE_FULL = "full"
+TARGET_SURFACE_NATIONAL_STATE = "national_state"
+TARGET_SURFACE_MODES = (TARGET_SURFACE_FULL, TARGET_SURFACE_NATIONAL_STATE)
+
+
+def _select_target_surface(
+    target_specs: Sequence[TargetSpec],
+    mode: str,
+) -> tuple[tuple[TargetSpec, ...], dict[str, object]]:
+    """Return the specs the release calibrates to and a receipt of the choice.
+
+    ``full`` keeps every compiled spec. ``national_state`` drops every spec
+    ``is_congressional_district_target`` classifies as congressional-district
+    (CD geography rows and rows sourced from the SOI CD file, whatever their
+    geography). The target-parity and profile-coverage gates run on the full
+    compiled surface before this selection, so a dropped family is still
+    proven compiled.
+    """
+
+    if mode not in TARGET_SURFACE_MODES:
+        raise ValueError(
+            f"Unknown target surface {mode!r}; expected one of {TARGET_SURFACE_MODES}."
+        )
+    specs = tuple(target_specs)
+    if mode == TARGET_SURFACE_FULL:
+        kept = specs
+    else:
+        kept = tuple(
+            spec for spec in specs if not _target_is_congressional_district(spec)
+        )
+    if not kept:
+        raise ValueError(f"Target surface {mode!r} keeps no targets.")
+    return kept, {
+        "mode": mode,
+        "compiled_targets": len(specs),
+        "calibrated_targets": len(kept),
+        "dropped_congressional_district_targets": len(specs) - len(kept),
+    }
+
+
 def _target_is_congressional_district(target: object | None) -> bool:
     return is_congressional_district_target(
         _target_row_name(target) if target is not None else "",
@@ -8029,6 +8084,7 @@ def _build_manifests(
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     selection_source: Mapping[str, object] | None = None,
+    target_surface_selection: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
     medicaid_enrollment_substitutions: Sequence[Mapping[str, object]] = (),
     staging: Mapping[str, object] | None = None,
@@ -8122,6 +8178,13 @@ def _build_manifests(
             "sha256": calibration_sha,
             "warm_start": warm_start_payload,
             "selection_source": selection_source_payload,
+            # Present only when --target-surface narrows the calibrated
+            # surface, so a default manifest is unchanged.
+            **(
+                {"target_surface_selection": dict(target_surface_selection)}
+                if target_surface_selection is not None
+                else {}
+            ),
             "target_surface": {
                 "sha256": diag["target_surface"]["sha256"],
                 "n_targets": diag["target_surface"]["n_targets"],
@@ -8343,6 +8406,13 @@ def _build_manifests(
             ),
             "warm_start_calibration": warm_start_payload,
             "selection_source": selection_source_payload,
+            # Present only when --target-surface narrows the calibrated
+            # surface, so a default manifest is unchanged.
+            **(
+                {"target_surface_selection": dict(target_surface_selection)}
+                if target_surface_selection is not None
+                else {}
+            ),
             "default_dataset": default_dataset_payload,
             **(
                 {
@@ -9404,6 +9474,15 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 for failure in target_profile_gate.failures
             )
         )
+    # The parity and profile-coverage gates above ran on the full compiled
+    # surface; --target-surface only narrows what is calibrated.
+    target_specs, target_surface_receipt = _select_target_surface(
+        target_specs, args.target_surface
+    )
+    target_surface_selection = (
+        None if args.target_surface == TARGET_SURFACE_FULL else target_surface_receipt
+    )
+    active_target_registry = TargetRegistry(target_specs, country="us")
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
     release_dir = release_root / "releases" / release_id
@@ -12543,6 +12622,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         selection_source=selection_source_payload,
+        target_surface_selection=target_surface_selection,
         ledger_artifact=ledger_artifact.provenance(),
         default_dataset=default_dataset,
         medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
