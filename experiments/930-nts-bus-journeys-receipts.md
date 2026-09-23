@@ -554,3 +554,19 @@ London +12.8 %, Scotland +61.8 %, Wales +5.5 %, all closed. Anatomy: the England
 mass beyond 3× is 50.2 % against the frame-wide 48.0 % (Part J: 47.9 % against 47.9 %), London
 58.1 %, the England support row 47.8 % against 48.0 %; Northern Ireland's fare row now sits at
 9.8 % (its carriers are down-weighted less than before, median ratio 0.50 against 0.47).
+
+## Part L — Rebase over #979 (2026-09-23)
+
+María's ask. Main moved under the branch by #959 and #993 (US-only) and #979 (#970's
+`cgt_incidence_anchor` stage, the projection-entrants gate and the incidence-anchor composition
+gate). The rebase onto `43ca60f6` stopped nine times, on the regenerated surfaces (coverage
+manifest, H2 fixture, contract digests: upstream taken, then regenerated) and on four test files
+where both sides added tests or a pending-roster step (both kept). The H2 fixture now carries 32
+stages, 34 declared (oracle identity on this machine `e89af40d…`, reported never pinned); the gate and certification digests are
+re-pinned over the union of both PRs' gates; the stage mirror equals the YAML for every stage. The
+sweep on the rebased tree (the spine, graph, parity, stage-health, pricing, contract, certification
+and #979's own CGT files): 1,118 tests, 0 failures.
+
+The incidence anchor runs after `hmrc_cgt_asset_type_spine`, downstream of the three bus stages,
+so every stage receipt in Parts E–K stands as written; only the terminal weights and a calibration
+on the rebased tree would move, and neither is re-run here.

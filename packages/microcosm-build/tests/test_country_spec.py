@@ -1000,10 +1000,10 @@ class TestUKCountryPackage:
         assert spec.sources is not None
         # 31 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
         # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725, then
-        # cgt_incidence_anchor #970 as the newest) plus the two certified-pair
-        # nts_bus_travel #930 as the newest) plus the two certified-pair
+        # cgt_incidence_anchor #970 and nts_bus_travel #930 as the newest) plus
+        # the two certified-pair
         # stages the June path still uses.
-        assert len(spec.sources.stages) == 33
+        assert len(spec.sources.stages) == 34
 
 
 class TestExistingPackagesGeneralize:

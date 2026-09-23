@@ -138,7 +138,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 31
+UK_FIXTURE_STAGE_COUNT = 32
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
