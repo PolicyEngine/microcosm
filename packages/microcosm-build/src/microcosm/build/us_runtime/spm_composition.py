@@ -27,6 +27,7 @@ import pandas as pd
 from microcosm.frame import Frame
 
 __all__ = [
+    "MAX_REPORTED_SPM_UNITS_HARD_CAP",
     "SPM_COMPOSITION_REMEDY",
     "CheckResult",
     "PreflightStatus",
@@ -49,6 +50,12 @@ _SPM_SPOUSE_COLUMN = "is_household_spouse"
 #: How many offending SPM units the composition check names in its failure line
 #: and its rows. The failure line reports the full count either way.
 _MAX_REPORTED_SPM_UNITS = 20
+
+#: The ceiling on that cap, whatever an operator asks for. The rows travel to
+#: preflight stdout and ``--json-out``; a diagnosis needs a handful of examples,
+#: not every offending unit dumped into a CI log. The failure line's full count
+#: is the number that matters at any volume, and it is never capped.
+MAX_REPORTED_SPM_UNITS_HARD_CAP = 100
 
 #: The single-sourced remedy for a zero-classified-adult SPM unit. The release
 #: tool raises with this same text, so an operator who skipped preflight reads
@@ -179,6 +186,43 @@ def _person_ages(person: pd.DataFrame) -> np.ndarray:
     )
 
 
+def _assert_membership_joins(
+    membership: np.ndarray,
+    unit_ids: np.ndarray,
+    *,
+    unit_entity: str,
+    membership_column: str,
+) -> None:
+    """Refuse to classify when the person→unit join does not actually join.
+
+    :func:`_sum_by_unit` joins by index *label*, so a membership value that
+    matches no unit id contributes to nothing: the person's flags are dropped
+    and the unit they belong to reads zero adults. When the two columns come
+    back from an H5 with dtypes pandas will not match — ``bytes`` against
+    ``str`` is the realistic case — *every* value fails to match and the check
+    reports 100% of units as offending. That is a loud false refusal
+    indistinguishable from a catastrophic real defect, so it must not be
+    reported as a verdict at all: raise the "cannot be evaluated" ``ValueError``
+    that :func:`run_preflight` turns into SKIPPED instead.
+    """
+    unmatched = ~pd.Index(membership).isin(pd.Index(unit_ids))
+    n_unmatched = int(unmatched.sum())
+    if n_unmatched == 0:
+        return
+    examples = ", ".join(
+        repr(value) for value in pd.unique(np.asarray(membership)[unmatched])[:5]
+    )
+    raise ValueError(
+        f"{n_unmatched} of {len(membership)} person rows carry a "
+        f"{membership_column!r} value matching no {unit_entity} id "
+        f"(person column dtype {pd.Series(membership).dtype}, "
+        f"{unit_entity} id dtype {pd.Series(unit_ids).dtype}; unmatched: "
+        f"{examples}). The person→{unit_entity} join would silently drop them "
+        "and report their units as having no classified adult, so the SPM "
+        "measurement composition rule cannot be evaluated."
+    )
+
+
 def _sum_by_unit(
     flags: np.ndarray, membership: np.ndarray, unit_ids: np.ndarray
 ) -> np.ndarray:
@@ -186,7 +230,9 @@ def _sum_by_unit(
 
     Reindexed onto the unit table, so a unit with no member rows reads as zero
     — which is what ``unit.sum`` over no members gives, and which the engine
-    refuses just the same.
+    refuses just the same. Every membership value is known to match a unit id
+    by this point (:func:`_assert_membership_joins`), so the only zeros the
+    reindex introduces are genuinely memberless units.
     """
     return (
         pd.Series(np.asarray(flags).astype(np.int64), index=membership)
@@ -217,7 +263,14 @@ def _spm_composition(frame: Frame, *, unit_entity: str) -> _SPMComposition:
     schema = frame.schema
     person = frame.table("person")
     unit_ids = frame.table(unit_entity)[schema.id_column(unit_entity)].to_numpy()
-    membership = person[schema.membership_column(unit_entity)].to_numpy()
+    membership_column = schema.membership_column(unit_entity)
+    membership = person[membership_column].to_numpy()
+    _assert_membership_joins(
+        membership,
+        unit_ids,
+        unit_entity=unit_entity,
+        membership_column=membership_column,
+    )
 
     age = _person_ages(person)
     role, role_source, role_details = spm_independence_role(person)
@@ -245,10 +298,42 @@ def _spm_composition(frame: Frame, *, unit_entity: str) -> _SPMComposition:
     )
 
 
+def _age_band(value: float) -> str:
+    """One member's age as a band, never as an exact age.
+
+    Exact ages are not needed to diagnose a zero-classified-adult unit, and the
+    rows travel to preflight stdout and ``--json-out`` — an age per member is
+    easier never to emit than to retract. The four bands are the rule's own
+    thresholds: ``18_plus`` is an adult outright,
+    ``15_to_17`` is an adult only with the independence role, ``under_15`` can
+    never be one, and ``unknown`` is an age that did not read as a number (which
+    the comparison treats as not an adult).
+    """
+    if np.isnan(value):
+        return "unknown"
+    if value >= 18.0:
+        return "18_plus"
+    if value >= 15.0:
+        return "15_to_17"
+    return "under_15"
+
+
+def _clamped_report_cap(max_reported: int) -> int:
+    """``max_reported`` confined to ``[0, MAX_REPORTED_SPM_UNITS_HARD_CAP]``.
+
+    A negative value would reach a bare ``[:max_reported]`` slice and silently
+    mean "every offending unit except the last |N|" — the opposite of a cap —
+    and an arbitrarily large one would dump a row per offending unit into
+    preflight stdout and ``--json-out``. Neither is a report an operator asked
+    for, so both are clamped here rather than trusted from the caller.
+    """
+    return max(0, min(int(max_reported), MAX_REPORTED_SPM_UNITS_HARD_CAP))
+
+
 def _offending_unit_rows(
     composition: _SPMComposition, *, unit_entity: str, max_reported: int
 ) -> tuple[dict[str, Any], ...]:
-    """Up to ``max_reported`` offending units with their members' ages and roles."""
+    """Up to ``max_reported`` offending units with their members' bands and roles."""
     rows: list[dict[str, Any]] = []
     for unit_id in composition.unit_ids[composition.offending][:max_reported]:
         members = composition.membership == unit_id
@@ -259,9 +344,7 @@ def _offending_unit_rows(
                 if hasattr(unit_id, "item")
                 else unit_id,
                 "n_members": int(members.sum()),
-                "member_ages": [
-                    None if np.isnan(value) else float(value) for value in ages
-                ],
+                "member_age_bands": [_age_band(float(value)) for value in ages],
                 "member_independence_roles": [
                     bool(value) for value in composition.role[members]
                 ],
@@ -285,8 +368,10 @@ def check_spm_composition(
     ``SPMInputError("SPM_COMPOSITION_REQUIRED")`` for the **whole population's**
     measurement (``spm_calculator/policyengine_adapter.py`` ``policyengine_amount``:
     ``if np.any(adults < 1): raise``), naming neither the offending unit nor a
-    remedy. The release tool reaches that call only after calibration, export and
-    the NPZ write, so the traceback arrives hours into a build.
+    remedy. The release tool runs this same classification on its calibrated
+    export frame as a batched pre-export gate, so a build refuses by name before
+    the H5 and NPZ writes — but only after paying for the calibration that frame
+    comes from. Run pre-solve, this is the same verdict in seconds.
 
     This reproduces the engine's classification exactly —
     ``adult = (age >= 18) | ((age >= 15) & role)`` with ``role`` resolved by
@@ -297,6 +382,11 @@ def check_spm_composition(
     because a pool unit the selection drops never reaches the engine. The pool
     count is still reported, since it is what a *future* selection must keep
     avoiding.
+
+    ``max_reported`` bounds how many offending units are named individually, and
+    is clamped to ``[0, MAX_REPORTED_SPM_UNITS_HARD_CAP]``
+    (:func:`_clamped_report_cap`) — the effective value rides the details
+    as ``max_reported_units``. The full offending count is reported at any cap.
     """
     graded = selected_frame if selected_frame is not None else base_frame
     scope = "selected pool" if selected_frame is not None else "base pool"
@@ -325,9 +415,11 @@ def check_spm_composition(
             pool.n_units_without_member_18_plus
         )
 
+    report_cap = _clamped_report_cap(max_reported)
     rows = _offending_unit_rows(
-        composition, unit_entity=unit_entity, max_reported=max_reported
+        composition, unit_entity=unit_entity, max_reported=report_cap
     )
+    details["max_reported_units"] = report_cap
     details["n_units_reported"] = len(rows)
 
     if n_offending == 0:
@@ -342,8 +434,15 @@ def check_spm_composition(
             details=details,
         )
 
-    named = ", ".join(str(row[f"{unit_entity}_id"]) for row in rows)
     elided = n_offending - len(rows)
+    # ``--max-reported-spm-units 0`` names none of them; the count still stands.
+    named = (
+        f"{unit_entity}_id(s): "
+        + ", ".join(str(row[f"{unit_entity}_id"]) for row in rows)
+        + (f" (+{elided} more)" if elided > 0 else "")
+        if rows
+        else f"no {unit_entity}_id named (report cap {report_cap})"
+    )
     return CheckResult(
         name="spm_composition",
         status="FAIL",
@@ -355,10 +454,7 @@ def check_spm_composition(
         failures=(
             f"{n_offending} {unit_entity}(s) have no member aged 18 or over and "
             "no member aged 15-17 carrying an SPM independence role (role "
-            f"source: {composition.role_source}). "
-            f"{unit_entity}_id(s): {named}"
-            + (f" (+{elided} more)" if elided > 0 else "")
-            + ".",
+            f"source: {composition.role_source}). " + named + ".",
             SPM_COMPOSITION_REMEDY,
         ),
         rows=rows,

@@ -1301,6 +1301,48 @@ def test_size_solve_restores_full_prepared_tables_before_subsetting():
     assert result.selected_support.tolist() == [0, 2]
 
 
+def test_progress_events_reach_the_event_sink_beside_the_line_sink():
+    frame = _clone_frame()
+    metrics = pd.DataFrame({"households": [1.0, 1.0, 1.0]}, index=[101, 102, 103])
+    problem = build_uk_rowwise_local_matrix(
+        metrics,
+        _assigned(),
+        pd.DataFrame({"code": ["E001", "S001"], "households": [2.0, 1.0]}),
+    )
+    lines: list[str] = []
+    events: list[dict[str, object]] = []
+    common = dict(bound_families=["census_households/constituency"], epochs=2, seed=7)
+    dense = solve_uk_rowwise_weights_under_doctrine(
+        frame, problem, progress=lines.append, progress_events=events.append, **common
+    )
+    epochs = [event for event in events if event.get("kind") == "calibration_epoch"]
+    # One raw dict per epoch, untagged on a dense solve; the line sink still
+    # reports the last epoch only.
+    assert [event["epoch"] for event in epochs] == [1, 2]
+    assert all(event["epochs"] == 2 and "phase" not in event for event in epochs)
+    assert len(lines) == 1 and "dense solve: epoch 2/2" in lines[0]
+
+    only_events: list[dict[str, object]] = []
+    sized = solve_uk_rowwise_weights_under_doctrine(
+        frame,
+        problem,
+        dataset_households=2,
+        progress_events=only_events.append,
+        **common,
+    )
+    phases = {
+        str(event.get("phase"))
+        for event in only_events
+        if event.get("kind") == "calibration_epoch"
+    }
+    # The size machinery tags its own phases; the dense solve carries none.
+    assert {"size_search", "size_refit", "None"} <= phases
+    kinds = {str(event.get("kind")) for event in only_events}
+    assert {"calibration_epoch", "budget_probe", "budget_search_done"} <= kinds
+    # The event sink changes nothing about the solve itself.
+    np.testing.assert_array_equal(sized.dense_reference.weights, dense.weights)
+
+
 def test_size_solve_keeps_its_dense_reference_and_selection_seed_moves_only_the_draw():
     frame = _clone_frame()
     metrics = pd.DataFrame({"households": [1.0, 1.0, 1.0]}, index=[101, 102, 103])

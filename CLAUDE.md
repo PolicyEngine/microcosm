@@ -100,7 +100,14 @@ see README "Releasing & alerts". Publication also refuses a release whose
 build recorded staging telemetry that never reached its repo
 (`--allow-missing-staging` overrides); a build that declared `--no-staging`
 publishes without the flag. Never publish or promote artifacts as a side
-effect of another task.
+effect of another task. A UK rowwise run's **staged** bundle
+(`staged/<run_id>/` in the private repository, written by the build itself)
+is inspection evidence, not a release: it never moves `releases/` or
+`latest.json` and is not loadable through the certified loader. The build's
+default is to upload that bundle (hundreds of megabytes of licensed microdata)
+to the private repository; when you run `tools/build_uk_rowwise_candidate.py`
+yourself, pass `--staging-local-only` unless the operator asked for a staged
+upload.
 
 The US native-SPM-role source-enrichment lane is a separate release type:
 `tools/build_us_spm_role_enrichment.py` creates a local candidate from the exact
@@ -128,6 +135,31 @@ A sealed deny-list in `microcosm.build.us_runtime.h5_io` overrides this opt-in
 for known-excluded publications while preserving their scoring-only diagnostic
 path.
 
+`tools/build_us_acs_donor_receipt_qualification.py` is a third local,
+non-publishing lane. It takes one of two exact pinned Build P lineage parents
+and appends the three reported-receipt inputs current main's ACS transfer
+families require (`person.receives_wic`, `spm_unit.receives_snap`,
+`spm_unit.receives_tanf`), derived only through the maintained
+`us_runtime.cps_carried` producers and the pinned `PAW_TYP` restore. It
+replaces `person/table` and `spm_unit/table` with wider record types that keep
+every existing field's bytes, adds five attributes per new column, and
+rewrites the four pandas column-registration attributes on those two groups;
+every other HDF object and attribute is proven exact. It writes a local H5 and
+an aggregate receipt and cannot publish, stage or calibrate; its receipt is
+build evidence, not certification. See
+[the qualification note](docs/us-acs-donor-receipt-qualification.md).
+
+The independent US annual static-aging candidate builder lives in
+`microcosm.build.us_annual_static_aging`; it consumes a pinned published parent
+and writes local annual H5 files without running the base graph or publishing.
+See [the annual candidate guide](docs/us-annual-static-aging.md). Its completion
+manifest is build evidence, not release certification.
+Optional annual release metadata invokes additional artifact, identity, and
+acceptance checks within the normal release gates. Annual cuts use one pinned
+`<base_release>-annual-<YYYYMMDDTHHMMSSZ>-<hex8>` tag and cannot update latest
+pointers. Qualify source-enrichment bases before adding annual metadata; use
+the candidate guide's qualification order and tag-only publication route.
+
 ## Root journals are history, not state
 
 The root `PROGRESS*.md`, `FINAL_REPORT.md`, `*_COVERAGE_PROGRESS.md`, and
@@ -153,7 +185,7 @@ Update this guide in the same PR whenever the workspace layout, test
 commands, or release flow change. If you find it contradicting the repo,
 trust the repo and fix this file.
 
-UK size experiments use `tools/build_uk_rowwise_candidate.py --dataset-households`
+UK size experiments use `tools/build_uk_rowwise_candidate.py --release-role dense --dataset-households`
 with the same pool inputs as the dense candidate. The flag changes exported
 support, not clone K. Sizes remain candidate-only until their matched comparison
 and promotion scorecard are adjudicated; see

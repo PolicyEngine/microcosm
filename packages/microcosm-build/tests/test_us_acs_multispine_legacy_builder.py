@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from microcosm.build import FitWeightRecord
+from microcosm.build import FitWeightRecord, GateResult
 from microcosm.build.us_runtime.acs_sources import (
     AcsSourceArtifact,
     AcsSourceManifest,
@@ -163,9 +163,11 @@ def test_parser_exposes_production_defaults_and_transfer_controls() -> None:
     assert custom.donor_channel == "benefit_support"
 
 
+@pytest.mark.parametrize("staging_hours_pass", [True, False])
 def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    staging_hours_pass: bool,
 ) -> None:
     builder = _load_builder_module()
     manifest = _manifest()
@@ -268,6 +270,16 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         captured["puma_ladder_path"] = path
         return puma_ladder
 
+    def staging_hours_gate(frame, *, source_null_audit):
+        assert frame is combined
+        assert source_null_audit == [reviewed_null]
+        captured["staging_hours_gate"] = True
+        return GateResult(
+            name="acs_local_hours_signal",
+            passed=staging_hours_pass,
+            failures=() if staging_hours_pass else ("asec_puf: usual hours missing",),
+        )
+
     reviewed_null = {
         "entity": "person",
         "column": "pre_subsidy_rent",
@@ -280,13 +292,21 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     monkeypatch.setattr(builder, "_load_base_frame", lambda path: base)
     monkeypatch.setattr(
         builder,
+        "prepare_acs_local_hours_donor",
+        lambda frame, **kwargs: (frame, frame, {"source_agreement": True}),
+    )
+    monkeypatch.setattr(
+        builder,
         "_require_dense_donor_coverage",
         lambda frame, **kwargs: None,
     )
     monkeypatch.setattr(
         builder,
-        "declared_acs_transfer_target_families",
+        "acs_local_transfer_target_families",
         lambda: transfer_plan,
+    )
+    monkeypatch.setattr(
+        builder, "declared_acs_transfer_target_families", lambda: transfer_plan
     )
     monkeypatch.setattr(
         builder.acs_sources,
@@ -315,33 +335,43 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         lambda frame: 123_456,
     )
     monkeypatch.setattr(builder, "_write_dataset", fake_write)
+    monkeypatch.setattr(builder, "acs_local_hours_signal_gate", staging_hours_gate)
 
-    exit_code = builder.main(
-        [
-            "--base-h5",
-            str(base_h5),
-            "--out-h5",
-            str(output_h5),
-            "--summary",
-            str(summary_path),
-            "--source-manifest",
-            str(manifest_path),
-            "--inputs-dir",
-            str(inputs_dir),
-            "--puma-ladder",
-            str(puma_ladder_path),
-            "--max-households",
-            "7",
-            "--chunksize",
-            "2000",
-            "--acs-share",
-            "0.4",
-            "--seed",
-            "11",
-            "--geography-seed",
-            "19",
-        ]
-    )
+    arguments = [
+        "--base-h5",
+        str(base_h5),
+        "--out-h5",
+        str(output_h5),
+        "--summary",
+        str(summary_path),
+        "--source-manifest",
+        str(manifest_path),
+        "--inputs-dir",
+        str(inputs_dir),
+        "--puma-ladder",
+        str(puma_ladder_path),
+        "--max-households",
+        "7",
+        "--chunksize",
+        "2000",
+        "--acs-share",
+        "0.4",
+        "--seed",
+        "11",
+        "--geography-seed",
+        "19",
+    ]
+    if not staging_hours_pass:
+        with pytest.raises(
+            SystemExit, match="Local staging hours gate failed.*asec_puf"
+        ):
+            builder.main(arguments)
+        assert captured["staging_hours_gate"] is True
+        assert "write" not in captured
+        assert not output_h5.exists()
+        assert not summary_path.exists()
+        return
+    exit_code = builder.main(arguments)
 
     assert exit_code == 0
     assert captured["manifest_path"] == manifest_path
@@ -351,10 +381,12 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
     assert actual_base is base
     assert actual_source.max_households == 7
     assert build_options.pop("puma_ladder") is puma_ladder
+    assert callable(build_options.pop("hours_donor_factory"))
     assert build_options == {
         "chunksize": 2000,
         "acs_share": 0.4,
         "target_families": transfer_plan,
+        "hours_under15_policy": None,
         "donor_channel": builder.ACS_DONOR_CHANNEL_AUTO,
         "seed": 11,
         "n_estimators": 32,
@@ -379,6 +411,7 @@ def test_main_wires_verified_sources_transfer_audit_export_and_summary(
         "tract_geoid",
     ]
     assert summary["reviewed_engine_input_nulls"] == [reviewed_null]
+    assert summary["local_hours_gate"]["passed"] is True
     assert "pending_engine_input_nulls" not in summary
     assert summary["staging_export_peak_estimate_bytes"] == 123_456
     assert summary["geography_ladder"] == {
@@ -897,6 +930,64 @@ def test_group_quarters_rent_gap_is_explicit_structural_pending(
             ),
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "missing_rows,observed_rows,modeled_rows",
+    [(0, 1, None), (1, 0, None), (0, 2, None), (1, 0, 1), (1, 0, 2)],
+)
+def test_native_complete_hours_satisfy_coverage_without_a_fabricated_fit(
+    missing_rows, observed_rows, modeled_rows
+):
+    builder = _load_builder_module()
+    before = _frame(spines=("asec_puf", "acs_2024_1yr"))
+    tables = {entity: before.table(entity).copy() for entity in before.entities}
+    column = "weekly_hours_worked_before_lsr"
+    tables["person"][column] = [40.0, 0.0]
+    if modeled_rows is not None:
+        tables["person"].loc[1, "age"] = 12
+    frame = Frame(
+        tables,
+        before.schema,
+        {"household": before.weights_for("household")},
+    )
+    result = builder.AcsMultispineResult(
+        frame=frame,
+        provenance={
+            "imputed_inputs": [],
+            "native_inputs": {
+                column: {
+                    "entity": "person",
+                    "provenance": "acs_2024_1yr_native",
+                    "source_columns": ["WKHP", "AGEP", "WKL", "FWKHP"],
+                    "missing_rows": missing_rows,
+                    "observed_rows": observed_rows,
+                }
+            },
+        },
+    )
+    if modeled_rows is not None:
+        result.provenance["hours_modeled_completion"] = {
+            "policy": builder.ACS_UNDER15_ZERO_POLICY,
+            "version": 1,
+            "provenance": "modeled_assumption",
+            "column": column,
+            "modeled_rows": modeled_rows,
+        }
+    plan = {"person": {"source_operator_hours_worked": (column,)}}
+    if missing_rows != (modeled_rows or 0) or observed_rows + (modeled_rows or 0) != 1:
+        with pytest.raises(SystemExit):
+            builder._require_default_transfer_coverage(
+                result, before, target_families=plan
+            )
+    else:
+        coverage = builder._require_default_transfer_coverage(
+            result, before, target_families=plan
+        )
+        assert coverage["native_registered_inputs"] == [column]
+        assert coverage["registered_inputs"] == []
+        if modeled_rows is not None:
+            assert coverage["modeled_hours_rows"] == modeled_rows
 
 
 def test_reviewed_limitations_close_gq_and_sub_puma_gaps() -> None:

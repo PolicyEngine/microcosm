@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from hashlib import sha256
 from importlib.metadata import PackageNotFoundError, distribution
+from numbers import Integral
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -46,8 +47,10 @@ from microcosm.frame.materialize import (
     read_frame_table,
 )
 from microcosm.frame.rules import ExportContract
+from microcosm.frame.scaling import ScaleFactor, apply_scale
 from microcosm.frame.schema import EntitySchema, VariableMetadata
 from microcosm.frame.units import US_SCHEMA
+from microcosm.frame.weights import Weights
 
 __all__ = [
     "ConsumerReceipt",
@@ -1270,3 +1273,173 @@ class PolicyEngineUSEngine:
                 "Export round-trip verification failed; dtype changed on "
                 f"reload: {sorted(dtype_mismatches)}."
             )
+
+
+# ----------------------------------------------------------------------
+# Static aging support: the series PolicyEngine-US uprates by, and the
+# multi-year dataset a projected frame exports to.
+# ----------------------------------------------------------------------
+
+_POPULATION_SERIES = "calibration.gov.census.populations.total"
+_PER_CAPITA_SUFFIX = "_per_capita"
+_NATIONAL_TOTAL_PREFIXES = ("calibration.gov.cbo.", "calibration.gov.irs.soi.")
+
+
+def _dataset_uprating_path(system: Any, column: str) -> str | None:
+    """Use the same override precedence as PolicyEngine's dataset extension."""
+    from policyengine_us.data.economic_assumptions import MICRODATA_UPRATING_OVERRIDES
+
+    variable = system.variables.get(column)
+    if variable is None:
+        return None
+    return MICRODATA_UPRATING_OVERRIDES.get(column) or getattr(
+        variable, "uprating", None
+    )
+
+
+def _is_national_total(path: str) -> bool:
+    return path.startswith(_NATIONAL_TOTAL_PREFIXES) and not path.endswith(
+        _PER_CAPITA_SUFFIX
+    )
+
+
+def uprating_series(
+    columns: Iterable[str],
+    years: Iterable[int],
+    *,
+    system: Any | None = None,
+) -> tuple[dict[str, dict[int, float]], dict[str, dict[int, float]], dict[str, str]]:
+    """The series PolicyEngine-US uprates ``columns`` by, evaluated at ``years``.
+
+    Reads the dataset-extension override, then the variable's ``uprating``
+    parameter path. A CBO or IRS SOI path that names a national total (directly,
+    or through a ``<total>_per_capita`` series PolicyEngine-US derives) is returned as a
+    total, so static aging can solve its factor against the reweighted frame.
+    Any other path is a per-person rate or a price index and is returned as
+    an index. The population series that uprates the weights is skipped:
+    static aging carries the weights itself.
+
+    Args:
+        columns: Variable names to look up; unknown names and variables
+            without an uprating are skipped.
+        years: Years to evaluate every series at (include the base year).
+        system: A ``CountryTaxBenefitSystem``; the adapter's cached system
+            when ``None``.
+
+    Returns:
+        ``(totals, indices, column_series)``: two ``series -> {year: value}``
+        mappings and the ``column -> series`` mapping that uses them.
+    """
+    if system is None:
+        system = PolicyEngineUSEngine()._tax_benefit_system()
+    from policyengine_core.parameters.operations.get_parameter import get_parameter
+
+    years = tuple(int(year) for year in years)
+    totals: dict[str, dict[int, float]] = {}
+    indices: dict[str, dict[int, float]] = {}
+    column_series: dict[str, str] = {}
+    for column in columns:
+        path = _dataset_uprating_path(system, column)
+        if not path or path == _POPULATION_SERIES:
+            continue
+        parameter = get_parameter(system.parameters, path)
+        derived_from = getattr(parameter, "metadata", {}).get("derived_from")
+        if derived_from and _is_national_total(derived_from):
+            series_path, is_total = derived_from, True
+        elif _is_national_total(path):
+            series_path, is_total = path, True
+        else:
+            series_path, is_total = path, False
+        table = totals if is_total else indices
+        if series_path not in table:
+            series_parameter = get_parameter(system.parameters, series_path)
+            table[series_path] = {
+                year: float(series_parameter(f"{year}-01-01")) for year in years
+            }
+        column_series[column] = series_path
+    return totals, indices, column_series
+
+
+def multi_year_dataset(
+    bundle: Frame,
+    base_year: int,
+    years: Mapping[int, tuple[np.ndarray, Mapping[str, ScaleFactor]]],
+) -> Any:
+    """Build a ``USMultiYearDataset`` from a base-year bundle and its
+    projected years.
+
+    Args:
+        bundle: The base-year US-schema bundle.
+        base_year: The bundle's year.
+        years: ``year -> (household weights, column factors)`` for each
+            projected year after ``base_year``, as static aging produces them.
+            Factors may target numeric columns with a dataset uprating rule;
+            identifiers, memberships, weights and demographics remain fixed.
+            A ``SignedScale`` applies separate positive factors to positive
+            and negative base-year amounts, preserving each record's sign.
+
+    Returns:
+        A ``policyengine_us.data.USMultiYearDataset`` holding the base year
+        and every projected year, with each year's household weights and
+        factored columns. The engine reads it as already extended and applies
+        no uprating of its own.
+    """
+    from policyengine_us.data import USMultiYearDataset
+
+    if any(not isinstance(year, Integral) or year <= base_year for year in years):
+        raise ValueError(
+            f"Projection years must be integers after base year {base_year}."
+        )
+    engine = PolicyEngineUSEngine()
+    base_tables = engine._engine_tables(bundle)
+    protected_columns = (
+        {bundle.schema.entity_id_column(entity) for entity in bundle.entities}
+        | {
+            bundle.schema.membership_column(group)
+            for group in bundle.schema.group_entities
+        }
+        | {f"{entity}_weight" for entity in bundle.entities}
+    )
+    datasets = [engine._build_dataset(base_tables, base_year)]
+    for year in sorted(years):
+        weights, factors = years[year]
+        try:
+            weights = Weights(
+                values=weights, kind=bundle.weights_for("household").kind
+            ).values
+        except ValueError as exc:
+            raise ValueError(f"{year}: invalid household weights: {exc}") from exc
+        if len(weights) != len(base_tables["household"]):
+            raise ValueError(
+                f"{year}: {len(weights)} household weights for "
+                f"{len(base_tables['household'])} households."
+            )
+        tables = {name: table.copy() for name, table in base_tables.items()}
+        tables["household"]["household_weight"] = weights
+        for column, factor in factors.items():
+            owner = next(
+                (name for name, table in tables.items() if column in table.columns),
+                None,
+            )
+            if owner is None:
+                raise ValueError(
+                    f"{year}: factored column {column!r} is not in the bundle."
+                )
+            if (
+                column in protected_columns
+                or not _dataset_uprating_path(engine._tax_benefit_system(), column)
+                or engine.variable_metadata(column).dtype not in ("float", "int")
+                or pd.api.types.is_bool_dtype(tables[owner][column].dtype)
+            ):
+                raise ValueError(f"{year}: column {column!r} cannot be factored.")
+            try:
+                values = apply_scale(
+                    tables[owner][column].to_numpy(dtype=float), factor
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    f"{year}: cannot scale column {column!r}: {exc}"
+                ) from exc
+            tables[owner][column] = values
+        datasets.append(engine._build_dataset(tables, year))
+    return USMultiYearDataset(datasets=datasets)

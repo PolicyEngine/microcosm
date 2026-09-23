@@ -86,29 +86,7 @@ UK_INPUT_MASS_REFERENCE_SCOPE_NOTE = (
     "SPI-channel-exclusive columns are comparable only through per-reference "
     "reviewed exclusions."
 )
-UK_INPUT_MASS_REVIEWED_EXCLUSIONS = {
-    "charitable_investment_gifts": {
-        "reason": (
-            "SPI-channel-exclusive column on a channel-blind reference: the "
-            "efrs-post-calibration incumbent structurally lacks the SPI clone "
-            "channel, so its reference mass is survey-side scraps while the "
-            "staged candidate's mass is the admin-captured SPI channel "
-            "functioning as designed (microcosm#630 case 2). Compared "
-            "normally against any future channel-aware reference."
-        ),
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#630",
-        "approved_on": "2026-08-20",
-        "expires_on": "2027-02-20",
-    },
-    "owned_land": {
-        "reason": "Sparse heavy-tailed WAS donor column (0.7 percent weighted nonzero share) whose weighted total is dominated by a handful of large farm/estate records: the spine-e stability receipt (data/ukds/acceptance/757-swap/owned_land_stability_receipt_spine_e.json) measures a 53.8 percent national and 96.7 percent West Midlands swing between adjacent seeds on the 25-stage candidate \u2014 the realization-variance class the archived incumbent data repo records at uk-data#448 (4.6x Wales swing across releases), reproduced from the E5 instrument's method. Register parity at this grain stays not meaningful; the one-month expiry keeps the end-of-workstream revisit registered on microcosm#145 live (winsorised donor or separate land imputation are the candidate remedies).",
-        "approved_by": "juaristi22",
-        "adjudication": "microcosm#714",
-        "approved_on": "2026-08-26",
-        "expires_on": "2026-09-26",
-    },
-}
+UK_INPUT_MASS_REVIEWED_EXCLUSIONS: dict[str, dict[str, str]] = {}
 GIT_COMMIT = "5fa48f07436a806ad75ff76fd22cfb8613bddbe0"
 DATASET_SHA = "d" * 64
 CALIBRATION_SHA = "a" * 64
@@ -138,19 +116,19 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "4456fa0956cde418ae23a60fe72a414428eefab446fd044aa14adf1b6e084fcd"
+    "211abff22b4eedf9cf69f4b43a6f77ca8966d61a386c1804c3fdb093b0e27aa0"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "ff27efe67f3cdb8292dfe8da20a6a98cc20f4e1f77ba61eff2ba206b8eb2fc19"
+    "ee6b1eb9451866654bfeb0d2090a8412e08b8c2caa8bfb16fb9aa3c5b5002d84"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "61758f1d9700dd94564d592fafe36b4fc4881b8b77c785349d1756da0df2b0d4"
+    "55cbe8b9f9dab5817f02c2f690965dfae6406c16facecd9f7ab3b08ba06c272e"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
 )
 UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "c9211cbb923e13f4850b834b5bdb1ff1de87fe9237c332b5de63f01ed417aa2d"
+    "17545916b6926c77e9f8fc90876266cc3f8e4a381079bafc8d1c63fa8df43c04"
 )
 #: Spec entry id -> (neutral gate name, phase, legacy detail-schema name).
 UK_GATE_BATTERY_ENTRIES = {
@@ -220,6 +198,11 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_hmrc_cgt_asset_type_spine_summary": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
     "uk_stage_age_tail_targets": ("stage_health", "assembled", None),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled", None),
     "uk_ledger_compile_parity_local_incumbent_2025": (
@@ -262,6 +245,11 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_take_up_signal": ("take_up_signal", "terminal", "take_up_signal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled", "enum_domain"),
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled", "enum_domain"),
+    "uk_capital_gains_asset_type_enum_domain": (
+        "enum_domain",
+        "transferred",
+        "enum_domain",
+    ),
     "uk_uc_deduction_combination_enum_domain": (
         "enum_domain",
         "terminal",
@@ -1192,6 +1180,7 @@ def _gate_battery_payload(
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
         "uk_stage_cgt_band_donors_support": "cgt_band_donors",
         "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",
+        "uk_stage_hmrc_cgt_asset_type_spine_summary": "hmrc_cgt_asset_type_spine",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
         "uk_stage_age_tail_targets": "age_tail",
@@ -5579,6 +5568,7 @@ def _green_uk_certification(
             "sha256": "b" * 64,
             "size_bytes": 1,
         },
+        "parent_spine": {"sha256": "a" * 64},
         "parts": parts,
         "spec": {
             "gates_manifest_sha256": contract._UK_GATE_BATTERY_GATES_MANIFEST_SHA256,
@@ -5669,6 +5659,20 @@ def test_uk_release_certification_refusals(monkeypatch) -> None:
     certification["diagnostics_sha256"] = "f" * 64
     assert any(
         "diagnostics_sha256" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+
+    # The parent spine the release cut measured is named by digest.
+    certification = _green_uk_certification(key)
+    certification["parent_spine"] = {"sha256": "not-a-digest"}
+    assert any(
+        "parent_spine.sha256" in line
+        for line in _certification_failures(certification, monkeypatch, key)
+    )
+    certification = _green_uk_certification(key)
+    del certification["parent_spine"]
+    assert any(
+        "must carry exactly the certification fields" in line
         for line in _certification_failures(certification, monkeypatch, key)
     )
 

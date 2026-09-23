@@ -10,6 +10,16 @@ ready, never merged).
 > PR #911, last touched 2026-09-12); writing here instead of there avoids
 > destroying it.
 
+> **2026-09-21 — superseded in part.** This is the receipt of the lane as it
+> stood at `0e4b20de7`. An independent source review of #948 was applied on the
+> same branch afterwards, and §1's placement account (item 3 below) no longer
+> describes the code: the blocking refusal moved into the **batched pre-export
+> gate group** on the export frame, so it refuses before the H5 and NPZ writes
+> and with every other failing gate on record, and `--skip-reform-validation`
+> no longer disables it. `_assert_spm_composition` was replaced by
+> `_spm_composition_gate_failures`. Everything else here — the rule read from
+> the installed engine, the base measurement, the role question in §6 — stands.
+
 ## 1. What the check does, and where it fires
 
 ### The rule it reproduces, read at this head
@@ -81,7 +91,11 @@ inventing an adult is not a fix.
    `is_household_head` yes, `is_household_spouse` yes, role **no**). Placed
    *after* the batched pre-export raise on purpose: that batching exists so one
    run reports every failing gate at once, and an earlier raise would destroy
-   the record it protects.
+   the record it protects. **(2026-09-21: superseded — the review pointed out
+   that `export_frame` is built well before that raise, so the composition is
+   now evaluated there and its verdict *joins* the batch rather than raising
+   separately. Both properties are kept: the full failure record, and a refusal
+   before the export and NPZ writes.)**
 4. **The same tool, advisory only**, on the base frame before target
    compilation. **I chose not to make this blocking** — since the L0/refit
    export selects a subset, a hard refusal on the pool would reject a run that
@@ -295,8 +309,9 @@ remedy without choosing how the remedy is delivered.
 a refusal, because the L0/refit export selects a subset of the pool, so a
 blocking check there could reject a run that would have succeeded. If you would
 rather it block — accepting that it can refuse a run whose selection would have
-dropped every offender — that is a one-line change from
-`_spm_composition_report` to `_assert_spm_composition`.
+dropped every offender — that is a one-line change: hand the advisory's report
+to the batch the way the export-frame gate does. *(2026-09-21: written when the
+blocking form was `_assert_spm_composition`, which no longer exists.)*
 
 ## 7. Test summaries (verbatim)
 

@@ -264,8 +264,14 @@ def run_uk_release_cut_battery(
     input_mass_reference: Mapping[str, Any],
     exclusions_evaluated_on: date,
     gate_registry: Mapping[str, Any] | None = None,
+    spine_frame: Any | None = None,
 ) -> dict[str, Any]:
     """Run the 18 national gates over the calibrated candidate, signed.
+
+    ``spine_frame`` is the frame the spine build produced, the evidence the
+    input-coverage gate's family build-state half reads (typed importance
+    weights and each stage's mass receipt); the calibrated candidate is the
+    evidence for everything else.
 
     Always release-candidate strict: this battery exists to certify a cut,
     so an ``evidence_absent`` gap blocks rather than being tolerated, and a
@@ -306,6 +312,8 @@ def run_uk_release_cut_battery(
     }
     if fit_weight_records is not None:
         terminal_artifacts["fit_weight_records"] = fit_weight_records
+    if spine_frame is not None:
+        terminal_artifacts["spine_frame"] = spine_frame
     battery.run_phase(
         "terminal", EvidenceContext(frame=frame, artifacts=terminal_artifacts)
     )
@@ -332,6 +340,7 @@ def compose_uk_release_certification(
     candidate_name: str,
     candidate_path: Path,
     candidate_sha256: str,
+    spine_sha256: str,
     spine_report_path: Path,
     seam_report_path: Path,
     release_cut_report_path: Path,
@@ -340,6 +349,7 @@ def compose_uk_release_certification(
     score_receipt_path: Path,
     exclusions_evaluated_on: date,
     certification_path: Path,
+    reviewed_unresolvable_measures: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Verify the three scoped parts and compose the signed certification.
 
@@ -406,11 +416,17 @@ def compose_uk_release_certification(
         build_record=build_record,
         candidate_path=candidate_path,
         candidate_sha256=candidate_sha256,
+        spine_sha256=spine_sha256,
         release_id=release_id,
     )
     score_receipt_bytes = score_receipt_path.read_bytes()
     score_receipt = json.loads(score_receipt_bytes)
-    _verify_score_receipt(score_receipt, candidate_sha256=candidate_sha256)
+    _verify_score_receipt(
+        score_receipt,
+        candidate_sha256=candidate_sha256,
+        reviewed_unresolvable_measures=reviewed_unresolvable_measures,
+        evaluated_on=exclusions_evaluated_on,
+    )
 
     full_digests = _full_manifest_digests()
     run_config = build_record.get("run_config", {})
@@ -425,6 +441,9 @@ def compose_uk_release_certification(
             "sha256": candidate_sha256,
             "size_bytes": candidate_path.stat().st_size,
         },
+        # The spine whose stage receipts the release cut measured: bound to
+        # the parent the calibration recorded, never an operator's choice.
+        "parent_spine": {"sha256": spine_sha256},
         "parts": part_summaries,
         "spec": {
             "gates_manifest_sha256": full_digests["gates_manifest_sha256"],
@@ -449,6 +468,7 @@ def compose_uk_release_certification(
         "score_receipt": {
             "filename": score_receipt_path.name,
             "sha256": hashlib.sha256(score_receipt_bytes).hexdigest(),
+            "evaluation": _score_receipt_summary(score_receipt),
         },
         "exclusions_evaluated_on": exclusions_evaluated_on.isoformat(),
         "shippable": True,
@@ -660,8 +680,25 @@ def _verify_identity_join(
     build_record: Mapping[str, Any],
     candidate_path: Path,
     candidate_sha256: str,
+    spine_sha256: str,
     release_id: str,
 ) -> None:
+    # The spine supplied as stage evidence must be the parent the
+    # calibration consumed: the build record carries that parent's digest
+    # twice (input posture and source pins), and both must name it.
+    recorded_parents = {
+        "input_posture.sha256": (build_record.get("input_posture") or {}).get("sha256"),
+        "source_pins.input_h5.sha256": (
+            (build_record.get("source_pins") or {}).get("input_h5") or {}
+        ).get("sha256"),
+    }
+    if any(value != spine_sha256 for value in recorded_parents.values()):
+        raise UKReleaseCertificationError(
+            "the spine supplied as stage evidence is not the parent the "
+            f"calibration recorded: build record {recorded_parents}, supplied "
+            f"{spine_sha256!r}; the family build-state gates were measured on "
+            "another build's receipts."
+        )
     sidecar_binding = spine_sidecar.get("spine_gate_report")
     if not isinstance(sidecar_binding, Mapping):
         raise UKReleaseCertificationError(
@@ -728,7 +765,17 @@ def _verify_identity_join(
         )
 
 
-def _verify_score_receipt(receipt: Mapping[str, Any], *, candidate_sha256: str) -> None:
+#: The verdict a certifiable score receipt must carry (candidate_score).
+UK_SCORE_RECEIPT_VERDICT_PASSED = "passed"
+
+
+def _verify_score_receipt(
+    receipt: Mapping[str, Any],
+    *,
+    candidate_sha256: str,
+    reviewed_unresolvable_measures: Mapping[str, Any] | None = None,
+    evaluated_on: date | None = None,
+) -> None:
     artifacts = receipt.get("artifacts")
     scored = (
         artifacts.get("candidate", {}).get("sha256")
@@ -742,6 +789,124 @@ def _verify_score_receipt(receipt: Mapping[str, Any], *, candidate_sha256: str) 
             f"({candidate_sha256!r}); the rule-1 score must be measured on "
             "this candidate's bytes."
         )
+    # Rule 1 (microcosm#578) is decided by the scorer on the surface both
+    # artifacts can materialize and signed into the receipt; the certifier
+    # refuses anything short of a passed verdict, so publication never runs
+    # on an unpassed evaluation. Pruned rows are reported, never a failure,
+    # but the surface must close over them.
+    evaluation = receipt.get("evaluation")
+    if not isinstance(evaluation, Mapping):
+        raise UKReleaseCertificationError(
+            "the score receipt carries no evaluation block; re-score the "
+            "candidate with tools/score_uk_national_candidate.py so the "
+            "rule-1 verdict is signed run evidence."
+        )
+    surface = evaluation.get("scored_surface")
+    counts = (
+        {key: surface.get(key) for key in ("n_scored", "n_pruned", "n_surface")}
+        if isinstance(surface, Mapping)
+        else {}
+    )
+    if (
+        len(counts) != 3
+        or not all(isinstance(value, int) and value >= 0 for value in counts.values())
+        or counts["n_scored"] + counts["n_pruned"] != counts["n_surface"]
+        or counts["n_scored"] == 0
+    ):
+        raise UKReleaseCertificationError(
+            "the score receipt's scored surface does not close: n_scored + "
+            "n_pruned must equal n_surface with at least one scored target."
+        )
+    verdict = evaluation.get("verdict")
+    if verdict != UK_SCORE_RECEIPT_VERDICT_PASSED:
+        raise UKReleaseCertificationError(
+            f"the score receipt's evaluation verdict is {verdict!r}, not "
+            f"{UK_SCORE_RECEIPT_VERDICT_PASSED!r}: rule 1 (microcosm#578) is "
+            "not met on the common surface, so the cut cannot be certified."
+        )
+    # Every pruned measure must stand on the committed reviewed register:
+    # the scorer's inference is re-checked here against the register of
+    # record, so a receipt scored under another register cannot certify.
+    pruned = receipt.get("incumbent_unresolvable_pruned")
+    measures = pruned.get("measures", []) if isinstance(pruned, Mapping) else []
+    if measures:
+        from microcosm.build.uk_runtime.candidate_score import (
+            load_uk_incumbent_unresolvable_measures,
+            uk_incumbent_unresolvable_register_digest,
+        )
+
+        reviewed = (
+            load_uk_incumbent_unresolvable_measures()
+            if reviewed_unresolvable_measures is None
+            else reviewed_unresolvable_measures
+        )
+        unlisted = sorted(str(m) for m in measures if str(m) not in reviewed)
+        if unlisted:
+            raise UKReleaseCertificationError(
+                "the score receipt pruned targets through measure(s) not on the "
+                f"reviewed incumbent-unresolvable register: {unlisted}; pruning "
+                "from both arms stands only on a signed entry, so the cut "
+                "cannot be certified on this receipt."
+            )
+        # The receipt names the register it was scored under; against the
+        # committed register of record that digest must be the committed
+        # one, so a receipt scored under another register cannot certify.
+        if reviewed_unresolvable_measures is None:
+            named = (
+                pruned.get("reviewed_register", {}).get("sha256")
+                if isinstance(pruned.get("reviewed_register"), Mapping)
+                else None
+            )
+            committed = uk_incumbent_unresolvable_register_digest()["sha256"]
+            if named != committed:
+                raise UKReleaseCertificationError(
+                    "the score receipt was scored under incumbent-unresolvable "
+                    f"register {named!r}, not the committed register "
+                    f"({committed}); re-score the candidate on the register of "
+                    "record."
+                )
+        # An entry suppresses only inside its window, at the certification's
+        # own evaluation date: a receipt scored while an entry was in force
+        # does not outlive the entry.
+        if evaluated_on is not None:
+            out_of_window = {
+                str(m): (
+                    f"expired {reviewed[str(m)].expires_on}"
+                    if reviewed[str(m)].expired(evaluated_on)
+                    else f"takes force {reviewed[str(m)].approved_on}"
+                )
+                for m in measures
+                if reviewed[str(m)].expired(evaluated_on)
+                or reviewed[str(m)].premature(evaluated_on)
+            }
+            if out_of_window:
+                raise UKReleaseCertificationError(
+                    "the score receipt pruned targets through reviewed "
+                    "incumbent-unresolvable entries outside their window on "
+                    f"{evaluated_on.isoformat()}: {out_of_window}; renew the "
+                    "adjudication or re-score the candidate."
+                )
+
+
+def _score_receipt_summary(receipt: Mapping[str, Any]) -> dict[str, Any]:
+    evaluation = receipt["evaluation"]
+    surface = evaluation["scored_surface"]
+    rule_1 = evaluation.get("rule_1")
+    losses = (
+        {
+            "candidate_full_loss": rule_1.get("candidate_full_loss"),
+            "incumbent_full_loss": rule_1.get("incumbent_full_loss"),
+        }
+        if isinstance(rule_1, Mapping)
+        else {}
+    )
+    return {
+        "verdict": evaluation["verdict"],
+        "n_scored": surface["n_scored"],
+        "n_pruned": surface["n_pruned"],
+        "n_surface": surface["n_surface"],
+        **losses,
+    }
 
 
 def _status_census(payload: Mapping[str, Any]) -> dict[str, int]:

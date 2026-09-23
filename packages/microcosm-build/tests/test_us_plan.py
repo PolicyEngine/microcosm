@@ -1028,6 +1028,17 @@ class TestUsSources:
             "uk_data_target_parity.json",
             "tools/extract_uk_local_registry_fixture.py",
             "UK_COVERAGE_PROGRESS.md",
+            # The microcosm#968 poverty-diagnosis evidence names the retired
+            # data package only as frozen provenance: the incumbent H5's
+            # sha-locked HF cache path inside recorded receipts and the
+            # measurement scripts, and the evaluation venv the legs ran
+            # under. Nothing is imported or executed from it.
+            "docs/evidence/uk-poverty-968/receipts.json",
+            "docs/evidence/uk-poverty-968/outputs/poverty_audit.json",
+            "docs/evidence/uk-poverty-968/outputs/scorecard_efrs_1_57_3.json",
+            "docs/evidence/uk-poverty-968/scripts/measure_968_basis_swap.py",
+            "docs/evidence/uk-poverty-968/scripts/measure_968_poverty_audit.py",
+            "docs/evidence/uk-poverty-968/scripts/measure_968_tail_profile.py",
         }
         checked_suffixes = {".py", ".toml", ".md", ".json"}
         offenders: list[tuple[str, str]] = []

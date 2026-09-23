@@ -416,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "4456fa0956cde418ae23a60fe72a414428eefab446fd044aa14adf1b6e084fcd"
+    "211abff22b4eedf9cf69f4b43a6f77ca8966d61a386c1804c3fdb093b0e27aa0"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "ff27efe67f3cdb8292dfe8da20a6a98cc20f4e1f77ba61eff2ba206b8eb2fc19"
+    "ee6b1eb9451866654bfeb0d2090a8412e08b8c2caa8bfb16fb9aa3c5b5002d84"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "61758f1d9700dd94564d592fafe36b4fc4881b8b77c785349d1756da0df2b0d4"
+    "55cbe8b9f9dab5817f02c2f690965dfae6406c16facecd9f7ab3b08ba06c272e"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -442,6 +442,7 @@ _UK_GATE_BATTERY_ENTRY_LEGACY_NAMES = {
     "uk_take_up_signal": "take_up_signal",
     "uk_brma_enum_domain": "enum_domain",
     "uk_ons_household_type_enum_domain": "enum_domain",
+    "uk_capital_gains_asset_type_enum_domain": "enum_domain",
     "uk_uc_deduction_combination_enum_domain": "enum_domain",
     "uk_student_loan_plan_enum_domain": "enum_domain",
     "uk_target_surface": "target_surface",
@@ -486,6 +487,10 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "stage_health",
         "transferred",
     ),
+    "uk_stage_hmrc_cgt_asset_type_spine_summary": (
+        "stage_health",
+        "transferred",
+    ),
     "uk_stage_salary_sacrifice_realization": (
         "stage_health",
         "transferred",
@@ -512,6 +517,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     "uk_take_up_signal": ("take_up_signal", "terminal"),
     "uk_brma_enum_domain": ("enum_domain", "assembled"),
     "uk_ons_household_type_enum_domain": ("enum_domain", "assembled"),
+    "uk_capital_gains_asset_type_enum_domain": ("enum_domain", "transferred"),
     "uk_uc_deduction_combination_enum_domain": ("enum_domain", "terminal"),
     "uk_student_loan_plan_enum_domain": ("enum_domain", "terminal"),
     "uk_calibration_reference_coverage": (
@@ -558,6 +564,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_cgt_incidence_clone_mass",
         "uk_stage_cgt_band_donors_support",
         "uk_stage_hmrc_cgt_gains_spine_summary",
+        "uk_stage_hmrc_cgt_asset_type_spine_summary",
         "uk_stage_salary_sacrifice_realization",
         "uk_stage_student_loans_realization",
         "uk_stage_age_tail_targets",
@@ -569,7 +576,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "c9211cbb923e13f4850b834b5bdb1ff1de87fe9237c332b5de63f01ed417aa2d"
+    "17545916b6926c77e9f8fc90876266cc3f8e4a381079bafc8d1c63fa8df43c04"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
@@ -607,6 +614,10 @@ _UK_DENSE_RELEASE_ID = "microcosm-uk-2024-25-dense"
 _UK_DENSE_CUT_TAG_RE = re.compile(
     re.escape(_UK_DENSE_RELEASE_ID) + r"-[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}"
 )
+#: The dense line's published microdata filename; mirrors
+#: ``tools/assemble_uk_dense_release_dir.py::_DATASET_FILENAME`` (lockstep test
+#: in the build shard's contract-pin suite).
+_UK_DENSE_DATASET_FILENAME = "microcosm_uk_2024_25_dense.h5"
 _UK_DENSE_GATE_REPORT_FILE = "uk_local_gates.json"
 _UK_DENSE_SCORE_RECEIPT_FILE = "score_vs_incumbent.json"
 _UK_DENSE_SOURCE_COVERAGE_FILE = "uk_source_coverage.json"
@@ -693,6 +704,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
     "spine": frozenset(
         {
             "uk_brma_enum_domain",
+            "uk_capital_gains_asset_type_enum_domain",
             "uk_ons_household_type_enum_domain",
             "uk_stage_age_tail_targets",
             "uk_stage_cgt_band_donors_support",
@@ -701,6 +713,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_etb_vat_support",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_frs_relationships_composition",
+            "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_lcfs_consumption_energy_rake",
@@ -750,10 +763,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "f033f570a74cad4f0cef99e3e7624f17a083ddc72204625f548066bd4652525c"
+            "778f5d32d421c4fb2cc8c37ef4232093070d2606ec17bf9d4f7ee1c1e6de8b8d"
         ),
         "policy_sha256": (
-            "6a054c1630d0728c0259a17a4c29bfdaccf0c937c6788b3a958ffa7895d02d43"
+            "c59f645c51ec234e91bd582df2a1576116f2c67183c2cb015f51d3f1a2be9ea7"
         ),
     },
     "calibration_seam": {
@@ -766,10 +779,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "7fbf9963c58a3c4ab165a0c1e1d6753243bf48fb685def436b7d394c8dabe57b"
+            "c65d20de918abd8dd2c31c89a49ed51f0ca75a7c5f31ef00e61089406c4db401"
         ),
         "policy_sha256": (
-            "e4146dd4102bb0371a11913c94b41d9ed0114f65d81ef8e9c431c24549edf1bc"
+            "a7250c519e79e22d366316cd4943f5f4bd2cc86a0e76b919ee2ff2eacb2335f3"
         ),
     },
 }
@@ -780,6 +793,9 @@ _UK_CERTIFICATION_REQUIRED_FIELDS = frozenset(
         "country",
         "release_id",
         "candidate",
+        # The spine whose stage receipts the release cut measured, bound by
+        # the certifier to the parent the calibration recorded.
+        "parent_spine",
         "parts",
         "spec",
         "doctrine",
@@ -1172,6 +1188,7 @@ def _check_release_manifest(
     failures: list[str],
     *,
     expected_schema_version: object = RELEASE_MANIFEST_SCHEMA_VERSION,
+    annual_revision: str | None = None,
 ) -> None:
     schema_version = manifest.get("schema_version")
     if schema_version is None:
@@ -1270,14 +1287,18 @@ def _check_release_manifest(
                         f"release_manifest.json artifact {key!r} is missing {field!r}."
                     )
             revision = entry.get("revision")
-            revision_matches_release = revision == release_id or (
-                release_id == _UK_NATIONAL_RELEASE_ID
-                and isinstance(revision, str)
-                and revision.startswith(release_id + "-")
-                and _UK_NATIONAL_REVISION_SUFFIX_RE.fullmatch(
-                    revision[len(release_id) + 1 :]
+            revision_matches_release = (
+                revision == release_id
+                or (annual_revision is not None and revision == annual_revision)
+                or (
+                    release_id == _UK_NATIONAL_RELEASE_ID
+                    and isinstance(revision, str)
+                    and revision.startswith(release_id + "-")
+                    and _UK_NATIONAL_REVISION_SUFFIX_RE.fullmatch(
+                        revision[len(release_id) + 1 :]
+                    )
+                    is not None
                 )
-                is not None
             )
             # A present-but-non-string revision must fail here rather than
             # slide past the isinstance guard: publish collects only string
@@ -3077,6 +3098,15 @@ def _check_uk_release_certification(
         failures.append(
             f"{file} release_id {certification.get('release_id')!r} does not "
             f"match the release under validation ({release_id!r})."
+        )
+    parent_spine = certification.get("parent_spine")
+    parent_sha = (
+        parent_spine.get("sha256") if isinstance(parent_spine, Mapping) else None
+    )
+    if not isinstance(parent_sha, str) or not _SHA256_RE.match(parent_sha):
+        failures.append(
+            f"{file} parent_spine.sha256 must be the sha256 hex digest of the "
+            "spine the calibration recorded as its parent."
         )
 
     parts = certification.get("parts")
@@ -5118,6 +5148,7 @@ def validate_release_dir(
     # than a silent fallback.
     role: str = NATIONAL_DEFAULT_DATASET_ROLE
     manifest_probe_path = release_dir / "release_manifest.json"
+    annual_extension = None
     if manifest_probe_path.is_file():
         try:
             manifest_probe = json.loads(manifest_probe_path.read_text())
@@ -5146,6 +5177,19 @@ def validate_release_dir(
                         f"{manifest_probe['release_type']!r}."
                     ],
                 )
+        if isinstance(manifest_probe, Mapping):
+            from microcosm.data.annual_projections import (
+                validate_annual_projection_extension,
+            )
+
+            try:
+                annual_extension = validate_annual_projection_extension(
+                    release_dir, manifest_probe, artifact_root=artifact_root
+                )
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                raise ReleaseContractError(
+                    release_dir, [f"annual projection extension: {exc}"]
+                ) from exc
         if isinstance(manifest_probe, Mapping) and "dataset_role" in manifest_probe:
             declared_role = manifest_probe["dataset_role"]
             if declared_role not in (
@@ -5191,7 +5235,12 @@ def validate_release_dir(
         manifest = _load_json(release_manifest_path, failures)
         if manifest is not None:
             release_manifest = manifest
-            _check_release_manifest(manifest, release_id, failures)
+            _check_release_manifest(
+                manifest,
+                release_id,
+                failures,
+                annual_revision=annual_extension.revision if annual_extension else None,
+            )
 
     calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
     if calibration_diagnostics_path.is_file():
@@ -6167,7 +6216,7 @@ def _check_uk_dense_surface_files(
         )
         return
     try:
-        dataset = _artifact_by_path(release_manifest, "microcosm_uk_2025_dense.h5")
+        dataset = _artifact_by_path(release_manifest, _UK_DENSE_DATASET_FILENAME)
         expected = {
             "candidate_dataset_sha256": dataset["sha256"],
             "candidate_manifest_sha256": hashes["rowwise_candidate_manifest.json"],

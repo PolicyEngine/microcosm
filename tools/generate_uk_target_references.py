@@ -127,6 +127,7 @@ def main() -> None:
         value_operation_by_target_id=_value_operation_by_target_id(contract),
         selector_pins_by_target_id=_selector_pins(contract),
         signed_exclusions_by_target_id=_signed_exclusions(contract),
+        signed_row_exclusions_by_target_id=_signed_row_exclusions(contract),
         reference_metadata_by_target_id=_reference_metadata(contract),
         binding_vocabulary=POLICYENGINE_BINDING_KEYS,
         source_fact_feed=args.source_fact_feed or str(args.ledger_facts),
@@ -544,12 +545,57 @@ def _signed_exclusions(contract: Mapping[str, Any]) -> dict[str, str]:
     exclusions = {
         str(entry["target_id"]): str(entry["rationale"])
         for entry in resource["exclusions"]
+        if "row" not in entry
     }
     return {
         target_id: rationale
         for target_id, rationale in exclusions.items()
         if target_id in target_ids
     }
+
+
+def _signed_row_exclusions(
+    contract: Mapping[str, Any],
+) -> dict[str, dict[tuple[str, str], str]]:
+    """Row-level sign-outs from the same register: one fan-out row of a target.
+
+    An entry carrying ``row: {dimension, value}`` signs out the fan-out row
+    whose selector pins that dimension value (the HMRC CGT age band 0-15,
+    which the frame cannot carry; the size-of-gain band below the annual
+    exempt amount) and leaves the target's other rows active.
+    """
+
+    target_ids = {str(target["target_id"]) for target in contract.get("targets", ())}
+    resource = _signed_exclusion_register()
+    rows: dict[str, dict[tuple[str, str], str]] = {}
+    for entry in resource["exclusions"]:
+        row = entry.get("row")
+        if row is None:
+            continue
+        target_id = str(entry["target_id"])
+        if target_id not in target_ids:
+            continue
+        if not isinstance(row, Mapping) or set(row) != {"dimension", "value"}:
+            raise ValueError(
+                f"Signed exclusion for {target_id!r} declares a malformed row "
+                f"{row!r}; expected exactly dimension and value."
+            )
+        key = (str(row["dimension"]), json.dumps(row["value"], sort_keys=True))
+        rows.setdefault(target_id, {})[key] = str(entry["rationale"])
+    return rows
+
+
+def _signed_exclusion_register() -> dict[str, Any]:
+    return json.loads(
+        Path(__file__)
+        .resolve()
+        .parents[1]
+        .joinpath(
+            "packages/microcosm-build/src/microcosm/build/uk/"
+            "target_reference_signed_exclusions.json"
+        )
+        .read_text()
+    )
 
 
 def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]]:
@@ -583,6 +629,33 @@ def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]
     return result
 
 
+#: Contract-level naming rule for fan-out rows whose publisher band carries
+#: no incumbent registry name: the row takes ``<metric_name>_<lower edge>``,
+#: the same form as the incumbent banded names, so a published band the
+#: incumbent never carried is authored rather than silently dropped.
+FANOUT_ROW_NAMING_METRIC_BAND_LOWER = "metric_name_band_lower"
+
+_CGT_GAIN_BAND_VALUE = re.compile(r"^gain_(\d+)_(?:to_\d+|plus)$")
+
+
+def _cgt_gain_band_lower(fact: Mapping[str, Any]) -> int | None:
+    """Lower edge of an HMRC CGT size-of-gain band value id, if the fact has one."""
+
+    dimensions = fact.get("dimensions") or {}
+    if not isinstance(dimensions, Mapping):
+        return None
+    value = dimensions.get("cgt_gain_band")
+    if not isinstance(value, str):
+        return None
+    match = _CGT_GAIN_BAND_VALUE.match(value)
+    if match is None:
+        raise ValueError(
+            f"Unrecognised HMRC CGT gain band value {value!r}; expected "
+            "gain_<lower>_to_<upper> or gain_<lower>_plus."
+        )
+    return int(match.group(1))
+
+
 def _fanout_name(
     target: Mapping[str, Any],
     fact: Mapping[str, Any],
@@ -591,7 +664,29 @@ def _fanout_name(
     target_id = str(target["target_id"])
     value_id = str(fact.get("layout", {}).get("groupby_value_id") or "")
     preferred_tokens, fallback_tokens = _dimension_tokens(fact)
+    band_lower = _cgt_gain_band_lower(fact)
     candidates = inverse_mapping.get(target_id, ())
+    if band_lower is not None:
+        # Incumbent banded names end in the band's lower edge; a substring
+        # match would let ``_band_50000`` claim ``_band_500000``.
+        suffix = f"_band_{band_lower}"
+        for candidate in candidates:
+            if candidate.endswith(suffix):
+                return candidate
+        naming = target.get("fanout_row_naming")
+        if naming == FANOUT_ROW_NAMING_METRIC_BAND_LOWER:
+            metric_name = str(target["bindings"]["policyengine"]["metric_name"])
+            return f"{metric_name}_{band_lower}"
+        if naming is not None:
+            raise ValueError(
+                f"Unsupported fanout_row_naming {naming!r} on {target_id!r}."
+            )
+        return None if candidates else f"{target_id}.{value_id or 'detail'}"
+    if target.get("fanout_row_naming") is not None:
+        raise ValueError(
+            f"{target_id!r} declares fanout_row_naming but its fact carries no "
+            "recognised band dimension; the row would otherwise be dropped."
+        )
     for candidate in candidates:
         if value_id and value_id not in _GEOGRAPHY_VALUE_IDS and value_id in candidate:
             return candidate
@@ -720,12 +815,35 @@ def _add_uk_membership_accounting(
             ),
         },
         {
+            "family": "hmrc_cgt",
+            "status": "active_with_row_level_signed_exclusions",
+            "active_reference_count": fanout_counts.get("hmrc_cgt", 0),
+            "signed_rationale": (
+                "The FY2024-25 individual CGT observations fan out three ways "
+                "(microcosm#725, #467): Table 6 age bands as dimension rows "
+                "(the 0-15 band and the all-ages total are signed out row by "
+                "row), Table 5 country/region cells over the twelve-area "
+                "region tier restated on the individuals basis by the Table 1 "
+                "share through the scaled_by_ratio operation, and Table 2.1a "
+                "size-of-gain bands under the incumbent banded names (the "
+                "0-2,999 band below the 2024 annual exempt amount is signed "
+                "out). Chronicle's Table 2.1a package emits taxpayers and gains "
+                "only, although the published sheet also carries an amounts-of-"
+                "tax column, so liability binds nationally and by age band; a "
+                "liability-by-size-of-gain family becomes possible once Chronicle "
+                "emits that column."
+            ),
+        },
+        {
             "family": "ons_population",
             "status": "active_region_tier_fanout",
             "active_reference_count": sum(
                 1
                 for reference in references
-                if reference["metadata"]["contract_target_id"].endswith("_by_region")
+                if reference["metadata"]["contract_target_id"].startswith(
+                    "ons.population."
+                )
+                and reference["metadata"]["contract_target_id"].endswith("_by_region")
             ),
             "signed_rationale": (
                 "The nine ONS population-by-age-band targets fan out over the "
@@ -757,6 +875,21 @@ def _add_uk_membership_accounting(
             ]["candidates"][0]["signed_rationale"],
         },
     ]
+    for target_id, entry in sorted(report["targets"].items()):
+        if not str(target_id).startswith("hmrc.cgt."):
+            continue
+        for candidate in entry["candidates"]:
+            if candidate.get("status") != "signed_excluded":
+                continue
+            report["signed_exclusion_rationales"].append(
+                {
+                    "family": "hmrc_cgt",
+                    "target_id": target_id,
+                    "row": candidate["name"],
+                    "status": "signed_excluded",
+                    "signed_rationale": candidate["signed_rationale"],
+                }
+            )
     report["multi_fact_rationales"] = []
 
 

@@ -136,6 +136,11 @@ class PolicyEngineUKEngine:
             raise ValueError(f"Unknown PolicyEngine-UK variable {name!r}.")
         return variables[name]
 
+    def enum_domain(self, name: str) -> Any:
+        """The Enum an engine variable's stored values must belong to (gates)."""
+
+        return getattr(self._variable(name), "possible_values", None)
+
     def _build_dataset(self, bundle: Frame, period: int | str) -> Any:
         from policyengine_uk.data import UKSingleYearDataset
 

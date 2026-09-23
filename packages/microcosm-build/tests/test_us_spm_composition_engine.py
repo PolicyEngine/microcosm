@@ -143,7 +143,7 @@ def test__minor_only_unit__engine_refuses_and_check_names_it() -> None:
     assert result.details["n_units_without_classified_adult"] == 1
     assert result.details["role_source"] == "unclassified"
     assert [row["spm_unit_id"] for row in result.rows] == [2]
-    assert result.rows[0]["member_ages"] == [16.0, 8.0]
+    assert result.rows[0]["member_age_bands"] == ["15_to_17", "under_15"]
     # The remedy travels with the refusal; the engine's own message carries none.
     assert any("Remedy:" in failure for failure in result.failures)
     assert any("SPM_COMPOSITION_REQUIRED" in line for line in [result.summary])

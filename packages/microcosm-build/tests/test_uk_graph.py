@@ -163,10 +163,11 @@ def test_uk_spine_graph_contains_manifest_stages_and_named_exclusions() -> None:
     graph = uk_spine_graph(spec)
     ids = {node.id for node in graph.nodes}
 
-    # 29 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes and
-    # #791 frs_relationships stages; the two named exclusions are the
-    # certified-pair alternatives, not steps of this pipeline.
-    assert len(expected) == 29
+    # 30 with the #832 uc_reporter_redraw, #685 uc_deduction_attributes,
+    # #791 frs_relationships and #725 hmrc_cgt_asset_type_spine stages; the
+    # two named exclusions are the certified-pair alternatives, not steps of
+    # this pipeline.
+    assert len(expected) == 30
     assert UK_SPINE_EXCLUSIONS == {
         "frs_hmrc_retained_leaves",
         "hmrc_spi_income",
@@ -231,7 +232,6 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
         "etb",
         "spi",
         "hmrc_income",
-        "hmrc_cgt",
     }
     assert graph.node("lcfs_consumption").sources == (
         "lcfs_household",
@@ -241,7 +241,7 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
         "spi",
         "hmrc_income",
     )
-    assert graph.node("hmrc_cgt_gains_spine").sources == ("hmrc_cgt",)
+    assert graph.node("hmrc_cgt_gains_spine").sources == ()
     create = graph.node("create_uk_frs")
     assert create.params["sample_fraction"] == 0.1
     assert create.params["sample_seed"] == 999

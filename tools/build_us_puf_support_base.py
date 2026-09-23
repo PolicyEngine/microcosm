@@ -149,6 +149,7 @@ from microcosm.build.us_runtime import (
     with_us_workers_compensation,
     write_puf_capital_gains_tail_manifest,
 )
+from microcosm.build.us_runtime.asec_sources import ASEC_SOURCE_ARTIFACTS
 from microcosm.build.us_runtime.h5_io import (
     assert_h5_unchanged,
     refuse_denied_frame,
@@ -288,6 +289,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--asec-h5",
         action="append",
         help="Raw ASEC source as YEAR=PATH. Pass once per source year.",
+    )
+    parser.add_argument(
+        "--asec-h5-sha256",
+        action="append",
+        help=(
+            "Expected SHA-256 of one --asec-h5 input, as YEAR=SHA256. Pass "
+            "once per source year. Verified before any stage runs; a year "
+            "with a pinned canonical digest refuses a differing pin."
+        ),
     )
     parser.add_argument("--target-year", default=PERIOD, type=int)
     parser.add_argument(
@@ -484,11 +494,158 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return args
 
 
+def _asec_source_year(raw_year: str, *, flag: str, value: str) -> int:
+    try:
+        return int(raw_year)
+    except ValueError:
+        raise SystemExit(f"{flag} {value!r}: the year must be an integer.") from None
+
+
+def _asec_source_paths(args: argparse.Namespace) -> dict[int, Path]:
+    """Map each --asec-h5 YEAR=PATH to its path; refuse a malformed or repeated one."""
+
+    try:
+        return _parse_asec_source_paths(args.asec_h5)
+    except ValueError as error:
+        raise SystemExit(str(error)) from None
+
+
+def _parse_asec_source_pins(args: argparse.Namespace) -> dict[int, str] | None:
+    """Parse --asec-h5-sha256 into ``{year: lowercase sha256}`` without reading a file.
+
+    Refuses a pin without --asec-h5, a value that is not YEAR=SHA256, a year
+    that is not an integer, a digest that is not 64 hexadecimal characters, a
+    year named twice, a year no --asec-h5 mapping provides, a pin set that
+    leaves any --asec-h5 year unpinned (once one year is pinned, every year
+    must be, so a build is either fully pinned or not pinned), and, for a
+    year with a canonical digest in
+    :data:`microcosm.build.us_runtime.asec_sources.ASEC_SOURCE_ARTIFACTS`, a
+    pin that differs from it — the flag can narrow nothing and re-pin
+    nothing. Returns ``None`` when no pin was given.
+    """
+
+    declared = getattr(args, "asec_h5_sha256", None) or ()
+    if not declared:
+        return None
+    if args.asec_h5 is None:
+        raise SystemExit("--asec-h5-sha256 requires --asec-h5.")
+    paths = _asec_source_paths(args)
+    pins: dict[int, str] = {}
+    for value in declared:
+        raw_year, separator, raw_sha = value.partition("=")
+        if not separator:
+            raise SystemExit(f"--asec-h5-sha256 must be YEAR=SHA256, got {value!r}.")
+        year = _asec_source_year(raw_year, flag="--asec-h5-sha256", value=value)
+        sha = raw_sha.strip().lower()
+        if len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+            raise SystemExit(
+                f"--asec-h5-sha256 {value!r}: the digest must be 64 "
+                "hexadecimal characters."
+            )
+        if year in pins:
+            raise SystemExit(f"--asec-h5-sha256 names year {year} twice.")
+        if year not in paths:
+            raise SystemExit(
+                f"--asec-h5-sha256 names year {year}, which no --asec-h5 "
+                "mapping provides."
+            )
+        pins[year] = sha
+    unpinned = sorted(set(paths) - set(pins))
+    if unpinned:
+        raise SystemExit(
+            f"--asec-h5-sha256 pins {sorted(pins)} but --asec-h5 also names "
+            f"{unpinned}; once any year is pinned, every year must be."
+        )
+    for year, sha in sorted(pins.items()):
+        canonical = ASEC_SOURCE_ARTIFACTS.get(year)
+        if canonical is not None and sha != canonical.sha256:
+            raise SystemExit(
+                f"ASEC {year} CLI pin differs from the canonical pin: got "
+                f"{sha}, expected {canonical.sha256}."
+            )
+    return pins
+
+
+def _require_receipt_digests_match_pins(
+    args: argparse.Namespace, receipt: Mapping[str, object]
+) -> None:
+    """Refuse a source-construction receipt whose read bytes differ from the pins.
+
+    The pre-stage check hashes each --asec-h5 file before any stage runs; the
+    receipt records the digest of the bytes the stage actually read. With pins
+    locked in the run config, the two must agree, so a file swapped between
+    the check and the read, or a checkpointed receipt that disagrees with the
+    locked pins on resume, refuses here at no extra I/O.
+    """
+
+    pins = _parse_asec_source_pins(args)
+    if pins is None:
+        return
+    recorded = {
+        int(entry["year"]): str(entry["sha256"]) for entry in receipt.get("sources", ())
+    }
+    for year, sha in sorted(pins.items()):
+        actual = recorded.get(year)
+        if actual is None:
+            raise SystemExit(
+                f"ASEC {year} is pinned but the source construction receipt "
+                "records no digest for it."
+            )
+        if actual != sha:
+            raise SystemExit(
+                f"ASEC {year} source construction read bytes with sha256 "
+                f"{actual}, but the locked pin is {sha}."
+            )
+
+
+def _require_completed_source_receipt_matches_pins(
+    args: argparse.Namespace, stage_metadata: Mapping[str, object]
+) -> None:
+    """The completed-stage re-entry check: the receipt sits under ``base_source``.
+
+    ``StageRuntime.metadata["source_construction"]`` is the stage-level mapping
+    ``_source_construction_stage`` returned, and the pooled_asec receipt with
+    its ``sources`` list is its ``base_source`` entry (the same level
+    ``_ensure_asec_raw_stage_checkpoint`` reads).
+    """
+
+    receipt = stage_metadata.get("base_source")
+    _require_receipt_digests_match_pins(
+        args, receipt if isinstance(receipt, Mapping) else {}
+    )
+
+
+def _verify_asec_source_digests(args: argparse.Namespace) -> None:
+    """Refuse a raw ASEC input whose bytes differ from its declared digest.
+
+    Every pin is parsed and compared with the canonical roster first
+    (:func:`_parse_asec_source_pins`, which reads no file), then each pinned
+    file is hashed in year order. Runs before any stage, so a wrong input
+    refuses in seconds rather than surfacing as drift hours later.
+    """
+
+    pins = _parse_asec_source_pins(args)
+    if pins is None:
+        return
+    paths = _asec_source_paths(args)
+    for year, sha in sorted(pins.items()):
+        path = paths[year]
+        if not path.is_file():
+            raise SystemExit(f"ASEC {year} source {path} does not exist.")
+        actual = _sha256(path)
+        if actual != sha:
+            raise SystemExit(
+                f"ASEC {year} source {path} failed digest "
+                f"verification: expected {sha}, got {actual}."
+            )
+
+
 def main(argv: list[str] | None = None) -> None:
     """Dispatch the byte-identical legacy path or checkpoint scaffolding."""
 
     args = _parse_args() if argv is None else _parse_args(argv)
 
+    _verify_asec_source_digests(args)
     stage = getattr(args, "stage", "all")
     checkpoint_dir = getattr(args, "checkpoint_dir", None)
     if stage != "all":
@@ -561,6 +718,8 @@ def _stage_cli_args(args: argparse.Namespace, stage: str) -> list[str]:
     else:
         for value in args.asec_h5:
             command.extend(("--asec-h5", value))
+        for value in getattr(args, "asec_h5_sha256", None) or ():
+            command.extend(("--asec-h5-sha256", value))
     command.extend(("--target-year", str(args.target_year)))
     if args.asec_max_households is not None:
         command.extend(("--asec-max-households", str(args.asec_max_households)))
@@ -663,6 +822,7 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
         for value in args.asec_h5:
             raw_year, raw_path = value.split("=", 1)
             asec_sources.append(f"{int(raw_year)}={Path(raw_path).resolve()}")
+    asec_pins = _parse_asec_source_pins(args)
     thread_environment = {
         name: (
             os.environ.get(name, "0")
@@ -686,6 +846,11 @@ def _stage_run_config(args: argparse.Namespace) -> dict[str, object]:
             args.allow_geography_ladder_gate_failures
         ),
         "asec_h5": asec_sources,
+        "asec_h5_sha256": (
+            None
+            if asec_pins is None
+            else {str(year): sha for year, sha in sorted(asec_pins.items())}
+        ),
         "asec_max_households": args.asec_max_households,
         "asec_2023_weeks_unemployed_source": path(
             args.asec_2023_weeks_unemployed_source
@@ -1687,6 +1852,9 @@ def _run_outer_stage(args: argparse.Namespace) -> None:
     )
     if args.stage in runtime.context.completed:
         if args.stage == "source_construction" and args.asec_h5 is not None:
+            _require_completed_source_receipt_matches_pins(
+                args, runtime.metadata["source_construction"]
+            )
             loaded = runtime.load("source_construction")
             _ensure_asec_raw_stage_checkpoint(
                 args,
@@ -3050,7 +3218,7 @@ def _load_base_frame_from_args(args: argparse.Namespace) -> tuple[Frame, dict]:
         sources,
         target_year=args.target_year,
     )
-    return frame, {
+    receipt: dict[str, object] = {
         "kind": "pooled_asec",
         "target_year": args.target_year,
         "sources": [
@@ -3069,6 +3237,8 @@ def _load_base_frame_from_args(args: argparse.Namespace) -> tuple[Frame, dict]:
         ),
         "metadata": metadata,
     }
+    _require_receipt_digests_match_pins(args, receipt)
+    return frame, receipt
 
 
 def _support_spine_spec_from_args(args: argparse.Namespace) -> SupportSpineSpec | None:
@@ -3173,7 +3343,12 @@ def _parse_asec_source_paths(values: list[str]) -> dict[int, Path]:
         if "=" not in value:
             raise ValueError(f"ASEC source must be YEAR=PATH, got {value!r}.")
         raw_year, raw_path = value.split("=", 1)
-        year = int(raw_year)
+        try:
+            year = int(raw_year)
+        except ValueError:
+            raise ValueError(
+                f"--asec-h5 {value!r}: the year must be an integer."
+            ) from None
         if year in paths:
             raise ValueError(f"Duplicate --asec-h5 mapping for year {year}.")
         paths[year] = Path(raw_path)

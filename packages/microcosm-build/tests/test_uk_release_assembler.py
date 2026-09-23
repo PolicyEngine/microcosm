@@ -242,7 +242,13 @@ def _build_assembler_inputs(
     build_record = green_certification_inputs["build_record"]
     build_record.update(
         build_id=_ATTEMPT_ID,
+        # The calibration's recorded parent is the spine this fixture writes,
+        # in both places the seam records it; the certifier binds the
+        # supplied spine to it.
         input_posture={"sha256": sha256(spine)},
+        source_pins={
+            "input_h5": {"sha256": sha256(spine), "size_bytes": spine.stat().st_size}
+        },
         gate_summary={"uk_target_fit": "passed"},
     )
     build_record["spine_provenance"]["rules_engine"] = {
@@ -275,6 +281,7 @@ def _build_assembler_inputs(
         "release_id": UK_NATIONAL_RELEASE_ID,
         "candidate_name": candidate.stem,
         "candidate_sha256": candidate_sha,
+        "spine_sha256": sha256(spine),
         "certification_path": certification_path,
     }
     compose_uk_release_certification(**compose_inputs)
@@ -409,9 +416,7 @@ def test_assemble_preserves_successful_version_2_delivery(
     capsys.readouterr()
     manifest = json.loads(
         (
-            assembler_inputs["out_dir"]
-            / UK_NATIONAL_RELEASE_ID
-            / "build_manifest.json"
+            assembler_inputs["out_dir"] / UK_NATIONAL_RELEASE_ID / "build_manifest.json"
         ).read_text()
     )
 

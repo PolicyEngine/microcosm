@@ -44,7 +44,6 @@ REFERENCE_PATH = UK_PACKAGE_DIR / "efrs_parity_reference.json"
 KNOWN_GAPS_PATH = UK_PACKAGE_DIR / "efrs_parity_known_gaps.json"
 MANIFEST_PATH = UK_PACKAGE_DIR / "release_input_coverage_manifest.json"
 HMRC_SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "hmrc_income_source_stages.json"
-CGT_SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "cgt_source_stages.json"
 SOURCE_STAGES_PATH = UK_PACKAGE_DIR / "source_stages.json"
 
 CANDIDATE_REPO_ID = "policyengine/populace-uk-private"
@@ -801,15 +800,16 @@ def build_manifest(
             "hmrc_cgt_gains_spine": _cgt_spine_family_coverage_contract(
                 candidate_source=candidate_source,
             ),
+            "hmrc_cgt_asset_type_spine": _source_stage_family_coverage_contract(
+                stage_name="hmrc_cgt_asset_type_spine",
+                candidate_source=candidate_source,
+            ),
             "salary_sacrifice": _source_stage_family_coverage_contract(
                 stage_name="salary_sacrifice",
                 candidate_source=candidate_source,
             ),
             "student_loans": _source_stage_family_coverage_contract(
                 stage_name="student_loans",
-                candidate_source=candidate_source,
-            ),
-            "hmrc_cgt_gains": _cgt_family_coverage_contract(
                 candidate_source=candidate_source,
             ),
             "hmrc_spi_income": _hmrc_family_coverage_contract(
@@ -857,118 +857,6 @@ def build_manifest(
     }
 
 
-def _cgt_family_coverage_contract(
-    *,
-    candidate_source: dict[str, Any],
-) -> dict[str, Any]:
-    """Validate the CGT source manifest and emit its family contract.
-
-    The stage redraws capital gains amounts only, so unlike the SPI family it
-    moves no mass and declares no distributional effective-mass requirement:
-    ``capital_gains`` already carries hard release status from the candidate,
-    and the stage replaces its values in place.
-    """
-
-    payload = _load(CGT_SOURCE_STAGES_PATH)
-    stages = payload.get("stages")
-    if not isinstance(stages, list) or len(stages) != 1:
-        raise ValueError(
-            f"{CGT_SOURCE_STAGES_PATH}: expected exactly one source stage."
-        )
-    stage = stages[0]
-    if not isinstance(stage, dict) or stage.get("stage") != "hmrc_cgt_gains":
-        raise ValueError(f"{CGT_SOURCE_STAGES_PATH}: expected hmrc_cgt_gains stage.")
-    base_candidate = stage.get("base_candidate")
-    if not isinstance(base_candidate, dict):
-        raise ValueError(f"{CGT_SOURCE_STAGES_PATH}: base_candidate must be an object.")
-    source_tier = validate_uk_release_tier(candidate_source.get("tier"))
-    base_candidate_tier = validate_uk_release_tier(base_candidate.get("tier"))
-    if base_candidate_tier != source_tier:
-        raise ValueError(
-            "CGT source-stage base candidate tier disagrees with the certified "
-            f"candidate evidence: {base_candidate_tier!r} != {source_tier!r}."
-        )
-    artifacts = {
-        artifact["role"]: artifact
-        for artifact in stage.get("artifacts", [])
-        if isinstance(artifact, dict) and isinstance(artifact.get("role"), str)
-    }
-    operations = {
-        operation["kind"]: operation
-        for operation in stage.get("operations", [])
-        if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
-    }
-    required_artifacts = {"published_fact_surface", "policy_parameters"}
-    missing_artifacts = sorted(required_artifacts - set(artifacts))
-    required_operations = {
-        "verify_certified_candidate",
-        "verify_pinned_cgt_ods",
-        "taxable_income_proxy",
-        "rank_preserving_allocation",
-        "within_band_draws",
-        "sub_aea_remainder",
-        "record_mass_conservation_receipt",
-        "classify_cgt_band_facts_with_reviewed_fence",
-    }
-    missing_operations = sorted(required_operations - set(operations))
-    if missing_artifacts or missing_operations:
-        raise ValueError(
-            f"{CGT_SOURCE_STAGES_PATH}: incomplete CGT family contract; "
-            f"missing_artifacts={missing_artifacts}, "
-            f"missing_operations={missing_operations}."
-        )
-    surface = artifacts["published_fact_surface"]
-    verify = operations["verify_pinned_cgt_ods"]
-    fence = operations["classify_cgt_band_facts_with_reviewed_fence"]
-    if not bool(verify.get("require_before_source_read")):
-        raise ValueError(
-            f"{CGT_SOURCE_STAGES_PATH}: the pinned ODS must be verified before "
-            "it is read."
-        )
-    if bool(fence.get("calibration_permitted", True)):
-        raise ValueError(
-            f"{CGT_SOURCE_STAGES_PATH}: the band-fact fence must keep "
-            "calibration_permitted false; promotion goes through a separately "
-            "reviewed target profile."
-        )
-    if str(surface.get("sha256", "")) == "" or int(surface.get("size_bytes", 0)) <= 0:
-        raise ValueError(
-            f"{CGT_SOURCE_STAGES_PATH}: published_fact_surface must pin sha256 "
-            "and size_bytes."
-        )
-    return {
-        "status": "required_at_build",
-        "stage": "hmrc_cgt_gains",
-        "source_manifest": CGT_SOURCE_STAGES_PATH.name,
-        "source_manifest_sha256": _sha256(CGT_SOURCE_STAGES_PATH),
-        "superseded_by": {
-            "stage": "hmrc_cgt_gains_spine",
-            "source_manifest": SOURCE_STAGES_PATH.name,
-            "source_manifest_sha256": _sha256(SOURCE_STAGES_PATH),
-            "reason": (
-                "The FRS spine build executes hmrc_cgt_gains_spine, which "
-                "applies the same HMRC Table 3 amounts redraw directly in "
-                "source_stages.json before calibration."
-            ),
-        },
-        "base_candidate_sha256": str(base_candidate["sha256"]),
-        "base_candidate_tier": base_candidate_tier,
-        "source_vintages": {
-            "hmrc_surface": str(surface["vintage"]),
-            "mapped_build_period": str(surface["mapped_build_period"]),
-        },
-        "output_weight_kind": str(stage["output_weight_kind"]),
-        "required_mass_change_reason": str(
-            operations["record_mass_conservation_receipt"]["reason"]
-        ),
-        "calibration_permitted": bool(fence["calibration_permitted"]),
-        "fact_fence_id": str(fence["fact_fence_id"]),
-        "fenced_fact_count": int(fence["fenced_fact_count"]),
-        "outputs": list(stage.get("outputs", [])),
-        "effective_mass_requirements": {},
-    }
-
-
 def _source_stage_family_coverage_contract(
     *,
     stage_name: str,
@@ -998,14 +886,21 @@ def _source_stage_family_coverage_contract(
         for operation in operations
         if isinstance(operation.get("reason"), str) and operation.get("reason")
     ]
-    required_mass_change_reason = (
-        declared_reasons[-1]
-        if declared_reasons
-        else (
-            "E5 source-stage transform preserves household rows and typed "
-            "household weights; total household mass is conserved."
+    # Every source stage records its household-mass receipt under its own
+    # reason (a column-writing stage records a conservation receipt: old and
+    # new totals agree, declared factor 1.0), so the terminal family gate
+    # asserts positively that the stage left household mass unchanged. A
+    # stage that declares none has no receipt to require, and the contract
+    # refuses it rather than inventing one (the first release cut failed
+    # five families on a reason the generator had invented).
+    if not declared_reasons:
+        raise ValueError(
+            f"source stage {stage_name!r} declares no "
+            "record_mass_conservation_receipt operation; every spine stage "
+            "records its household-mass receipt so the terminal family gate can "
+            "assert the mass was conserved."
         )
-    )
+    required_mass_change_reason = declared_reasons[-1]
     mass_change_semantics = (
         "mass_increasing_support"
         if any(
@@ -1064,10 +959,14 @@ def _cgt_spine_family_coverage_contract(
         for operation in stage.get("operations", [])
         if isinstance(operation, dict) and isinstance(operation.get("kind"), str)
     }
-    required_artifacts = {"cgt_published_fact_surface", "policy_parameters"}
+    required_artifacts = {
+        "policy_parameters",
+        "cgt_conditioning_facts",
+    }
     required_operations = {
-        "verify_pinned_cgt_ods",
+        "verify_vendored_fact_resource",
         "taxable_income_proxy",
+        "rake_allocation_targets",
         "rank_preserving_allocation",
         "within_band_draws",
         "sub_aea_remainder",
@@ -1082,17 +981,19 @@ def _cgt_spine_family_coverage_contract(
             f"missing_artifacts={missing_artifacts}, "
             f"missing_operations={missing_operations}."
         )
-    surface = artifacts["cgt_published_fact_surface"]
-    verify = operations["verify_pinned_cgt_ods"]
+    surface = artifacts["cgt_conditioning_facts"]
+    verify = operations["verify_vendored_fact_resource"]
     fence = operations["classify_cgt_band_facts_with_reviewed_fence"]
-    if verify.get("artifact_role") != "cgt_published_fact_surface":
-        raise ValueError("Spine CGT verification must bind its distinct ODS role.")
+    if verify.get("artifact_role") != "cgt_conditioning_facts":
+        raise ValueError("Spine CGT verification must bind the vendored resource role.")
+    if verify.get("resource") != surface.get("resource"):
+        raise ValueError("Spine CGT verification must name the vendored resource.")
     if not bool(verify.get("require_before_source_read")):
-        raise ValueError("Spine CGT ODS must be verified before source read.")
+        raise ValueError("Spine CGT resource must be checked before source read.")
     if bool(fence.get("calibration_permitted", True)):
         raise ValueError("Spine CGT band facts must remain fenced from calibration.")
-    if str(surface.get("sha256", "")) == "" or int(surface.get("size_bytes", 0)) <= 0:
-        raise ValueError("Spine CGT surface must pin sha256 and size_bytes.")
+    if not bool(surface.get("runtime_sha256_required")):
+        raise ValueError("Spine CGT resource must require its runtime sha256.")
     return {
         "status": "required_at_build",
         "stage": "hmrc_cgt_gains_spine",
@@ -1101,8 +1002,13 @@ def _cgt_spine_family_coverage_contract(
         "base_candidate_sha256": str(candidate_source["sha256"]),
         "base_candidate_tier": validate_uk_release_tier(candidate_source["tier"]),
         "source_vintages": {
-            "hmrc_surface": str(surface["vintage"]),
-            "mapped_build_period": str(surface["mapped_build_period"]),
+            "hmrc_surface": str(verify["source_vintage"]),
+            "mapped_build_period": str(verify["mapped_build_period"]),
+            "conditioning_surface": str(verify["source_vintage"]),
+            "conditioning_resource": str(surface["resource"]),
+            "conditioning_resource_sha256": _sha256(
+                UK_PACKAGE_DIR / str(surface["resource"])
+            ),
         },
         "output_weight_kind": "importance",
         "required_mass_change_reason": str(
@@ -1320,17 +1226,13 @@ def main() -> int:
     else:
         known_gaps = _load(KNOWN_GAPS_PATH)
     manifest = build_manifest(reference=reference, known_gaps_payload=known_gaps)
-    generic_fallback_reason = (
-        "E5 source-stage transform preserves household rows and typed "
-        "household weights; total household mass is conserved."
-    )
     declared_reasons: dict[str, str] = {}
     for family_name, family in manifest.get("family_coverage", {}).items():
         reason = str(family.get("required_mass_change_reason", "")).strip()
-        if not reason or reason == generic_fallback_reason:
-            # The pre-E8 families share the generic fallback (standing
-            # follow-up); every stage-declared reason must be unique so a
-            # receipt identifies exactly one family.
+        if not reason:
+            # A family whose stage records no receipt requires none; every
+            # declared reason must be unique so a receipt identifies exactly
+            # one family.
             continue
         if reason in declared_reasons:
             raise ValueError(

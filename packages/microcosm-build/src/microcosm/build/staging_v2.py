@@ -727,6 +727,7 @@ class StagingTelemetryV2:
         clock: Callable[[], str] = _utc_now,
         monotonic: Callable[[], float] = time.monotonic,
         content_policy: StagingContentPolicy | None = None,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self.run_id = _safe_identifier(run_id, label="run_id")
         self.candidate_id = _safe_identifier(candidate_id, label="candidate_id")
@@ -762,6 +763,7 @@ class StagingTelemetryV2:
         self.upload_interval_seconds = max(0.0, float(upload_interval_seconds))
         self._clock = clock
         self._monotonic = monotonic
+        self._sleep = sleep
         self._content_policy = content_policy or StagingContentPolicy()
         self._transport = (
             HuggingFaceDatasetStorage(self.repo_id, api=api)
@@ -968,7 +970,7 @@ class StagingTelemetryV2:
             timestamp=self.updated_at,
         )
         self._persist_bundle()
-        self._maybe_upload(force=True)
+        self._terminal_upload()
 
     def complete(self, *, message: str = "Staging run completed.") -> None:
         self._require_running("complete the run")
@@ -985,7 +987,7 @@ class StagingTelemetryV2:
             timestamp=self.updated_at,
         )
         self._persist_bundle()
-        self._maybe_upload(force=True)
+        self._terminal_upload()
 
     def verify_remote(self) -> None:
         if self.status == "running":
@@ -1209,6 +1211,38 @@ class StagingTelemetryV2:
                 count_delivery=False,
             )
         self._persist_bundle()
+
+    #: Delays before each terminal upload attempt. Mid-run, three consecutive
+    #: failures pause remote writes for the rest of the run so a rate-limited
+    #: Hub is not hammered; the terminal state is different: a run whose remote
+    #: copy stays "running" forever is the last-mile gap the v20 national run
+    #: met (its final state was delivered by hand), so completion and failure
+    #: re-open the session for a bounded, backed-off final flush.
+    _TERMINAL_UPLOAD_DELAYS: tuple[float, ...] = (0.0, 15.0, 60.0)
+
+    def _terminal_upload(self) -> None:
+        """Deliver the terminal state even after failures paused remote writes."""
+
+        if self._transport is None or self._upload_session is None:
+            return
+        for delay in self._TERMINAL_UPLOAD_DELAYS:
+            if delay > 0.0:
+                self._sleep(delay)
+            self._upload_session.reopen()
+            self._remote_disabled = False
+            self._consecutive_upload_failures = 0
+            self._maybe_upload(force=True)
+            if (
+                not self._remote_disabled
+                and self._delivery["last_error_code"] != "UPLOAD_FAILED"
+            ):
+                return
+        print(
+            "warning: the staging run's terminal state did not reach "
+            f"{self.repo_id} after {len(self._TERMINAL_UPLOAD_DELAYS)} attempts; "
+            "the local bundle is complete.",
+            file=sys.stderr,
+        )
 
     def _maybe_upload(self, *, force: bool = False) -> None:
         if self._transport is None or self._remote_disabled:

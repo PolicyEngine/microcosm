@@ -218,7 +218,7 @@ def prepare_release(
             compatibility_wheels=compatibility_wheels,
         )
     else:
-        validate_release_dir(release_dir)
+        validate_release_dir(release_dir, artifact_root=artifact_root)
     release_id = release_dir.name
     role = release_dataset_role(release_dir)
     if role != NATIONAL_DEFAULT_DATASET_ROLE and update_latest:

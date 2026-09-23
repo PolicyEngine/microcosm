@@ -4,12 +4,43 @@ Branch `spm-composition-preflight`, cut from `origin/main` at `d1196af10`.
 
 ## State
 
+**HISTORICAL as of 2026-09-21.** Everything below was accurate when written and
+is kept as the lane's record; it is not current state. Check git/GitHub (PR #948
+on `spm-composition-preflight`) for where the work actually stands.
+
+When written: Part 1 complete and tested; Part 2 (design note) in progress; PR
+open as draft.
+
+Superseded since, in this branch (2026-09-21, applying an independent source
+review of #948):
+
+- The blocking refusal moved OFF the late `_assert_spm_composition` call under
+  `--skip-reform-validation` and INTO the batched pre-export gate group, on the
+  calibrated export frame — before the export H5 write and the calibration NPZ
+  write, with every other failing gate on record. `_assert_spm_composition` no
+  longer exists; `_spm_composition_gate_failures` contributes lines to
+  `terminal_gate_failures` instead. `--skip-reform-validation` no longer
+  disables it, and the wiring is pinned by AST tests in
+  `test_us_fiscal_refresh_builder.py`.
+- An export frame the rule cannot read is a named `Release gates failed:` line
+  rather than a bare `ValueError` escaping the check.
+- The reported rows carry member age *bands* (`under_15` / `15_to_17` /
+  `18_plus` / `unknown`), never exact ages; `--max-reported-spm-units` rejects
+  negatives and is clamped to `MAX_REPORTED_SPM_UNITS_HARD_CAP` (100).
+- The person→unit join is guarded: a membership value matching no unit id
+  raises the "cannot be evaluated" `ValueError` (SKIPPED) instead of reporting
+  every unit as offending.
+
 > Historical note (2026-09-18): the state and "Next" sections below describe
 > the first session. Part 2's design note shipped in PR #948
 > (`docs/us-spm-role-for-a-fresh-base.md`); Max chose its Option 1 (shape b)
 > on 2026-09-18. The current state is in "Step 2" at the end of this file.
 
-Part 1 complete and tested. Part 2 (design note) in progress. PR open as draft.
+> Historical note (2026-09-22): #948 merged into main on 2026-09-22 and #959
+> was retargeted to main and re-levelled on it. The 2026-09-21 hardening
+> listed above (age bands, report cap, join guard) now lives in
+> `us_runtime/spm_composition.py`, where #959 moved the check; the preflight
+> runbook re-exports it. Check GitHub for #959's current state.
 
 ## Measured on the phase-2 base (read-only, `~/PolicyEngine/_buildq-runtime/out/base-q3/`)
 
@@ -65,7 +96,9 @@ Part 1 complete and tested. Part 2 (design note) in progress. PR open as draft.
       (`--max-reported-spm-units`, description, docstring).
 - [x] 1.3 `tools/build_us_fiscal_refresh_release.py`: hard refusal on the export
       frame immediately before `_write_reform_validation`; advisory (never a
-      raise) on the base frame before target compilation.
+      raise) on the base frame before target compilation. *(2026-09-21: the
+      refusal has since moved into the batched pre-export gate group — see
+      State above. The advisory is unchanged.)*
 - [x] 1.4 `requires_us` drift guard,
       `packages/microcosm-build/tests/test_us_spm_composition_engine.py`
       (23 passed).
@@ -73,12 +106,16 @@ Part 1 complete and tested. Part 2 (design note) in progress. PR open as draft.
       (55 passed, was 42); `ci_test_groups.py --verify` = ok, new file in
       `us-qs`, not `[defaulted]`; changelog fragment; ruff clean.
 
-## Next (historical, superseded 2026-09-18)
+## Next (as of the entry above; HISTORICAL — not a live queue)
+
+*2026-09-21: item 1 landed as `docs/us-spm-role-for-a-fresh-base.md` on this
+branch. Item 2 was not decided here; it is the open question, and the tracking
+issue — not this file — is where its verdict belongs.*
 
 1. Part 2 design note `docs/us-spm-role-for-a-fresh-base.md`. — shipped in #948.
-2. Decide (a) declared-parent generalisation vs (b) source stage; implement (a)
-   in this PR if it closes without a decision from Max. — Max chose (b) on
-   2026-09-18; implemented on branch `us-spm-role-stage` (see Step 2 below).
+2. Decide (a) declared-parent generalisation vs (b) source stage. — Max chose
+   (b) on 2026-09-18; implemented on branch `us-spm-role-stage`, PR #959 (see
+   Step 2 below).
 
 # Step 2 — the role as a build-stage input leaf (2026-09-18)
 

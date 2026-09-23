@@ -7,9 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from microcosm.build.staging_cli import add_staging_arguments
+from microcosm.build.staging_cli import (
+    add_staged_dataset_arguments,
+    add_staging_arguments,
+    validate_staged_dataset_arguments,
+    validate_staging_arguments,
+)
 from microcosm.build.staging_storage import (
     BestEffortUploadSession,
+    HuggingFaceDatasetStorage,
     StagingRepositoryConfig,
 )
 from microcosm.build.staging_v2 import (
@@ -753,9 +759,30 @@ def test_version_2_cli_uses_country_owned_repository_configuration(monkeypatch):
 
     args = parser.parse_args([])
     assert args.staging_repo_id == "example/configured-staging"
+    assert args.staging_upload_interval_seconds == 30.0
     assert not hasattr(args, "staging_prefix")
     with pytest.raises(SystemExit):
         parser.parse_args(["--staging-prefix", "candidate-runs"])
+
+
+def test_version_2_cli_lets_a_long_running_command_slow_its_upload_cadence():
+    """A multi-hour solve at 30 s exhausts the Hub's commit budget (v20 run)."""
+
+    repository = StagingRepositoryConfig(
+        default_repo_id="example/default-staging",
+        repo_id_environment_variable="EXAMPLE_STAGING_REPO_ID",
+    )
+    parser = argparse.ArgumentParser()
+    add_staging_arguments(
+        parser, repository=repository, default_upload_interval_seconds=300
+    )
+    assert parser.parse_args([]).staging_upload_interval_seconds == 300.0
+    assert (
+        parser.parse_args(
+            ["--staging-upload-interval-seconds", "45"]
+        ).staging_upload_interval_seconds
+        == 45.0
+    )
 
 
 def test_typed_artifacts_reject_one_scalar_individual_record(tmp_path):
@@ -772,3 +799,301 @@ def test_typed_artifacts_reject_one_scalar_individual_record(tmp_path):
             artifact_kind="aggregate_diagnostics",
             classification="aggregate",
         )
+
+
+def test_staged_dataset_cli_follows_the_staging_mode_switch(monkeypatch):
+    telemetry_repository = StagingRepositoryConfig(
+        default_repo_id="example/default-staging",
+        repo_id_environment_variable="EXAMPLE_STAGING_REPO_ID",
+    )
+    dataset_repository = StagingRepositoryConfig(
+        default_repo_id="example/default-private",
+        repo_id_environment_variable="EXAMPLE_STAGED_DATASET_REPO_ID",
+    )
+    monkeypatch.setenv("EXAMPLE_STAGED_DATASET_REPO_ID", "example/configured-private")
+
+    def parse(argv):
+        parser = argparse.ArgumentParser()
+        add_staging_arguments(parser, repository=telemetry_repository)
+        add_staged_dataset_arguments(parser, repository=dataset_repository)
+        args = parser.parse_args(argv)
+        validate_staging_arguments(parser, args)
+        validate_staged_dataset_arguments(parser, args)
+        return args
+
+    args = parse([])
+    assert args.staged_dataset_repo_id == "example/configured-private"
+    assert args.no_staged_dataset is False
+    assert parse(["--no-staged-dataset"]).no_staged_dataset is True
+    assert parse(
+        ["--staging-local-only", "--staged-dataset-repo-id", ""]
+    ).staging_local_only
+    with pytest.raises(SystemExit):
+        parse(["--no-staging", "--no-staged-dataset"])
+    with pytest.raises(SystemExit):
+        parse(["--staged-dataset-repo-id", " "])
+
+
+class CommitApi(MemoryApi):
+    """MemoryApi plus the commit surface the staged-dataset lane uses."""
+
+    def __init__(self, root: Path, repo_id: str = "example/private") -> None:
+        super().__init__(root, repo_id)
+        self.sha = "1" * 40
+        self.commits: list[tuple[str, str | None, list[str]]] = []
+
+    def file_exists(self, *, repo_id, filename, repo_type):
+        assert repo_id == self.repo_id and repo_type == "dataset"
+        return filename in self.files
+
+    def repo_info(self, *, repo_id, repo_type):
+        assert repo_id == self.repo_id and repo_type == "dataset"
+        return {"sha": self.sha}
+
+    def create_commit(
+        self, *, repo_id, operations, commit_message, repo_type, parent_commit
+    ):
+        assert repo_id == self.repo_id and repo_type == "dataset"
+        paths = []
+        for operation in operations:
+            self.files[operation.path_in_repo] = Path(
+                operation.path_or_fileobj
+            ).read_bytes()
+            paths.append(operation.path_in_repo)
+        self.commits.append((commit_message, parent_commit, paths))
+        self.sha = "2" * 40
+        return {"oid": self.sha}
+
+
+def test_storage_commits_several_files_at_once_and_reports_the_revision(tmp_path):
+    from huggingface_hub import CommitOperationAdd
+
+    api = CommitApi(tmp_path)
+    storage = HuggingFaceDatasetStorage("example/private", api=api)
+    first = tmp_path / "a.json"
+    second = tmp_path / "b.h5"
+    first.write_text("{}")
+    second.write_bytes(b"binary")
+
+    assert storage.head_revision() == "1" * 40
+    assert storage.file_exists("staged/run/a.json") is False
+    revision = storage.commit(
+        [
+            CommitOperationAdd(
+                path_in_repo="staged/run/a.json", path_or_fileobj=str(first)
+            ),
+            CommitOperationAdd(
+                path_in_repo="staged/run/b.h5", path_or_fileobj=str(second)
+            ),
+        ],
+        message="Stage run",
+        parent_commit="1" * 40,
+    )
+    assert revision == "2" * 40
+    assert api.commits == [
+        ("Stage run", "1" * 40, ["staged/run/a.json", "staged/run/b.h5"])
+    ]
+    assert storage.file_exists("staged/run/b.h5") is True
+    assert storage.download_file("staged/run/b.h5").read_bytes() == b"binary"
+
+
+def test_storage_reports_the_credential_role_when_the_backend_can(tmp_path):
+    class RoleApi(CommitApi):
+        def whoami(self):
+            return {"name": "x", "auth": {"accessToken": {"role": "read"}}}
+
+    assert (
+        HuggingFaceDatasetStorage(
+            "example/private", api=RoleApi(tmp_path)
+        ).credential_role()
+        == "read"
+    )
+    assert (
+        HuggingFaceDatasetStorage(
+            "example/private", api=CommitApi(tmp_path)
+        ).credential_role()
+        is None
+    )
+
+
+def test_storage_commit_refuses_a_revisionless_backend(tmp_path):
+    class NoRevision(CommitApi):
+        def create_commit(self, **kwargs):
+            return {"oid": ""}
+
+    storage = HuggingFaceDatasetStorage("example/private", api=NoRevision(tmp_path))
+    with pytest.raises(RuntimeError, match="no revision"):
+        storage.commit([], message="empty")
+
+
+@pytest.mark.parametrize(
+    ("token", "expected"),
+    [
+        ({"role": "read"}, False),
+        ({"role": "write"}, True),
+        (
+            {
+                "role": "fineGrained",
+                "fineGrained": {"global": ["repo.write"], "scoped": []},
+            },
+            True,
+        ),
+        (
+            {
+                "role": "fineGrained",
+                "fineGrained": {
+                    "global": [],
+                    "scoped": [
+                        {
+                            "entity": {"type": "org", "name": "example"},
+                            "permissions": ["repo.write"],
+                        }
+                    ],
+                },
+            },
+            True,
+        ),
+        (
+            {
+                "role": "fineGrained",
+                "fineGrained": {
+                    "global": [],
+                    "scoped": [
+                        {
+                            "entity": {"type": "dataset", "name": "example/private"},
+                            "permissions": ["repo.content.read", "repo.write"],
+                        }
+                    ],
+                },
+            },
+            True,
+        ),
+        (
+            {
+                "role": "fineGrained",
+                "fineGrained": {
+                    "global": ["discussion.write"],
+                    "scoped": [
+                        {
+                            "entity": {"type": "user", "name": "someone"},
+                            "permissions": ["repo.write"],
+                        }
+                    ],
+                },
+            },
+            False,
+        ),
+        (
+            {
+                "role": "fineGrained",
+                "fineGrained": {
+                    "global": [],
+                    "scoped": [
+                        {
+                            "entity": {"type": "org", "name": "example"},
+                            "permissions": ["repo.content.read"],
+                        }
+                    ],
+                },
+            },
+            False,
+        ),
+        ({"role": "mystery"}, None),
+    ],
+)
+def test_storage_reads_whether_the_credential_can_write_this_repository(
+    tmp_path, token, expected
+):
+    class TokenApi(CommitApi):
+        def whoami(self):
+            return {"name": "x", "auth": {"accessToken": token}}
+
+    storage = HuggingFaceDatasetStorage("example/private", api=TokenApi(tmp_path))
+    assert storage.credential_can_write() is expected
+    # No whoami on the backend: the scope is unknown, never assumed.
+    assert (
+        HuggingFaceDatasetStorage(
+            "example/private", api=CommitApi(tmp_path)
+        ).credential_can_write()
+        is None
+    )
+
+
+class _RateLimitedApi(MemoryApi):
+    """Fail the next ``failures_left`` writes, as a rate-limited Hub does."""
+
+    def __init__(self, root: Path) -> None:
+        super().__init__(root)
+        self.failures_left = 0
+        self.calls = 0
+
+    def upload_file(self, **kwargs):
+        self.calls += 1
+        if self.failures_left > 0:
+            self.failures_left -= 1
+            raise RuntimeError("429 rate limited token=do-not-record")
+        super().upload_file(**kwargs)
+
+
+def _paused_remote_recorder(tmp_path):
+    api = _RateLimitedApi(tmp_path)
+    sleeps: list[float] = []
+    telemetry = _recorder(
+        tmp_path,
+        delivery_mode="local_and_remote",
+        repo_id="policyengine/populace-uk-staging",
+        api=api,
+        upload_interval_seconds=0,
+        sleep=sleeps.append,
+    )
+    telemetry.set_sample(_sample())
+    # Three consecutive failures pause remote writes for the rest of the run.
+    api.failures_left = 3
+    telemetry.stage("calibrating", force_upload=True)
+    assert telemetry.delivery_summary["last_error_code"] == "UPLOAD_FAILED"
+    calls_paused = api.calls
+    telemetry.stage("diagnostics", force_upload=True)
+    assert api.calls == calls_paused
+    return telemetry, api, sleeps
+
+
+def test_completion_flushes_the_terminal_state_after_paused_uploads(tmp_path):
+    """The v20 last-mile gap: a paused run left its remote copy 'running'."""
+
+    telemetry, api, sleeps = _paused_remote_recorder(tmp_path)
+    # The first terminal attempt meets the limit again; the second, after a
+    # backed-off wait, lands.
+    api.failures_left = 3
+    telemetry.complete()
+    assert sleeps == [15.0]
+    prefix = telemetry.repo_run_prefix
+    assert json.loads(api.files[f"{prefix}/progress.json"])["status"] == "completed"
+    assert {f"{prefix}/run_manifest.json", f"{prefix}/events.ndjson"} <= set(api.files)
+    delivery = telemetry.delivery_summary
+    assert delivery["last_error_code"] is None
+    assert delivery["upload_successes"] >= 3
+    assert delivery["upload_attempts"] > delivery["upload_successes"]
+
+
+def test_failure_flushes_the_terminal_state_after_paused_uploads(tmp_path):
+    telemetry, api, sleeps = _paused_remote_recorder(tmp_path)
+    telemetry.fail(RuntimeError("solver exploded"))
+    assert sleeps == []
+    prefix = telemetry.repo_run_prefix
+    assert json.loads(api.files[f"{prefix}/progress.json"])["status"] == "failed"
+    assert telemetry.delivery_summary["last_error_code"] is None
+
+
+def test_terminal_flush_gives_up_after_bounded_attempts(tmp_path, capsys):
+    telemetry, api, sleeps = _paused_remote_recorder(tmp_path)
+    api.failures_left = 100
+    telemetry.complete()
+    assert sleeps == [15.0, 60.0]
+    assert telemetry.repo_run_prefix + "/progress.json" not in api.files
+    delivery = telemetry.delivery_summary
+    assert delivery["last_error_code"] == "UPLOAD_FAILED"
+    err = capsys.readouterr().err
+    assert "terminal state did not reach" in err
+    assert "do-not-record" not in err
+    # The local bundle is complete whatever the Hub did.
+    assert telemetry.validate_local_bundle()["progress"]["status"] == "completed"

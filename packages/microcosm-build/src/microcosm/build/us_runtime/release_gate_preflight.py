@@ -94,6 +94,7 @@ from microcosm.build.us_runtime.release_input_coverage import (
 )
 from microcosm.build.us_runtime.spm_composition import (
     _MAX_REPORTED_SPM_UNITS,
+    MAX_REPORTED_SPM_UNITS_HARD_CAP,
     SPM_COMPOSITION_REMEDY,
     CheckResult,
     PreflightStatus,
@@ -109,6 +110,7 @@ from microcosm.calibrate.registry import TargetRegistry, TargetSpec
 from microcosm.frame import Frame
 
 __all__ = [
+    "MAX_REPORTED_SPM_UNITS_HARD_CAP",
     "SPM_COMPOSITION_REMEDY",
     "CheckResult",
     "PreflightReport",

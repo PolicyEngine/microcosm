@@ -47,6 +47,7 @@ ALLOWED_VALUE_OPERATIONS = frozenset(
         "calendar_year_average",
         "latest_plateau",
         "count_x_mean",
+        "scaled_by_ratio",
         *MONTHLY_WINDOW_OPERATIONS,
     )
 )
@@ -58,12 +59,26 @@ MULTI_FACT_VALUE_OPERATIONS = frozenset(
         "calendar_year_average",
         "latest_plateau",
         "count_x_mean",
+        "scaled_by_ratio",
         *MONTHLY_WINDOW_OPERATIONS,
     )
 )
 EXACT_PERIOD_VALUE_OPERATIONS = frozenset(
-    ("identity", "sum", "difference", "linear_combination", "count_x_mean")
+    (
+        "identity",
+        "sum",
+        "difference",
+        "linear_combination",
+        "count_x_mean",
+        "scaled_by_ratio",
+    )
 )
+#: Ordered operand roles of ``scaled_by_ratio``: the published cell the
+#: reference selects, then the two national facts whose quotient translates
+#: it (a subset share of the publisher's universe, so the ratio lies in
+#: (0, 1]). The base operand carries no selector of its own; the other two
+#: are complete selectors, inheriting only the source name and period pins.
+SCALED_BY_RATIO_OPERAND_ROLES = ("base", "numerator", "denominator")
 #: Keys of a ``linear_combination`` operand that are not selector overlays.
 LINEAR_COMBINATION_OPERAND_KEYS = frozenset(
     ("weight", "expected_member_count", "label", "dimension_values")
@@ -221,6 +236,8 @@ class LedgerTargetReference:
                 )
         if self.value_operation == "linear_combination":
             _validate_linear_combination_operands(self.name, self.value_operands)
+        if self.value_operation == "scaled_by_ratio":
+            _validate_scaled_by_ratio_operands(self.name, self.value_operands)
         if self.assertion_policy not in ALLOWED_ASSERTION_POLICIES:
             raise ValueError(
                 f"LedgerTargetReference {self.name!r}: unsupported "
@@ -719,6 +736,7 @@ def target_spec_from_ledger_reference(
         numeric_values.append(_numeric_fact_value(member, reference))
         _validate_fact_aggregation(member, reference)
 
+    value_metadata: dict[str, str] = {}
     if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
         numeric_value = sum(numeric_values) / len(_declared_source_months(reference))
     elif reference.value_operation == "calendar_year_average":
@@ -736,6 +754,10 @@ def target_spec_from_ledger_reference(
                 f"Ledger target reference {reference.name!r}: difference "
                 f"produced invalid value {numeric_value!r}."
             )
+    elif reference.value_operation == "scaled_by_ratio":
+        numeric_value, value_metadata = _scaled_by_ratio_value(
+            reference, numeric_values
+        )
     elif reference.value_operation == "linear_combination":
         weights = _linear_combination_weights(reference, facts)
         numeric_value = sum(
@@ -753,7 +775,15 @@ def target_spec_from_ledger_reference(
         facts,
         operation=reference.value_operation,
     )
-    publication_metadata = {}
+    # A ratio-scaled cell keeps the base cell's identity: the national
+    # numerator and denominator translate its value, they do not relocate it,
+    # so the hierarchy and label read the base alone.
+    identity_facts = (
+        (representative_fact,)
+        if reference.value_operation == "scaled_by_ratio"
+        else facts
+    )
+    publication_metadata = dict(value_metadata)
     if reference.value_operation in MONTHLY_WINDOW_OPERATIONS:
         # The window guard has proved these identities common to every member.
         publication_metadata = {
@@ -803,16 +833,57 @@ def target_spec_from_ledger_reference(
             ),
             **_multi_fact_reference_metadata(facts),
             **publication_metadata,
-            **_diagnostic_target_label_metadata(facts, target_period=period),
+            **_diagnostic_target_label_metadata(identity_facts, target_period=period),
             "ledger_resolved_assertion": _fact_assertion(representative_fact),
             **_reference_metadata(reference),
         },
         hierarchy=_calibration_hierarchy(
-            facts,
+            identity_facts,
             reference=reference,
             target_period=period,
         ),
     )
+
+
+def _scaled_by_ratio_value(
+    reference: LedgerTargetReference,
+    numeric_values: list[float],
+) -> tuple[float, dict[str, str]]:
+    """Translate a published cell by the quotient of two facts.
+
+    The result is ``base * numerator / denominator`` where the quotient must
+    be a finite share in ``(0, 1]``: the operation exists to restate a cell
+    published for a wider universe (all CGT taxpayers including trusts) in
+    the narrower universe the model measures (individuals), never to
+    inflate it. Every input and the ratio are recorded on the spec.
+    """
+
+    base, numerator, denominator = numeric_values
+    if not math.isfinite(denominator) or denominator <= 0:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: scaled_by_ratio "
+            f"denominator {denominator!r} must be a finite positive value."
+        )
+    ratio = numerator / denominator
+    if not math.isfinite(ratio) or ratio <= 0 or ratio > 1:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: scaled_by_ratio "
+            f"produced ratio {ratio!r} from numerator {numerator!r} and "
+            f"denominator {denominator!r}; a translated cell is a subset "
+            "share of the published cell, so the ratio must lie in (0, 1]."
+        )
+    value = base * ratio
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: scaled_by_ratio "
+            f"produced invalid value {value!r}."
+        )
+    return value, {
+        "ledger_value_base": repr(float(base)),
+        "ledger_value_numerator": repr(float(numerator)),
+        "ledger_value_denominator": repr(float(denominator)),
+        "ledger_value_ratio": repr(float(ratio)),
+    }
 
 
 def _value_representative_fact(
@@ -821,6 +892,8 @@ def _value_representative_fact(
     operation: str,
 ) -> object:
     if len(facts) == 1 or operation not in MULTI_FACT_VALUE_OPERATIONS:
+        return facts[0]
+    if operation == "scaled_by_ratio":
         return facts[0]
     return max(enumerate(facts), key=lambda item: (_period_key(item[1]), item[0]))[1]
 
@@ -1609,6 +1682,10 @@ def _resolve_reference_fact(
             return _resolve_sum_reference_facts(reference, eligible_matches)
         if reference.value_operation == "difference" and eligible_matches:
             return _resolve_difference_reference_facts(reference, eligible_matches)
+        if reference.value_operation == "scaled_by_ratio" and eligible_matches:
+            return _resolve_scaled_by_ratio_reference_facts(
+                reference, eligible_matches, fact_index.facts
+            )
         if reference.value_operation == "linear_combination" and eligible_matches:
             return _resolve_linear_combination_reference_facts(
                 reference, eligible_matches
@@ -1746,6 +1823,131 @@ def _resolve_difference_reference_facts(
         raise ValueError(
             f"Ledger target reference {reference.name!r}: difference operands "
             "must resolve at the same latest period."
+        )
+    return tuple(resolved)
+
+
+#: Base-selector pins a ``scaled_by_ratio`` operand inherits unless it
+#: overrides them: the publisher and the observation period, so the quotient
+#: is taken from the same release and year as the cell it translates.
+_SCALED_BY_RATIO_INHERITED_SELECTOR_KEYS = (
+    "source_name",
+    "period_type",
+    "period_value",
+    "assertion",
+)
+
+
+def _validate_scaled_by_ratio_operands(
+    name: str, operands: tuple[Mapping[str, object], ...]
+) -> None:
+    roles = [
+        str(operand.get("role")) if isinstance(operand, Mapping) else ""
+        for operand in operands
+    ]
+    if roles != list(SCALED_BY_RATIO_OPERAND_ROLES):
+        raise ValueError(
+            f"LedgerTargetReference {name!r}: scaled_by_ratio requires exactly "
+            f"ordered {'/'.join(SCALED_BY_RATIO_OPERAND_ROLES)} operands, got "
+            f"{roles!r}."
+        )
+    base_overrides = {key for key in operands[0] if key != "role"}
+    if base_overrides:
+        raise ValueError(
+            f"LedgerTargetReference {name!r}: the scaled_by_ratio base operand "
+            "is the reference's own selector and takes no overrides, got "
+            f"{sorted(base_overrides)!r}."
+        )
+    for operand in operands[1:]:
+        selector = {key for key in operand if key != "role"}
+        if not selector:
+            raise ValueError(
+                f"LedgerTargetReference {name!r}: scaled_by_ratio operand "
+                f"{operand.get('role')!r} needs at least one selector field."
+            )
+
+
+def _scaled_by_ratio_operand_selectors(
+    reference: LedgerTargetReference,
+) -> tuple[Mapping[str, object], ...]:
+    """The numerator and denominator selectors, with the base pins inherited."""
+
+    inherited = {
+        key: reference.ledger_selector[key]
+        for key in _SCALED_BY_RATIO_INHERITED_SELECTOR_KEYS
+        if key in reference.ledger_selector
+    }
+    return tuple(
+        {
+            **inherited,
+            **{str(key): value for key, value in operand.items() if key != "role"},
+        }
+        for operand in reference.value_operands[1:]
+    )
+
+
+def reference_fact_selectors(
+    reference: LedgerTargetReference,
+) -> tuple[Mapping[str, object], ...]:
+    """Every selector a reference resolves facts through.
+
+    The reference's own selector first; a ``scaled_by_ratio`` reference adds
+    its numerator and denominator selectors, which lie outside the base cell
+    (national facts for a region-pinned cell). Callers that pre-filter the
+    facts they hand to :func:`compile_ledger_target_references` must keep a
+    fact matching any of these, or the quotient can never resolve.
+    """
+
+    selectors: list[Mapping[str, object]] = []
+    if reference.ledger_selector:
+        selectors.append(dict(reference.ledger_selector))
+    if reference.value_operation == "scaled_by_ratio":
+        selectors.extend(_scaled_by_ratio_operand_selectors(reference))
+    return tuple(selectors)
+
+
+def _resolve_scaled_by_ratio_reference_facts(
+    reference: LedgerTargetReference,
+    eligible_matches: list[object],
+    facts: tuple[object, ...],
+) -> tuple[object, ...]:
+    """Resolve the base cell from the selector and the quotient from the feed.
+
+    The numerator and denominator are national facts outside the cell's own
+    selector (a region-pinned selector never matches a UK-level row), so they
+    are matched over every fact the compile was given, with the base
+    selector's source and period pins inherited unless the operand overrides
+    them. All three must resolve exactly once at the same period.
+    """
+
+    base = _latest_period_selector_match(reference, eligible_matches)
+    if base is None:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: scaled_by_ratio base "
+            f"cell did not resolve exactly once ({len(eligible_matches)} "
+            "eligible matches)."
+        )
+    resolved: list[object] = [base]
+    for operand, selector in zip(
+        reference.value_operands[1:],
+        _scaled_by_ratio_operand_selectors(reference),
+        strict=True,
+    ):
+        matches = [fact for fact in facts if _fact_matches_selector(fact, selector)]
+        eligible = _eligible_selector_matches(reference, matches)
+        match = _latest_period_selector_match(reference, eligible)
+        if match is None:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: scaled_by_ratio "
+                f"operand {operand.get('role')!r} did not resolve exactly once "
+                f"({len(eligible)} eligible matches)."
+            )
+        resolved.append(match)
+    periods = {_period_key(fact) for fact in resolved}
+    if len(periods) != 1:
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: scaled_by_ratio "
+            "operands must resolve at the same period as the base cell."
         )
     return tuple(resolved)
 
@@ -2847,6 +3049,8 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
         )
     if reference.value_operation == "difference":
         metadata["ledger_value_formula"] = "minuend - subtrahend"
+    if reference.value_operation == "scaled_by_ratio":
+        metadata["ledger_value_formula"] = "base * numerator / denominator"
     if reference.value_operation == "linear_combination":
         metadata["ledger_value_formula"] = _linear_combination_formula(reference)
     if reference.metadata.get("composed_from_level"):
@@ -3252,10 +3456,60 @@ def _ledger_metadata(fact: object, *, fact_key: str) -> dict[str, str]:
     constraint_rows = _constraint_rows(fact)
     if constraint_rows:
         metadata["ledger_universe_constraint_count"] = str(len(constraint_rows))
-    for key, value in sorted(_dimensions(fact).items()):
+    dimensions = _dimensions(fact)
+    for key, value in sorted(dimensions.items()):
         if value is not None:
             metadata[f"ledger_filter_{key}"] = str(value)
+    for key, value in sorted(_constraint_bound_filters(fact, dimensions).items()):
+        metadata.setdefault(f"ledger_filter_{key}", value)
     return {key: value for key, value in metadata.items() if value}
+
+
+#: Constraint operators that publish a numeric band edge, and the
+#: ``ledger_filter_<variable><suffix>`` key each one is stamped under. The
+#: ``_lower_bound`` suffix is the one the band materialization reads
+#: (``target_materialization._band_lower_edge``); the others record the
+#: publisher's upper edge and its openness for readers and receipts.
+_CONSTRAINT_BOUND_SUFFIXES: Mapping[str, str] = {
+    ">=": "_lower_bound",
+    ">": "_lower_bound_exclusive",
+    "<": "_upper_bound",
+    "<=": "_upper_bound_inclusive",
+}
+
+
+def _constraint_bound_filters(
+    fact: object, dimensions: Mapping[str, object]
+) -> dict[str, str]:
+    """Numeric band edges a fact declares as universe constraints.
+
+    Some publishers state a band as a categorical dimension plus explicit
+    numeric constraints (HMRC's CGT size-of-gain and age tables:
+    ``cgt_gain_band == gain_3000_to_5999`` with ``cgt_gain >= 3000`` and
+    ``cgt_gain < 6000``) rather than as a ``*_lower_bound`` dimension the way
+    the SPI income-band tables do. The edges are stamped under the same
+    ``ledger_filter_`` vocabulary so a banded measure can slice on them. A
+    variable that is already a dimension key is left to the dimension stamp;
+    non-numeric or non-filter constraints are ignored.
+    """
+
+    bounds: dict[str, str] = {}
+    for row in _constraint_rows(fact):
+        role = _str_at(row, "role") or "filter"
+        if role != "filter":
+            continue
+        variable = _str_at(row, "variable")
+        operator = _str_at(row, "operator")
+        suffix = _CONSTRAINT_BOUND_SUFFIXES.get(operator)
+        if not variable or suffix is None or variable in dimensions:
+            continue
+        value = _at(row, "value")
+        if isinstance(value, bool) or not isinstance(value, int | float):
+            continue
+        if not math.isfinite(float(value)):
+            continue
+        bounds[f"{variable}{suffix}"] = str(value)
+    return bounds
 
 
 def _diagnostic_target_label_metadata(

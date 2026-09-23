@@ -28,6 +28,7 @@ import microcosm.build.us_runtime.h5_io as h5_io
 import microcosm.build.us_runtime.release_gate_preflight as preflight_module
 from microcosm.build.us_runtime.h5_io import AuthenticatedPoolH5
 from microcosm.build.us_runtime.release_gate_preflight import (
+    MAX_REPORTED_SPM_UNITS_HARD_CAP,
     PreflightReport,
     check_export_mass_parity_risk,
     check_selection_carryover,
@@ -1282,7 +1283,10 @@ def test__spm_composition__minor_only_unit__fails_and_names_the_unit() -> None:
     assert result.details["n_units_without_member_aged_18_or_over"] == 1
     assert result.details["role_source"] == "unclassified"
     assert [row["spm_unit_id"] for row in result.rows] == [2]
-    assert result.rows[0]["member_ages"] == [16.0, 8.0]
+    # Bands, never exact ages: the rows travel to preflight stdout and
+    # ``--json-out``, and 15/18 are the only thresholds the rule turns on.
+    assert result.rows[0]["member_age_bands"] == ["15_to_17", "under_15"]
+    assert "member_ages" not in result.rows[0]
     assert result.rows[0]["n_members"] == 2
     assert "SPM_COMPOSITION_REQUIRED" in result.summary
     assert any("Remedy:" in failure for failure in result.failures)
@@ -1511,3 +1515,188 @@ def test__cli__forwards_the_spm_unit_report_cap_to_run_preflight(
 
     assert cli.main([*argv, "--max-reported-spm-units", "3"]) == 0
     assert captured["max_reported_spm_units"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Check 5: reported-row hygiene, the join guard, and the documented equivalences
+# ---------------------------------------------------------------------------
+#
+# ``Frame.__init__`` validates that a group table's ids are exactly the distinct
+# values of its membership column (``microcosm.frame.bundle._validate_linkage``),
+# so a constructed frame can carry neither an unmatchable membership value nor a
+# unit with no member rows. The one route into either state is the in-place
+# mutation ``Frame.revalidate``'s docstring exists for: ``Frame.table`` returns
+# the stored table rather than a copy. These tests take exactly that route, so
+# they exercise the states the check documents without pretending a validated
+# frame could reach them on its own.
+
+
+def _mutate_person_table(frame: Frame, mutate) -> Frame:
+    """Apply ``mutate`` to ``frame``'s stored person table, in place."""
+    mutate(frame.table("person"))
+    return frame
+
+
+def test__spm_composition__report_cap_is_clamped_to_the_hard_cap() -> None:
+    """An operator asking for 10,000 rows gets the hard cap, not 10,000."""
+    pool = [{"hid": index, "spm": index, "age": 10.0} for index in range(1, 121)]
+
+    result = check_spm_composition(_spm_frame(pool), max_reported=10_000)
+
+    assert result.status == "FAIL"
+    assert result.details["n_units_without_classified_adult"] == 120
+    assert len(result.rows) == MAX_REPORTED_SPM_UNITS_HARD_CAP
+    assert result.details["max_reported_units"] == MAX_REPORTED_SPM_UNITS_HARD_CAP
+    assert result.details["n_units_reported"] == MAX_REPORTED_SPM_UNITS_HARD_CAP
+    assert f"(+{120 - MAX_REPORTED_SPM_UNITS_HARD_CAP} more)" in result.failures[0]
+
+
+def test__spm_composition__negative_report_cap_names_none_not_all_but_the_last() -> (
+    None
+):
+    """A negative cap reaching a bare ``[:max_reported]`` slice would mean
+    "every offending unit except the last |N|" — the opposite of a cap."""
+    pool = [{"hid": index, "spm": index, "age": 10.0} for index in range(1, 6)]
+
+    result = check_spm_composition(_spm_frame(pool), max_reported=-2)
+
+    assert result.status == "FAIL"
+    assert result.details["n_units_without_classified_adult"] == 5
+    assert result.rows == ()
+    assert result.details["max_reported_units"] == 0
+    # The count an operator acts on is never capped, and the line stays readable.
+    assert "5 spm_unit(s) have no member aged 18 or over" in result.failures[0]
+    assert "no spm_unit_id named (report cap 0)" in result.failures[0]
+
+
+def test__spm_composition__membership_matching_no_unit_id_cannot_be_evaluated() -> None:
+    """A join that does not join must SKIP, not report 100% offending.
+
+    ``_sum_by_unit`` joins by index label, so membership values of a dtype the
+    unit ids will not match (``bytes`` against ``str`` off an H5 is the
+    realistic case) drop every person and leave every unit reading zero adults
+    — a loud false refusal indistinguishable from a catastrophic real defect.
+    """
+    frame = _mutate_person_table(
+        _spm_frame([{"hid": 1, "spm": 1, "age": 40.0}]),
+        lambda person: person.__setitem__(
+            "person_spm_unit_id", person["person_spm_unit_id"].astype(str)
+        ),
+    )
+
+    with pytest.raises(ValueError, match="cannot be evaluated"):
+        check_spm_composition(frame)
+
+
+def test__spm_composition__join_guard_raises_what_run_preflight_skips_on() -> None:
+    """The guard's ``ValueError`` is the type check 5's caller turns into SKIPPED."""
+    import inspect
+
+    source = inspect.getsource(preflight_module.run_preflight)
+    block = source[source.index("# Check 5: SPM measurement composition") :]
+    assert "except ValueError as exc:" in block
+    assert 'status="SKIPPED"' in block
+
+
+def test__spm_composition__unit_with_no_member_rows_is_offending() -> None:
+    """``unit.sum`` over no members is 0, and the engine refuses 0 just the same."""
+    frame = _mutate_person_table(
+        _spm_frame(
+            [
+                {"hid": 1, "spm": 1, "age": 40.0},
+                {"hid": 2, "spm": 2, "age": 40.0},
+            ]
+        ),
+        lambda person: person.drop(index=[1], inplace=True),
+    )
+
+    result = check_spm_composition(frame)
+
+    assert result.status == "FAIL"
+    assert result.details["n_units"] == 2
+    assert result.details["n_units_without_classified_adult"] == 1
+    assert [row["spm_unit_id"] for row in result.rows] == [2]
+    assert result.rows[0]["n_members"] == 0
+    assert result.rows[0]["member_age_bands"] == []
+
+
+def test__spm_composition__a_nan_age_is_never_an_adult() -> None:
+    """NaN satisfies neither ``>= 18`` nor ``>= 15``, exactly as in the engine's
+    comparison, so a unit whose only age is unreadable has no classified adult."""
+    result = check_spm_composition(
+        _spm_frame(
+            [
+                {"hid": 1, "spm": 1, "age": 40.0},
+                {"hid": 2, "spm": 2, "age": float("nan")},
+            ]
+        )
+    )
+
+    assert result.status == "FAIL"
+    assert result.details["ages_unreadable_as_numbers"] == 1
+    assert [row["spm_unit_id"] for row in result.rows] == [2]
+    assert result.rows[0]["member_age_bands"] == ["unknown"]
+
+
+@pytest.mark.parametrize(
+    ("stored_true", "stored_false", "dtype"),
+    [(1, 0, "int64"), (1.0, 0.0, "float64")],
+)
+def test__spm_composition__role_column_stored_as_a_number_reads_as_bool(
+    stored_true, stored_false, dtype
+) -> None:
+    """policyengine-core casts the role input with ``astype(bool)``.
+
+    A dataset that carries the role as 0/1 — int or float, as an H5 round-trip
+    can leave it — must classify identically to one carrying True/False, or the
+    check passes on a frame the engine refuses (or the reverse).
+    """
+    frame = _spm_frame(
+        [
+            {
+                "hid": 1,
+                "spm": 1,
+                "age": 16.0,
+                "is_spm_independent_minor_role": stored_true,
+            },
+            {
+                "hid": 2,
+                "spm": 2,
+                "age": 16.0,
+                "is_spm_independent_minor_role": stored_false,
+            },
+        ]
+    )
+    assert str(frame.table("person")["is_spm_independent_minor_role"].dtype) == dtype
+
+    result = check_spm_composition(frame)
+
+    assert result.status == "FAIL"
+    assert result.details["role_source"] == "source_column"
+    # Only the 0/False person's unit is offending; the 1/True 16-year-old is an
+    # adult by the role, exactly as a True would have been.
+    assert [row["spm_unit_id"] for row in result.rows] == [2]
+    assert result.rows[0]["member_independence_roles"] == [False]
+
+
+def test__cli__rejects_a_negative_spm_unit_report_cap(capsys) -> None:
+    """argparse refuses the flag rather than quietly repairing it."""
+    cli = _load_preflight_cli()
+
+    with pytest.raises(SystemExit) as exit_info:
+        cli._parser().parse_args(["--max-reported-spm-units", "-5"])
+
+    assert exit_info.value.code == 2
+    assert "must be zero or more" in capsys.readouterr().err
+
+
+def test__cli__spm_unit_report_cap_help_documents_bands_and_the_hard_cap() -> None:
+    cli = _load_preflight_cli()
+    action = next(
+        action
+        for action in cli._parser()._actions
+        if action.dest == "max_reported_spm_units"
+    )
+
+    assert "age bands" in action.help
+    assert str(MAX_REPORTED_SPM_UNITS_HARD_CAP) in action.help

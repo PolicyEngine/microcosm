@@ -916,7 +916,6 @@ class TestUKCountryPackage:
             row.path for row in spec.resource_rows if row.kind == "legacy_json"
         )
         assert legacy_rows == (
-            "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
@@ -926,7 +925,8 @@ class TestUKCountryPackage:
             "gates.json",
             "brma_rent_counts.json",
             "calibration_measure_exclusions.json",
-            "hmrc_cgt_size_bands.json",
+            "hmrc_cgt_conditioning_facts.json",
+            "hmrc_cgt_asset_type_facts.json",
             "advani_summers_capital_gains_distribution.json",
             "salary_sacrifice_anchor.json",
             "slc_liable_stocks.json",
@@ -948,6 +948,7 @@ class TestUKCountryPackage:
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
             "input_mass_reviewed_exclusions.json",
+            "incumbent_unresolvable_measures.json",
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
@@ -992,10 +993,11 @@ class TestUKCountryPackage:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        # 29 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
-        # #685, then frs_relationships #791 as the newest) plus the
+        # 30 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
+        # #685, frs_relationships #791, then hmrc_cgt_asset_type_spine #725 as
+        # the newest) plus the
         # two certified-pair stages the June path still uses.
-        assert len(spec.sources.stages) == 31
+        assert len(spec.sources.stages) == 32
 
 
 class TestExistingPackagesGeneralize:
@@ -1021,7 +1023,6 @@ class TestExistingPackagesGeneralize:
             "spec/sources.yaml",
             "spec/spine.yaml",
             "spec/vintages.yaml",
-            "cgt_source_stages.json",
             "degenerate_reviewed_exclusions.json",
             "target_fit_reviewed_exclusions.json",
             "efrs_parity_known_gaps.json",
@@ -1031,7 +1032,8 @@ class TestExistingPackagesGeneralize:
             "gates.json",
             "brma_rent_counts.json",
             "calibration_measure_exclusions.json",
-            "hmrc_cgt_size_bands.json",
+            "hmrc_cgt_conditioning_facts.json",
+            "hmrc_cgt_asset_type_facts.json",
             "advani_summers_capital_gains_distribution.json",
             "salary_sacrifice_anchor.json",
             "slc_liable_stocks.json",
@@ -1053,6 +1055,7 @@ class TestExistingPackagesGeneralize:
             "take_up_contract.json",
             "target_reference_signed_exclusions.json",
             "input_mass_reviewed_exclusions.json",
+            "incumbent_unresolvable_measures.json",
             "spine_swap_signed_differences.json",
             "spine_candidate_acceptance.json",
             "ledger_compile_parity_incumbent_2025_signed_differences.json",
@@ -1098,10 +1101,12 @@ class TestExistingPackagesGeneralize:
 
         references = {reference.name: reference for reference in spec.target_references}
         assert (
-            len(references) == 631
+            len(references) == 705
         )  # microcosm#905: 424 - 18 country rows + 189 region-tier cells;
         # microcosm#929: the 81 VOA region cells become 81 composed MHCLG
-        # cells and Wales gains ten country rows (bands A-I + total)
+        # cells and Wales gains ten country rows (bands A-I + total);
+        # microcosm#725/#467: 24 CGT age-band rows, 24 region-tier cells and
+        # 24 size-of-gain rows
         assert references["obr.esa"].value_operation == "sum"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"
@@ -1346,6 +1351,7 @@ class TestUKGatesManifest:
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
@@ -1364,6 +1370,7 @@ class TestUKGatesManifest:
             "uk_take_up_signal",
             "uk_brma_enum_domain",
             "uk_ons_household_type_enum_domain",
+            "uk_capital_gains_asset_type_enum_domain",
             "uk_uc_deduction_combination_enum_domain",
             "uk_student_loan_plan_enum_domain",
             "uk_calibration_reference_coverage",
@@ -1438,6 +1445,7 @@ class TestUKGatesManifest:
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
+            "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",

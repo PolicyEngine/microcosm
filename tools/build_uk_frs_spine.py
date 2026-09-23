@@ -57,6 +57,10 @@ from microcosm.build.uk_runtime.calibration_run import (
     UK_SPINE_GATE_SCOPE,
     uk_scoped_gate_manifest,
 )
+from microcosm.build.uk_runtime.cgt_asset_type import (
+    CGT_ASSET_TYPE_DOMAIN,
+    uk_cgt_asset_type_stage_transform,
+)
 from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_spine_stage_transform
 from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTBandDonorStageTransform,
@@ -211,11 +215,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Pinned local HMRC collated ODS path.",
     )
     parser.add_argument(
-        "--cgt-ods",
-        type=Path,
-        help="Pinned local HMRC Capital Gains Tax Table 3 ODS path.",
-    )
-    parser.add_argument(
         "--synthetic-fixture-dir",
         type=Path,
         help=(
@@ -320,7 +319,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         supplied.extend(
             flag
             for flag, value in (
-                ("--cgt-ods", args.cgt_ods),
                 ("--was-tab", args.was_tab),
                 ("--lcfs-hh-tab", args.lcfs_hh_tab),
                 ("--lcfs-person-tab", args.lcfs_person_tab),
@@ -374,11 +372,6 @@ def _validate_args(args: argparse.Namespace) -> None:
             raise ValueError(f"--hmrc-ods must be an existing file: {args.hmrc_ods}")
         if args.hmrc_ods.suffix.lower() != ".ods":
             raise ValueError("--hmrc-ods must end with '.ods'.")
-    if args.cgt_ods is not None:
-        if not args.cgt_ods.is_file():
-            raise ValueError(f"--cgt-ods must be an existing file: {args.cgt_ods}")
-        if args.cgt_ods.suffix.lower() != ".ods":
-            raise ValueError("--cgt-ods must end with '.ods'.")
     paths = {
         "spine_h5": args.spine_h5,
         "build_sidecar": args.spine_h5.with_suffix(".build.json"),
@@ -434,7 +427,6 @@ def _synthetic_graph_sources(source: Path) -> dict[str, Path]:
         "etb": "etb",
         "spi": "spi_donor",
         "hmrc_income": "hmrc_income_targets",
-        "hmrc_cgt": "cgt_distribution",
     }
     resolved = {"frs": root}
     for role, name in names.items():
@@ -640,6 +632,11 @@ def _declared_seeds(stages) -> dict[str, dict[str, int]]:
                     stage_seeds["stack_band_donor_households"] = seed
                 elif operation.kind == "within_band_draws":
                     stage_seeds["within_band_draws"] = seed
+                elif operation.kind in (
+                    "assign_residential_property_flag",
+                    "assign_main_asset_type",
+                ):
+                    stage_seeds[operation.kind] = seed
                 elif operation.kind == "convert_donors_to_target_stock":
                     stage_seeds[str(operation.parameters["salt"])] = seed
                 elif operation.kind == "top_up_to_stock":
@@ -680,6 +677,29 @@ def _collect_stage_evidence(
     return evidence_by_stage
 
 
+def _fit_weight_hook_holder(implementation: object) -> object | None:
+    """The object declaring ``fit_weight_records``, seen through the proxies.
+
+    Detects the hook without evaluating it (a raising property must count as
+    a fitting stage with unreadable records, not vanish), and looks through
+    the wrappers a staged run puts around every stage: ``ObservedTransform``
+    (telemetry) and the graph's source transform both proxy attribute reads
+    through ``__getattr__``, which a class-level probe never consults — so
+    every telemetry-enabled spine since the graph driver silently lost the
+    block and the release-cut weights audit found no evidence.
+    """
+
+    seen: set[int] = set()
+    candidate: object | None = implementation
+    while candidate is not None and id(candidate) not in seen:
+        seen.add(id(candidate))
+        declared = getattr(type(candidate), "fit_weight_records", None) is not None
+        if declared or "fit_weight_records" in getattr(candidate, "__dict__", {}):
+            return candidate
+        candidate = getattr(candidate, "__dict__", {}).get("transform")
+    return None
+
+
 def _collect_fit_weight_records(
     *,
     stage_names: Sequence[str],
@@ -703,15 +723,11 @@ def _collect_fit_weight_records(
         implementation = implementations.get(stage_name)
         if implementation is None:
             continue
-        # Detect the hook without evaluating it: a raising property must
-        # count as a fitting stage with unreadable records, not vanish.
-        exposes_records = getattr(
-            type(implementation), "fit_weight_records", None
-        ) is not None or "fit_weight_records" in getattr(implementation, "__dict__", {})
-        if not exposes_records:
+        holder = _fit_weight_hook_holder(implementation)
+        if holder is None:
             continue
         try:
-            records = tuple(implementation.fit_weight_records or ())
+            records = tuple(holder.fit_weight_records or ())
         except Exception:  # noqa: BLE001 - unreadable records fail the audit
             records_by_stage[stage_name] = []
             continue
@@ -1126,6 +1142,9 @@ def _spine_gate_artifacts(engine: object) -> dict[str, object]:
         # #791: ons_household_type is a frame column, not an engine variable,
         # so its enum_domain gate takes the declared domain as an artifact.
         "ons_household_type_enum_domain": CHRONICLE_ONS_HOUSEHOLD_TYPE_VALUE_IDS,
+        # #725: capital_gains_asset_type is likewise a frame column whose
+        # domain the asset-type stage declares.
+        "capital_gains_asset_type_enum_domain": CGT_ASSET_TYPE_DOMAIN,
     }
 
 
@@ -1315,14 +1334,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         compiled_graph = compile_graph(graph)
         stage_names = _uk_spine_stage_names(spec)
-        if (
-            args.synthetic_fixture_dir is None
-            and "hmrc_cgt_gains_spine" in stage_names
-            and args.cgt_ods is None
-        ):
-            raise ValueError(
-                "--cgt-ods is required when hmrc_cgt_gains_spine is scheduled."
-            )
         if (
             args.synthetic_fixture_dir is None
             and "was_wealth" in stage_names
@@ -1537,10 +1548,13 @@ def main(argv: list[str] | None = None) -> int:
                 stage=stages_by_name["cgt_band_donors"]
             )
         if "hmrc_cgt_gains_spine" in stage_names:
-            implementations["hmrc_cgt_gains_spine"] = _GraphSourceTransform(
-                lambda sources: uk_cgt_spine_stage_transform(
-                    stages_by_name["hmrc_cgt_gains_spine"],
-                    sources["hmrc_cgt"],
+            implementations["hmrc_cgt_gains_spine"] = uk_cgt_spine_stage_transform(
+                stages_by_name["hmrc_cgt_gains_spine"]
+            )
+        if "hmrc_cgt_asset_type_spine" in stage_names:
+            implementations["hmrc_cgt_asset_type_spine"] = (
+                uk_cgt_asset_type_stage_transform(
+                    stages_by_name["hmrc_cgt_asset_type_spine"]
                 )
             )
         if "salary_sacrifice" in stage_names:
@@ -1630,8 +1644,6 @@ def main(argv: list[str] | None = None) -> int:
             if "hmrc_spi_income_spine" in stage_names:
                 graph_sources["spi"] = args.spi_tab
                 graph_sources["hmrc_income"] = args.hmrc_ods
-            if "hmrc_cgt_gains_spine" in stage_names:
-                graph_sources["hmrc_cgt"] = args.cgt_ods
         graph_store = ContentStore(checkpoint_root / "node-graph")
         graph_manifest = run_graph(
             compiled_graph,

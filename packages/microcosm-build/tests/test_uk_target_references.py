@@ -54,13 +54,14 @@ from tools.generate_uk_local_target_references import _support_floor_register_sc
 from tools.generate_uk_target_references import (
     POLICYENGINE_BINDING_KEYS,
     _annual_uc_award_band_token,
+    _fanout_name,
     _geography_pins,
     _reference_metadata,
     _sum_target_ids,
     _value_operation_by_target_id,
 )
 
-ACTIVE_REFERENCE_COUNT = 631
+ACTIVE_REFERENCE_COUNT = 705
 REGION_TIER_LEVEL = {code: level for level, code in UK_REGION_TIER}
 UK_DATA_REPO = "policyengine-" + "uk-data"
 
@@ -225,6 +226,7 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         "linear_combination",
         "monthly_window_average",
         "monthly_window_sum_average",
+        "scaled_by_ratio",
     ]
     assert len(names) == len(set(names))
 
@@ -739,13 +741,20 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
     assert membership["target_period"] == 2025
     assert membership["active_reference_count"] == ACTIVE_REFERENCE_COUNT
     assert membership["status_counts"] == {
-        "active": 631,
+        "active": 705,
         "no_fact_at_or_before_period": 7,
-        "signed_excluded": 8,
+        "signed_excluded": 13,
     }
     assert membership["genuine_sum_residue"]
     assert membership["uprating_holds"]
-    assert membership["fanout_family_outcomes"] == [
+    outcomes = membership["fanout_family_outcomes"]
+    (cgt_outcome,) = [entry for entry in outcomes if entry["family"] == "hmrc_cgt"]
+    # 24 age-band rows, 24 region-tier cells and 24 size-of-gain rows
+    # (microcosm#725, #467).
+    assert cgt_outcome["status"] == "active_with_row_level_signed_exclusions"
+    assert cgt_outcome["active_reference_count"] == 74
+    assert "scaled_by_ratio" in cgt_outcome["signed_rationale"]
+    assert [entry for entry in outcomes if entry["family"] != "hmrc_cgt"] == [
         {
             "family": "hmrc_spi",
             "status": "active_with_signed_property_amount_exclusion",
@@ -808,7 +817,20 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
             ),
         },
     ]
-    assert membership["signed_exclusion_rationales"] == [
+    rationales = membership["signed_exclusion_rationales"]
+    cgt_rows = [entry for entry in rationales if entry["family"] == "hmrc_cgt"]
+    assert [(entry["target_id"], entry["row"]) for entry in cgt_rows] == [
+        ("hmrc.cgt.gains_by_age_band", "hmrc.cgt.gains_by_age_band.age_0_to_15"),
+        ("hmrc.cgt.gains_by_gain_band", "hmrc/capital_gains_band_0"),
+        ("hmrc.cgt.tax_by_age_band", "hmrc.cgt.tax_by_age_band.age_0_to_15"),
+        (
+            "hmrc.cgt.taxpayers_by_age_band",
+            "hmrc.cgt.taxpayers_by_age_band.age_0_to_15",
+        ),
+        ("hmrc.cgt.taxpayers_by_gain_band", "hmrc/cgt_taxpayers_band_0"),
+    ]
+    assert all(entry["status"] == "signed_excluded" for entry in cgt_rows)
+    assert [entry for entry in rationales if entry["family"] != "hmrc_cgt"] == [
         {
             "family": "hmrc_spi",
             "target_id": "hmrc.spi.property_income.amount_by_total_income_band",
@@ -1401,10 +1423,11 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         for target in contract["targets"]
         if sorted(target.get("geography_levels") or ()) == ["country", "region"]
     ]
-    assert len(two_level) == 18
+    assert len(two_level) == 20
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
-    assert len(ons) == 9 and len(mhclg) == 9
+    hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.")]
+    assert len(ons) == 9 and len(mhclg) == 9 and len(hmrc) == 2
     by_contract: dict[str, list[dict]] = {}
     for reference in resource["target_references"]:
         by_contract.setdefault(reference["metadata"]["contract_target_id"], []).append(
@@ -1417,7 +1440,9 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         cells = [row["metadata"]["geography_id"] for row in rows]
         # The retired single country row is gone: every row is a tier cell.
         assert all("@" in row["name"] for row in rows), target_id
-        assert cells == (tier_codes if target_id in ons else english), target_id
+        assert cells == (
+            tier_codes if target_id in ons or target_id in hmrc else english
+        ), target_id
         assert [row["measure"] for row in rows] == [row["name"] for row in rows]
         assert {row["metadata"]["cross_grain_grain"] for row in rows} == {"region"}
         for row in rows:
@@ -1427,6 +1452,15 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
                 == UK_REGION_TIER_ENUM[row["metadata"]["geography_id"]]
             )
             assert predicate["map_to"] == row["entity"]
+            if target_id in hmrc:
+                # Table 5 cells are restated on the individuals basis by the
+                # Table 1 share (microcosm#725).
+                assert row["value_operation"] == "scaled_by_ratio"
+                assert [o["role"] for o in row["value_operands"]] == [
+                    "base",
+                    "numerator",
+                    "denominator",
+                ]
             if target_id in mhclg:
                 # The English stock cells are composed from their authorities'
                 # MHCLG taxbase rows (microcosm#929): the selector names the
@@ -1452,10 +1486,85 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
         candidates = membership["targets"][target_id]["candidates"]
         assert [entry["geography_id"] for entry in candidates] == cells
         assert {entry["status"] for entry in candidates} == {"active"}
-    assert sum(len(by_contract[target_id]) for target_id in two_level) == 189
+    # 108 ONS + 81 MHCLG + 24 CGT region-tier rows (microcosm#725).
+    assert sum(len(by_contract[target_id]) for target_id in two_level) == 213
     # The twelve ONS cells of a band sum to the retired UK row of the same
     # publication (the 0-9 band: 7,553,013 at mid-2024).
     zero_to_nine = membership["targets"]["ons.population.age_0_9_by_region"]
     assert sum(entry["resolved_value"] for entry in zero_to_nine["candidates"]) == (
         7_553_013.0
     )
+
+
+def _cgt_band_fact(value_id: str) -> dict:
+    return {
+        "dimensions": {"cgt_gain_band": value_id},
+        "layout": {"groupby_dimension": "cgt_gain_band", "groupby_value_id": value_id},
+    }
+
+
+_CGT_BAND_TARGET = {
+    "target_id": "hmrc.cgt.gains_by_gain_band",
+    "bindings": {"policyengine": {"metric_name": "hmrc/capital_gains_band"}},
+}
+_CGT_BAND_INVERSE = {
+    "hmrc.cgt.gains_by_gain_band": [
+        "hmrc/capital_gains_band_50000",
+        "hmrc/capital_gains_band_500000",
+        "hmrc/capital_gains_band_5000000",
+    ]
+}
+
+
+def test_cgt_band_fanout_names_match_incumbent_names_by_exact_suffix() -> None:
+    # ``_band_50000`` is a substring of ``_band_500000``; only the exact
+    # lower-edge suffix may claim an incumbent name.
+    assert (
+        _fanout_name(
+            _CGT_BAND_TARGET, _cgt_band_fact("gain_50000_to_99999"), _CGT_BAND_INVERSE
+        )
+        == "hmrc/capital_gains_band_50000"
+    )
+    assert (
+        _fanout_name(
+            _CGT_BAND_TARGET, _cgt_band_fact("gain_500000_to_999999"), _CGT_BAND_INVERSE
+        )
+        == "hmrc/capital_gains_band_500000"
+    )
+    assert (
+        _fanout_name(
+            _CGT_BAND_TARGET, _cgt_band_fact("gain_5000000_plus"), _CGT_BAND_INVERSE
+        )
+        == "hmrc/capital_gains_band_5000000"
+    )
+
+
+def test_cgt_band_fanout_row_without_incumbent_name_takes_the_declared_form() -> None:
+    fact = _cgt_band_fact("gain_3000_to_5999")
+    # Without the naming rule the row has no name and would be dropped, as
+    # every partially mapped family behaves today.
+    assert _fanout_name(_CGT_BAND_TARGET, fact, _CGT_BAND_INVERSE) is None
+    declared = {**_CGT_BAND_TARGET, "fanout_row_naming": "metric_name_band_lower"}
+    assert _fanout_name(declared, fact, _CGT_BAND_INVERSE) == (
+        "hmrc/capital_gains_band_3000"
+    )
+    # With no incumbent names at all the same form applies.
+    assert _fanout_name(declared, fact, {}) == "hmrc/capital_gains_band_3000"
+
+
+def test_cgt_band_fanout_naming_refuses_unrecognised_bands_and_rules() -> None:
+    declared = {**_CGT_BAND_TARGET, "fanout_row_naming": "metric_name_band_lower"}
+    with pytest.raises(ValueError, match="Unrecognised HMRC CGT gain band value"):
+        _fanout_name(declared, _cgt_band_fact("band_3000"), _CGT_BAND_INVERSE)
+    with pytest.raises(ValueError, match="Unsupported fanout_row_naming"):
+        _fanout_name(
+            {**_CGT_BAND_TARGET, "fanout_row_naming": "something_else"},
+            _cgt_band_fact("gain_3000_to_5999"),
+            _CGT_BAND_INVERSE,
+        )
+    with pytest.raises(ValueError, match="no recognised band dimension"):
+        _fanout_name(
+            declared,
+            {"dimensions": {"age_band": "age_16_to_24"}, "layout": {}},
+            _CGT_BAND_INVERSE,
+        )

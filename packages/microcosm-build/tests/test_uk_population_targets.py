@@ -44,6 +44,7 @@ PROJECTION_FAMILIES = {"obr", "slc_borrowers", "scotgov_social_security"}
 NATIONAL_SELECTOR_KEYS = {
     "aggregate_fact_key",
     "source_name",
+    "source_table",
     "source_concept",
     "source_measure_id",
     "groupby_dimension",
@@ -176,13 +177,14 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
         "monthly_window_average",
         "monthly_window_sum_average",
         "linear_combination",
+        "scaled_by_ratio",
     ]
     assert resource["resolution_defaults"] == {
         "base_period_policy": "latest_not_after_build_base_period",
         "operation": "sum",
         "assertion_policy": "observed_only",
     }
-    assert len(resource["targets"]) == 298
+    assert len(resource["targets"]) == 307
 
     providers = resource["hierarchy"]["providers"]
     categories = resource["hierarchy"]["categories"]
@@ -196,10 +198,10 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     target_ids = [target["target_id"] for target in resource["targets"]]
     registry_scope = resource["registry_parity"]["scope_target_ids"]
     profile_scope = resource["profile_parity"]["scope_target_ids"]
-    assert len(registry_scope) == 247
+    assert len(registry_scope) == 256
     assert len(profile_scope) == 51
-    assert target_ids[:247] == registry_scope
-    assert target_ids[247:] == profile_scope
+    assert target_ids[:256] == registry_scope
+    assert target_ids[256:] == profile_scope
 
     parity = resource["registry_parity"]
     assert parity["pinned_ref"] == "12a1e028afeef08d8b2d74ee03fd9de3a78b2dd3"
@@ -212,8 +214,8 @@ def test_uk_population_targets_shape_order_and_registry_accounting() -> None:
     assert set(mapped_target_ids).isdisjoint(unmapped_declarations)
     assert mapped_target_ids | set(unmapped_declarations) == set(registry_scope)
     assert all(reason for reason in unmapped_declarations.values())
-    assert len(mapped_target_ids) == 192
-    assert len(unmapped_declarations) == 55
+    assert len(mapped_target_ids) == 194
+    assert len(unmapped_declarations) == 62
     suppressed_ancestors = parity["suppressed_ancestors"]
     assert len(suppressed_ancestors) == 5
     assert set(suppressed_ancestors).isdisjoint(parity["mapped"])
@@ -332,7 +334,7 @@ def test_uk_population_targets_have_unique_target_ids() -> None:
     resource = _load()
 
     target_ids = [target["target_id"] for target in resource["targets"]]
-    assert len(target_ids) == 298
+    assert len(target_ids) == 307
     assert len(target_ids) == len(set(target_ids))
 
 
@@ -419,6 +421,11 @@ def test_childcare_bus_observation_basis_and_entity_pins_are_closed_world() -> N
         "fiscal_year_flow",
         "individuals_observed_disposal_year_2024_liability",
         "individuals_observed_disposal_year_2024_net_gains_and_aea",
+        "individuals_observed_disposal_year_2024_net_gains_and_aea_by_age_band",
+        "individuals_observed_disposal_year_2024_liability_by_age_band",
+        "individuals_observed_disposal_year_2024_net_gains_and_aea_by_size_of_gain",
+        "all_taxpayers_by_area_disposal_year_2024_scaled_to_individuals_by_table1_share",
+        "uk_residents_reporting_residential_property_disposals_disposal_year_2024_all_channels_scaled_to_individuals_by_table8b_share",
     }
     allowed_operations = set(resource["allowed_value_operations"])
     for target in resource["targets"]:
@@ -793,7 +800,7 @@ def test_uc_payment_bands_share_administrative_family_but_keep_source_window() -
 
 def test_paid_joint_diagnostics_do_not_add_active_targets() -> None:
     targets = _load()["targets"]
-    assert len(targets) == 298
+    assert len(targets) == 307
     assert not any(
         f.get("variable") == "uc_calibration_child_entitlement"
         for target in targets
@@ -871,12 +878,51 @@ def test_uk_population_cgt_contract_names_match_runtime_specs() -> None:
 
     assert UK_CGT_TARGET_SPECS == ()
     assert cgt_metric_names == [
+        "hmrc/capital_gains_band",
+        "hmrc/capital_gains_by_age_band",
+        "hmrc/capital_gains_by_region",
         "hmrc/capital_gains_total",
         "hmrc/cgt_liability",
+        "hmrc/cgt_liability_by_age_band",
+        "hmrc/cgt_residential_property_gains",
+        "hmrc/cgt_residential_property_taxpayers",
         "hmrc/cgt_taxpayers",
+        "hmrc/cgt_taxpayers_band",
+        "hmrc/cgt_taxpayers_by_age_band",
+        "hmrc/cgt_taxpayers_by_region",
     ]
     assert mapped["hmrc/capital_gains_total"] == "hmrc.cgt.gains_total"
     assert mapped["hmrc/cgt_taxpayers"] == "hmrc.cgt.taxpayers_total"
+    # The eighteen incumbent banded names are mapped (microcosm#467), nine
+    # per measure, onto the Table 2.1a fan-out targets.
+    band_lowers = (
+        12300,
+        25000,
+        50000,
+        100000,
+        250000,
+        500000,
+        1000000,
+        2000000,
+        5000000,
+    )
+    for lower in band_lowers:
+        assert mapped[f"hmrc/cgt_taxpayers_band_{lower}"] == (
+            "hmrc.cgt.taxpayers_by_gain_band"
+        )
+        assert mapped[f"hmrc/capital_gains_band_{lower}"] == (
+            "hmrc.cgt.gains_by_gain_band"
+        )
+    excluded = resource["registry_parity"]["excluded"]
+    assert not any("cgt" in name for name in excluded)
+    region = _target_by_id(resource, "hmrc.cgt.taxpayers_by_region")
+    assert region["value_operation"] == "scaled_by_ratio"
+    assert [operand["role"] for operand in region["value_operands"]] == [
+        "base",
+        "numerator",
+        "denominator",
+    ]
+    assert region["geography_levels"] == ["country", "region"]
 
 
 def _target_by_id(resource: Mapping, target_id: str) -> Mapping:

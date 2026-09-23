@@ -1200,3 +1200,122 @@ def test_geography_predicate_must_project_to_the_reference_entity():
         materialize_target_bindings(
             adapter, registry, _ADULT_INCOME_CONTRACT, period=2025
         )
+
+
+def _gated_band_registry(*, predicate: str | None) -> TargetRegistry:
+    """Two size-band rows of one gated contract target, optionally area-scoped."""
+
+    specs = []
+    for lower in (6_000, 15_000):
+        metadata = {
+            "contract_target_id": "cgt_gains_band",
+            "ledger_filter_capital_gains_lower_bound": str(lower),
+        }
+        if predicate is not None:
+            metadata["geography_predicate"] = predicate
+        specs.append(
+            TargetSpec(
+                name=f"cgt_gains_band_{lower}",
+                entity="person",
+                measure=f"cgt_gains_band_{lower}",
+                value=1.0,
+                source="test",
+                metadata=metadata,
+            )
+        )
+    return TargetRegistry(specs, country="uk")
+
+
+_GATED_BAND_CONTRACT = {
+    "cgt_gains_band": {
+        "bindings": {
+            "policyengine": {
+                "kind": "parameter_gated_threshold",
+                "gate_parameter": "cgt.aea",
+                "gate_comparison": ">",
+                "gated_variable": "capital_gains",
+                "value_variable": "capital_gains",
+                "groupby_variable": "capital_gains",
+                "filters": [{"variable": "age", "operator": ">=", "value": 18}],
+            }
+        }
+    }
+}
+
+
+def test_filter_aware_provider_applies_filters_band_and_geography_predicate():
+    # A gated provider used to publish its whole gated population no matter
+    # what the binding's filters said; a size-band or region row bound to it
+    # would then carry the national value. The mask now composes: gate, then
+    # filters, then band, then the fan-out predicate.
+    adapter = StubAdapter()
+    adapter.tables["person"]["capital_gains"] = np.array([0.0, 8_000.0, 20_000.0])
+    adapter.tables["person"]["region"] = np.array(["LONDON", "LONDON", "WALES"])
+
+    unscoped = materialize_target_bindings(
+        adapter, _gated_band_registry(predicate=None), _GATED_BAND_CONTRACT, period=2025
+    )
+    assert unscoped.skipped == ()
+    # Person 1 is below the gate (0 < 6,000) and under 18; person 2 sits in
+    # [6,000, 15,000); person 3 in [15,000, inf).
+    np.testing.assert_array_equal(
+        adapter.tables["person"]["cgt_gains_band_6000"], [0.0, 8_000.0, 0.0]
+    )
+    np.testing.assert_array_equal(
+        adapter.tables["person"]["cgt_gains_band_15000"], [0.0, 0.0, 20_000.0]
+    )
+
+    scoped = materialize_target_bindings(
+        adapter,
+        _gated_band_registry(
+            predicate=json.dumps(
+                {"variable": "region", "operator": "==", "value": "LONDON"}
+            )
+        ),
+        _GATED_BAND_CONTRACT,
+        period=2025,
+    )
+    assert scoped.skipped == ()
+    np.testing.assert_array_equal(
+        adapter.tables["person"]["cgt_gains_band_6000"], [0.0, 8_000.0, 0.0]
+    )
+    # The only person in the top band lives in Wales, so London's row is empty
+    # rather than the national value.
+    np.testing.assert_array_equal(
+        adapter.tables["person"]["cgt_gains_band_15000"], [0.0, 0.0, 0.0]
+    )
+
+
+def test_filter_aware_provider_without_filters_is_unchanged():
+    adapter = StubAdapter()
+    registry = TargetRegistry(
+        [
+            TargetSpec(
+                name="cgt_taxpayers",
+                entity="person",
+                measure="cgt_taxpayer_measure",
+                value=1.0,
+                source="test",
+                metadata={"contract_target_id": "cgt_taxpayers"},
+            )
+        ],
+        country="uk",
+    )
+    contract = {
+        "cgt_taxpayers": {
+            "bindings": {
+                "policyengine": {
+                    "kind": "parameter_gated_threshold",
+                    "gate_parameter": "cgt.aea",
+                    "gate_comparison": ">",
+                    "gated_variable": "capital_gains",
+                    "value_variable": "person_count",
+                }
+            }
+        }
+    }
+    result = materialize_target_bindings(adapter, registry, contract, period=2025)
+    assert result.skipped == ()
+    np.testing.assert_array_equal(
+        adapter.tables["person"]["cgt_taxpayer_measure"], [0.0, 0.0, 1.0]
+    )
