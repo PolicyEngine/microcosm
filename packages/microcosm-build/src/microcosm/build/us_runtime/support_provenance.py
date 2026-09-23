@@ -25,6 +25,7 @@ __all__ = [
     "spine_source_id_column",
     "support_channel_column",
     "support_clone_index_column",
+    "support_copy_rank_series",
     "support_role_series",
     "support_gate_source_channel_series",
     "support_source_id_column",
@@ -491,6 +492,46 @@ def support_role_series(
         index=table.index,
         name=f"{entity}_support_role",
     )
+
+
+def support_copy_rank_series(
+    table: pd.DataFrame,
+    *,
+    entity: str,
+) -> pd.Series:
+    """Rank each support copy within its source unit, canonical copy first.
+
+    Clone provenance is authoritative whenever it is present, on assembled and
+    historical PUF-support frames alike: the rank is the validated clone index.
+    Index 0 is the native record, 1 its primary PUF-detail copy, and 2 the
+    capital-gains own-tail copy, which splits weight off a PUF-detail household
+    while keeping that household's source IDs. A historical PUF-support base
+    therefore carries two PUF-role copies of each tail source unit that differ
+    only in clone index, so a ``(source ID, role)`` key cannot identify a copy.
+    Channel-only fixtures predate clone indices and cannot express a tail copy;
+    they rank their two historical roles ASEC 0 and PUF 1.
+
+    A source unit may carry at most one row per rank. Source-unit operators
+    refuse a repeated ``(source ID, rank)`` pair as a genuinely duplicated
+    support copy instead of choosing between its rows.
+    """
+
+    roles = support_role_series(table, entity=entity)
+    clone_index_column = support_clone_index_column(entity)
+    if clone_index_column in table:
+        # support_role_series has validated nonnegative integral indices.
+        ranks = (
+            pd.to_numeric(table[clone_index_column], errors="raise")
+            .to_numpy(dtype=np.float64)
+            .astype(np.int64)
+        )
+    else:
+        ranks = np.where(
+            roles.eq(BASE_ASEC_SUPPORT_CHANNEL).to_numpy(),
+            0,
+            PUF_TAX_DETAIL_CLONE_INDEX,
+        ).astype(np.int64)
+    return pd.Series(ranks, index=table.index, name=f"{entity}_support_copy_rank")
 
 
 def support_gate_source_channel_series(
