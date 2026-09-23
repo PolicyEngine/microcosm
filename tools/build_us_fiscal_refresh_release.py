@@ -7938,6 +7938,7 @@ def _assert_release_gates(
 def _write_release_calibration_diagnostics(
     *,
     result,
+    target_surface: Mapping[str, object],
     release_dir: Path,
     registry: TargetRegistry,
     base_dataset_sha256: str,
@@ -7990,6 +7991,7 @@ def _write_release_calibration_diagnostics(
         result,
         release_dir / "calibration_diagnostics.json",
         target_registry=registry,
+        target_surface=target_surface,
         build={
             "base_dataset_sha256": base_dataset_sha256,
             "target_compilation": compilation,
@@ -8359,6 +8361,7 @@ def _build_manifests(
     release_dir: Path,
     artifact_root: Path,
     result,
+    target_surface: Mapping[str, object],
     registry: TargetRegistry,
     dropped: Mapping[str, object],
     target_profile_gate: GateResult,
@@ -8409,7 +8412,6 @@ def _build_manifests(
         )
     diagnostics_status = _diagnostics_manifest_status(diagnostics_outcome)
     coverage_sha = _sha256(coverage_path)
-    target_surface = target_surface_payload(result)
     gate_failures = _release_gate_failures(
         result,
         dropped,
@@ -12220,8 +12222,11 @@ def _main(argv: Sequence[str] | None = None) -> None:
         *exact_k_fit_failures,
         *gate_failures,
     ]
+    if current_target_surface is None:
+        current_target_surface = target_surface_payload(result)
     diagnostics_outcome = _write_release_calibration_diagnostics(
         result=result,
+        target_surface=current_target_surface,
         release_dir=release_dir,
         registry=registry,
         base_dataset_sha256=base_dataset_sha256,
@@ -12853,6 +12858,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         release_dir=release_dir,
         artifact_root=artifact_root,
         result=result,
+        target_surface=current_target_surface,
         registry=registry,
         dropped=compilation,
         target_profile_gate=target_profile_gate,

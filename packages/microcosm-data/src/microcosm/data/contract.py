@@ -1456,13 +1456,6 @@ def _calibration_diagnostics_required(manifest: object) -> bool:
     )
 
 
-def _calibration_diagnostics_are_current_typed(manifest: object) -> bool:
-    if not isinstance(manifest, Mapping):
-        return False
-    declaration = manifest.get("calibration_diagnostics")
-    return isinstance(declaration, Mapping) and declaration.get("status") == "available"
-
-
 def _check_calibration_diagnostics_declaration(
     manifest: Mapping,
     artifacts: Mapping,
@@ -3484,7 +3477,6 @@ def _check_calibration_diagnostics(
     failures: list[str],
     *,
     grandfathered_uk_june: bool = False,
-    require_typed_schema: bool = False,
 ) -> None:
     """Validate shared diagnostics, with one byte-lineage-scoped exemption.
 
@@ -3496,7 +3488,9 @@ def _check_calibration_diagnostics(
     """
 
     schema_version = diagnostics.get("schema_version")
-    if require_typed_schema:
+    if not grandfathered_uk_june and schema_version == (
+        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+    ):
         try:
             parse_calibration_diagnostics(diagnostics)
         except ValidationError as error:
@@ -3504,6 +3498,7 @@ def _check_calibration_diagnostics(
                 "calibration_diagnostics.json does not satisfy the shared "
                 f"schema: {error}"
             )
+        return
     if schema_version is None:
         failures.append("calibration_diagnostics.json is missing 'schema_version'.")
     elif grandfathered_uk_june and schema_version != 2:
@@ -3607,12 +3602,6 @@ def _check_calibration_diagnostics(
                         if isinstance(dimension_definitions, Mapping)
                         else {}
                     ),
-                    failures=failures,
-                )
-            elif schema_version == 8:
-                _check_hierarchy_diagnostics_target(
-                    target,
-                    index=index,
                     failures=failures,
                 )
             if not grandfathered_uk_june:
@@ -3755,81 +3744,6 @@ def _check_structured_diagnostics_target(
                 )
     if geography_count > 1:
         failures.append(f"{owner} may populate at most one geography-role dimension.")
-
-
-def _check_hierarchy_diagnostics_target(
-    target: Mapping,
-    *,
-    index: int,
-    failures: list[str],
-) -> None:
-    """Validate one complete schema-8 provider-to-target hierarchy."""
-
-    owner = f"calibration_diagnostics.json target row {index}"
-    hierarchy = target.get("hierarchy")
-    if not isinstance(hierarchy, Mapping):
-        failures.append(f"{owner} schema 8 requires a 'hierarchy' object.")
-        return
-    provider = hierarchy.get("provider")
-    category = hierarchy.get("category")
-    geography = hierarchy.get("geography")
-    target_node = hierarchy.get("target")
-    for field, node in (
-        ("provider", provider),
-        ("category", category),
-        ("geography", geography),
-        ("target", target_node),
-    ):
-        if not isinstance(node, Mapping):
-            failures.append(f"{owner} hierarchy.{field} must be an object.")
-            continue
-        for required in ("id", "label"):
-            value = node.get(required)
-            if not isinstance(value, str) or not value.strip():
-                failures.append(
-                    f"{owner} hierarchy.{field}.{required} must be a non-empty string."
-                )
-    if isinstance(category, Mapping) and isinstance(provider, Mapping):
-        if category.get("provider_id") != provider.get("id"):
-            failures.append(
-                f"{owner} hierarchy.category.provider_id must equal "
-                "hierarchy.provider.id."
-            )
-    if isinstance(geography, Mapping):
-        level = geography.get("level")
-        if not isinstance(level, str) or not level.strip():
-            failures.append(
-                f"{owner} hierarchy.geography.level must be a non-empty string."
-            )
-    if isinstance(target_node, Mapping) and target_node.get("id") != target.get(
-        "target_name"
-    ):
-        failures.append(
-            f"{owner} hierarchy.target.id must equal the row's target_name."
-        )
-    dimensions = hierarchy.get("dimensions")
-    if not isinstance(dimensions, list):
-        failures.append(f"{owner} hierarchy.dimensions must be an array.")
-        return
-    seen: set[str] = set()
-    for dimension_index, dimension in enumerate(dimensions):
-        dimension_owner = f"{owner} hierarchy.dimensions[{dimension_index}]"
-        if not isinstance(dimension, Mapping):
-            failures.append(f"{dimension_owner} must be an object.")
-            continue
-        for required in ("id", "label", "value_id", "value_label"):
-            value = dimension.get(required)
-            if not isinstance(value, str) or not value.strip():
-                failures.append(
-                    f"{dimension_owner}.{required} must be a non-empty string."
-                )
-        dimension_id = dimension.get("id")
-        if isinstance(dimension_id, str):
-            if dimension_id in seen:
-                failures.append(
-                    f"{owner} hierarchy dimensions repeat id {dimension_id!r}."
-                )
-            seen.add(dimension_id)
 
 
 def _uk_non_negative_int(
@@ -4650,9 +4564,6 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
                 _check_calibration_diagnostics(
                     diagnostics,
                     failures,
-                    require_typed_schema=_calibration_diagnostics_are_current_typed(
-                        release_manifest
-                    ),
                 )
             else:
                 _check_local_area_calibration_diagnostics(diagnostics, failures)
@@ -5460,9 +5371,6 @@ def validate_release_dir(
                 diagnostics,
                 failures,
                 grandfathered_uk_june=release_id == _UK_JUNE_RELEASE_ID,
-                require_typed_schema=_calibration_diagnostics_are_current_typed(
-                    release_manifest
-                ),
             )
             if (
                 _is_uk_exact_k_release_id(release_id)
@@ -5949,9 +5857,6 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
             _check_calibration_diagnostics(
                 diagnostics,
                 failures,
-                require_typed_schema=_calibration_diagnostics_are_current_typed(
-                    release_manifest
-                ),
             )
             # Critical-fit breaches are permitted at the evidence tier — but
             # never silently. Recompute the certified verdicts into a scratch

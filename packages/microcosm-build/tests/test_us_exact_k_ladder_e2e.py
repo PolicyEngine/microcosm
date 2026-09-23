@@ -261,10 +261,7 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
         incumbent_loss_basis=loss_basis,
     )
     assert incumbent_gate.passed
-    target_surface = builder.diagnostics_payload(
-        outcome.result,
-        target_registry=registry,
-    )["target_surface"]
+    target_surface = builder.target_surface_payload(outcome.result)
     args = argparse.Namespace(
         exact_k=k,
         seed=17,
@@ -319,6 +316,7 @@ def test_ready_pool_to_refit_and_release_manifests_for_each_ladder_point(
         release_dir=release_dir,
         artifact_root=artifact_root,
         result=outcome.result,
+        target_surface=target_surface,
         registry=registry,
         dropped={"dropped_target_names": []},
         target_profile_gate=builder.GateResult(

@@ -676,13 +676,19 @@ def test_payload_can_carry_target_registry_identity(
     }
     assert "dimensions" not in payload
     assert income["registry"]["family"] == "irs_soi"
+    precomputed_target_surface = {
+        **payload["target_surface"],
+        "sha256": "f" * 64,
+    }
     output = tmp_path / "calibration_diagnostics.json"
     outcome = write_calibration_diagnostics(
         result,
         output,
         target_registry=registry,
+        target_surface=precomputed_target_surface,
     )
     assert outcome.status == "available"
+    payload["target_surface"] = precomputed_target_surface
     assert json.loads(output.read_text()) == payload
 
 

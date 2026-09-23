@@ -6,6 +6,7 @@ import math
 from typing import Annotated, Literal
 
 from pydantic import (
+    AfterValidator,
     BaseModel,
     ConfigDict,
     Field,
@@ -19,35 +20,44 @@ CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 8
 SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = frozenset({6, 7, 8})
 
 
+def _require_non_blank(value: str) -> str:
+    if not value.strip():
+        raise ValueError("text must contain a non-whitespace character")
+    return value
+
+
+NonBlankText = Annotated[str, AfterValidator(_require_non_blank)]
+
+
 class DiagnosticsModel(BaseModel):
     """Base for immutable schema records with no undeclared fields."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
 
 class Selector(DiagnosticsModel):
     kind: Literal["column", "callable"]
-    name: str = Field(min_length=1)
+    name: NonBlankText
 
 
 class HierarchyNode(DiagnosticsModel):
-    id: str = Field(min_length=1)
-    label: str = Field(min_length=1)
+    id: NonBlankText
+    label: NonBlankText
 
 
 class HierarchyCategory(HierarchyNode):
-    provider_id: str = Field(min_length=1)
+    provider_id: NonBlankText
 
 
 class HierarchyGeography(HierarchyNode):
-    level: str = Field(min_length=1)
+    level: NonBlankText
 
 
 class HierarchyDimension(DiagnosticsModel):
-    id: str = Field(min_length=1)
-    label: str = Field(min_length=1)
-    value_id: str = Field(min_length=1)
-    value_label: str = Field(min_length=1)
+    id: NonBlankText
+    label: NonBlankText
+    value_id: NonBlankText
+    value_label: NonBlankText
 
 
 class CalibrationHierarchy(DiagnosticsModel):
@@ -75,13 +85,13 @@ class RegistryTargetMetadata(DiagnosticsModel):
 
 
 class TargetDiagnosticV8(DiagnosticsModel):
-    name: str = Field(min_length=1)
-    target_name: str = Field(min_length=1)
-    period: int | str
-    entity: str = Field(min_length=1)
+    name: NonBlankText
+    target_name: NonBlankText
+    period: int | NonBlankText
+    entity: NonBlankText
     measure: Selector
     filter: Selector | None
-    source: str = Field(min_length=1)
+    source: NonBlankText
     metadata: dict[str, JsonValue]
     target: float | None
     compiled_target: float | None
@@ -112,41 +122,53 @@ class TargetSurfaceMatrix(DiagnosticsModel):
 
 class TargetSurface(DiagnosticsModel):
     schema_version: Literal[1]
-    weight_entity: str = Field(min_length=1)
-    n_targets: int = Field(ge=0)
-    n_records: int = Field(ge=0)
+    weight_entity: NonBlankText
+    n_targets: int = Field(gt=0)
+    n_records: int = Field(gt=0)
     constraint_matrix: TargetSurfaceMatrix
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     names_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     values_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
+    @model_validator(mode="after")
+    def reconcile_matrix_shape(self) -> TargetSurface:
+        if self.constraint_matrix.rows != self.n_targets:
+            raise ValueError("constraint_matrix.rows must equal n_targets")
+        if self.constraint_matrix.columns != self.n_records:
+            raise ValueError("constraint_matrix.columns must equal n_records")
+        if self.constraint_matrix.nnz > (
+            self.constraint_matrix.rows * self.constraint_matrix.columns
+        ):
+            raise ValueError("constraint_matrix.nnz exceeds the matrix capacity")
+        return self
+
 
 class TargetRegistryRef(DiagnosticsModel):
-    country: str = Field(min_length=1)
-    version: str = Field(min_length=1)
-    n_specs: int = Field(ge=0)
+    country: NonBlankText
+    version: NonBlankText
+    n_specs: int = Field(gt=0)
 
 
 class SkippedTarget(DiagnosticsModel):
-    name: str = Field(min_length=1)
-    reason: str = Field(min_length=1)
+    name: NonBlankText
+    reason: NonBlankText
 
 
 class DiagnosticsWarning(DiagnosticsModel):
-    code: str = Field(min_length=1)
+    code: NonBlankText
     severity: Literal["warning"]
-    message: str = Field(min_length=1)
+    message: NonBlankText
 
 
 class PushedOutTarget(DiagnosticsModel):
-    name: str = Field(min_length=1)
+    name: NonBlankText
     init_rel: float
     final_rel: float
 
 
 class PastCapCensus(DiagnosticsModel):
     cap: float = Field(gt=0)
-    scale_basis: str = Field(min_length=1)
+    scale_basis: NonBlankText
     n_targets: int = Field(ge=0)
     initial_past_cap: int = Field(ge=0)
     final_past_cap: int = Field(ge=0)
@@ -157,13 +179,13 @@ class PastCapCensus(DiagnosticsModel):
 
 
 class TargetLossBasis(DiagnosticsModel):
-    formula: str = Field(min_length=1)
+    formula: NonBlankText
     cap: float = Field(gt=0)
     target_count: int = Field(ge=0)
     total_target_weight: float = Field(gt=0)
-    weight_kind: str = Field(min_length=1)
-    scale_kind: str = Field(min_length=1)
-    hash_algorithm: str = Field(min_length=1)
+    weight_kind: NonBlankText
+    scale_kind: NonBlankText
+    hash_algorithm: NonBlankText
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
@@ -171,13 +193,13 @@ class CalibrationDiagnosticsV8(DiagnosticsModel):
     """The only calibration-diagnostics schema emitted by current builds."""
 
     schema_version: Literal[8]
-    weight_entity: str = Field(min_length=1)
+    weight_entity: NonBlankText
     options: dict[str, JsonValue]
     target_surface: TargetSurface
     target_registry: TargetRegistryRef
     l0_lambda: float | None
     n_nonzero: int = Field(ge=0)
-    n_records: int = Field(ge=0)
+    n_records: int = Field(gt=0)
     initial_loss: float | None
     final_loss: float | None
     fraction_within_10pct: float | None
@@ -216,13 +238,15 @@ class CalibrationDiagnosticsV8(DiagnosticsModel):
             raise ValueError("target_registry.n_specs cannot be less than len(targets)")
         if self.target_surface.n_records != self.n_records:
             raise ValueError("target_surface.n_records must equal n_records")
+        if self.n_nonzero > self.n_records:
+            raise ValueError("n_nonzero cannot exceed n_records")
         return self
 
 
 class LegacyCalibrationDiagnostics(DiagnosticsModel):
     """Typed common envelope retained for immutable schema-6/7 releases."""
 
-    model_config = ConfigDict(extra="allow", frozen=True)
+    model_config = ConfigDict(extra="allow", frozen=True, strict=False)
 
     schema_version: Literal[6, 7]
     weight_entity: str = Field(min_length=1)

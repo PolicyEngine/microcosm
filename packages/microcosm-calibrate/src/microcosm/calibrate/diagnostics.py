@@ -355,6 +355,7 @@ def diagnostics_payload(
     *,
     target_registry: object | None = None,
     build: dict[str, Any] | None = None,
+    target_surface: Mapping[str, object] | None = None,
 ) -> dict:
     """Render a calibration result as a JSON-stable diagnostics payload.
 
@@ -371,6 +372,8 @@ def diagnostics_payload(
             Without a registry, a result whose targets all carry hierarchies uses
             schema 8; a hierarchy-free generic result retains schema 6.
         build: Optional build-specific evidence block.
+        target_surface: Optional precomputed identity for the exact target matrix.
+            Release builders can supply one value to both diagnostics and manifests.
 
     Returns:
         A dict that round-trips through ``json`` unchanged (non-finite
@@ -422,7 +425,11 @@ def diagnostics_payload(
         "schema_version": schema_version,
         "weight_entity": result.weight_entity,
         "options": {key: _jsonable(value) for key, value in result.options.items()},
-        "target_surface": target_surface_payload(result),
+        "target_surface": (
+            dict(target_surface)
+            if target_surface is not None
+            else target_surface_payload(result)
+        ),
         "l0_lambda": _finite(result.l0_lambda),
         "n_nonzero": int(result.n_nonzero),
         "n_records": int(result.weights.shape[0]),
@@ -490,6 +497,7 @@ def write_calibration_diagnostics(
     *,
     target_registry: object | None = None,
     build: dict[str, Any] | None = None,
+    target_surface: Mapping[str, object] | None = None,
 ) -> DiagnosticsWriteOutcome:
     """Construct, validate, and atomically write schema-8 diagnostics.
 
@@ -512,6 +520,7 @@ def write_calibration_diagnostics(
             result,
             target_registry=target_registry,
             build=build,
+            target_surface=target_surface,
         )
         diagnostics = CalibrationDiagnosticsV8.model_validate(payload)
     except ValidationError as error:

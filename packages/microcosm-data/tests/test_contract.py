@@ -549,6 +549,60 @@ def _calibration_diagnostics() -> dict:
     }
 
 
+def _schema_8_calibration_diagnostics() -> dict:
+    diagnostics = _calibration_diagnostics()
+    targets = diagnostics["targets"]
+    diagnostics.update(
+        schema_version=8,
+        l0_lambda=0.0,
+        n_nonzero=2,
+        n_records=2,
+        initial_loss=1.0,
+        final_loss=0.5,
+        fraction_within_10pct=1.0,
+        effective_sample_size=2.0,
+        realized_max_weight_ratio=1.0,
+        top_1pct_weight_share=0.5,
+        past_cap_census=None,
+        diagnostic_warnings=[],
+    )
+    diagnostics["target_surface"]["n_targets"] = len(targets)
+    diagnostics["target_surface"]["constraint_matrix"] = {
+        "rows": len(targets),
+        "columns": 2,
+        "nnz": len(targets),
+    }
+    diagnostics["target_registry"]["n_specs"] = len(targets)
+    for row in targets:
+        row["registry"].update(se=None, signed=False, notes="")
+        row["hierarchy"] = {
+            "provider": {"id": "fixture", "label": "Fixture provider"},
+            "category": {
+                "id": "fixture.population",
+                "label": "Population",
+                "provider_id": "fixture",
+            },
+            "geography": {
+                "id": "0100000US",
+                "label": "United States",
+                "level": "country",
+            },
+            "dimensions": [
+                {
+                    "id": "sex",
+                    "label": "Sex",
+                    "value_id": "female",
+                    "value_label": "Female",
+                }
+            ],
+            "target": {
+                "id": row["target_name"],
+                "label": "Fixture target",
+            },
+        }
+    return diagnostics
+
+
 def additional_critical_credit_rows() -> list[dict]:
     rows = [
         (
@@ -3628,34 +3682,7 @@ def test_schema_7_structured_calibration_diagnostics_are_accepted(
 
 
 def test_schema_8_calibration_hierarchy_is_accepted(release_dir: Path) -> None:
-    diagnostics = _calibration_diagnostics()
-    diagnostics["schema_version"] = 8
-    for row in diagnostics["targets"]:
-        row["hierarchy"] = {
-            "provider": {"id": "fixture", "label": "Fixture provider"},
-            "category": {
-                "id": "fixture.population",
-                "label": "Population",
-                "provider_id": "fixture",
-            },
-            "geography": {
-                "id": "0100000US",
-                "label": "United States",
-                "level": "country",
-            },
-            "dimensions": [
-                {
-                    "id": "sex",
-                    "label": "Sex",
-                    "value_id": "female",
-                    "value_label": "Female",
-                }
-            ],
-            "target": {
-                "id": row["target_name"],
-                "label": "Fixture target",
-            },
-        }
+    diagnostics = _schema_8_calibration_diagnostics()
     _write_json_and_refresh_manifest_hash(
         release_dir,
         filename="calibration_diagnostics.json",
@@ -3684,25 +3711,10 @@ def test_explicit_diagnostics_failure_does_not_block_national_release(
     validate_release_dir(release_dir)
 
 
-def test_schema_8_rejects_incomplete_hierarchy(release_dir: Path) -> None:
-    diagnostics = _calibration_diagnostics()
-    diagnostics["schema_version"] = 8
+def test_schema_8_always_uses_shared_validation(release_dir: Path) -> None:
+    diagnostics = _schema_8_calibration_diagnostics()
     for row in diagnostics["targets"]:
-        row["hierarchy"] = {
-            "provider": {"id": "fixture", "label": "Fixture provider"},
-            "category": {
-                "id": "fixture.population",
-                "label": "",
-                "provider_id": "another-provider",
-            },
-            "geography": {
-                "id": "0100000US",
-                "label": "United States",
-                "level": "country",
-            },
-            "dimensions": [],
-            "target": {"id": "wrong", "label": "Fixture target"},
-        }
+        row["hierarchy"]["category"]["label"] = " "
     _write_json_and_refresh_manifest_hash(
         release_dir,
         filename="calibration_diagnostics.json",
@@ -3714,9 +3726,9 @@ def test_schema_8_rejects_incomplete_hierarchy(release_dir: Path) -> None:
         validate_release_dir(release_dir)
 
     failures = "\n".join(excinfo.value.failures)
-    assert "hierarchy.category.label must be a non-empty string" in failures
-    assert "hierarchy.category.provider_id must equal" in failures
-    assert "hierarchy.target.id must equal" in failures
+    assert "does not satisfy the shared schema" in failures
+    assert "hierarchy.category.label" in failures
+    assert "non-whitespace" in failures
 
 
 def test_schema_7_rejects_an_empty_target_label(release_dir: Path) -> None:
