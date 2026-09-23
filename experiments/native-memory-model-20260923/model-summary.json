@@ -1,0 +1,240 @@
+{
+ "all": {
+  "post_graph_census": {
+   "1/1000": 0.2463022887474227,
+   "1/15": 16.783994800014554,
+   "full": 251.62931597100777
+  },
+  "prefix_peak_census": {
+   "1/1000": 0.20392228935390347,
+   "1/15": 13.915035655749827,
+   "full": 208.60597201358394
+  },
+  "returned_run": {
+   "1/1000": 0.19300391414746465,
+   "1/15": 13.14446800937309,
+   "full": 197.06955828173477
+  },
+  "snapshots_full_gib": [
+   [
+    "survey_population.create",
+    19,
+    4.644685835086016
+   ],
+   [
+    "survey_population.allocate",
+    19,
+    4.644685835086016
+   ],
+   [
+    "survey_population.observed_geography",
+    19,
+    4.896992455365964
+   ],
+   [
+    "combined_survey_puf_support_clone",
+    19,
+    9.762996591265416
+   ],
+   [
+    "combined_survey_puf_support_clone.owned",
+    19,
+    9.762996591265416
+   ],
+   [
+    "geography.support.0",
+    19,
+    9.762996591265416
+   ],
+   [
+    "geography.assign",
+    19,
+    10.324773050482488
+   ],
+   [
+    "geography.derive",
+    19,
+    11.134913839037633
+   ],
+   [
+    "geography.gate",
+    19,
+    11.134913839037633
+   ],
+   [
+    "survey_predictors.asec_design_donor",
+    19,
+    0.15476091892667476
+   ],
+   [
+    "survey_predictors.source_projection",
+    19,
+    0.15476091892667476
+   ],
+   [
+    "survey_predictors.asec_current_columns",
+    19,
+    0.16213906048083296
+   ],
+   [
+    "survey_predictors.fit.000",
+    19,
+    0.16213906048083296
+   ],
+   [
+    "survey_predictors.apply.000",
+    19,
+    11.134913839037633
+   ],
+   [
+    "survey_predictors.fit.001",
+    19,
+    0.16213906048083296
+   ],
+   [
+    "survey_predictors.apply.001",
+    19,
+    11.134913839037633
+   ],
+   [
+    "survey_predictors.fit.002",
+    19,
+    0.16213906048083296
+   ],
+   [
+    "survey_predictors.apply.002",
+    19,
+    11.134913839037633
+   ],
+   [
+    "survey_predictors.attach",
+    19,
+    11.453650839264608
+   ]
+  ],
+  "states_census": {
+   "1/1000": 0.2536079555451277,
+   "1/15": 17.28313862417523,
+   "full": 259.1117895735262
+  }
+ },
+ "compact": {
+  "post_graph_census": {
+   "1/1000": 0.1340371177184658,
+   "1/15": 9.141374817123115,
+   "full": 137.0451813036747
+  },
+  "prefix_peak_census": {
+   "1/1000": 0.20392228935390347,
+   "1/15": 13.915035655749827,
+   "full": 208.60597201358394
+  },
+  "returned_run": {
+   "1/1000": 0.08073874311850773,
+   "1/15": 5.501848026481659,
+   "full": 82.48542361440175
+  },
+  "snapshots_full_gib": [
+   [
+    "survey_population.create",
+    19,
+    4.644685835086016
+   ],
+   [
+    "survey_population.allocate",
+    19,
+    4.644685835086016
+   ],
+   [
+    "survey_population.observed_geography",
+    19,
+    4.896992455365964
+   ],
+   [
+    "combined_survey_puf_support_clone",
+    19,
+    9.762996591265416
+   ],
+   [
+    "combined_survey_puf_support_clone.owned",
+    19,
+    9.762996591265416
+   ],
+   [
+    "geography.support.0",
+    19,
+    9.762996591265416
+   ],
+   [
+    "geography.assign",
+    19,
+    10.324773050482488
+   ],
+   [
+    "geography.derive",
+    19,
+    11.134913839037633
+   ],
+   [
+    "geography.gate",
+    19,
+    11.134913839037633
+   ],
+   [
+    "survey_predictors.asec_design_donor",
+    19,
+    0.15476091892667476
+   ],
+   [
+    "survey_predictors.source_projection",
+    19,
+    0.15476091892667476
+   ],
+   [
+    "survey_predictors.asec_current_columns",
+    19,
+    0.16213906048083296
+   ],
+   [
+    "survey_predictors.fit.000",
+    19,
+    0.16213906048083296
+   ],
+   [
+    "survey_predictors.apply.000",
+    19,
+    11.134913839037633
+   ],
+   [
+    "survey_predictors.fit.001",
+    19,
+    0.16213906048083296
+   ],
+   [
+    "survey_predictors.apply.001",
+    19,
+    11.134913839037633
+   ],
+   [
+    "survey_predictors.fit.002",
+    19,
+    0.16213906048083296
+   ],
+   [
+    "survey_predictors.apply.002",
+    19,
+    11.134913839037633
+   ],
+   [
+    "survey_predictors.attach",
+    19,
+    11.453650839264608
+   ]
+  ],
+  "states_census": {
+   "1/1000": 0.1413427845161708,
+   "1/15": 9.64051864128379,
+   "full": 144.52765490619313
+  }
+ }
+}
