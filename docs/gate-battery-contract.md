@@ -130,7 +130,7 @@ Canonical artifact keys:
 | `reviewed_input_mass_exclusions` (optional override) | the UK national build | `input_mass_parity` (UK override) |
 | `reviewed_qrf_tail_exclusions` (optional override) | the UK national build | `tail_concentration` (UK override) |
 | `uk_area_support_summary`, `exclusions_evaluated_on` | the UK local rowwise build | `area_support` (UK binding; reviewed exclusions carry measured shortfalls and stale entries fail) |
-| `cgt_projection` | the UK calibration seam, read from the installed engine's growth path and exempt amounts | `cgt_projection_entrants` (UK binding; the count is a cumulative stock by year, the bound is the vendored HMRC thin-band taxpayer count as a plausibility ceiling, and the growth path and exempt amount are pinned in the manifest and drift-checked, microcosm#970) |
+| `cgt_projection` | the UK calibration seam: read from the installed engine's growth path and exempt amounts, or stated from the manifest pins when no engine is installed (the receipt's `projection_engine` names the source, and the release certifier refuses a seam part whose fence read the pins) | `cgt_projection_entrants` (UK binding; the count is a cumulative stock by year, the bound is the vendored HMRC thin-band taxpayer count as a plausibility ceiling, and the growth path and exempt amount are pinned in the manifest and drift-checked, microcosm#970) |
 
 The UK registry
 (`microcosm.build.uk_runtime.battery_bindings.UK_GATE_REGISTRY`) is the

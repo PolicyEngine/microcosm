@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import math
 
 import numpy as np
@@ -21,6 +22,8 @@ from microcosm.build.uk_runtime.cgt_projection import (
     UKCGTProjection,
     uk_cgt_projection,
     uk_cgt_projection_from_pins,
+    uk_cgt_projection_read_from_engine,
+    uk_engine_installed,
 )
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_CONDITIONING_RESOURCE,
@@ -270,15 +273,46 @@ def test_binding_reads_the_vendored_bound_and_cross_checks_the_artifact() -> Non
     _, outcome = _outcome(light, {UK_CGT_PROJECTION_ARTIFACT_KEY: drifted})
     assert outcome.status is GateStatus.FAILED
     assert "drifted from the pinned path" in "".join(outcome.result.failures)
-    unpinned_year = _projection(growth=0.05, horizon_year=2031)
-    _, outcome = _outcome(light, {UK_CGT_PROJECTION_ARTIFACT_KEY: unpinned_year})
+    # A projection past the declared horizon is refused as a disagreement
+    # with the manifest before any drift check runs; the unpinned-year branch
+    # of the drift check has its own test below.
+    beyond_horizon = _projection(growth=0.05, horizon_year=2031)
+    _, outcome = _outcome(light, {UK_CGT_PROJECTION_ARTIFACT_KEY: beyond_horizon})
     assert outcome.status is GateStatus.FAILED
+    assert "disagrees with the declared projection" in "".join(outcome.result.failures)
 
     battery, outcome = _outcome(light, {})
     assert outcome.status is GateStatus.EVIDENCE_ABSENT
     assert GATE_ID in {
         o.entry.id for o in battery.blocking_outcomes(release_candidate=False)
     }
+
+
+def test_binding_names_the_year_the_pins_do_not_cover() -> None:
+    """A projection that reaches a year the manifest does not pin fails the
+    drift check, and the failure names the year for both the growth rate and
+    the exempt amount, so the re-pin a horizon change needs is spelled out."""
+
+    parameters = dict(_manifest_entry().parameters)
+    parameters["expected_yoy_growth_by_year"] = {
+        year: rate
+        for year, rate in parameters["expected_yoy_growth_by_year"].items()
+        if year != "2030"
+    }
+    parameters["expected_exempt_amount_by_year"] = {
+        year: amount
+        for year, amount in parameters["expected_exempt_amount_by_year"].items()
+        if year != "2030"
+    }
+    binding = UK_GATE_REGISTRY["cgt_projection_entrants"]
+    context = EvidenceContext(
+        frame=_frame([2_000.0], [1.0]),
+        artifacts={UK_CGT_PROJECTION_ARTIFACT_KEY: _pinned_projection()},
+    )
+    with pytest.raises(ValueError, match="drifted from the pinned path") as excinfo:
+        binding.evaluator(context, parameters)
+    assert "no pinned growth rate for 2030" in str(excinfo.value)
+    assert "no pinned exempt amount for 2030" in str(excinfo.value)
 
 
 def test_manifest_entry_and_bound_are_the_reviewed_ones() -> None:
@@ -332,6 +366,8 @@ def test_engine_projection_matches_the_published_growth_path() -> None:
     projection = uk_cgt_projection(2024, 2030)
 
     assert projection.engine.startswith("policyengine-uk==")
+    # The label the release certifier accepts on the seam's fence.
+    assert uk_cgt_projection_read_from_engine(projection.engine)
     assert set(projection.exempt_amount_by_year.values()) == {3_000.0}
     assert list(projection.yoy_growth_by_year.values()) == pytest.approx(
         [0.0438, 0.0292, 0.0323, 0.0310, 0.0296, 0.0315], abs=5e-4
@@ -371,22 +407,64 @@ def test_projection_from_pins_is_the_engine_free_statement_of_the_path() -> None
         )
 
 
-def test_seam_artifact_falls_back_to_the_pins_without_an_engine(monkeypatch) -> None:
+def test_seam_artifact_states_the_pins_only_when_no_engine_is_installed(
+    monkeypatch,
+) -> None:
     """The secrets-free fast lane and data-only builds have no engine: the
-    seam still produces the projection, from the pins, and says so."""
+    seam still produces the projection, from the pins, without touching the
+    engine path, and the receipt says so. The release certifier refuses that
+    receipt (``test_uk_release_certification``)."""
 
-    def no_engine(*args, **kwargs):
-        raise ImportError("No module named 'policyengine_uk'")
+    monkeypatch.setattr(calibration_run, "uk_engine_installed", lambda: False)
 
-    monkeypatch.setattr(calibration_run, "uk_cgt_projection", no_engine)
+    def never(*args, **kwargs):
+        raise AssertionError("an absent engine must not be read")
+
+    monkeypatch.setattr(calibration_run, "uk_cgt_projection", never)
     frame = _frame([3_000.0, 2_000.0], [1.0, 1.0], time_period="2023")
     projection = calibration_run.uk_cgt_projection_artifact(
         frame, load_country_spec("uk").gates
     )
     assert projection.engine == UK_CGT_PROJECTION_PINS_ENGINE
+    assert not uk_cgt_projection_read_from_engine(projection.engine)
     assert projection.base_year == 2023 and projection.horizon_year == 2030
     assert projection.exempt_amount_by_year["2023"] == 6_000.0
-    # The binding accepts a pinned projection: it drift-checks against itself.
+    # The binding accepts a pinned projection (it drift-checks against
+    # itself); only the certifier refuses it.
     battery, outcome = _outcome(frame, {UK_CGT_PROJECTION_ARTIFACT_KEY: projection})
     assert outcome.status is GateStatus.PASSED
     assert outcome.result.details["projection_engine"] == UK_CGT_PROJECTION_PINS_ENGINE
+
+
+def test_seam_artifact_lets_an_installed_engine_that_will_not_import_raise(
+    monkeypatch,
+) -> None:
+    """An installed but broken engine is not "unavailable": the import error
+    surfaces instead of the pins quietly standing in for the engine."""
+
+    monkeypatch.setattr(calibration_run, "uk_engine_installed", lambda: True)
+
+    def broken(*args, **kwargs):
+        raise ImportError("libomp.dylib not found")
+
+    monkeypatch.setattr(calibration_run, "uk_cgt_projection", broken)
+    frame = _frame([3_000.0], [1.0], time_period="2023")
+    with pytest.raises(ImportError, match="libomp"):
+        calibration_run.uk_cgt_projection_artifact(frame, load_country_spec("uk").gates)
+
+
+def test_engine_availability_is_decided_by_find_spec() -> None:
+    assert uk_engine_installed() is (
+        importlib.util.find_spec("policyengine_uk") is not None
+    )
+
+
+def test_only_a_versioned_engine_label_reads_as_the_engine() -> None:
+    assert uk_cgt_projection_read_from_engine("policyengine-uk==2.98.0")
+    assert not uk_cgt_projection_read_from_engine(UK_CGT_PROJECTION_PINS_ENGINE)
+    assert not uk_cgt_projection_read_from_engine(
+        "policyengine-uk (version unavailable)"
+    )
+    assert not uk_cgt_projection_read_from_engine("supplied_parameter_reader")
+    assert not uk_cgt_projection_read_from_engine("policyengine-uk==")
+    assert not uk_cgt_projection_read_from_engine(None)

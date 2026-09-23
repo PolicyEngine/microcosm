@@ -52,6 +52,7 @@ from microcosm.build.uk_runtime.cgt_projection import (
     UKCGTProjection,
     uk_cgt_projection,
     uk_cgt_projection_from_pins,
+    uk_engine_installed,
 )
 from microcosm.build.uk_runtime.diagnostics import (
     uk_target_geography_levels,
@@ -985,7 +986,12 @@ def uk_cgt_projection_artifact(
     engine keeps the receipt reproducible from the parameter tree alone;
     without an engine (a data-only build, the secrets-free fast lane) the
     entry's pinned path is used and the receipt names that source. Either
-    way the binding drift-checks the projection against the pins.
+    way the binding drift-checks the projection against the pins; the pins
+    label satisfies the gate but the release certifier refuses a seam part
+    that carries it, so an engine-free seam evaluates the fence and never
+    certifies a cut. Availability is decided by ``find_spec``: an engine that
+    is installed but fails to import raises here instead of being mislabelled
+    unavailable.
     """
 
     for entry in manifest.gates:
@@ -1001,14 +1007,12 @@ def uk_cgt_projection_artifact(
     horizon_year = int(parameters["horizon_year"])
     growth_parameter = str(parameters["gains_growth_parameter"])
     exempt_amount_parameter = str(parameters["exempt_amount_parameter"])
-    try:
-        return uk_cgt_projection(
-            base_year,
-            horizon_year,
-            growth_parameter=growth_parameter,
-            exempt_amount_parameter=exempt_amount_parameter,
-        )
-    except ImportError:
+    if not uk_engine_installed():
+        # No engine in this environment (a data-only build, the secrets-free
+        # fast lane): the pins are the reviewed statement of the engine's
+        # path and the receipt names that source. The release certifier
+        # refuses a seam part whose fence carries that label, so this branch
+        # evaluates the gate but can never certify a cut.
         return uk_cgt_projection_from_pins(
             base_year,
             horizon_year,
@@ -1017,6 +1021,14 @@ def uk_cgt_projection_artifact(
             growth_parameter=growth_parameter,
             exempt_amount_parameter=exempt_amount_parameter,
         )
+    # An installed engine is read; one that is installed but fails to import
+    # raises here rather than being mislabelled unavailable.
+    return uk_cgt_projection(
+        base_year,
+        horizon_year,
+        growth_parameter=growth_parameter,
+        exempt_amount_parameter=exempt_amount_parameter,
+    )
 
 
 def uk_aggregate_admin_totals(

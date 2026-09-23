@@ -20,7 +20,9 @@ from microcosm.build.uk_runtime.calibration_run import (
     UK_NATIONAL_GATE_SCOPE,
     UK_SHARED_GATE_IDS,
     UK_SPINE_GATE_SCOPE,
+    resign_uk_gate_report,
 )
+from microcosm.build.uk_runtime.cgt_projection import UK_CGT_PROJECTION_PINS_ENGINE
 from microcosm.build.uk_runtime.release_certification import (
     UKReleaseCertificationError,
     compose_uk_release_certification,
@@ -222,6 +224,52 @@ def test_compose_refuses_failing_release_blocking_entry(green_certification_inpu
     payload["gates"]["uk_support"]["failures"] = ["synthetic failure"]
     cut_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
     with pytest.raises(UKReleaseCertificationError, match="release-blocking"):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def _rewrite_seam_part(inputs, mutate):
+    """Mutate the seam part, re-sign it and keep the build record's byte pin
+    in step, so the refusal under test is the one that fires."""
+
+    seam_path = inputs["seam_report_path"]
+    payload = json.loads(seam_path.read_text(encoding="utf-8"))
+    mutate(payload)
+    resign_uk_gate_report(payload)
+    seam_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    inputs["build_record"]["artifacts"]["terminal_gate_json"]["sha256"] = _sha(
+        seam_path
+    )
+
+
+def test_compose_refuses_a_seam_fence_projected_from_the_pins(
+    green_certification_inputs,
+):
+    """Without an installed engine the seam states the projection from the
+    manifest pins and the fence passes, drift-checked against itself; the
+    signed receipt says so, and that receipt can never certify a cut."""
+
+    def to_pins(payload):
+        payload["gates"]["uk_cgt_projection_entrants"]["details"][
+            "projection_engine"
+        ] = UK_CGT_PROJECTION_PINS_ENGINE
+
+    _rewrite_seam_part(green_certification_inputs, to_pins)
+    with pytest.raises(
+        UKReleaseCertificationError, match="projection_engine.*cannot certify"
+    ):
+        compose_uk_release_certification(**green_certification_inputs)
+
+
+def test_compose_refuses_a_seam_fence_without_a_projection_source(
+    green_certification_inputs,
+):
+    def drop_source(payload):
+        payload["gates"]["uk_cgt_projection_entrants"]["details"] = {}
+
+    _rewrite_seam_part(green_certification_inputs, drop_source)
+    with pytest.raises(UKReleaseCertificationError, match="projection_engine"):
         compose_uk_release_certification(**green_certification_inputs)
 
 

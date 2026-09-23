@@ -8,7 +8,10 @@ calibration seam's ``cgt_projection_entrants`` gate counts those entrants
 year by year and fences them against a published band count; this module
 supplies the projection the gate needs, read from the installed engine at
 January-first instants (the donor-uprating precedent) and reported in full
-so the receipt is reproducible from the parameter tree alone.
+so the receipt is reproducible from the parameter tree alone. Without an
+installed engine the seam states the projection from the manifest pins and
+labels the receipt accordingly; that label satisfies the gate but the release
+certifier refuses it, so an engine-free seam can never certify a cut.
 """
 
 from __future__ import annotations
@@ -17,17 +20,21 @@ import math
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from importlib import metadata
+from importlib.util import find_spec
 from types import MappingProxyType
 
 __all__ = [
     "UK_CGT_EXEMPT_AMOUNT_PARAMETER",
     "UK_CGT_GAINS_GROWTH_PARAMETER",
     "UK_CGT_PROJECTION_ARTIFACT_KEY",
+    "UK_CGT_PROJECTION_ENGINE_LABEL_PREFIX",
     "UK_CGT_PROJECTION_INSTANT_RULE",
     "UK_CGT_PROJECTION_PINS_ENGINE",
     "UKCGTProjection",
     "uk_cgt_projection",
     "uk_cgt_projection_from_pins",
+    "uk_cgt_projection_read_from_engine",
+    "uk_engine_installed",
 ]
 
 #: The engine's uprating index for ``capital_gains`` (per-capita GDP growth).
@@ -41,6 +48,10 @@ UK_CGT_PROJECTION_INSTANT_RULE = "january_first"
 #: The engine label of a projection built from the manifest pins because no
 #: engine is installed; the binding still drift-checks it against the pins.
 UK_CGT_PROJECTION_PINS_ENGINE = "manifest_pins (policyengine-uk unavailable)"
+#: The label of a projection read from an installed policyengine-uk with a
+#: resolvable version, ``policyengine-uk==<version>``: the only source the
+#: release certifier accepts for the fence.
+UK_CGT_PROJECTION_ENGINE_LABEL_PREFIX = "policyengine-uk=="
 
 ParameterReader = Callable[[str, int], float]
 
@@ -135,9 +146,38 @@ class UKCGTProjection:
 
 def _installed_engine() -> str:
     try:
-        return f"policyengine-uk=={metadata.version('policyengine-uk')}"
+        version = metadata.version("policyengine-uk")
     except metadata.PackageNotFoundError:  # pragma: no cover - engine extra absent
         return "policyengine-uk (version unavailable)"
+    return f"{UK_CGT_PROJECTION_ENGINE_LABEL_PREFIX}{version}"
+
+
+def uk_engine_installed() -> bool:
+    """Whether policyengine-uk is installed in this environment.
+
+    Decided by ``find_spec`` and nothing else: an engine that is installed
+    but fails to import (a broken extension, a missing shared library) must
+    raise where it is read, not be mislabelled as unavailable and quietly
+    replaced by the manifest pins.
+    """
+
+    return find_spec("policyengine_uk") is not None
+
+
+def uk_cgt_projection_read_from_engine(engine: object) -> bool:
+    """Whether ``engine`` labels a projection read from an installed engine.
+
+    True only for ``policyengine-uk==<version>``. The pins label, a supplied
+    reader's label and an engine whose distribution metadata is missing are
+    all refused: none of them ties the receipt to a runtime version, and the
+    release certifier requires that tie.
+    """
+
+    return (
+        isinstance(engine, str)
+        and engine.startswith(UK_CGT_PROJECTION_ENGINE_LABEL_PREFIX)
+        and len(engine) > len(UK_CGT_PROJECTION_ENGINE_LABEL_PREFIX)
+    )
 
 
 def uk_cgt_projection(

@@ -91,7 +91,7 @@ def _frame(weights: list[float], *, weight_kind: WeightKind):
     )
 
 
-def _diagnostics(spine_sha256: str) -> dict:
+def _diagnostics(spine_sha256: str, *, runtime: dict | None = None) -> dict:
     return {
         "schema_version": 6,
         "weight_entity": "household",
@@ -178,7 +178,7 @@ def _diagnostics(spine_sha256: str) -> dict:
             "code_pin": _CODE_PIN,
             "build_id": _ATTEMPT_ID,
             "input_posture": {"tier": "staging_candidate", "sha256": spine_sha256},
-            "runtime": dict(_SIGNED_RUNTIME),
+            "runtime": dict(_SIGNED_RUNTIME if runtime is None else runtime),
         },
     }
 
@@ -203,6 +203,7 @@ def _build_assembler_inputs(
     tmp_path: Path,
     *,
     spine_frame=None,
+    runtime=None,
 ):
     pytest.importorskip("tables")  # pandas HDF backend
     pytest.importorskip("h5py")
@@ -217,7 +218,7 @@ def _build_assembler_inputs(
 
     diagnostics_path = tmp_path / "calibration_diagnostics.json"
     diagnostics_path.write_text(
-        json.dumps(_diagnostics(sha256(spine))), encoding="utf-8"
+        json.dumps(_diagnostics(sha256(spine), runtime=runtime)), encoding="utf-8"
     )
     diagnostics_sha = sha256(diagnostics_path)
     for report_name in ("seam_report_path", "release_cut_report_path"):
@@ -586,6 +587,23 @@ def test_assemble_refuses_runtime_override_contradicting_provenance(
                 "policyengine-uk=9.99.0",
             ]
         )
+
+
+def test_assemble_refuses_unresolved_runtime_provenance(
+    green_certification_inputs, tmp_path: Path
+) -> None:
+    """A seam that could not resolve the engine's version signs
+    ``unavailable``; the assembler refuses to pin a runtime it cannot
+    authenticate, the packaging backstop behind the certifier's own refusal
+    of a fence projected without an engine."""
+
+    inputs = _build_assembler_inputs(
+        green_certification_inputs,
+        tmp_path,
+        runtime={**_SIGNED_RUNTIME, "policyengine-uk": "unavailable"},
+    )
+    with pytest.raises(SystemExit, match="missing or unresolved"):
+        _load_driver_module().main(inputs["argv"])
 
 
 def test_assemble_refuses_existing_destination(assembler_inputs, capsys) -> None:
