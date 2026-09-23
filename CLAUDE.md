@@ -39,6 +39,10 @@ shard's real wheel, install into a clean uv-export-constrained venv, assert
 the wheel/import boundary and spec digests, and run the suite against installed
 wheels.
 
+The `fast` matrix runs at most three jobs concurrently, and the `engine-us`
+matrix runs at most four. These limits retain every Python-version and test-group
+combination while reducing the peak runner demand from a single workflow run.
+
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
 remain independent and can finish validating their merged changes.
