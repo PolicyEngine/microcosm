@@ -89,9 +89,12 @@ release directory onto the runs volume. Publication stays the human step in
 
 The heavy and light classes are sized from the #974 measured peaks
 (`experiments/us-acs-local-hours-rebuild-20260922/run-resources-and-staging-excerpt.json`,
-totals SOI surface). The overnight build of 22 September was expected to
-peak near 94 GB for materialize on the state surface. That number was
-reported with the task and has not been measured by this runner.
+totals SOI surface). On the state SOI surface, the overnight build of 23
+September measured materialize locally at a 77.9 GB peak, 5,569 s of tool
+wall and 5,472 CPU-s (4,459 targets; see the acceptance attempt below). On
+Modal the same stage ran two to five times slower per chunk and held 15 to
+24 GB more RSS at the same point, so the local wall times in this table
+understate Modal's wall and cost.
 
 | Stage | Measured locally | Class | Request | List price at measured wall |
 | --- | --- | --- | --- | --- |
@@ -240,6 +243,80 @@ MICROCOSM_MODAL_PLAN=docs/us-modal-stage-example-plan.json \
   modal run --detach tools/modal_us_stage.py --run
 ```
 
+## Acceptance attempt: 23 September materialize on the state surface
+
+The plan `docs/us-modal-stage-acceptance-20260923-plan.json` ran the
+materialize stage of the overnight build of 23 September on Modal
+(`run_id` `overnight-20260923-materialize-state`). It pinned build commit
+`767312d6` on branch `overnight-acs-local-20260923`, `soi_mode` `state`,
+`hh_chunk` 20,000, the local run's peak-limit environment and a
+26,400-second wall budget. The same stage ran locally at the same time from
+the same inputs. The Modal run did not finish, so its outputs could not be
+compared.
+
+- **Inputs.** The staging H5 (`ed2e6308…`, 10,685,765,051 bytes) went to
+  the inputs volume in 255 seconds, about 42 MB/s, and the staging summary
+  (`3aab5e5e…`) went up too. The feed and ladder were already there.
+- **Check.** It passed with no problems. The image built from `767312d6`,
+  the clone was clean on its branch, and the environment synced to
+  policyengine-us 2.2.1 and policyengine-core 3.32.5, the same versions as
+  the local environment. The tool's parser accepted the argv, and all four
+  inputs matched their digests on the volume.
+- **Run.** The container started at 06:03:06 UTC and the tool's first
+  log line came at 06:06:22, so staging and verifying the inputs took under
+  3.5 minutes. The tool's own timings, Modal against local:
+
+  | Step | Modal | Local |
+  | --- | --- | --- |
+  | Start to staging frame loaded (hashing, specs, load) | 255 to 281 s | 79 s |
+  | One chunk of 20,000 households | 149 to 355 s | 66 to 80 s |
+  | peak RSS after chunk 1 | 66.3 GB | 51.0 GB |
+  | peak RSS after chunk 29 | 74.5 GB | 51.0 GB |
+
+  The container ran gVisor (`Linux-4.19.0-gvisor-x86_64`) with Python
+  3.14.2. In the check-class container Modal set `OMP_NUM_THREADS`,
+  `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS` and `BLIS_NUM_THREADS` to that
+  class's CPU request, 2. In the heavy container `nproc` reported 4. The
+  local run used macOS arm64 with Python 3.14.4, and its config set none of
+  those variables.
+  A sample inside the container, taken with `modal container exec`, showed
+  the tool process using about 97% of one core (59.4 CPU-s in 61 s). The
+  stage was CPU-bound on one core, not throttled.
+- **Preempted twice.** Modal preempted the first container after 54
+  minutes (after chunk 12 of 80) and the second after 2 hours 4 minutes
+  (after chunk 29). Each time it restarted the function from zero. The run
+  was launched before the attempt ledger existed, so the budget restarted
+  too. It was stopped by hand (`modal app stop`) 34 seconds into a third
+  attempt, because at the observed pace a third attempt needed 6.5 to 7
+  more hours and would have taken the total past $10.
+- **Cost.** Modal's workspace billing report
+  (`modal.billing.workspace_billing_report`, hourly) shows $3.57 for the
+  run through 09:00 UTC. The last 2.5 minutes add about $0.05, for about
+  $3.62 in total. The check cost $0.02. Billing was at the request, about
+  $1.21 an hour.
+- **Local result for the next comparison.** The local run finished in
+  5,569 s with a 77.9 GB peak. `run_identity`: staging `ed2e6308…`, ladder
+  `39a2ab2a…`, 1,588,854 households, 4,459 targets (3,972 admin specs
+  declared and compiled, plus 487 state and CD population cells), no
+  dropped cells, `targets_sha256`
+  `d843209746bdcf96a831fa90d6fa2fe7aa2969fa32290db35afa9889f7c5d377`.
+  Checkpoint sha256: `held_back_columns.json` `026c455b…`,
+  `reviewed_null_fills.json` `727f39c1…`, `targets.json` `d8432097…`
+  (the same as `targets_sha256`), and `target_frame_lean.h5`
+  (28,749,924,512 bytes) `ae7d0ae7…`. HDF5 files can differ byte for byte
+  when their stored values match, so the lean H5 should also be compared
+  dataset by dataset. The build machine keeps per-dataset digests of the
+  local file next to the overnight run.
+
+At the pace observed, one uninterrupted Modal materialize on the state
+surface takes about 3.5 to 7 hours. That is about $4 to $9 on preemptible
+placement, or $13 to $26 with `"nonpreemptible": true`, against 1.5 hours
+locally. The Modal path works, but it does not yet make this stage cheaper
+or faster. The run did show that the stage runs as one long single-core
+loop over 80 chunks of households. If the chunks are independent, which
+this runbook has not checked in `materialize_chunked`, fanning them out
+across containers would let preemption lose one chunk instead of the run.
+
 ## Data placement
 
 Inputs go to the `policyengine` Modal workspace. Upload only files that are
@@ -278,11 +355,13 @@ hold digests, sizes and paths, never file contents.
   of the same plan that never wrote a receipt to `max_wall_seconds`, and
   refuses to start when less than a minute is left. The check reports those
   attempts and the time left. To launch again past a spent budget, raise
-  `max_wall_seconds` (a new plan digest) or use a new `run_id`. Setting
-  `nonpreemptible=True` would avoid restarts at three times the list price
-  for CPU and memory (modal.com/docs/guide/preemption, read 23 September
-  2026); the runner does not set it. The heavy class sets a memory request
-  but no hard limit, and a container killed for memory is not restarted.
+  `max_wall_seconds` (a new plan digest) or use a new `run_id`. A plan can
+  set `"nonpreemptible": true` to run on Modal's non-preemptible placement,
+  which avoids restarts at three times the list price for CPU and memory
+  (modal.com/docs/guide/preemption, read 23 September 2026); `validate` and
+  the receipt price it that way. The heavy class sets a memory request but
+  no hard limit. What Modal does with a container killed for memory has not
+  been observed here.
 - **Certification.** A receipt proves which bytes a stage produced. It does
   not certify a release. Preflight (`tools/preflight_us_release_gates.py`)
   and certification still run on the output as before.
