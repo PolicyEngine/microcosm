@@ -1,0 +1,154 @@
+{
+  "purpose": "Verify reporting-only changes after the completed numerical run without rewriting its recorded producer hash.",
+  "producer_sha256": "12ee1e6fca64eee09ad2521851be5015cf54826471c8a210db55a1011a9fe0ad",
+  "current_sha256": "f24f77f9286d59d3bfdb84298046245ab9e77f6e8748b0c0b06ba6ac51c76ceb",
+  "changes": [
+    "Count an AGI band only when its bound is finite; unbounded totals are not bands.",
+    "Correct the description of the two exported household sets.",
+    "Make observed closed-gate boundary draw counts explicit.",
+    "Correct prose about each design\u2019s reference mass for equal-share thresholds.",
+    "Validate reporting revisions by reconstructing the original producer source from these exact line edits."
+  ],
+  "numerical_outputs_unchanged": true,
+  "edits": [
+    {
+      "old_start": 724,
+      "new_start": 724,
+      "old_lines": [
+        "    \"\"\"Use compiled measure and band metadata rather than target-name spelling.\"\"\"\n"
+      ],
+      "new_lines": [
+        "    \"\"\"Report AGI measures with a finite bound; unbounded totals are not bands.\"\"\"\n"
+      ]
+    },
+    {
+      "old_start": 728,
+      "new_start": 728,
+      "old_lines": [
+        "        and any(s.metadata.get(key) is not None for key in (\"agi_lower_bound\", \"agi_upper_bound\"))\n"
+      ],
+      "new_lines": [
+        "        and any(\n",
+        "            math.isfinite(float(s.metadata[key]))\n",
+        "            for key in (\"agi_lower_bound\", \"agi_upper_bound\")\n",
+        "            if s.metadata.get(key) is not None\n",
+        "        )\n"
+      ]
+    },
+    {
+      "old_start": 2330,
+      "new_start": 2334,
+      "old_lines": [
+        "        \"sorted by employment income. The selected identifiers, including the headline-target sensitivity, \"\n",
+        "        \"are in [household_ids.json](household_ids.json).\"\n"
+      ],
+      "new_lines": [
+        "        \"sorted by employment income. Identifiers and mirrored rows for the sampled and national-target exact-k sets \"\n",
+        "        \"are in [household_ids.json](household_ids.json); the headline-target sensitivity is reported only in aggregates.\"\n"
+      ]
+    },
+    {
+      "old_start": 2389,
+      "new_start": 2393,
+      "old_lines": [
+        "                f\"boundary draw needed: {draw['boundary_draw_needed']}.\",\n"
+      ],
+      "new_lines": [
+        "                f\"boundary draw needed: {draw['boundary_draw_needed']}. \"\n",
+        "                f\"The boundary draw selected {draw['boundary_draws_at_or_below_deterministic_threshold']} households \"\n",
+        "                \"whose L0 gates were closed at deterministic evaluation. The final support is therefore a maintained \"\n",
+        "                \"probability-based boundary draw, rather than simply the households with open L0 gates.\",\n"
+      ]
+    },
+    {
+      "old_start": 2578,
+      "new_start": 2585,
+      "old_lines": [
+        "Own-median thresholds use each design's positive output weights; equal-share\n",
+        "thresholds use full-file mass divided by support size.\n"
+      ],
+      "new_lines": [
+        "Own-median thresholds use each design's positive output weights. Equal-share\n",
+        "thresholds use eligible-pool mass divided by sample size for the sampled designs\n",
+        "and full-file mass divided by support size for exact-k.\n"
+      ]
+    },
+    {
+      "old_start": 2625,
+      "new_start": 2633,
+      "old_lines": [],
+      "new_lines": [
+        "\n",
+        "\n",
+        "def _verify_producer_source(out_dir: Path, expected_sha256: str) -> dict[str, bool]:\n",
+        "    \"\"\"Verify the producer directly or reconstruct it from reporting-only edits.\n",
+        "\n",
+        "    Revision offsets are zero-based line indexes and line strings retain their\n",
+        "    endings. Both sides of each edit must match; the reconstructed source must\n",
+        "    have the original numerical producer's digest recorded in inputs.json.\n",
+        "    \"\"\"\n",
+        "    current_bytes = Path(__file__).read_bytes()\n",
+        "    current_sha256 = hashlib.sha256(current_bytes).hexdigest()\n",
+        "    if current_sha256 == expected_sha256:\n",
+        "        return {\"source.script_sha256\": True}\n",
+        "    revision_path = out_dir / \"source_revision.json\"\n",
+        "    if not revision_path.exists():\n",
+        "        return {\"source.script_sha256\": False}\n",
+        "    revision = json.loads(revision_path.read_text())\n",
+        "    checks = {\n",
+        "        \"source.revision_current_sha256\": revision[\"current_sha256\"] == current_sha256,\n",
+        "        \"source.revision_producer_sha256\": revision[\"producer_sha256\"] == expected_sha256,\n",
+        "    }\n",
+        "    edits = revision[\"edits\"]\n",
+        "    current = current_bytes.decode(\"utf-8\").splitlines(keepends=True)\n",
+        "    if not isinstance(edits, list) or not edits:\n",
+        "        raise ValueError(\"Source revision must contain edits\")\n",
+        "    for edit in edits:\n",
+        "        for name in (\"old_start\", \"new_start\"):\n",
+        "            if type(edit[name]) is not int or edit[name] < 0:\n",
+        "                raise ValueError(\"Source revision offsets must be nonnegative integers\")\n",
+        "        for name in (\"old_lines\", \"new_lines\"):\n",
+        "            if not isinstance(edit[name], list) or not all(isinstance(line, str) for line in edit[name]):\n",
+        "                raise ValueError(\"Source revision lines must be string lists\")\n",
+        "    edits = sorted(edits, key=lambda edit: edit[\"new_start\"])\n",
+        "    end = 0\n",
+        "    patch_matches = True\n",
+        "    for edit in edits:\n",
+        "        start = edit[\"new_start\"]\n",
+        "        stop = start + len(edit[\"new_lines\"])\n",
+        "        patch_matches &= start >= end and stop <= len(current) and current[start:stop] == edit[\"new_lines\"]\n",
+        "        end = stop\n",
+        "    checks[\"source.revision_current_hunks_match\"] = patch_matches\n",
+        "    if not patch_matches:\n",
+        "        checks[\"source.script_sha256\"] = False\n",
+        "        return checks\n",
+        "    reconstructed = current.copy()\n",
+        "    for edit in reversed(edits):\n",
+        "        start = edit[\"new_start\"]\n",
+        "        reconstructed[start:start + len(edit[\"new_lines\"])] = edit[\"old_lines\"]\n",
+        "    end = 0\n",
+        "    original_matches = True\n",
+        "    for edit in sorted(edits, key=lambda edit: edit[\"old_start\"]):\n",
+        "        start = edit[\"old_start\"]\n",
+        "        stop = start + len(edit[\"old_lines\"])\n",
+        "        original_matches &= start >= end and stop <= len(reconstructed) and reconstructed[start:stop] == edit[\"old_lines\"]\n",
+        "        end = stop\n",
+        "    checks[\"source.revision_producer_hunks_match\"] = original_matches\n",
+        "    reconstructed_sha256 = hashlib.sha256(\"\".join(reconstructed).encode(\"utf-8\")).hexdigest()\n",
+        "    checks[\"source.script_sha256\"] = reconstructed_sha256 == expected_sha256\n",
+        "    return checks\n"
+      ]
+    },
+    {
+      "old_start": 2782,
+      "new_start": 2849,
+      "old_lines": [
+        "            check(\"source.script_sha256\", inputs[\"source\"][\"script_sha256\"] == _sha256(Path(__file__)))\n"
+      ],
+      "new_lines": [
+        "            for label, passed in _verify_producer_source(out_dir, inputs[\"source\"][\"script_sha256\"]).items():\n",
+        "                check(label, passed)\n"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "distinct_households_across_seed_draws": 3326,
+  "seed_draws": 200,
+  "frozen_100_in_any_seed_draw": 93,
+  "exact_k_national_all_in_frozen_100": 0,
+  "exact_k_national_all_in_any_seed_draw": 18,
+  "exact_k_national_all_policybench_eligible": 76,
+  "exact_k_headline_in_frozen_100": 0,
+  "exact_k_headline_in_any_seed_draw": 19,
+  "exact_k_headline_policybench_eligible": 83,
+  "exact_k_national_all_vs_headline_shared": 0
+}
