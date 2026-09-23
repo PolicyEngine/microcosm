@@ -12,6 +12,7 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     apply_ledger_target_profile,
     compile_ledger_target_references,
+    constraint_bound_shadowing_dimensions,
     hierarchy_seed_from_catalog,
     ledger_target_registry_parity_report,
     period_values_semantically_equal,
@@ -4474,6 +4475,61 @@ def test__given_bound_already_a_dimension__then_constraint_does_not_restamp_it()
     # constraint adds nothing.
     assert metadata["ledger_filter_total_income_lower_bound"] == "12570"
     assert "ledger_filter_ignored_lower_bound_exclusive" not in metadata
+
+
+def test__given_dimension_named_for_a_bound_key__then_it_is_reported_as_shadowing() -> (
+    None
+):
+    # The dimension stamp runs first and the constraint edges only through
+    # ``setdefault``, so a dimension named for a bound key is what that key
+    # carries, with no operator; the helper names every dimension that can
+    # do that, or that makes the stamp skip the variable's rows outright.
+    fact = _consumer_fact_row_for_period(2024, value=10.0)
+    fact["dimensions"] = {"age_upper_bound": 10, "region": "north"}
+    fact["universe_constraints"] = {
+        "domain": "resident_population",
+        "constraints": [
+            {"operator": ">=", "role": "filter", "value": 5, "variable": "age"},
+            {"operator": "<", "role": "filter", "value": 9, "variable": "age"},
+        ],
+    }
+    reference = LedgerTargetReference(
+        name="age band",
+        ledger_selector={"source_name": "irs_soi"},
+        entity="person",
+        measure="person_count",
+        period=2024,
+    )
+
+    metadata = (
+        compile_ledger_target_references([fact], [reference], country="us")
+        .specs[0]
+        .metadata
+    )
+    # The ``< 9`` row lost its key to the dimension's operator-less value.
+    assert metadata["ledger_filter_age_upper_bound"] == "10"
+    assert metadata["ledger_filter_age_lower_bound"] == "5"
+    assert constraint_bound_shadowing_dimensions(fact, "age") == ("age_upper_bound",)
+
+    fact["dimensions"] = {"region": "north"}
+    assert constraint_bound_shadowing_dimensions(fact, "age") == ()
+
+    # Presence of the key is what counts, whatever its value: an ``age``
+    # dimension valued ``None`` stamps nothing yet still skips every age row.
+    fact["dimensions"] = {
+        "age": None,
+        "age_lower_bound": 5,
+        "age_upper_bound_inclusive": 9,
+    }
+    assert constraint_bound_shadowing_dimensions(fact, "age") == (
+        "age",
+        "age_lower_bound",
+        "age_upper_bound_inclusive",
+    )
+
+    # ``filters`` is read in place of ``dimensions``, as the stamp reads it.
+    fact["filters"] = {"age_lower_bound": 5}
+    assert constraint_bound_shadowing_dimensions(fact, "age") == ("age_lower_bound",)
 
 
 def _ratio_fact(

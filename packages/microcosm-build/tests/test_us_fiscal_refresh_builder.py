@@ -2871,6 +2871,7 @@ def test_restated_filters_clear_the_soi_skip_only_where_they_agree() -> None:
 _RESTATED_AGE_LOWER = "ledger_filter_age_lower_bound"
 _RESTATED_AGE_UPPER = "ledger_filter_age_upper_bound"
 _RESTATED_AGE_EXACT = "ledger_filter_age"
+_AGE_STAMP_SOURCE = "age_bound_stamp_source"
 
 
 def _population_age_metadata(**overrides: str | None) -> dict[str, str]:
@@ -2878,9 +2879,11 @@ def _population_age_metadata(**overrides: str | None) -> dict[str, str]:
 
     Mirrors ``_population_age_reference_from_fact`` for a state 5-to-9 cell —
     the half-open band the materializer slices on
-    (``age_lower_bound``/``age_upper_bound``) — plus the restatement
-    ``ledger_targets._constraint_bound_filters`` stamps from that fact's
-    ``age >= 5`` and ``age < 10`` rows. An override of ``None`` drops the key.
+    (``age_lower_bound``/``age_upper_bound``) and the compile's attestation
+    that the fact has no dimension that could shadow its age rows — plus the
+    restatement ``ledger_targets._constraint_bound_filters`` stamps from that
+    fact's ``age >= 5`` and ``age < 10`` rows. An override of ``None`` drops
+    the key.
     """
 
     metadata = {
@@ -2893,6 +2896,7 @@ def _population_age_metadata(**overrides: str | None) -> dict[str, str]:
         "age_group": "5_to_9",
         "age_lower_bound": "5",
         "age_upper_bound": "10",
+        _AGE_STAMP_SOURCE: "constraint_rows",
         _RESTATED_AGE_LOWER: "5",
         _RESTATED_AGE_UPPER: "10",
     }
@@ -2920,6 +2924,7 @@ def _ssa_age_band_metadata(**overrides: str | None) -> dict[str, str]:
         "source_measure_id": "recipient_count",
         "age_lower_bound": "0",
         "age_upper_bound": "18",
+        _AGE_STAMP_SOURCE: "constraint_rows",
         _RESTATED_AGE_LOWER: "0",
         _RESTATED_AGE_UPPER: "18",
     }
@@ -2996,10 +3001,13 @@ def test_disagreeing_restated_age_bounds_are_refused_by_value() -> None:
     off on either side, a finite upper edge over a compiled open top, a bound
     with no compiled counterpart, an exact-age restatement (the materializer
     has no exact-age filter), a bound on a fact whose dimensions include age
-    (so the bound came from the operator-less dimension stamp), and a bound on
-    specs whose materializer applies no age band. Every refusal names the
-    restated value and, where one exists, the compiled one. The unknown key is
-    the control that the ordinary path is untouched.
+    (so the bound came from the operator-less dimension stamp), a bound on
+    specs whose materializer applies no age band, and agreeing bounds whose
+    operator the compile does not attest: no attestation at all, or one naming
+    a dimension that could have written the key with no operator. Every
+    refusal names the restated value and, where one exists, the compiled one
+    or the attestation. The unknown key is the control that the ordinary path
+    is untouched.
     """
 
     builder = _load_builder_module()
@@ -3057,6 +3065,21 @@ def test_disagreeing_restated_age_bounds_are_refused_by_value() -> None:
             _population_age_metadata(materializer=None, **{_RESTATED_AGE_UPPER: None}),
         ),
         _spec(
+            "unattested",
+            _population_age_metadata(
+                **{_AGE_STAMP_SOURCE: None, _RESTATED_AGE_LOWER: None}
+            ),
+        ),
+        _spec(
+            "dimension_shadowed",
+            _ssa_age_band_metadata(
+                **{
+                    _AGE_STAMP_SOURCE: "dimensions:age_upper_bound",
+                    _RESTATED_AGE_LOWER: None,
+                }
+            ),
+        ),
+        _spec(
             "unknown_key",
             _population_age_metadata(ledger_filter_novel_dimension="specific_slice"),
         ),
@@ -3096,6 +3119,18 @@ def test_disagreeing_restated_age_bounds_are_refused_by_value() -> None:
         "no_materializer": (
             f"{_RESTATED_AGE_LOWER}=5 restates an age bound on a spec whose "
             "materializer (None) applies no age band",
+        ),
+        "unattested": (
+            f"{_RESTATED_AGE_UPPER}=10 restates an age bound whose operator is "
+            f"ambiguous: {_AGE_STAMP_SOURCE}=None does not attest it was stamped "
+            "from a constraint row (>= or <), and a dimension of that name "
+            "carries no operator",
+        ),
+        "dimension_shadowed": (
+            f"{_RESTATED_AGE_UPPER}=18 restates an age bound whose operator is "
+            f"ambiguous: {_AGE_STAMP_SOURCE}=dimensions:age_upper_bound does not "
+            "attest it was stamped from a constraint row (>= or <), and a "
+            "dimension of that name carries no operator",
         ),
         "unknown_key": ("ledger_filter_novel_dimension",),
     }
@@ -3226,6 +3261,15 @@ def test_restated_age_bounds_are_judged_on_the_real_compile() -> None:
     ``>`` rows compile to the same numeric edges but keep the operator in the
     stamped key and stay refused; a fact with ``age`` as a dimension gets no
     bound stamp at all, only the exact restatement, which is refused.
+
+    The last two facts are the dimension stamp's operator-less keys, which
+    agree with the compiled edge by value and carry no other refusable key:
+    an ``age_upper_bound`` dimension whose value the stamp writes over the
+    ``<`` row's (``setdefault``), and an ``age`` dimension valued ``None``
+    beside an ``age_upper_bound`` dimension over an ``age <= 29`` row, where
+    no ``ledger_filter_age`` or ``_inclusive`` key is stamped at all and the
+    materializer's ``age < 29`` would drop the 29-year-olds. Only the
+    compile's attestation refuses them.
     """
 
     from microcosm.build.ledger_targets import compile_ledger_target_references
@@ -3242,6 +3286,14 @@ def test_restated_age_bounds_are_judged_on_the_real_compile() -> None:
         _census_age_fact(
             "15_to_19", [(">=", 15), ("<", 20)], dimensions={"age": "15_to_19"}
         ),
+        _census_age_fact(
+            "20_to_24", [(">=", 20), ("<", 25)], dimensions={"age_upper_bound": 25}
+        ),
+        _census_age_fact(
+            "25_to_29",
+            [(">=", 25), ("<=", 29)],
+            dimensions={"age": None, "age_upper_bound": 29},
+        ),
     ]
     registry = compile_ledger_target_references(
         facts,
@@ -3249,7 +3301,15 @@ def test_restated_age_bounds_are_judged_on_the_real_compile() -> None:
         country="us",
     )
     specs = {spec.name.split(".")[-2]: spec for spec in registry.specs}
-    assert set(specs) == {"0_to_4", "85_plus", "5_to_9", "10_to_14", "15_to_19"}
+    assert set(specs) == {
+        "0_to_4",
+        "85_plus",
+        "5_to_9",
+        "10_to_14",
+        "15_to_19",
+        "20_to_24",
+        "25_to_29",
+    }
 
     def age_keys(name: str) -> dict[str, str]:
         return {
@@ -3261,16 +3321,42 @@ def test_restated_age_bounds_are_judged_on_the_real_compile() -> None:
     assert age_keys("0_to_4") == {
         "age_lower_bound": "0",
         "age_upper_bound": "5",
+        _AGE_STAMP_SOURCE: "constraint_rows",
         _RESTATED_AGE_LOWER: "0",
         _RESTATED_AGE_UPPER: "5",
     }
     assert age_keys("85_plus") == {
         "age_lower_bound": "85",
         "age_upper_bound": "inf",
+        _AGE_STAMP_SOURCE: "constraint_rows",
         _RESTATED_AGE_LOWER: "85",
     }
     assert age_keys("5_to_9")["age_upper_bound"] == "9"
     assert age_keys("10_to_14")["age_lower_bound"] == "9"
+    assert age_keys("15_to_19")[_AGE_STAMP_SOURCE] == "dimensions:age"
+    # The shadowed keys agree with the compiled edges by value, so value
+    # agreement alone would accept them.
+    assert age_keys("20_to_24") == {
+        "age_lower_bound": "20",
+        "age_upper_bound": "25",
+        _AGE_STAMP_SOURCE: "dimensions:age_upper_bound",
+        _RESTATED_AGE_LOWER: "20",
+        _RESTATED_AGE_UPPER: "25",
+    }
+    assert age_keys("25_to_29") == {
+        "age_lower_bound": "25",
+        "age_upper_bound": "29",
+        _AGE_STAMP_SOURCE: "dimensions:age,age_upper_bound",
+        _RESTATED_AGE_UPPER: "29",
+    }
+
+    def ambiguous(key: str, value: str, source: str) -> str:
+        return (
+            f"{key}={value} restates an age bound whose operator is ambiguous: "
+            f"{_AGE_STAMP_SOURCE}={source} does not attest it was stamped from "
+            "a constraint row (>= or <), and a dimension of that name carries "
+            "no operator"
+        )
 
     refused = builder._unsupported_ledger_filter_metadata(registry.specs)
     assert {name.split(".")[-2]: entries for name, entries in refused.items()} == {
@@ -3280,6 +3366,13 @@ def test_restated_age_bounds_are_judged_on_the_real_compile() -> None:
             f"{_RESTATED_AGE_EXACT}=15_to_19 restates an exact age, but the "
             "materializer slices a half-open age band and applies no "
             "exact-age filter",
+        ),
+        "20_to_24": (
+            ambiguous(_RESTATED_AGE_LOWER, "20", "dimensions:age_upper_bound"),
+            ambiguous(_RESTATED_AGE_UPPER, "25", "dimensions:age_upper_bound"),
+        ),
+        "25_to_29": (
+            ambiguous(_RESTATED_AGE_UPPER, "29", "dimensions:age,age_upper_bound"),
         ),
     }
 
@@ -3336,6 +3429,9 @@ def test_pinned_chronicle_feed_whole_registry_compiles_no_unsupported_filters() 
     assert {spec.metadata.get("materializer") for spec in restated_age} <= (
         builder.RESTATED_AGE_BAND_MATERIALIZERS
     )
+    assert {spec.metadata.get(_AGE_STAMP_SOURCE) for spec in restated_age} == {
+        "constraint_rows"
+    }
     assert builder._unsupported_ledger_filter_metadata(specs) == {}
     assert not [
         spec
@@ -3364,6 +3460,9 @@ def test_restated_concept_rules_all_have_a_comparison() -> None:
         "age",
         "upper",
     )
+    # The age rule reads the compile's attestation under the compile's names.
+    assert builder.AGE_BOUND_STAMP_SOURCE_KEY == _AGE_STAMP_SOURCE
+    assert builder.AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS == "constraint_rows"
     assert builder._restated_ledger_filter_concept(_RESTATED_AGE_EXACT) == (
         "age",
         None,
@@ -9891,6 +9990,7 @@ def test_population_age_targets_materialize_person_age_counts(
             ),
             "age_lower_bound": str(lower),
             "age_upper_bound": str(upper),
+            _AGE_STAMP_SOURCE: "constraint_rows",
             **restated_bounds(lower, upper),
         }
         if state_fips:
@@ -9933,6 +10033,7 @@ def test_population_age_targets_materialize_person_age_counts(
                 "target_role": builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
                 "age_lower_bound": str(lower),
                 "age_upper_bound": str(upper),
+                _AGE_STAMP_SOURCE: "constraint_rows",
                 **restated_bounds(lower, upper),
             },
         )

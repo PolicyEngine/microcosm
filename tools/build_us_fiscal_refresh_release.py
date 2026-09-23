@@ -231,6 +231,8 @@ from microcosm.build.us_runtime.exact_k_ladder import (
     exact_k_ladder_manifest_payload,
 )
 from microcosm.build.us_runtime.fiscal_targets import (
+    AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS,
+    AGE_BOUND_STAMP_SOURCE_KEY,
     SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
 )
 from microcosm.build.us_runtime.h5_io import (
@@ -724,8 +726,9 @@ RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES = frozenset({"upper"})
 #: recipients-by-age counts) — so a restated age bound is judged, like an AGI
 #: bound, against its own side only.
 #:
-#: Numeric equality of the edges is equality of populations because of how
-#: the restated key is stamped:
+#: Numeric equality of the edges is equality of populations only for a
+#: restated key whose operator is the mask's: ``age < 10`` and ``age <= 10``
+#: differ by everyone aged exactly ten, so the operator decides.
 #: :func:`microcosm.build.ledger_targets._constraint_bound_filters` writes
 #: ``age_lower_bound`` only for a ``>=`` row and ``age_upper_bound`` only for
 #: a ``<`` row, the two operators of the materializer's mask. A ``>`` or
@@ -735,6 +738,11 @@ RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES = frozenset({"upper"})
 #: ``us_runtime.fiscal_targets._age_bounds``, which drops the operator: a
 #: ``<= 4`` row compiles to ``age_upper_bound=4`` and the materializer's
 #: ``age < 4`` would leave out the four-year-olds the published cell counts.
+#: But the same ``ledger_filter_age_{lower,upper}_bound`` key can also be a
+#: dimension's, which carries no operator (the ambiguity that keeps restated
+#: qualifying-child upper bounds refused), so the key name alone does not
+#: settle it; the compile's attestation does
+#: (:data:`microcosm.build.us_runtime.fiscal_targets.AGE_BOUND_STAMP_SOURCE_KEY`).
 RESTATED_AGE_BAND_COMPILED_KEYS = {
     "lower": "age_lower_bound",
     "upper": "age_upper_bound",
@@ -757,13 +765,14 @@ RESTATED_AGE_BAND_MATERIALIZERS = frozenset({"population_age", "policyengine_var
 #: every constraint row whose variable is already a dimension key, so on
 #: such a fact an ``age_{lower,upper}_bound`` restatement cannot have come
 #: from an operator-checked ``>=``/``<`` row — only from a dimension of that
-#: name, which carries no operator at all (the ambiguity that keeps restated
-#: qualifying-child upper bounds refused). A restated age bound on a spec
+#: name, which carries no operator at all. A restated age bound on a spec
 #: carrying this key is refused, whatever its value, including ``all``.
 #: ``_ledger_metadata`` stamps a dimension only when its value is not
 #: ``None`` and then drops empty values, so an ``age`` dimension valued
-#: ``None`` or ``""`` leaves no key here; that residual case is not detected.
-#: The pinned feed has no age dimension of any kind.
+#: ``None`` or ``""`` leaves no key here; the compile's attestation
+#: (:data:`AGE_BOUND_STAMP_SOURCE_KEY`, which checks dimension keys whatever
+#: their value) is what refuses that case. The pinned feeds have no age
+#: dimension of any kind.
 RESTATED_AGE_DIMENSION_KEY = "ledger_filter_age"
 
 FISCAL_TARGET_SOURCE_KEYS = {
@@ -4647,6 +4656,14 @@ def _restated_age_band_refusal(
             f"{key}={value} restates an age bound on a spec whose materializer "
             f"({materializer!r}) applies no age band"
         )
+    stamp_source = metadata.get(AGE_BOUND_STAMP_SOURCE_KEY)
+    if stamp_source != AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS:
+        return (
+            f"{key}={value} restates an age bound whose operator is ambiguous: "
+            f"{AGE_BOUND_STAMP_SOURCE_KEY}={stamp_source} does not attest it "
+            "was stamped from a constraint row (>= or <), and a dimension of "
+            "that name carries no operator"
+        )
     return _restated_band_edge_refusal(
         key, value, metadata, compiled_key=RESTATED_AGE_BAND_COMPILED_KEYS[side]
     )
@@ -4737,8 +4754,10 @@ def _restated_ledger_filter_refusal(
     names the materializers that apply the band
     (:data:`RESTATED_AGE_BAND_MATERIALIZERS`) and refuses on every other; it
     also refuses a bound on a fact whose dimensions include ``age``
-    (:data:`RESTATED_AGE_DIMENSION_KEY`), where the bound cannot have come
-    from an operator-checked constraint row.
+    (:data:`RESTATED_AGE_DIMENSION_KEY`), and any bound the compile does not
+    attest was stamped from a ``>=`` / ``<`` constraint row
+    (:data:`AGE_BOUND_STAMP_SOURCE_KEY`): a dimension-stamped bound carries no
+    operator, and ``age < 10`` and ``age <= 10`` select different people.
     """
 
     concept, side = _restated_ledger_filter_concept(key)

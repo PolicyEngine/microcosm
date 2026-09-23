@@ -21,10 +21,12 @@ Per arm it reports refused targets, refusal entries by key, refused targets by
 (family, ``target_role``), and ``irs_soi`` targets the SOI loop would skip
 silently. It also counts, independent of arm, the targets carrying a restated
 age key (``ledger_filter_age_lower_bound`` / ``_upper_bound``) by
-(family, ``target_role``, ``materializer``), and every ``ledger_filter_age*``
-key seen, so an operator-changed key (``_inclusive`` / ``_exclusive``) or an
-``age`` dimension would show up by name. Output is aggregate target-spec
-counts only; no microdata is read. It regenerates
+(family, ``target_role``, ``materializer``), those targets by the compile's
+``age_bound_stamp_source`` attestation (``constraint_rows`` unless a
+dimension could have shadowed the age rows' stamp), and every
+``ledger_filter_age*`` key seen, so an operator-changed key (``_inclusive`` /
+``_exclusive``) or an ``age`` dimension would show up by name. Output is
+aggregate target-spec counts only; no microdata is read. It regenerates
 ``age_band_rule_receipt.json``::
 
     uv run python experiments/us-labelled-filter-support/\\
@@ -95,8 +97,9 @@ def _survey(builder, specs: list) -> dict[str, object]:
     }
 
 
-def _age_key_census(specs: list) -> dict[str, object]:
+def _age_key_census(specs: list, stamp_source_key: str) -> dict[str, object]:
     carrying: collections.Counter[str] = collections.Counter()
+    stamp_sources: collections.Counter[str] = collections.Counter()
     keys: collections.Counter[str] = collections.Counter()
     for spec in specs:
         for key in spec.metadata:
@@ -107,9 +110,11 @@ def _age_key_census(specs: list) -> dict[str, object]:
                 f"{spec.family}|{spec.metadata.get('target_role', '')}"
                 f"|{spec.metadata.get('materializer', '')}"
             ] += 1
+            stamp_sources[str(spec.metadata.get(stamp_source_key))] += 1
     return {
         "targets_carrying_restated_age_key": sum(carrying.values()),
         "by_family_role_materializer": dict(carrying.most_common()),
+        "by_age_bound_stamp_source": dict(stamp_sources.most_common()),
         "ledger_filter_age_keys": dict(keys.most_common()),
     }
 
@@ -128,6 +133,7 @@ def main(argv: list[str]) -> int:
         load_congressional_district_vintage_crosswalk,
     )
     from microcosm.build.us_runtime.fiscal_targets import (
+        AGE_BOUND_STAMP_SOURCE_KEY,
         compile_us_fiscal_target_registry,
     )
 
@@ -172,7 +178,7 @@ def main(argv: list[str]) -> int:
             "feed_sha256": _sha256(feed),
             "compile_seconds": round(time.time() - started, 1),
             "targets": len(specs),
-            "age_key_census": _age_key_census(specs),
+            "age_key_census": _age_key_census(specs, AGE_BOUND_STAMP_SOURCE_KEY),
         }
         try:
             for arm, function, arm_concepts in arms:

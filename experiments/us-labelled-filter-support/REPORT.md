@@ -617,13 +617,16 @@ the upper edge, **dropping the operator**. The restated key keeps it:
 `_lower_bound_exclusive` / `_upper_bound_inclusive`.
 
 **The rule.** A restated `age_{lower,upper}_bound` is accepted only when it
-parses to the same number as the compiled edge on its own side and the spec's
-materializer is `population_age` or `policyengine_variable`. Refused, naming
-the values: a disagreeing edge, no compiled counterpart, an exact-age key
-(`ledger_filter_age=<v>`), any other materializer, and a spec carrying
-`ledger_filter_age` at all (age is then a dimension, so
-`_constraint_bound_filters` stamped none of the age rows and the bound came
-from the operator-less dimension stamp). `_exclusive` / `_inclusive` keys
+parses to the same number as the compiled edge on its own side, the spec's
+materializer is `population_age` or `policyengine_variable`, and the compile
+attests that the key was stamped from a `>=` / `<` constraint row
+(`age_bound_stamp_source=constraint_rows`; see "The operator is attested at
+compile" below). Refused, naming the values: a disagreeing edge, no compiled
+counterpart, an exact-age key (`ledger_filter_age=<v>`), any other
+materializer, a spec carrying `ledger_filter_age` at all (age is then a
+dimension, so `_constraint_bound_filters` stamped none of the age rows and the
+bound came from the operator-less dimension stamp), and any bound without that
+attestation. `_exclusive` / `_inclusive` keys
 are not restated concepts and keep the bare-key refusal whatever their value.
 A test that runs real facts through `_dynamic_us_fiscal_target_references`
 and `compile_ledger_target_references` shows why that matters: an
