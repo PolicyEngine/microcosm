@@ -155,6 +155,21 @@ FRAME_TABLE_SERIALIZERS = (
         version_owner="TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION",
         nullable_boolean_storage="bool_values_optional_uint8_mask",
     ),
+    FrameSerializerSpec(
+        serializer_id="spm_role_derivation_projection",
+        writer=HdfWriteSite(
+            "packages/microcosm-build/src/microcosm/build/us_runtime/"
+            "spm_independence_role.py",
+            "_write_role_projection",
+        ),
+        backend="pandas.HDFStore fixed",
+        routes=(
+            "US SPM independence role stage: scratch parent H5 handed to the "
+            "certified derive_spm_role_source",
+        ),
+        version_owner="derive_spm_role_source parent person/spm_unit contract",
+        nullable_boolean_storage="numpy_bool_or_object_pd_na_v1",
+    ),
 )
 
 

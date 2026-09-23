@@ -83,7 +83,18 @@ deliberate:
   rule, the join, or the refusals is re-implemented; `spm_role_source.py` is
   byte-identical to `origin/main`. The projection is the derivation's only
   input, so the `dataset_sha256` in its provenance names the projection, and
-  the stage's summary records it as `frame_projection_sha256`.
+  the stage's summary records it as `frame_projection_sha256`. Since the
+  re-level onto `main` (2026-09-23) the projection is written by
+  `_write_role_projection` through the shared nullable-boolean boundary
+  (`microcosm.frame.put_frame_table`, pandas fixed format), registered as the
+  `spm_role_derivation_projection` serializer in
+  `microcosm.build.frame_serializer_registry`, because `main` forbids a bare
+  `DataFrame.to_hdf` sink. The derivation still reads it with `pd.read_hdf`.
+  Neither writer produces byte-identical files across runs (measured on a
+  small synthetic table), so the digest binds the projection within one run;
+  the receipts' `frame_projection_sha256` values were never reproducible
+  bytes. `pd.read_hdf` returns tables equal to the ones written under both
+  writers (same synthetic check), and the derivation sees only those tables.
 - **The source is a set of pinned CSV paths, not a loaded sidecar.** The
   derivation re-verifies each CSV's size and SHA-256 itself, before and after
   reading; a DataFrame handed in would bypass that. Paths reach the handler

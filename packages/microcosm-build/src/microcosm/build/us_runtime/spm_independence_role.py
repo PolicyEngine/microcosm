@@ -63,7 +63,7 @@ from microcosm.build.us_runtime.spm_role_source import (
     AsecSpmRoleSource,
     derive_spm_role_source,
 )
-from microcosm.frame import Frame
+from microcosm.frame import Frame, put_frame_table
 from microcosm.frame.units import US_SCHEMA
 
 __all__ = [
@@ -202,6 +202,27 @@ def _sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def _write_role_projection(
+    path: Path,
+    person: pd.DataFrame,
+    spm_unit: pd.DataFrame,
+) -> str:
+    """Write the certified derivation's parent H5 and return its SHA-256.
+
+    :func:`derive_spm_role_source` reads its parent with ``pd.read_hdf`` and
+    binds it by digest, so the stage hands it a fixed-format projection of
+    the frame. The projection carries Frame columns, so it is a registered
+    serializer (``spm_role_derivation_projection`` in
+    :mod:`microcosm.build.frame_serializer_registry`) and writes through the
+    shared nullable-boolean boundary rather than a bare ``DataFrame.to_hdf``.
+    """
+
+    with pd.HDFStore(path, mode="w") as store:
+        put_frame_table(store, "person", person, preferred_format="fixed")
+        put_frame_table(store, _SPM_UNIT_TABLE, spm_unit, preferred_format="fixed")
+    return _sha256(path)
+
+
 def _role_binding_sha256(person: pd.DataFrame) -> str:
     """Bind the gate receipt to the ordered person/age/unit/role surface."""
 
@@ -286,11 +307,9 @@ def derive_us_spm_independence_role_from_manifest(
     ]
     with tempfile.TemporaryDirectory(prefix="spm-independence-role-") as scratch:
         projection = Path(scratch) / "frame_projection.h5"
-        frame[columns].to_hdf(projection, key="person", mode="w", format="fixed")
-        spm_unit[[_SPM_UNIT_ID]].to_hdf(
-            projection, key=_SPM_UNIT_TABLE, mode="a", format="fixed"
+        digest = _write_role_projection(
+            projection, frame[columns], spm_unit[[_SPM_UNIT_ID]]
         )
-        digest = _sha256(projection)
         try:
             result = derive_spm_role_source(
                 projection,
