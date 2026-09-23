@@ -13155,15 +13155,14 @@ def test_qrf_tail_evaluation_crash_keeps_the_degraded_contract(tmp_path) -> None
         == []
     )
     assert failures[1].startswith(
-        "QRF tail-concentration evaluation failed under earlier gate failures: "
-        "ValueError:"
+        "QRF tail concentration failed: evaluation error under earlier gate "
+        "failures: ValueError:"
     )
     assert not (tmp_path / "qrf_tail_concentration.json").exists()
-    # A crash is not the standing-owned #481/#487 tail defect.
-    with pytest.raises(RuntimeError, match="match no\\s+owner"):
-        builder._evidence_known_failures(
-            failures[1:], builder.US_EVIDENCE_FAILURE_OWNERS
-        )
+    # The pre-refactor contract: an evaluation crash under earlier failures
+    # keeps the standing-owned prefix, so --evidence-release ownership of it
+    # is unchanged (only a register mismatch is refused outright).
+    builder._evidence_known_failures(failures[1:], builder.US_EVIDENCE_FAILURE_OWNERS)
 
 
 def test_evidence_release_refuses_a_qrf_tail_register_mismatch_even_when_owned(

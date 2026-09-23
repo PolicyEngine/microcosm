@@ -6209,16 +6209,17 @@ def _record_qrf_tail_concentration_gate(
             "register_mismatch": mismatch,
         }
     except Exception as exc:
-        # Same degraded-mode contract as the coverage gate: with earlier
-        # failures on record, an evaluation crash becomes one more line
-        # instead of masking them. The prefix is not the standing-owned
-        # "QRF tail concentration failed:", so --evidence-release needs a
-        # per-run adjudication for a crash.
+        # Same degraded-mode contract as the coverage gate and as before this
+        # refactor: with earlier failures on record, an evaluation crash
+        # becomes one more line under the standing "QRF tail concentration
+        # failed:" prefix (so --evidence-release ownership is unchanged)
+        # instead of masking them. Only a register mismatch is refused
+        # outright; see _qrf_tail_register_evidence_refusal.
         if not terminal_gate_failures:
             raise
         terminal_gate_failures.append(
-            "QRF tail-concentration evaluation failed under earlier gate "
-            f"failures: {type(exc).__name__}: {exc}"
+            "QRF tail concentration failed: evaluation error under earlier "
+            f"gate failures: {type(exc).__name__}: {exc}"
         )
         return []
     gate_failures = (
