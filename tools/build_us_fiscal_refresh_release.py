@@ -829,6 +829,15 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
         "Combined partnership/S-corp income is carried in partnership_income "
         "in pre-PUF-support bases; the S-corp leaf is constant zero there."
     ),
+    "strike_benefits": (
+        "No respondent in the pinned public ASEC files reports strike benefits: "
+        "OI_OFF code 12 ('strike benefits', ASEC 2024 public use data "
+        "dictionary) has zero person rows in pppub23, pppub24 and pppub25 "
+        "(income years 2022-2024), and the PUF half carries no strike-benefit "
+        "field, so the OI_OFF == 12 split in alimony.py is identically zero. "
+        "The mapping is correct; a vintage with a code-12 reporter makes this "
+        "entry stale and fails the gate."
+    ),
 }
 
 #: Person inputs SNAP work-requirement rules read that have NO CPS ASEC
