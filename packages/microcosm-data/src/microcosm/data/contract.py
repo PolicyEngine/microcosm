@@ -803,17 +803,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "9b9623caf02ee37d48cef4ff60171877c94962b0526ee516c89fab253790e8f2"
+            "22f3d3de05309ae84e211e1f04b11cdeb245ef16ea25f220f903a50028641791"
         ),
         "policy_sha256": (
-            "77eace424e352172496f8fd99dbf68f858514198f87f6c6a6b33353d7eff55ad"
-            "a7250c519e79e22d366316cd4943f5f4bd2cc86a0e76b919ee2ff2eacb2335f3"
-            "b87fa7eb0c1e0281b8a5ab5c7a33509758f1663e4fbbfb467fb970b54e21d84a"
-            "0bb5ca207d76ce6d2be68ba4c0a7dfb982e767165634c15bdb539c921e9edc1f"
-            "cc7e162b160ae34e2ca81629a7c88dc77edbe36a597636a228db0f496f7d2768"
-        ),
-        "policy_sha256": (
-            "a85f9c83fb401d0088b812b7c9a0d05cb067debf973dc0379b50295caf3a4336"
+            "4da18f48c0f51c90da39c73a332a999c57c6e5e4b7fdd3a1faa40cadfeefb86b"
         ),
     },
 }
