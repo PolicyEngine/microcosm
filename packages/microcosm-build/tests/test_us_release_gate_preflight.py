@@ -1700,3 +1700,396 @@ def test__cli__spm_unit_report_cap_help_documents_bands_and_the_hard_cap() -> No
 
     assert "age bands" in action.help
     assert str(MAX_REPORTED_SPM_UNITS_HARD_CAP) in action.help
+
+
+# ---------------------------------------------------------------------------
+# New lineage: a release built on a fresh base with no selection source
+# ---------------------------------------------------------------------------
+#
+# ``--new-lineage`` skips only the selection-carryover check, records why, keeps
+# that check's base-level refusal (the materialized PUF capital-gains own-tail),
+# and runs every other check unchanged on the whole base. The default still
+# requires a selection-source manifest, and the two are refused together.
+
+_NEW_LINEAGE_POOL = [
+    {
+        "hid": 1,
+        "syear": 2024,
+        "shh": 11,
+        "chan": "asec",
+        "clone": 0,
+        "keogh": 500.0,
+        "state_returns": 1.0,
+    },
+    {
+        "hid": 2,
+        "syear": 2024,
+        "shh": 22,
+        "chan": "asec",
+        "clone": 0,
+        "keogh": 0.0,
+        "state_returns": 0.0,
+    },
+    {
+        "hid": 3,
+        "syear": 2023,
+        "shh": 11,
+        "chan": "puf_tax_detail",
+        "clone": 1,
+        "keogh": 700.0,
+        "state_returns": 1.0,
+        "tail_donor_id": 9001,
+    },
+    {
+        "hid": 4,
+        "syear": 2023,
+        "shh": 44,
+        "chan": "asec",
+        "clone": 0,
+        "keogh": 0.0,
+        "state_returns": 0.0,
+    },
+]
+
+
+def _new_lineage_frame(pool: list[dict[str, object]] | None = None) -> Frame:
+    """The pool with an adult age per person, so the SPM check can evaluate."""
+    frame = _frame(pool if pool is not None else _NEW_LINEAGE_POOL)
+    return _mutate_person_table(
+        frame,
+        lambda person: person.__setitem__("age", np.full(len(person), 40.0)),
+    )
+
+
+def _whole_pool_selection(pool: list[dict[str, object]]) -> SelectionSource:
+    return _selection(
+        [(hh["syear"], hh["shh"], hh["chan"], hh["clone"]) for hh in pool]
+    )
+
+
+def _run_synthetic_preflight(monkeypatch, tmp_path, *, frame: Frame, **mode):
+    """``run_preflight`` over a synthetic base, with every optional input given.
+
+    The base loader, the Ledger target compiler and the reference-H5 loader are
+    replaced by fixtures, so each of checks 2-5 has what it needs to run.
+    """
+    import microcosm.build.us_runtime.l0_refit_export as l0_refit_export
+
+    monkeypatch.setattr(
+        preflight_module,
+        "_load_preflight_base",
+        lambda path, *, allow_gate_failed_base_pool: (frame, None, None),
+    )
+    spec = TargetSpec(
+        name="state_returns_total",
+        entity="household",
+        value=100.0,
+        measure="state_return_count",
+        source="synthetic",
+    )
+    monkeypatch.setattr(
+        preflight_module,
+        "_load_ledger_target_specs",
+        lambda path, *, target_period, ledger_facts_sha256: (spec,),
+    )
+    monkeypatch.setattr(l0_refit_export, "load_us_frame", lambda path: frame)
+    return preflight_module.run_preflight(
+        base_h5=tmp_path / "base.h5",
+        export_input_mass_reference_h5=tmp_path / "reference.h5",
+        ledger_facts=tmp_path / "consumer_facts.jsonl",
+        probes=(_probe(leaf="keogh_distributions"),),
+        engine_input_variables=("keogh_distributions",),
+        export_mass_reviewed_exclusions={},
+        minimum_reference_total=0.0,
+        **mode,
+    )
+
+
+def test__run_preflight__new_lineage_skips_only_carryover_and_records_why(
+    monkeypatch, tmp_path
+) -> None:
+    report = _run_synthetic_preflight(
+        monkeypatch, tmp_path, frame=_new_lineage_frame(), new_lineage=True
+    )
+
+    by_name = {check.name: check for check in report.checks}
+    assert [check.name for check in report.checks] == [
+        "selection_carryover",
+        "capital_gains_tail_presence",
+        "zero_support_preview",
+        "export_mass_parity_risk",
+        "smoke_probe_support",
+        "spm_composition",
+    ]
+    carryover = by_name["selection_carryover"]
+    assert carryover.status == "SKIPPED"
+    assert carryover.details["reason"] == "new_lineage"
+    assert "no prior selection to carry over" in carryover.details["explanation"]
+    assert "no prior selection to carry over" in carryover.summary
+    assert carryover.details["retained_as"]["check"] == "capital_gains_tail_presence"
+    # Every other check ran: nothing but the carryover is SKIPPED.
+    assert [check.name for check in report.checks if check.status == "SKIPPED"] == [
+        "selection_carryover"
+    ]
+    assert by_name["capital_gains_tail_presence"].status == "PASS"
+    assert by_name["capital_gains_tail_presence"].details["base_tail_record_count"] == 1
+    # The skip is recorded in the report itself, JSON and human form alike.
+    payload = json.loads(json.dumps(report.to_dict()))
+    assert payload["inputs"]["new_lineage"] is True
+    assert payload["inputs"]["graded_population"] == "base_pool"
+    assert payload["inputs"]["selection_source_manifest"] is None
+    assert payload["checks"][0]["details"]["reason"] == "new_lineage"
+    rendered = report.human_table()
+    assert "Lineage: NEW (no selection source)" in rendered
+    assert "[SKIPPED] selection_carryover" in rendered
+    # SKIPPED never drives the exit code; the thin keogh support (2 carriers)
+    # is the only verdict above PASS, exactly as in the default run below.
+    assert report.exit_code == 2
+
+
+def test__run_preflight__new_lineage_grades_other_checks_as_a_whole_pool_selection(
+    monkeypatch, tmp_path
+) -> None:
+    """Checks 2-4 in the new mode are the default checks on a whole-pool support.
+
+    A no-selection release calibrates the whole base, so the only difference
+    from the default run with a selection naming every household is check 1
+    itself (and check 5's graded-scope label).
+    """
+    new = _run_synthetic_preflight(
+        monkeypatch, tmp_path, frame=_new_lineage_frame(), new_lineage=True
+    )
+    monkeypatch.setattr(
+        preflight_module,
+        "load_selection_source_from_manifest",
+        lambda path: _whole_pool_selection(_NEW_LINEAGE_POOL),
+    )
+    default = _run_synthetic_preflight(
+        monkeypatch,
+        tmp_path,
+        frame=_new_lineage_frame(),
+        selection_source_manifest=tmp_path / "selection.json",
+    )
+
+    new_checks = {check.name: check for check in new.checks}
+    default_checks = {check.name: check for check in default.checks}
+    assert default_checks["selection_carryover"].status == "PASS"
+    assert "capital_gains_tail_presence" not in default_checks
+    for name in (
+        "zero_support_preview",
+        "export_mass_parity_risk",
+        "smoke_probe_support",
+    ):
+        assert new_checks[name].to_dict() == default_checks[name].to_dict()
+    assert (
+        new_checks["spm_composition"].status == default_checks["spm_composition"].status
+    )
+    assert new_checks["spm_composition"].details["graded_scope"] == "base pool"
+    assert new.exit_code == default.exit_code
+    # The default report carries no new-lineage marker at all.
+    assert "new_lineage" not in default.inputs
+    assert "Lineage: NEW" not in default.human_table()
+
+
+def test__run_preflight__new_lineage_keeps_the_base_tail_refusal(
+    monkeypatch, tmp_path
+) -> None:
+    """Skipping check 1 does not drop its base-level refusal with it."""
+    pool = [
+        {key: value for key, value in hh.items() if key != "tail_donor_id"}
+        for hh in _NEW_LINEAGE_POOL
+    ]
+    report = _run_synthetic_preflight(
+        monkeypatch, tmp_path, frame=_new_lineage_frame(pool), new_lineage=True
+    )
+
+    by_name = {check.name: check for check in report.checks}
+    assert by_name["selection_carryover"].status == "SKIPPED"
+    assert by_name["capital_gains_tail_presence"].status == "FAIL"
+    assert "Rebuild the base" in by_name["capital_gains_tail_presence"].failures[0]
+    assert report.exit_code == 1
+
+
+@pytest.mark.parametrize(
+    ("mode", "message"),
+    (
+        ({}, "selection_source_manifest is required"),
+        (
+            {"new_lineage": True, "selection_source_manifest": "selection.json"},
+            "mutually exclusive",
+        ),
+    ),
+)
+def test__run_preflight__requires_exactly_one_of_manifest_and_new_lineage(
+    monkeypatch, tmp_path, mode, message
+) -> None:
+    monkeypatch.setattr(
+        preflight_module,
+        "_load_preflight_base",
+        lambda *args, **kwargs: pytest.fail("mode validation reached the base load"),
+    )
+
+    with pytest.raises(ValueError, match=message):
+        preflight_module.run_preflight(base_h5=tmp_path / "base.h5", **mode)
+
+
+def test__capital_gains_tail_presence__base_without_tail__fails() -> None:
+    result = preflight_module.check_capital_gains_tail_presence(_frame(_POOL))
+
+    assert result.status == "FAIL"
+    assert "Rebuild the base" in result.failures[0]
+
+
+def test__capital_gains_tail_presence__base_with_tail__passes() -> None:
+    result = preflight_module.check_capital_gains_tail_presence(_new_lineage_frame())
+
+    assert result.status == "PASS"
+    assert result.details["status"] == "retained"
+    assert result.details["base_tail_record_count"] == 1
+
+
+def test__cli__default_still_requires_the_selection_source_manifest(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    cli = _load_preflight_cli()
+    monkeypatch.setattr(
+        cli,
+        "run_preflight",
+        lambda **kwargs: pytest.fail("a manifest-less default run reached checks"),
+    )
+
+    with pytest.raises(SystemExit) as error:
+        cli.main(["--base-h5", str(tmp_path / "base.h5")])
+
+    assert error.value.code == 2
+    assert (
+        "the following arguments are required: --selection-source-manifest"
+        in capsys.readouterr().err
+    )
+
+
+def test__cli__new_lineage_abbreviation_does_not_lift_the_manifest_requirement(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    """Only the literal flag opts in; an argparse prefix of it fails closed."""
+    cli = _load_preflight_cli()
+    monkeypatch.setattr(
+        cli,
+        "run_preflight",
+        lambda **kwargs: pytest.fail("an abbreviated opt-in reached checks"),
+    )
+
+    with pytest.raises(SystemExit) as error:
+        cli.main(["--base-h5", str(tmp_path / "base.h5"), "--new-lin"])
+
+    assert error.value.code == 2
+    assert "--selection-source-manifest" in capsys.readouterr().err
+
+
+def test__cli__new_lineage_with_selection_source_manifest_is_refused(
+    monkeypatch, tmp_path, capsys
+) -> None:
+    cli = _load_preflight_cli()
+    monkeypatch.setattr(
+        cli,
+        "run_preflight",
+        lambda **kwargs: pytest.fail("both options together reached checks"),
+    )
+
+    with pytest.raises(SystemExit) as error:
+        cli.main(
+            [
+                "--base-h5",
+                str(tmp_path / "base.h5"),
+                "--selection-source-manifest",
+                str(tmp_path / "selection.json"),
+                "--new-lineage",
+            ]
+        )
+
+    assert error.value.code == 2
+    stderr = capsys.readouterr().err
+    assert "--new-lineage: not allowed with argument --selection-source-manifest" in (
+        stderr
+    )
+
+
+def test__cli__forwards_new_lineage_without_a_manifest(monkeypatch, tmp_path) -> None:
+    cli = _load_preflight_cli()
+    captured: dict[str, object] = {}
+
+    def fake_run_preflight(**kwargs):
+        captured.clear()
+        captured.update(kwargs)
+        return PreflightReport(checks=())
+
+    monkeypatch.setattr(cli, "run_preflight", fake_run_preflight)
+
+    assert cli.main(["--base-h5", str(tmp_path / "base.h5"), "--new-lineage"]) == 0
+    assert captured["new_lineage"] is True
+    assert captured["selection_source_manifest"] is None
+
+    manifest = tmp_path / "selection.json"
+    assert (
+        cli.main(
+            [
+                "--base-h5",
+                str(tmp_path / "base.h5"),
+                "--selection-source-manifest",
+                str(manifest),
+            ]
+        )
+        == 0
+    )
+    assert captured["new_lineage"] is False
+    assert captured["selection_source_manifest"] == manifest
+
+
+@pytest.mark.parametrize(
+    ("selection_source", "accepted"),
+    (
+        ({"enabled": False}, True),
+        (
+            {
+                "mode": "frozen_support",
+                "n_source": 57240,
+                "n_selected": 57240,
+                "n_unmapped": 0,
+            },
+            False,
+        ),
+        (None, False),
+    ),
+)
+def test__cli__new_lineage_release_manifest_must_record_no_selection_source(
+    monkeypatch, tmp_path, selection_source, accepted
+) -> None:
+    """A release that carried a frozen selection is not a new lineage."""
+    cli = _load_preflight_cli()
+    release_manifest = tmp_path / "release_manifest.json"
+    build: dict[str, object] = {"build_id": "fixture-release"}
+    if selection_source is not None:
+        build["selection_source"] = selection_source
+    release_manifest.write_text(json.dumps({"schema_version": 1, "build": build}))
+    reached: list[bool] = []
+
+    def fake_run_preflight(**kwargs):
+        reached.append(True)
+        return PreflightReport(checks=())
+
+    monkeypatch.setattr(cli, "run_preflight", fake_run_preflight)
+    argv = [
+        "--base-h5",
+        str(tmp_path / "base.h5"),
+        "--new-lineage",
+        "--release-manifest",
+        str(release_manifest),
+    ]
+
+    if accepted:
+        assert cli.main(argv) == 0
+        assert reached == [True]
+        return
+    with pytest.raises(ValueError, match="not a new lineage"):
+        cli.main(argv)
+    assert reached == []
