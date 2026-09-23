@@ -94,6 +94,81 @@ def test_schema_8_rejects_incomplete_hierarchy() -> None:
         parse_calibration_diagnostics(payload)
 
 
+@pytest.mark.parametrize(
+    ("field_path", "value", "message"),
+    [
+        (
+            ("targets", 0, "hierarchy", "category", "provider_id"),
+            "another-provider",
+            "category provider_id must match provider id",
+        ),
+        (
+            ("targets", 0, "hierarchy", "target", "id"),
+            "wrong-target",
+            "hierarchy target id must match target_name",
+        ),
+    ],
+)
+def test_schema_8_rejects_inconsistent_hierarchy_identity(
+    field_path: tuple[object, ...],
+    value: str,
+    message: str,
+) -> None:
+    payload = _payload()
+    owner = payload
+    for part in field_path[:-1]:
+        owner = owner[part]
+    owner[field_path[-1]] = value
+
+    with pytest.raises(ValidationError, match=message):
+        parse_calibration_diagnostics(payload)
+
+
+@pytest.mark.parametrize(
+    "field_path",
+    [
+        ("targets", 0, "hierarchy", "provider", "label"),
+        ("targets", 0, "hierarchy", "dimensions", 0, "value_label"),
+        ("targets", 0, "source"),
+    ],
+)
+def test_schema_8_rejects_whitespace_only_text(field_path: tuple[object, ...]) -> None:
+    payload = _payload()
+    payload["targets"][0]["hierarchy"]["dimensions"] = [
+        {"id": "sex", "label": "Sex", "value_id": "female", "value_label": "Female"}
+    ]
+    owner = payload
+    for part in field_path[:-1]:
+        owner = owner[part]
+    owner[field_path[-1]] = " "
+
+    with pytest.raises(ValidationError, match="non-whitespace"):
+        parse_calibration_diagnostics(payload)
+
+
+@pytest.mark.parametrize(
+    ("section", "field"),
+    [("target_surface", "n_targets"), ("target_registry", "n_specs")],
+)
+def test_schema_8_requires_positive_declared_target_counts(
+    section: str,
+    field: str,
+) -> None:
+    payload = _payload()
+    payload[section][field] = 0
+
+    with pytest.raises(ValidationError, match="greater than 0"):
+        parse_calibration_diagnostics(payload)
+
+
+def test_schema_8_reconciles_target_surface_matrix_shape() -> None:
+    payload = _payload()
+    payload["target_surface"]["constraint_matrix"]["rows"] = 2
+
+    with pytest.raises(ValidationError, match="rows must equal n_targets"):
+        parse_calibration_diagnostics(payload)
+
+
 def test_writer_is_atomic_and_removes_stale_output_on_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -5748,11 +5748,14 @@ def test_release_calibration_diagnostics_include_gate_failures(
     builder = _load_builder_module()
     captured: dict[str, object] = {}
 
-    def fake_write_calibration_diagnostics(result, path, *, target_registry, build):
+    def fake_write_calibration_diagnostics(
+        result, path, *, target_registry, build, target_surface
+    ):
         captured["result"] = result
         captured["path"] = path
         captured["target_registry"] = target_registry
         captured["build"] = build
+        captured["target_surface"] = target_surface
         return SimpleNamespace(
             status="available",
             path=path,
@@ -5775,6 +5778,7 @@ def test_release_calibration_diagnostics_include_gate_failures(
 
     builder._write_release_calibration_diagnostics(
         result=result,
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
         release_dir=tmp_path,
         registry=registry,
         base_dataset_sha256="base-sha",
@@ -5792,6 +5796,7 @@ def test_release_calibration_diagnostics_include_gate_failures(
     )
 
     assert captured["path"] == tmp_path / "calibration_diagnostics.json"
+    assert captured["target_surface"] == {"sha256": "b" * 64, "n_targets": 1}
     build = captured["build"]
     assert build["base_dataset_sha256"] == "base-sha"
     assert build["target_loss_weighting"].endswith("_cap_100pct")
@@ -5880,6 +5885,7 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
 
     builder._write_release_calibration_diagnostics(
         result=result,
+        target_surface=builder.target_surface_payload(result),
         release_dir=tmp_path,
         registry=registry,
         base_dataset_sha256=builder._sha256(base_h5),
@@ -8146,7 +8152,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         captured["diagnostics"] = kwargs
         return real_write_release_diagnostics(**kwargs)
 
-    def fake_write_calibration_diagnostics(result, path, *, target_registry, build):
+    def fake_write_calibration_diagnostics(
+        result, path, *, target_registry, build, target_surface
+    ):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             json.dumps(
@@ -8176,6 +8184,11 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         )
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
+    monkeypatch.setattr(
+        builder,
+        "target_surface_payload",
+        lambda result: {"sha256": "e" * 64, "n_targets": 0},
+    )
     if terminal_mode == "puf_tail":
         # The real receipt type, so ``_main``'s exact-k branch that drops the
         # calibration frames before the export (microcosm#956) runs here.
@@ -8207,11 +8220,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 failures=("fixture PUF own-tail donor missing",),
                 details={"status": "failed"},
             ),
-        )
-        monkeypatch.setattr(
-            builder,
-            "target_surface_payload",
-            lambda result: {"sha256": "e" * 64, "n_targets": 0},
         )
 
     def fake_l0_refit_weights(frame, refit_result):
@@ -11560,6 +11568,7 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         release_dir=release_dir,
         artifact_root=artifact_root,
         result=result,
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
         registry=registry,
         dropped={"dropped_target_names": []},
         target_profile_gate=builder.GateResult(
@@ -11726,6 +11735,7 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
         release_dir=release_dir,
         artifact_root=artifact_root,
         result=result,
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
         registry=FakeRegistry(),
         dropped={"dropped_target_names": []},
         target_profile_gate=builder.GateResult(
@@ -11765,7 +11775,9 @@ def test_build_manifests_records_diagnostics_failure_without_a_file(
     monkeypatch.setattr(
         builder,
         "target_surface_payload",
-        lambda result: {"sha256": "b" * 64, "n_targets": 1},
+        lambda result: (_ for _ in ()).throw(
+            AssertionError("manifest generation must reuse the supplied target surface")
+        ),
     )
     failure = SimpleNamespace(
         status="failed",
@@ -12804,6 +12816,7 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
         release_dir=release_dir,
         artifact_root=artifact_root,
         result=result,
+        target_surface={"sha256": "b" * 64, "n_targets": 1},
         registry=FakeRegistry(),
         dropped={"dropped_target_names": []},
         target_profile_gate=builder.GateResult(

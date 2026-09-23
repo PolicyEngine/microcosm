@@ -9505,6 +9505,7 @@ def _assert_release_gates(
 def _write_release_calibration_diagnostics(
     *,
     result,
+    target_surface: Mapping[str, object],
     release_dir: Path,
     registry: TargetRegistry,
     base_dataset_sha256: str,
@@ -9559,6 +9560,7 @@ def _write_release_calibration_diagnostics(
         result,
         release_dir / "calibration_diagnostics.json",
         target_registry=registry,
+        target_surface=target_surface,
         build={
             "base_dataset_sha256": base_dataset_sha256,
             "target_compilation": compilation,
@@ -10140,6 +10142,7 @@ def _build_manifests(
     release_dir: Path,
     artifact_root: Path,
     result,
+    target_surface: Mapping[str, object],
     registry: TargetRegistry,
     dropped: Mapping[str, object],
     target_profile_gate: GateResult,
@@ -10214,8 +10217,6 @@ def _build_manifests(
         )
     diagnostics_status = _diagnostics_manifest_status(diagnostics_outcome)
     coverage_sha = _sha256(coverage_path)
-    diag = diagnostics_payload(result, target_registry=registry)
-    target_surface = target_surface_payload(result)
     # Route A remediation PR-3: every certified-surface exception, and the
     # inputs the gates judged against, must be recorded in the manifests
     # rather than only in loose diagnostics that never ship. The same blocks
@@ -14093,8 +14094,11 @@ def _main(argv: Sequence[str] | None = None) -> None:
         result=result,
         release_id=release_id,
     )
+    if current_target_surface is None:
+        current_target_surface = target_surface_payload(result)
     diagnostics_outcome = _write_release_calibration_diagnostics(
         result=result,
+        target_surface=current_target_surface,
         release_dir=release_dir,
         registry=registry,
         base_dataset_sha256=base_dataset_sha256,
@@ -14825,6 +14829,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         release_dir=release_dir,
         artifact_root=artifact_root,
         result=result,
+        target_surface=current_target_surface,
         registry=registry,
         dropped=compilation,
         target_profile_gate=target_profile_gate,
