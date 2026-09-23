@@ -61,6 +61,8 @@ from microcosm.data.us_critical_targets import (
 from microcosm.diagnostics import (
     CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
     SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
+    UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_TARGET_GEOGRAPHY_LEVELS,
     parse_calibration_diagnostics,
 )
 
@@ -177,7 +179,6 @@ _UK_EXACT_K_RELEASE_ID_RE = re.compile(
 _UK_JUNE_RELEASE_ID = "populace-uk-2023-dd68c73-4aa4b14-20260619T023711Z"
 _UK_LEGACY_RELEASE_IDS = frozenset({_UK_JUNE_RELEASE_ID})
 _UK_RELEASE_TIERS = frozenset({"frs", "cps-transfer"})
-_UK_DIAGNOSTICS_SCHEMA_VERSION = 1
 _UK_TERMINAL_GATE_REPORT_FILE = "terminal_gates.json"
 _UK_TERMINAL_GATE_SCHEMA_VERSION = 3
 _UK_TERMINAL_GATE_ATTESTATION_SCHEMA_VERSION = 5
@@ -392,9 +393,6 @@ _UK_TERMINAL_GATE_DETAIL_FIELDS = {
     ),
     "support": frozenset({"columns_checked"}),
 }
-_UK_TARGET_GEOGRAPHY_LEVELS = frozenset(
-    {"national", "region", "country", "local_authority", "constituency"}
-)
 
 # ---------------------------------------------------------------------------
 # Schema-4 gate-battery verification. Every constant here mirrors the shared
@@ -3794,11 +3792,11 @@ def _uk_finite_number(
     return number
 
 
-def _check_uk_calibration_diagnostics(
+def _check_legacy_uk_calibration_diagnostics(
     diagnostics: Mapping,
     failures: list[str],
 ) -> None:
-    """Require the versioned UK release diagnostics on canonical exact-k ids."""
+    """Validate the UK extension retained in historical schemas 6 and 7."""
 
     uk = diagnostics.get("uk_diagnostics")
     if not isinstance(uk, Mapping):
@@ -3807,11 +3805,11 @@ def _check_uk_calibration_diagnostics(
             "'uk_diagnostics' object."
         )
         return
-    if uk.get("schema_version") != _UK_DIAGNOSTICS_SCHEMA_VERSION:
+    if uk.get("schema_version") != UK_DIAGNOSTICS_SCHEMA_VERSION:
         failures.append(
             "calibration_diagnostics.json 'uk_diagnostics.schema_version' is "
             f"{uk.get('schema_version')!r}; expected "
-            f"{_UK_DIAGNOSTICS_SCHEMA_VERSION}."
+            f"{UK_DIAGNOSTICS_SCHEMA_VERSION}."
         )
 
     weights = uk.get("weights")
@@ -4083,7 +4081,7 @@ def _check_uk_calibration_diagnostics(
             )
             continue
         level = row.get("geography_level")
-        if not isinstance(level, str) or level not in _UK_TARGET_GEOGRAPHY_LEVELS:
+        if not isinstance(level, str) or level not in UK_TARGET_GEOGRAPHY_LEVELS:
             failures.append(
                 "calibration_diagnostics.json UK geography pass-rate row "
                 f"{index} has unknown level {level!r}."
@@ -4150,7 +4148,7 @@ def _check_uk_calibration_diagnostics(
         total_targets += n_targets
         total_scored += n_scored
         total_skipped += n_skipped
-    missing_levels = sorted(_UK_TARGET_GEOGRAPHY_LEVELS - seen_levels)
+    missing_levels = sorted(set(UK_TARGET_GEOGRAPHY_LEVELS) - seen_levels)
     if missing_levels:
         failures.append(
             "calibration_diagnostics.json UK geography pass rates are missing "
@@ -4567,8 +4565,13 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
                 )
             else:
                 _check_local_area_calibration_diagnostics(diagnostics, failures)
+            if (
+                _is_uk_exact_k_release_id(release_id)
+                and diagnostics.get("schema_version")
+                != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+            ):
+                _check_legacy_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
-                _check_uk_calibration_diagnostics(diagnostics, failures)
                 _check_uk_exact_k_diagnostics_identity(
                     diagnostics, release_id, failures
                 )
@@ -5394,8 +5397,10 @@ def validate_release_dir(
             if (
                 _is_uk_exact_k_release_id(release_id)
                 or release_id == _UK_NATIONAL_RELEASE_ID
-            ):
-                _check_uk_calibration_diagnostics(diagnostics, failures)
+            ) and diagnostics.get(
+                "schema_version"
+            ) != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+                _check_legacy_uk_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
                 _check_uk_exact_k_diagnostics_identity(
                     diagnostics, release_id, failures

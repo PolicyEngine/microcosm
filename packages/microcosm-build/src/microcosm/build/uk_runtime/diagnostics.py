@@ -32,6 +32,8 @@ from microcosm.calibrate import (
 )
 from microcosm.calibrate.solve import CalibrationResult
 from microcosm.diagnostics import (
+    UK_DIAGNOSTICS_SCHEMA_VERSION,
+    UK_TARGET_GEOGRAPHY_LEVELS,
     CalibrationDiagnosticsV8,
     DiagnosticsWriteOutcome,
     failed_diagnostics_outcome,
@@ -54,20 +56,6 @@ __all__ = [
     "uk_zero_weight_strata",
     "write_uk_calibration_diagnostics",
 ]
-
-#: UK-only extension version nested inside the shared calibration diagnostics.
-UK_DIAGNOSTICS_SCHEMA_VERSION = 1
-
-#: Stable vocabulary used by the UK target registry.
-#: ``"la"`` is accepted only as an input adapter and is serialized as
-#: ``"local_authority"``.
-UK_TARGET_GEOGRAPHY_LEVELS: tuple[str, ...] = (
-    "national",
-    "region",
-    "country",
-    "local_authority",
-    "constituency",
-)
 
 _UK_DEFAULT_ZERO_WEIGHT_STRATUM_COLUMNS: tuple[str, ...] = (
     "household_is_spi_synthetic",
@@ -882,7 +870,10 @@ def uk_calibration_diagnostics_payload(
     if rotated_holdout is not None:
         uk_diagnostics["rotated_holdout"] = dict(rotated_holdout)
     payload["uk_diagnostics"] = uk_diagnostics
-    return payload
+    return CalibrationDiagnosticsV8.model_validate(payload).model_dump(
+        mode="python",
+        exclude_defaults=True,
+    )
 
 
 def write_uk_calibration_diagnostics(
