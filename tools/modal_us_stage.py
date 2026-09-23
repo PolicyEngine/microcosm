@@ -10,9 +10,11 @@ digests before the tool starts; the tool's state (checkpoints, calibrated
 H5, release directory) is mirrored to the runs volume, and every file in it
 is listed with its sha256 in a receipt written next to it.
 
-Check (cheap, the default; builds the image, verifies the clone, the
-environment, the tool's own argument parser on the built argv, every input
-digest and the run's prior state, without running the stage)::
+Check (cheap, the default; builds the image, verifies the clone and that
+the plan's branch contains its commit, the environment, the tool's own
+argument parser on the built argv, every input digest, the run's prior
+state against its latest receipt, its attempts and budget, without running
+the stage)::
 
     MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 
@@ -901,9 +903,20 @@ def main(run: bool = False) -> None:
             "receipt_path",
         )
     }
-    for key in ("container_wall_seconds", "estimated_usd_container_at_list_price"):
+    for key in (
+        "stopped_at_budget",
+        "container_wall_seconds",
+        "estimated_usd_container_at_list_price",
+        "estimated_usd_all_attempts_at_list_price",
+    ):
         brief[key] = receipt.get(key)
     brief["outputs"] = len(receipt["outputs"])
     print(json.dumps(brief, indent=2))
-    if receipt["returncode"] != 0:
-        raise SystemExit(f"STAGE FAILED (receipt {receipt['receipt_path']})")
+    # FAILED covers a nonzero exit and a stop at the max_wall_seconds budget,
+    # which a tool that handles the stop signal can still end with exit 0.
+    if receipt["status"] != "COMPLETED":
+        raise SystemExit(
+            f"STAGE {receipt['status']} (returncode {receipt['returncode']}, "
+            f"stopped_at_budget {receipt['stopped_at_budget']}; "
+            f"receipt {receipt['receipt_path']})"
+        )

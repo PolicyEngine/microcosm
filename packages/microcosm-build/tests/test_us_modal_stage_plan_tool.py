@@ -1366,3 +1366,39 @@ def test_nonpreemptible_prices_every_attempt_at_three_times_list() -> None:
     assert plan_lib.plan_digest(data) != plan_lib.plan_digest(
         _plan_data(max_wall_seconds=20_000)
     )
+
+
+@pytest.mark.parametrize(
+    ("status", "returncode", "stopped", "fails"),
+    [
+        ("COMPLETED", 0, False, False),
+        ("FAILED", 0, True, True),  # stopped at the budget; the tool exited 0
+        ("FAILED", 1, False, True),
+    ],
+)
+def test_app_main_exits_nonzero_unless_the_stage_completed(
+    app, monkeypatch, capsys, status, returncode, stopped, fails
+) -> None:
+    data = _plan_data(max_wall_seconds=600)
+    monkeypatch.setattr(app, "_LOADED", (data, plan_lib.parse_plan(data)))
+    receipt = {
+        "status": status,
+        "stage": "materialize",
+        "run_id": "acs-local-20260923",
+        "wall_seconds": 600.0,
+        "peak_rss_bytes": 1,
+        "returncode": returncode,
+        "stopped_at_budget": stopped,
+        "estimated_usd_at_list_price": 0.2,
+        "receipt_path": "runs/acs-local-20260923/receipts/x.json",
+        "outputs": [],
+    }
+    runner = MagicMock()
+    runner.remote.return_value = receipt
+    monkeypatch.setitem(app.RUNNERS, ("heavy", False), runner)
+    if fails:
+        with pytest.raises(SystemExit, match=f"STAGE {status}"):
+            app.main(run=True)
+    else:
+        app.main(run=True)
+    assert json.loads(capsys.readouterr().out)["stopped_at_budget"] is stopped

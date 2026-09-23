@@ -63,8 +63,8 @@ WORK_ROOT = "/work"
 
 # Modal list prices for standard (non-sandbox) compute, read from
 # https://modal.com/pricing on 2026-09-22. Modal bills the higher of the
-# request and actual use, so an estimate from the request is a floor only
-# when the stage stays inside it.
+# request and actual use, so an estimate from the request is exact while the
+# stage stays inside its request and a floor when it uses more.
 CPU_USD_PER_CORE_SECOND = 0.0000131
 MEMORY_USD_PER_GIB_SECOND = 0.00000222
 # Modal applies this to the CPU and memory list price of a function set
@@ -399,7 +399,9 @@ def parse_input(name: str, spec: object) -> InputRef:
     ``cas/sha256/<digest>/`` must carry the input's own digest.
     ``hf://<datasets|models>/<org>/<name>@<revision>/<path>`` names a file
     in a Hugging Face repo at an explicit revision (a public repo needs no
-    token). The sha256 is verified after staging either way.
+    token). The revision may be a tag, a commit or a branch name; the bytes
+    are pinned by the sha256 either way, which is verified after staging, so
+    a branch that has moved fails verification instead of running.
     """
 
     if not isinstance(spec, Mapping) or set(spec) != {"uri", "sha256"}:
