@@ -116,6 +116,28 @@ AT-RISK only, `0` clean):
    cannot express); a thin selection or a signed leaf whose net sign
    contradicts the probe's `expected_sign` is AT-RISK.
 
+**A new lineage** — a release built on a fresh base with no selection source
+([docs/us-release-build-rule.md](docs/us-release-build-rule.md) §3) — has no
+frozen selection to carry over. Say so explicitly with `--new-lineage` in place
+of `--selection-source-manifest` (the two are refused together; with neither,
+the manifest is required as before):
+
+```bash
+uv run python tools/preflight_us_release_gates.py \
+  --base-h5 out/base/base_populace_us_2024_puf_support.h5 \
+  --new-lineage \
+  --ledger-facts inputs/consumer_facts.jsonl
+```
+
+The report records `selection_carryover` as `SKIPPED` with reason
+`new_lineage`. The one refusal inside that check that belongs to the base
+rather than to a selection — the base must carry the materialized PUF
+capital-gains own-tail, which the release tool also requires on every arm —
+still runs, as `capital_gains_tail_presence`. Every other check runs unchanged
+on the whole base, which is what a release without a selection calibrates. Given
+`--release-manifest`, `--new-lineage` also requires that release to record no
+selection source.
+
 **Run it** at base-build exit, before any release launch, and after any change
 to the selection-source manifest or the target/coverage registry. The
 synthetic-fixture unit tests
