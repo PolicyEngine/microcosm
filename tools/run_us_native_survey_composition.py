@@ -1029,11 +1029,18 @@ def other_native_runs(markers=NATIVE_RUN_MARKERS):
     found = []
     for process in psutil.process_iter(["pid", "cmdline"]):
         try:
-            cmdline = " ".join(process.info["cmdline"] or ())
+            argv = list(process.info["cmdline"] or ())
         except (psutil.Error, TypeError):
             continue
-        if process.info["pid"] in mine or "python" not in cmdline:
+        # Only interpreters count: wrappers such as caffeinate or a shell -c
+        # string merely name the command they launch.
+        if (
+            process.info["pid"] in mine
+            or not argv
+            or not Path(argv[0]).name.startswith("python")
+        ):
             continue
+        cmdline = " ".join(argv)
         hits = [marker for marker in markers if marker in cmdline]
         if hits:
             found.append({"pid": process.info["pid"], "markers": hits})
