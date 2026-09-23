@@ -213,7 +213,7 @@ def test_documented_staging_recipe_matches_legacy_and_release_parsers(
     assert release._staging_summary_path(release_args) == staging_summary
 
 
-def test_do_finalize_requires_calibration_diagnostics(tmp_path: Path) -> None:
+def test_do_finalize_requires_calibration_summary(tmp_path: Path) -> None:
     module = _load_tool_module()
     staging = tmp_path / "staging.h5"
     staging.touch()
@@ -231,7 +231,7 @@ def test_do_finalize_requires_calibration_diagnostics(tmp_path: Path) -> None:
         ]
     )
 
-    with pytest.raises(SystemExit, match="No calibration diagnostics"):
+    with pytest.raises(SystemExit, match="No calibration summary"):
         module.do_finalize(args)
 
 
@@ -305,7 +305,15 @@ def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report)
     if hours_report is not None:
         gates["acs_local_hours_signal"] = hours_report
     evidence = {
-        "calibration_diagnostics.json": {"households": 1},
+        "calibration_summary.json": {
+            "households": 1,
+            "calibration_diagnostics": {
+                "status": "failed",
+                "expected_schema_version": 8,
+                "error_code": "validation_error",
+                "message": "test fixture",
+            },
+        },
         "gate_summary.json": {"gates": gates, "reviewed_limitations": []},
         "run_identity.json": {
             "staging_sha256": module._sha256(staging),
@@ -471,7 +479,19 @@ def _package_args_before_evidence(
     (tmp_path / "staging.summary.json").write_text(json.dumps(summary))
     out_h5 = tmp_path / "out.h5"
     out_h5.write_bytes(b"artifact")
-    (ckpt / "calibration_diagnostics.json").write_text(json.dumps({"households": 1}))
+    (ckpt / "calibration_summary.json").write_text(
+        json.dumps(
+            {
+                "households": 1,
+                "calibration_diagnostics": {
+                    "status": "failed",
+                    "expected_schema_version": 8,
+                    "error_code": "validation_error",
+                    "message": "test fixture",
+                },
+            }
+        )
+    )
     (ckpt / "gate_summary.json").write_text(json.dumps({"gates": {}}))
     (ckpt / "run_identity.json").write_text(
         json.dumps(
@@ -547,7 +567,19 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     )
     out_h5 = tmp_path / "out.h5"
     out_h5.write_bytes(b"artifact")
-    (ckpt / "calibration_diagnostics.json").write_text(json.dumps({"households": 1}))
+    (ckpt / "calibration_summary.json").write_text(
+        json.dumps(
+            {
+                "households": 1,
+                "calibration_diagnostics": {
+                    "status": "failed",
+                    "expected_schema_version": 8,
+                    "error_code": "validation_error",
+                    "message": "test fixture",
+                },
+            }
+        )
+    )
     (ckpt / "gate_summary.json").write_text(json.dumps({"gates": {}}))
     (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": "totals"}))
     (ckpt / "run_identity.json").write_text(
@@ -893,9 +925,19 @@ def _finalize_args(module, tmp_path: Path):
     (tmp_path / "out.h5").write_bytes(b"invented-finalize-artifact")
     ckpt = tmp_path / "ckpt"
     ckpt.mkdir(exist_ok=True)
-    (ckpt / "calibration_diagnostics.json").write_text(
+    (ckpt / "calibration_summary.json").write_text(
         json.dumps(
-            {"final_loss": 0.1, "initial_loss": 0.5, "mass_conserved_ratio": 1.0}
+            {
+                "final_loss": 0.1,
+                "initial_loss": 0.5,
+                "mass_conserved_ratio": 1.0,
+                "calibration_diagnostics": {
+                    "status": "failed",
+                    "expected_schema_version": 8,
+                    "error_code": "validation_error",
+                    "message": "test fixture",
+                },
+            }
         )
     )
     # Every checkpoint materialize writes records its SOI mode; package

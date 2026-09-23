@@ -5316,7 +5316,12 @@ def test_release_calibration_diagnostics_include_gate_failures(
         captured["path"] = path
         captured["target_registry"] = target_registry
         captured["build"] = build
-        return path
+        return SimpleNamespace(
+            status="available",
+            path=path,
+            schema_version=8,
+            sha256="d" * 64,
+        )
 
     monkeypatch.setattr(
         builder, "write_calibration_diagnostics", fake_write_calibration_diagnostics
@@ -5566,6 +5571,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         diagnostics=(),
         initial_loss=2.0,
         final_loss=1.0,
+        fraction_within_10pct=1.0,
         l0_lambda=0.2,
         n_nonzero=2,
         frame=SimpleNamespace(n=lambda entity: 2),
@@ -7191,7 +7197,12 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                 }
             )
         )
-        return path
+        return SimpleNamespace(
+            status="available",
+            path=path,
+            schema_version=8,
+            sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        )
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
     if terminal_mode == "puf_tail":
@@ -7226,10 +7237,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         )
         monkeypatch.setattr(
             builder,
-            "diagnostics_payload",
-            lambda result, *, target_registry: {
-                "target_surface": {"sha256": "e" * 64, "n_targets": 0}
-            },
+            "target_surface_payload",
+            lambda result: {"sha256": "e" * 64, "n_targets": 0},
         )
 
     def fake_l0_refit_weights(frame, refit_result):
@@ -7644,8 +7653,6 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             # The retry line carries the written artifact's sha256 — the
             # required --ssi-take-up-prior-weight-basis-sha256 pin, handed out
             # by the failure itself (sol round 2, new minor).
-            import hashlib
-
             written_sha = hashlib.sha256(
                 (release_dir / "us_ssi_take_up.json").read_bytes()
             ).hexdigest()
@@ -10445,13 +10452,8 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
     )
     monkeypatch.setattr(
         builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
     )
 
     result = SimpleNamespace(
@@ -10466,6 +10468,7 @@ def test_build_manifests_emits_policyengine_certifiable_release_manifest(
         ),
         initial_loss=2.0,
         final_loss=1.0,
+        fraction_within_10pct=1.0,
     )
 
     class FakeRegistry:
@@ -10633,6 +10636,7 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
         ),
         initial_loss=2.0,
         final_loss=1.0,
+        fraction_within_10pct=1.0,
     )
 
     class FakeRegistry:
@@ -10656,6 +10660,59 @@ def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
         ),
         default_dataset={"method": "dense_no_l0", "sparse": False},
     )
+
+
+def test_build_manifests_records_diagnostics_failure_without_a_file(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-diagnostics-failure"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.32.5",
+            "policyengine-us": "2.2.1",
+        },
+    )
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
+    )
+    failure = SimpleNamespace(
+        status="failed",
+        expected_schema_version=8,
+        error_code="validation_error",
+        message="Target hierarchy is incomplete.",
+    )
+
+    builder._build_manifests(
+        diagnostics_outcome=failure,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert manifest["calibration_diagnostics"] == {
+        "status": "failed",
+        "expected_schema_version": 8,
+        "error_code": "validation_error",
+        "message": "Target hierarchy is incomplete.",
+    }
+    assert "calibration_diagnostics" not in manifest["artifacts"]
+    assert not (release_dir / "calibration_diagnostics.json").exists()
 
 
 def _gate_failed_exact_k_inputs(builder):
@@ -10823,13 +10880,8 @@ def test_gate_failed_base_pool_verdict_is_carried_into_release_manifest(
     monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
     monkeypatch.setattr(
         builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
     )
 
     builder._build_manifests(
@@ -10874,13 +10926,8 @@ def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt
     monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
     monkeypatch.setattr(
         builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
     )
     selection_receipt = {
         "k": 57_240,
@@ -11101,13 +11148,8 @@ def test_build_manifests_records_selection_source_provenance(
     )
     monkeypatch.setattr(
         builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
     )
 
     selection_source = {
@@ -11175,13 +11217,8 @@ def test_build_manifests_selection_source_absent_by_default(
     )
     monkeypatch.setattr(
         builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
     )
 
     builder._build_manifests(
@@ -11226,13 +11263,8 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
     )
     monkeypatch.setattr(
         builder,
-        "diagnostics_payload",
-        lambda result, target_registry: {
-            "initial_loss": 2.0,
-            "final_loss": 1.0,
-            "fraction_within_10pct": 1.0,
-            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
-        },
+        "target_surface_payload",
+        lambda result: {"sha256": "b" * 64, "n_targets": 1},
     )
 
     name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
@@ -11253,6 +11285,7 @@ def test_build_manifests_uses_incumbent_aware_calibration_gate(
         diagnostics=tuple(diagnostics),
         initial_loss=2.0,
         final_loss=1.0,
+        fraction_within_10pct=1.0,
     )
 
     class FakeRegistry:
