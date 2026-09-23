@@ -305,10 +305,12 @@ sha256 `e6919c04…`, `calibration_diagnostics.json` `e24078e2…`, the frozen
   96.55 % of rows within 10 %; ESS 9,231; realised max weight ratio 10.0 (the cap); top-1 %
   weight share 0.162. The v20 twin on main `ce76b358` (same register, 638 rows): loss 0.3009 →
   0.01041, 96.39 % within 10 %, ESS 9,305, top-1 % 0.163. The structural change costs nothing in
-  fit: loss and the within-10 % share move a hair in #930's favour, ESS 0.8 % against. The eight
-  rows still beyond 10 % after the solve are the same eight on both (income tax −13 %, VAT +18 %,
-  CGT liability +10 %, child benefit +19 %, council tax −12 %, ESA −10 %, the two HMRC
-  self-employment bands +25 % and +18 %): none is a bus row, none moved with #930.
+  fit: loss and the within-10 % share move a hair in #930's favour, ESS 0.8 % against. 22 rows sit
+  beyond 10 % after the solve on spine-t and 23 on v20, the same rows but one: v20's CGT gains 25–34
+  age band comes inside the fence on spine-t. None is a bus row (income tax −13 %, VAT +18 %, child
+  benefit +19 %, council tax −12 %, the two HMRC self-employment bands, four state pension bands, ESA
+  claimants, two UC household rows, the SLC adult dependants' grant, fuel duties on cars and the CGT
+  age bands make up the rest), and none moved with #930.
 - Bus rows, design weights → final (the #930 acceptance reading, now a measurement instead of
   the rake's tautology): England fare receipts (£3,612m, BUS0415-aligned to 2025) −10.9 % → 0.0 %
   (v20, raked at base year then uprated: −6.1 %); London fare receipts (£1,347m) −21.6 % → +0.1 %
@@ -424,5 +426,76 @@ published table fences the share (DfT does not publish boardings by ticket type)
 receipt line, not a gate. The parameter side, a per-journey cap on the single-fare boardings of
 fare-paying persons, is policyengine-uk#1871.
 
-spine-t3 (the rebased tree plus C13) and its diff against spine-t2, the calibration and the anatomy
-follow below.
+spine-t3 (code `bf9f15e1`, the tree rebased onto main `b78f5a88` plus C13, 371 s): 24 of 24
+stage gates; support clip 0 rows clipped on the share (donor range 0 to 1). Design-weighted diary
+readings from the stage's receipt (W2 on the diary sample, by residence group and survey year):
+London boardings 2024 are 0.42 paid at the point of use, 0.31 on concessionary passes, 0.05 on
+season tickets or passes, 0.18 free with no ticket (children under 11 ride free in London), the
+single share of fare-paying boardings 0.90 in every year, the fare paid £1.64 mean and £1.75
+median (2022: £1.47 and £1.65); the rest of England moves from 0.32 paid at the point of use, 0.21
+on season tickets and a single share of 0.60 in 2022 to 0.39, 0.14 and 0.74 in 2023 and 0.39, 0.14
+and 0.74 in 2024, the fare paid £1.97 → £1.76 → £1.82 mean, £2.00 median throughout, the diary's
+reading of the £2 cap. All-England single share of fare-paying boardings by series: 0.90 (bus in
+London), 0.70 (other local bus); per band outside London it runs from 0.86–0.94 in the occasional
+bands to 0.61 in the three-or-more-times-a-week band, where the season tickets sit. NTS boardings
+per bus trip 1.125 (London series) and 1.121 (other local bus), the same 1.12 the declared
+translation gives for England outside London from the publisher's side. No cell fell back.
+
+Twin diff spine-t2 → spine-t3 (`twin_diff_930_t3.sh`, expectation `spine-t3-payload-expectation.json`):
+three observed differences, one expected (`person.local_bus_single_fare_share`, surface
+column_only_right, at position 104 of 105), two the structural surfaces the classifier cannot
+declare: the person `column_order` (the grown column set) and the root attribute
+`populace_mass_log_json`, which differs by exactly the six per-stage household-mass conservation
+receipts main's #967 added (WAS, regional uprating, NTS, LCFS, ETB VAT, ETB services, each old and
+new total 28,972,433 and factor 1.0). No shared column moves on any entity, `bus_subsidy_spending`
+included (the raw-draw rows and the priced rows byte-equal to spine-t2), weights and indices
+byte-equal.
+
+On the frame (spine-t3, design weights, 113,590 persons after the CGT clone): the trip-weighted
+single-fare share of fare-paying riders is 0.746 overall, 0.703 in England outside London, 0.901 in
+London (the TfL single dominates), 0.688 in Scotland, 0.694 in Wales and 0.672 in Northern Ireland
+(the three devolved nations take England's cell shares through their proxy region); per person it
+runs from 0.61 (the frequent band outside London) to 1.00. Every person carries positive trips
+because the non-user band's diary mean is small but positive (never-users do record the odd
+trip), so the share is defined everywhere and the cap's bite on a person is share × fare-paying
+boardings × the capped single-fare gap.
+
+## Part J — national calibration on spine-t3 and the anatomy of the priced support rows (2026-09-23)
+
+`calibrate_930.sh` on spine-t3 (code `bf9f15e1`, the tree rebased onto main `b78f5a88` with C12 and
+C13; artifact `7846605`; the #823 doctrine solve), 463 s, outputs under `calibration-t3/`.
+
+- The terminal battery blocks at `uk_target_fit`, and not on a bus row: main's #967 register carries
+  María's signed four-week deferral of `hmrc/self_employment_income_income_band_20_000_to_30_000@2025`
+  (v20: +25.3 %, just outside the 25 % fence, a calibration-competition regression from the #906/#939
+  surface expansion), and on this attempt the row solves to +24.2 %, inside the fence, so the gate
+  refuses the deferral as stale by design ("stale reviewed target-fit exclusions are back inside the
+  bound; remove them"). No H5 is written. spine-t's calibration (Part G) ran on the pre-#967 register
+  and passed; the row solved to +24.6 % there, inside the fence as well. Whether the deferral comes off this branch or main
+  is María's ruling; the receipts below are read from the Part C sidecars, which the seam writes
+  before the battery.
+- Fit: 643 compiled rows (five more than Part G: #967's additions) on 52,846 records; loss 0.3181 →
+  0.01048; 96.73 % within 10 %; ESS 9,033; max ratio 10.0. 21 rows sit beyond 10 % after the
+  solve against spine-t's 22, the same rows but one (the UC households-with-two-children row comes
+  inside the fence); none is a bus row, and the self-employment 20–30k band sits at +24.2 %.
+- Bus rows, design weights → final. Fares unchanged from Part G: England −10.9 % → 0.0 %, London
+  −21.6 % → 0.0 %, Scotland +27.8 % → 0.0 %, Northern Ireland +69.6 % → 0.0 %. Support, now priced
+  from journeys rather than raked: England net support +2.5 % → −0.1 % (Part G's raked column sat at
+  +4.7 % because the calibration targets are BUS0415-aligned and the rake was at base year), London
+  +12.8 % → +0.1 % (the value side at 1.158 of the published net support, the frame's eligible
+  boarding share 0.41 against the publisher's 0.27), Scotland government support +61.8 % → −0.3 %
+  (1.623: the proxy-region boardings, as for its fares), Wales +5.5 % → 0.0 % (the raw draw).
+- Anatomy (`diagnose_uk_target_support.py` on the blocked attempt, thresholds 3× and 5×). Fares:
+  England 47.9 % of the row's final mass beyond 3× against the frame-wide 47.9 % (Part G: 47.6 % against
+  46.6 %), London 56.8 % against 47.9 %, Scotland 14.7 %, Northern Ireland 13.2 %. Support: England net
+  support 48.6 % against 47.9 % on 37,990 carriers with a top-1 share of 0.4 % (the priced column
+  reaches every household with a bus rider, where the raked one reached the ETB draw's carriers);
+  London 50.4 %, Scotland 10.7 % (its carriers are down-weighted, median ratio 0.43, because the
+  design-weight estimate was 62 % above target), Wales 27.9 %. The frame-wide 47.9 % beyond 3× is the
+  campaign's property (the 10× cap binds on the same tail as v20), not #930's.
+
+Reading: retiring the support rake costs nothing in fit (loss 0.01048 on 643 rows against Part G's
+0.01036 on 638, the difference being #967's rows), moves the England support row's mass no more than
+the frame's, and turns the Scotland support row into the same proxy-region finding as its fares.
+The rulings for María stay the two from Part G (the devolved proxy region; the vehicle-share gap) plus
+the stale self-employment deferral, which blocks any national line on this tree until it is removed.
