@@ -3666,6 +3666,24 @@ def test_schema_8_calibration_hierarchy_is_accepted(release_dir: Path) -> None:
     validate_release_dir(release_dir)
 
 
+def test_explicit_diagnostics_failure_does_not_block_national_release(
+    release_dir: Path,
+) -> None:
+    (release_dir / "calibration_diagnostics.json").unlink()
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"].pop("calibration_diagnostics")
+    manifest["calibration_diagnostics"] = {
+        "status": "failed",
+        "expected_schema_version": 8,
+        "error_code": "validation_error",
+        "message": "Target hierarchy is incomplete.",
+    }
+    manifest_path.write_text(json.dumps(manifest, indent=1))
+
+    validate_release_dir(release_dir)
+
+
 def test_schema_8_rejects_incomplete_hierarchy(release_dir: Path) -> None:
     diagnostics = _calibration_diagnostics()
     diagnostics["schema_version"] = 8

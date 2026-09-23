@@ -545,30 +545,37 @@ def test_payload_is_strict_json(feasible_frame) -> None:
     assert json.loads(encoded) == payload
 
 
-def test_writer_round_trips(feasible_frame, tmp_path: Path) -> None:
+def test_current_writer_rejects_hierarchy_free_payload(
+    feasible_frame,
+    tmp_path: Path,
+) -> None:
     result = _result(feasible_frame)
-    path = write_calibration_diagnostics(
+    path = tmp_path / "calibration_diagnostics.json"
+    outcome = write_calibration_diagnostics(
         result, tmp_path / "calibration_diagnostics.json"
     )
-    loaded = json.loads(path.read_text())
-    assert loaded == diagnostics_payload(result)
-    assert loaded["schema_version"] == 6
+    assert outcome.status == "failed"
+    assert outcome.error_code == "validation_error"
+    assert not path.exists()
 
 
-def test_writer_does_not_suppress_unrelated_output_failures(
+def test_writer_reports_failure_without_aborting_the_build(
     feasible_frame,
     tmp_path: Path,
 ) -> None:
     result = _result(feasible_frame, epochs=1)
 
-    with pytest.raises(FileNotFoundError):
-        write_calibration_diagnostics(
-            result,
-            tmp_path / "missing-parent" / "calibration_diagnostics.json",
-        )
+    outcome = write_calibration_diagnostics(
+        result,
+        tmp_path / "missing-parent" / "calibration_diagnostics.json",
+    )
+    assert outcome.status == "failed"
 
 
-def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
+def test_payload_can_carry_target_registry_identity(
+    feasible_frame,
+    tmp_path: Path,
+) -> None:
     frame, truths = feasible_frame()
     registry = TargetRegistry(
         (
@@ -669,6 +676,14 @@ def test_payload_can_carry_target_registry_identity(feasible_frame) -> None:
     }
     assert "dimensions" not in payload
     assert income["registry"]["family"] == "irs_soi"
+    output = tmp_path / "calibration_diagnostics.json"
+    outcome = write_calibration_diagnostics(
+        result,
+        output,
+        target_registry=registry,
+    )
+    assert outcome.status == "available"
+    assert json.loads(output.read_text()) == payload
 
 
 def test_registry_diagnostics_publish_uk_geography_and_all_ledger_dimensions(

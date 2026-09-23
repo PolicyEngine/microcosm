@@ -1687,6 +1687,41 @@ def test_invalid_calibration_diagnostics_uploads_nothing(
     assert hub.uploads == []
 
 
+def test_failed_diagnostics_publish_dataset_and_omit_diagnostics_path(
+    hub: FakeHub,
+    release_dir: Path,
+    artifact_root: Path,
+) -> None:
+    (release_dir / "calibration_diagnostics.json").unlink()
+    manifest_path = release_dir / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["artifacts"].pop("calibration_diagnostics")
+    manifest["calibration_diagnostics"] = {
+        "status": "failed",
+        "expected_schema_version": 8,
+        "error_code": "validation_error",
+        "message": "Target hierarchy is incomplete.",
+    }
+    manifest_path.write_text(json.dumps(manifest))
+
+    with pytest.warns(UserWarning, match="generation failed"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+        )
+
+    uploaded_paths = [path for path, _ in hub.uploads]
+    assert f"releases/{RELEASE_ID}/calibration_diagnostics.json" not in uploaded_paths
+    pointer_bytes = next(
+        content for path, content in hub.uploads if path == LATEST_POINTER_PATH
+    )
+    pointer = json.loads(pointer_bytes)
+    assert "calibration_diagnostics" not in pointer["paths"]
+    assert "populace_us_2024.h5" in uploaded_paths
+
+
 def test_nonstandard_nan_calibration_diagnostics_uploads_nothing(
     hub: FakeHub, release_dir: Path
 ) -> None:

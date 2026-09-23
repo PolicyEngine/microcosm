@@ -46,6 +46,7 @@ from pathlib import Path
 
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
+from pydantic import ValidationError
 
 from microcosm.data.denied_pools import denied_pool_publication_for
 from microcosm.data.us_critical_targets import (
@@ -56,6 +57,11 @@ from microcosm.data.us_critical_targets import (
 )
 from microcosm.data.us_critical_targets import (
     is_congressional_district_target,
+)
+from microcosm.diagnostics import (
+    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS,
+    parse_calibration_diagnostics,
 )
 
 __all__ = [
@@ -158,14 +164,9 @@ LOCAL_AREA_SOURCE_COVERAGE_KEYS = (
     "donor_release",
 )
 
-# Lockstep with microcosm.calibrate.diagnostics.CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
-# (schema 8 = a complete producer-supplied hierarchy on every registry-backed
-# target row).
-# microcosm-data cannot import
-# microcosm-calibrate (dependency direction), so the builder test suite pins the
-# two constants equal — see test_calibration_diagnostics_schema_lockstep.
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 8
-_SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = frozenset({6, 7, 8})
+_SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = (
+    SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS
+)
 US_SOURCE_COVERAGE_DIAGNOSTICS_FILE = "us_source_coverage.json"
 SOURCE_COVERAGE_DIAGNOSTICS_SCHEMA_VERSION = 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -1333,17 +1334,7 @@ def _check_release_manifest(
         )
     else:
         line_cut_tag_re = _uk_line_cut_tag_re(release_id)
-        diagnostics_artifact = artifacts.get("calibration_diagnostics")
-        if not isinstance(diagnostics_artifact, Mapping):
-            failures.append(
-                "release_manifest.json artifacts must include "
-                "'calibration_diagnostics'."
-            )
-        elif diagnostics_artifact.get("path") != "calibration_diagnostics.json":
-            failures.append(
-                "release_manifest.json artifact 'calibration_diagnostics' "
-                "must point to calibration_diagnostics.json."
-            )
+        _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
         for key, entry in artifacts.items():
             if not isinstance(entry, Mapping):
                 failures.append(
@@ -1452,6 +1443,106 @@ def _check_release_manifest(
                         f"points to artifact {national!r}, whose kind is "
                         f"{default_artifact.get('kind')!r}, not 'microdata'."
                     )
+
+
+def _calibration_diagnostics_required(manifest: object) -> bool:
+    """Return whether this release must contain the diagnostics document."""
+
+    if not isinstance(manifest, Mapping):
+        return True
+    declaration = manifest.get("calibration_diagnostics")
+    return not (
+        isinstance(declaration, Mapping) and declaration.get("status") == "failed"
+    )
+
+
+def _calibration_diagnostics_are_current_typed(manifest: object) -> bool:
+    if not isinstance(manifest, Mapping):
+        return False
+    declaration = manifest.get("calibration_diagnostics")
+    return isinstance(declaration, Mapping) and declaration.get("status") == "available"
+
+
+def _check_calibration_diagnostics_declaration(
+    manifest: Mapping,
+    artifacts: Mapping,
+    failures: list[str],
+) -> None:
+    """Validate the release-level available/failed diagnostics declaration."""
+
+    declaration = manifest.get("calibration_diagnostics")
+    artifact = artifacts.get("calibration_diagnostics")
+    if declaration is None:
+        if not isinstance(artifact, Mapping):
+            failures.append(
+                "release_manifest.json artifacts must include "
+                "'calibration_diagnostics'."
+            )
+        elif artifact.get("path") != "calibration_diagnostics.json":
+            failures.append(
+                "release_manifest.json artifact 'calibration_diagnostics' "
+                "must point to calibration_diagnostics.json."
+            )
+        return
+    if not isinstance(declaration, Mapping):
+        failures.append(
+            "release_manifest.json 'calibration_diagnostics' must be an object."
+        )
+        return
+    status = declaration.get("status")
+    if status == "available":
+        if declaration.get("schema_version") != CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+            failures.append(
+                "release_manifest.json available calibration diagnostics must "
+                f"declare schema_version {CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION}."
+            )
+        _check_sha256_field(
+            filename="release_manifest.json",
+            owner="calibration_diagnostics.sha256",
+            value=declaration.get("sha256"),
+            failures=failures,
+        )
+        if not isinstance(artifact, Mapping):
+            failures.append(
+                "release_manifest.json available calibration diagnostics require "
+                "the 'calibration_diagnostics' artifact entry."
+            )
+        else:
+            if artifact.get("path") != "calibration_diagnostics.json":
+                failures.append(
+                    "release_manifest.json artifact 'calibration_diagnostics' "
+                    "must point to calibration_diagnostics.json."
+                )
+            if artifact.get("sha256") != declaration.get("sha256"):
+                failures.append(
+                    "release_manifest.json calibration diagnostics status and "
+                    "artifact sha256 values must match."
+                )
+        return
+    if status == "failed":
+        if declaration.get("expected_schema_version") != (
+            CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+        ):
+            failures.append(
+                "release_manifest.json failed calibration diagnostics must "
+                "declare the current expected_schema_version."
+            )
+        for field in ("error_code", "message"):
+            if not isinstance(declaration.get(field), str) or not declaration[field]:
+                failures.append(
+                    "release_manifest.json failed calibration diagnostics require "
+                    f"a non-empty {field!r}."
+                )
+        if artifact is not None:
+            failures.append(
+                "release_manifest.json must not declare a calibration diagnostics "
+                "artifact when generation failed."
+            )
+        return
+    failures.append(
+        "release_manifest.json calibration diagnostics status must be "
+        "'available' or 'failed'."
+    )
 
 
 def _check_uk_release_identity(
@@ -3393,6 +3484,7 @@ def _check_calibration_diagnostics(
     failures: list[str],
     *,
     grandfathered_uk_june: bool = False,
+    require_typed_schema: bool = False,
 ) -> None:
     """Validate shared diagnostics, with one byte-lineage-scoped exemption.
 
@@ -3404,6 +3496,14 @@ def _check_calibration_diagnostics(
     """
 
     schema_version = diagnostics.get("schema_version")
+    if require_typed_schema:
+        try:
+            parse_calibration_diagnostics(diagnostics)
+        except ValidationError as error:
+            failures.append(
+                "calibration_diagnostics.json does not satisfy the shared "
+                f"schema: {error}"
+            )
     if schema_version is None:
         failures.append("calibration_diagnostics.json is missing 'schema_version'.")
     elif grandfathered_uk_june and schema_version != 2:
@@ -4504,16 +4604,21 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
     """
 
     failures: list[str] = []
-    for filename in LOCAL_AREA_REQUIRED_RELEASE_FILES:
-        if not (release_dir / filename).is_file():
-            failures.append(f"required file {filename!r} is missing.")
-
     release_manifest: Mapping | None = None
     manifest_path = release_dir / "release_manifest.json"
     if manifest_path.is_file():
         release_manifest = _load_json(manifest_path, failures)
     if release_manifest is not None:
         _check_local_area_release_manifest(release_manifest, release_id, failures)
+
+    for filename in LOCAL_AREA_REQUIRED_RELEASE_FILES:
+        if (
+            filename == "calibration_diagnostics.json"
+            and not _calibration_diagnostics_required(release_manifest)
+        ):
+            continue
+        if not (release_dir / filename).is_file():
+            failures.append(f"required file {filename!r} is missing.")
 
     build_manifest_path = release_dir / "build_manifest.json"
     if build_manifest_path.is_file():
@@ -4534,9 +4639,23 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
 
     diagnostics_path = release_dir / "calibration_diagnostics.json"
     if diagnostics_path.is_file():
+        if not _calibration_diagnostics_required(release_manifest):
+            failures.append(
+                "calibration_diagnostics.json exists even though the release "
+                "manifest records failed generation."
+            )
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
-            _check_local_area_calibration_diagnostics(diagnostics, failures)
+            if "schema_version" in diagnostics:
+                _check_calibration_diagnostics(
+                    diagnostics,
+                    failures,
+                    require_typed_schema=_calibration_diagnostics_are_current_typed(
+                        release_manifest
+                    ),
+                )
+            else:
+                _check_local_area_calibration_diagnostics(diagnostics, failures)
             if _is_uk_exact_k_release_id(release_id):
                 _check_uk_calibration_diagnostics(diagnostics, failures)
                 _check_uk_exact_k_diagnostics_identity(
@@ -4562,7 +4681,18 @@ def _validate_local_area_release_dir(release_dir: Path, release_id: str) -> None
                     "--donor-release-manifest)."
                 )
 
-    _check_local_area_checksum_ledger(release_dir, release_manifest, failures)
+    required_checksum_files = tuple(
+        filename
+        for filename in LOCAL_AREA_REQUIRED_RELEASE_FILES
+        if _calibration_diagnostics_required(release_manifest)
+        or filename != "calibration_diagnostics.json"
+    )
+    _check_local_area_checksum_ledger(
+        release_dir,
+        release_manifest,
+        failures,
+        required_files=required_checksum_files,
+    )
     _check_local_artifact_hashes(release_dir, release_manifest, failures)
 
     if failures:
@@ -4999,6 +5129,8 @@ def _check_local_area_release_manifest(
             "release_manifest.json must declare a non-empty 'artifacts' map."
         )
         return
+    if manifest.get("calibration_diagnostics") is not None:
+        _check_calibration_diagnostics_declaration(manifest, artifacts, failures)
     microdata = [
         name
         for name, entry in artifacts.items()
@@ -5213,6 +5345,7 @@ def validate_release_dir(
     # than a silent fallback.
     role: str = NATIONAL_DEFAULT_DATASET_ROLE
     manifest_probe_path = release_dir / "release_manifest.json"
+    manifest_probe: object = None
     annual_extension = None
     if manifest_probe_path.is_file():
         try:
@@ -5285,6 +5418,11 @@ def validate_release_dir(
     source_coverage_diagnostics: Mapping | None = None
 
     for filename in required_release_files(release_id):
+        if (
+            filename == "calibration_diagnostics.json"
+            and not _calibration_diagnostics_required(manifest_probe)
+        ):
+            continue
         if not (release_dir / filename).is_file():
             failures.append(f"required file {filename!r} is missing.")
 
@@ -5309,6 +5447,11 @@ def validate_release_dir(
 
     calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
     if calibration_diagnostics_path.is_file():
+        if not _calibration_diagnostics_required(release_manifest):
+            failures.append(
+                "calibration_diagnostics.json exists even though the release "
+                "manifest records failed generation."
+            )
         calibration_diagnostics_sha256 = _sha256(calibration_diagnostics_path)
         diagnostics = _load_json(calibration_diagnostics_path, failures)
         if diagnostics is not None:
@@ -5317,6 +5460,9 @@ def validate_release_dir(
                 diagnostics,
                 failures,
                 grandfathered_uk_june=release_id == _UK_JUNE_RELEASE_ID,
+                require_typed_schema=_calibration_diagnostics_are_current_typed(
+                    release_manifest
+                ),
             )
             if (
                 _is_uk_exact_k_release_id(release_id)
@@ -5727,6 +5873,7 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
         )
 
     manifest_probe_path = release_dir / "release_manifest.json"
+    manifest_probe: object = None
     if manifest_probe_path.is_file():
         try:
             manifest_probe = json.loads(manifest_probe_path.read_text())
@@ -5760,6 +5907,11 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
     source_coverage_diagnostics: Mapping | None = None
 
     for filename in required_release_files(release_id):
+        if (
+            filename == "calibration_diagnostics.json"
+            and not _calibration_diagnostics_required(manifest_probe)
+        ):
+            continue
         if not (release_dir / filename).is_file():
             failures.append(f"required file {filename!r} is missing.")
 
@@ -5786,10 +5938,21 @@ def validate_evidence_release_dir(release_dir: Path | str) -> None:
     recomputed_critical_failures: list[str] = []
     calibration_diagnostics_path = release_dir / "calibration_diagnostics.json"
     if calibration_diagnostics_path.is_file():
+        if not _calibration_diagnostics_required(release_manifest):
+            failures.append(
+                "calibration_diagnostics.json exists even though the release "
+                "manifest records failed generation."
+            )
         diagnostics = _load_json(calibration_diagnostics_path, failures)
         if diagnostics is not None:
             calibration_diagnostics = diagnostics
-            _check_calibration_diagnostics(diagnostics, failures)
+            _check_calibration_diagnostics(
+                diagnostics,
+                failures,
+                require_typed_schema=_calibration_diagnostics_are_current_typed(
+                    release_manifest
+                ),
+            )
             # Critical-fit breaches are permitted at the evidence tier — but
             # never silently. Recompute the certified verdicts into a scratch
             # list and require each breach to be acknowledged in
