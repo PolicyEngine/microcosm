@@ -51,6 +51,14 @@ by a manifest. Diagnostics carry codes, declared names, counts and digests.
 The consumer file and import-origin refusals also name installed file paths
 as `RECORD` lists them and loaded module names; none carries a cell value.
 
+Run with exclusive control of the output tree. Descriptor-relative operations
+protect directory traversal and final manifest publication; diagnostics and H5
+writers still use ordinary paths and can be redirected by concurrent directory
+replacement. Final checks refuse detected path changes, but do not prevent those
+earlier writes. Portable `mkdir` followed by `open` also cannot prove that an
+uncooperative actor did not replace the new directory between those calls. The
+retained inode is the first one opened after `mkdir` succeeds.
+
 1. **Owner.** `check_survey_enrichment_run(run)` runs first. A Frame, a
    development checkpoint or its report, a projection, a descriptive checked
    view or a forged `SurveyEnrichmentRun` refuses with `UNISSUED_RUN` before any
@@ -94,11 +102,14 @@ as `RECORD` lists them and loaded module names; none carries a cell value.
    (for example an egg link) with `NATIVE_RELEASE_CONSUMER_RECORD`. Files not
    listed in `RECORD` are not covered. The check fails closed: if a tool
    rewrites installed files after installation (as relocating an environment
-   can do to script shebangs), the runtime refuses. Every module already loaded under a listed
-   distribution's import packages must come from one of its verified files,
-   so a checkout earlier on `sys.path` refuses with
-   `NATIVE_RELEASE_CONSUMER_IMPORT_ORIGIN`. A distribution that is not
-   installed is recorded as `null`, and only while none of its import
+   can do to script shebangs), the runtime refuses. Every file-backed module
+   already loaded under a listed distribution's import packages must come
+   from one of its verified files. A namespace package without `__file__` is
+   accepted only when every search location is authenticated by that
+   distribution's verified contents; its file-backed descendants are checked
+   separately. A checkout earlier on `sys.path` or an unverified namespace
+   location refuses with `NATIVE_RELEASE_CONSUMER_IMPORT_ORIGIN`. A distribution
+   that is not installed is recorded as `null`, and only while none of its import
    packages is loaded. Expected identities must be recorded against this
    schema, including `input_defaults`; none is checked in. The static part is
    compared before the country system is built. The effective settings come
@@ -124,13 +135,14 @@ as `RECORD` lists them and loaded module names; none carries a cell value.
 8. **Materialization.** Only now is the output directory created. The output
    directory is opened without following a final symlink and must still be
    canonical; `native-releases` and the release directory are created and
-   opened relative to those descriptors, so a symlink swapped in at one of
-   those components refuses (`NATIVE_RELEASE_DIRECTORY`) instead of
-   redirecting the build, and a directory created concurrently refuses with
-   `NATIVE_RELEASE_DIRECTORY_EXISTS` and is left alone. The new directory must
-   still be reachable at its canonical path and must accept hard links
-   (`NATIVE_RELEASE_OUTPUT_FILESYSTEM` otherwise); if either check fails, the
-   empty directory this build just created is removed. Targets are
+   opened relative to those descriptors. A detected symlink replacement at
+   those components refuses with `NATIVE_RELEASE_DIRECTORY`, and an existing
+   release directory refuses with `NATIVE_RELEASE_DIRECTORY_EXISTS` and is
+   left alone. The opened directory must still be reachable at its canonical
+   path and must accept hard links (`NATIVE_RELEASE_OUTPUT_FILESYSTEM`
+   otherwise). Failure leaves directory paths in place because cleanup by
+   name could remove another actor's replacement. Inspect retained paths
+   before cleaning them or choosing a new release ID. Targets are
    materialized from the projected Frame with the admitted consumer's dataset,
    simulation and system constructors, a copy of the explicit SPM selection,
    the adapter as formula-ownership metadata, and target caches disabled.
@@ -157,14 +169,16 @@ as `RECORD` lists them and loaded module names; none carries a cell value.
     the declaration, projection, report and owner population are compared,
     and so is the consumer's in-memory state: no defaults, the admitted SPM
     selection and export contract, and the same constructor objects. The
-    release directory is reopened and must be the one this build created
-    (`NATIVE_RELEASE_DIRECTORY_CHANGED` otherwise); the dataset and
+    release directory is reopened and must match the inode first opened in
+    step 8 (`NATIVE_RELEASE_DIRECTORY_CHANGED` otherwise); the dataset and
     diagnostics bytes are hashed through it. Only then is
     `native_release_manifest.json` written in that directory. It is linked
     into place from a complete, synced temporary file, so an existing
     manifest is never replaced; a stale temporary file refuses with
     `NATIVE_RELEASE_OUTPUT_EXISTS` and other write errors with
-    `NATIVE_RELEASE_OUTPUT_WRITE`.
+    `NATIVE_RELEASE_OUTPUT_WRITE`. Temporary-file cleanup is best-effort after
+    both successful and failed writes. A cleanup failure can leave the
+    temporary file; a successfully linked manifest remains complete.
 
 ## Manifest
 
@@ -195,8 +209,8 @@ tuning signal or selection criterion.
 
 ## Tests
 
-`packages/microcosm-build/tests/test_us_native_release_entry.py` is
-engine-free. It shows that:
+The engine-free tests in
+`packages/microcosm-build/tests/test_us_native_release_entry.py` show that:
 
 - forged owners refuse before every later step, including `main`/`_main`,
   downloads, legacy source stages, writers and staging;
@@ -204,7 +218,8 @@ engine-free. It shows that:
 - consumer admission orders its refusals, and the installed-file check
   refuses edited, resized, removed and editable installs of an invented
   distribution, an unparseable `RECORD`, and loaded modules that come from a
-  checkout, have no file, or belong to a distribution that is not installed;
+  checkout, have neither a verified file nor authenticated namespace search
+  locations, or belong to a distribution that is not installed;
 - the input gate reports codes and name-only counts, including unknown
   values, and a projection report that does not bind the owner and consumer
   refuses;
@@ -216,13 +231,13 @@ engine-free. It shows that:
 - the public wiring runs for dense and L0 solves with socket connects, sends
   and lookups failing; a redirected output root, a symlink swapped in while
   the release directory is created, a concurrent creation, an unwritable
-  root and an output without hard links each refuse before the solve, leaving
-  no release directory of this build behind; and a failed final owner check, replaced
-  dataset or diagnostics bytes, a release directory replaced before the
-  manifest, or a consumer whose SPM settings, input defaults, installed files
+  root and an output without hard links each refuse before the solve;
+  failed directory setup retains directory paths for inspection; and a failed
+  final owner check, replaced dataset or diagnostics bytes, a release directory
+  replaced before the manifest, or a consumer whose SPM settings, input defaults, installed files
   or in-memory state changed each leave no manifest, which is never replaced
-  once written. Manifest write failures are coded and leave no temporary
-  file.
+  once written. Manifest write failures are coded, and temporary-file cleanup
+  is best-effort.
 
 The composition and wiring tests use invented constructors, a byte writer and a
 stand-in owner. They do not show that a genuine public native build succeeds.

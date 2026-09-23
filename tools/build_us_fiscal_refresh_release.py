@@ -2664,8 +2664,8 @@ NATIVE_RELEASE_CONSUMER_DISTRIBUTIONS = (
     "tables",
 )
 # Top-level import packages of each roster distribution. Every loaded module
-# under them must come from a verified RECORD file of that distribution, and
-# an absent distribution is accepted only while none of them is loaded.
+# under them must come from a verified RECORD file or namespace directory of
+# that distribution; an absent distribution requires none of them to be loaded.
 NATIVE_RELEASE_CONSUMER_IMPORT_PACKAGES = {
     "policyengine-us": ("policyengine_us",),
     "policyengine-core": ("policyengine_core",),
@@ -2954,22 +2954,43 @@ def _native_release_code_identity(value) -> dict:
 def _native_release_unverified_modules(
     packages: Iterable[str], verified_files: set[Path]
 ) -> list[str]:
-    """Loaded modules under ``packages`` whose file is not a verified file.
+    """Loaded modules whose file or namespace search locations are unverified.
 
-    A module without a file (for example one inserted into ``sys.modules``)
-    counts as unverified. Only module names are returned.
+    A namespace must have nonempty search locations, each a package directory
+    containing verified distribution files. File-backed descendants are checked
+    separately; a verified namespace never admits an unlisted child module.
+    A fileless module without namespace metadata still refuses.
     """
     packages = set(packages)
+    verified_directories = {
+        parent for path in verified_files for parent in path.parents
+    }
     unverified = []
     for module_name, module in list(sys.modules.items()):
         if module_name.partition(".")[0] not in packages:
             continue
         source = getattr(module, "__file__", None)
         try:
-            located = None if source is None else Path(source).resolve()
+            if source is None:
+                spec = getattr(module, "__spec__", None)
+                locations = tuple(getattr(module, "__path__", ()))
+                components = tuple(module_name.split("."))
+                verified = (
+                    spec is not None
+                    and spec.origin is None
+                    and spec.submodule_search_locations is not None
+                    and bool(locations)
+                    and all(
+                        (located := Path(location).resolve()) in verified_directories
+                        and located.parts[-len(components) :] == components
+                        for location in locations
+                    )
+                )
+            else:
+                verified = Path(source).resolve() in verified_files
         except (OSError, RuntimeError, TypeError, ValueError):
-            located = None
-        if located is None or located not in verified_files:
+            verified = False
+        if not verified:
             unverified.append(module_name)
     return sorted(unverified)
 
@@ -2986,7 +3007,8 @@ def _native_release_distribution_identity(name: str) -> dict | None:
     without a hash (RECORD itself, installer files) are only counted.
 
     Every module already loaded under the distribution's import packages must
-    have been loaded from one of the verified files, so a checkout earlier on
+    have been loaded from one of the verified files (or namespace directories
+    containing those files), so a checkout earlier on
     ``sys.path`` cannot run while a clean installed copy is verified. An absent
     distribution is recorded as ``None`` only while none of its import
     packages is loaded.
@@ -3628,9 +3650,9 @@ def _native_release_manifest_payload(
     )
 
 
-# Output files are created relative to directory descriptors opened without
-# following links, so a path component swapped for a symlink during the build
-# cannot redirect an output.
+# Directory operations and final manifest publication use held descriptors.
+# H5 and diagnostics still use ordinary paths; callers must exclusively own
+# the output tree. Final checks refuse detected directory/file substitutions.
 _NATIVE_RELEASE_DIRECTORY_FLAGS = (
     os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
 )
@@ -3642,13 +3664,13 @@ def _native_release_descriptor_support() -> bool:
     return (
         hasattr(os, "O_DIRECTORY")
         and hasattr(os, "O_NOFOLLOW")
-        and {os.open, os.mkdir, os.rmdir, os.unlink, os.link} <= os.supports_dir_fd
+        and {os.open, os.mkdir, os.unlink, os.link} <= os.supports_dir_fd
         and os.link in os.supports_follow_symlinks
     )
 
 
 class _NativeReleaseDirectory(NamedTuple):
-    """The release directory this build created, by path and inode."""
+    """The release directory first opened after mkdir, by path and inode."""
 
     path: Path
     device: int
@@ -3715,10 +3737,12 @@ def _create_native_release_directory(
     is opened without following a final symlink and must still be canonical;
     ``native-releases`` and the release directory are then created and opened
     relative to those descriptors, so a symlink swapped in at any of those
-    components refuses rather than redirects the build. The new directory must
-    still be reachable at its canonical path and must accept hard links. If
-    either check fails, the empty directory this call created is removed
-    through its parent descriptor and the build refuses.
+    components refuses during these operations. The opened directory must
+    still be reachable at its canonical path and must accept hard links.
+    Failed directories are retained: checking an inode then removing its name
+    cannot atomically exclude another actor's replacement. Callers must own
+    the output tree exclusively, including the portable mkdir-to-open gap;
+    mkdir supplies no descriptor that proves the newly created inode.
     """
     out = native_root.parent
     release_dir = native_root / release_id
@@ -3749,27 +3773,19 @@ def _create_native_release_directory(
                 raise NativeSurveyReleaseRefusalError(
                     "NATIVE_RELEASE_DIRECTORY_EXISTS"
                 ) from None
+            release_fd = os.open(
+                release_id, _NATIVE_RELEASE_DIRECTORY_FLAGS, dir_fd=root_fd
+            )
             try:
-                release_fd = os.open(
-                    release_id, _NATIVE_RELEASE_DIRECTORY_FLAGS, dir_fd=root_fd
+                _native_release_require(
+                    _native_release_directory_at(native_root, root_fd)
+                    and _native_release_directory_at(release_dir, release_fd),
+                    "NATIVE_RELEASE_DIRECTORY",
                 )
-                try:
-                    _native_release_require(
-                        _native_release_directory_at(native_root, root_fd)
-                        and _native_release_directory_at(release_dir, release_fd),
-                        "NATIVE_RELEASE_DIRECTORY",
-                    )
-                    _probe_native_release_links(release_fd)
-                    held = os.fstat(release_fd)
-                finally:
-                    os.close(release_fd)
-            except BaseException:
-                # Only the empty directory created above; never its contents.
-                try:
-                    os.rmdir(release_id, dir_fd=root_fd)
-                except OSError:
-                    pass
-                raise
+                _probe_native_release_links(release_fd)
+                held = os.fstat(release_fd)
+            finally:
+                os.close(release_fd)
         finally:
             os.close(root_fd)
     except NativeSurveyReleaseRefusalError:
@@ -3804,17 +3820,25 @@ def _open_native_release_directory(directory: _NativeReleaseDirectory) -> int:
 
 def _native_release_sha256_at(directory_fd: int, name: str) -> str | None:
     """SHA-256 of a regular file inside a held directory, or None if unreadable."""
+    import stat
+
     try:
-        descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+        descriptor = os.open(
+            name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd
+        )
     except OSError:
         return None
     digest = hashlib.sha256()
     try:
-        with os.fdopen(descriptor, "rb") as stream:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            return None
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
             for block in iter(lambda: stream.read(1024 * 1024), b""):
                 digest.update(block)
     except OSError:
         return None
+    finally:
+        os.close(descriptor)
     return digest.hexdigest()
 
 
@@ -3827,8 +3851,8 @@ def _write_native_release_json(
     is created exclusively, written, synced and hard-linked to its final name,
     which fails rather than replaces when that name already exists, so a
     concurrent writer is never overwritten and readers never see a partial
-    manifest. The temporary name is removed on every path; if that removal
-    fails after a successful link, the complete manifest stands. With
+    manifest. Temporary cleanup is best-effort on both success and failure;
+    if removal fails after a successful link, the complete manifest stands. With
     ``directory_fd`` every call is relative to that held directory.
     """
     data = _strict_json_text(payload, indent=1).encode("utf-8") + b"\n"
@@ -3861,10 +3885,13 @@ def _write_native_release_json(
                 "NATIVE_RELEASE_OUTPUT_WRITE"
             ) from None
         try:
-            with os.fdopen(descriptor, "wb") as stream:
-                stream.write(data)
-                stream.flush()
-                os.fsync(stream.fileno())
+            try:
+                with os.fdopen(descriptor, "wb", closefd=False) as stream:
+                    stream.write(data)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+            finally:
+                os.close(descriptor)
             os.link(
                 temporary,
                 path.name,
