@@ -40,6 +40,14 @@ capped at the allocation members. Descriptive arm-zero rates and totals are
 recorded for later comparison only; they are not a calibration, selection or
 release criterion.
 
+**Own-tail copies.** Arm-zero rows are selected by clone index 0. A
+capital-gains/AGI own-tail copy (clone index 2) keeps its clone-one twin's
+source IDs and PUF channel, so a ``(source ID, role)`` key cannot tell the two
+apart; this arm keys copies by clone index only. A whole-household tail copy in
+the receiving population is split off before the shared checks, which then run
+on the exact two-clone core, and every tail cell is carried unchanged. Tail
+placement belongs to the tail owner, not to this arm.
+
 The result is detached columns and a descriptive document. It issues no
 source, owner, model or release authority, and every host duty in
 :mod:`.puf55_original_placement` still applies.
@@ -88,7 +96,7 @@ NUMERICAL_POLICY = (
     ("tail_bound_caps", "not_applied"),
     ("unresolved_basis", "multi_member_unit_unresolved"),
 )
-TAIL_CLONE_INDEX = 2
+TAIL_CLONE_INDEX = placement.TAIL_CLONE_INDEX
 
 
 def require(condition, reason):
@@ -164,28 +172,30 @@ def candidate_outputs(inputs, profile):
     return result
 
 
-def require_two_clone_receiving(inputs):
-    """Refuse a receiving population that already carries a tail copy.
+def read_columns(inputs, profile):
+    """Person columns read for allocation, besides fixed targets and candidates.
 
-    Arm-zero rows are identified by clone index 0, never by a (source ID, role)
-    key. A capital-gains/AGI tail copy (clone index 2) duplicates a clone-one
-    household and has nothing to finalize on this arm, but it would change the
-    exact ancestor axes this node compares. The tail expansion must therefore
-    follow this node; one placed before it is refused by name.
+    Presence is taken from the checked arm-one population, whose columns every
+    later receiving version carries, so a graph declaration made before the
+    receiving terminal exists names exactly the columns the result reads. A
+    later version that introduces a declared basis column cannot silently add
+    it to an allocation that was declared without it.
     """
-    frame = inputs.receiving.frame
-    for entity in ("person", "tax_unit"):
-        column = provenance.support_clone_index_column(entity)
-        require(column in frame.table(entity), "CLONE_AXIS")
-    for entity in frame.entities:
-        column = provenance.support_clone_index_column(entity)
-        if column not in frame.table(entity):
-            continue
-        clones = frame.table(entity)[column]
-        require(clones.dtype == np.dtype("int64"), "CLONE_AXIS")
-        observed = set(np.unique(clones.to_numpy()).tolist())
-        require(TAIL_CLONE_INDEX not in observed, "TAIL_CLONE_BEFORE_ORIGINAL_FINALIZATION")
-        require(observed <= {0, 1}, "CLONE_DOMAIN")
+    candidates = candidate_outputs(inputs, profile)
+    names = {name for _, name, _ in candidates}
+    person = {name for entity, name, _ in candidates if entity == "person"}
+    columns = inputs.arm_one.frame.person.columns
+    result = []
+    if person & EARNINGS_UNIVERSE_OUTPUTS:
+        require("age" in columns, "AGE_COLUMN")
+        result.append("age")
+    for name in sorted(person):
+        result.extend(
+            b
+            for b in DISTRIBUTION_BASIS.get(name, ())
+            if b in columns and b not in names and b not in FIXED_TARGETS
+        )
+    return tuple(dict.fromkeys(result))
 
 
 def _valid_draws(draws, name):
@@ -218,9 +228,13 @@ def finalization_result(
     The caller supplies the complete strictly merged arm-zero conditioning
     table. Actual source and 55-model producer authentication, and the
     receiving owner's before/after checks, remain the host's obligation.
+    Arm-zero rows are selected by clone index 0. An own-tail copy (clone index
+    2) in the receiving population is split off by clone index, never by a
+    (source ID, role) key, and every one of its cells is carried unchanged.
     """
     require_policy(policy)
-    require_two_clone_receiving(inputs)
+    full_inputs, full_stamp = inputs, placement._stamp(inputs)
+    inputs, tail = placement._receiving_core(full_inputs)
     basis = placement._checked_basis(
         qualified, inputs, conditioning, merge_receipt, profile=profile
     )
@@ -254,14 +268,17 @@ def finalization_result(
         targets[entity, name] = target
 
     person_candidates = {n for e, n, _ in candidates if e == "person"}
-    needed = ["person_tax_unit_id"]
-    if person_candidates & EARNINGS_UNIVERSE_OUTPUTS:
-        require("age" in current, "AGE_COLUMN")
-        needed.append("age")
+    reads = read_columns(inputs, profile)
+    arm_one_columns = inputs.arm_one.frame.person.columns
+    needed = ["person_tax_unit_id", *reads]
     for name in sorted(person_candidates):
         needed.append(name)
-        needed.extend(b for b in DISTRIBUTION_BASIS.get(name, ()) if b in current)
+        # Fixed and earlier-candidate bases; presence comes from arm one.
+        needed.extend(
+            b for b in DISTRIBUTION_BASIS.get(name, ()) if b in arm_one_columns
+        )
     needed = list(dict.fromkeys(needed))
+    require(all(column in current for column in needed), "READ_COLUMN")
     # A detached arm-zero working table in receiving row order. Float outputs
     # work in float64 and are converted back losslessly below.
     work = current.loc[:, needed].copy(deep=True)
@@ -324,13 +341,9 @@ def finalization_result(
         )
         unresolved_units = set()
         for column in checked:
-            unresolved_units.update(
-                unit_of[allocation & work[column].isna()].tolist()
-            )
+            unresolved_units.update(unit_of[allocation & work[column].isna()].tolist())
         unresolved = np.isin(selected, list(unresolved_units))
-        reason[(reason == MODELED) & multi & unresolved] = (
-            "allocation_basis_unresolved"
-        )
+        reason[(reason == MODELED) & multi & unresolved] = "allocation_basis_unresolved"
         resolved = reason == MODELED
         in_resolved = unit_of.isin(selected[resolved])
         mask = allocation & in_resolved
@@ -345,8 +358,10 @@ def finalization_result(
             multi_resolved = pd.Series(members, index=selected)[resolved].gt(1)
             multi_ids = multi_resolved.index[multi_resolved.to_numpy()]
             zero_score = score.reindex(multi_ids, fill_value=0.0).eq(0.0)
-            key = "rank_ties_by_position_units" if boolean else (
-                "first_member_fallback_units"
+            key = (
+                "rank_ties_by_position_units"
+                if boolean
+                else ("first_member_fallback_units")
             )
             evidence[key] = int(zero_score.sum())
         if zero_mask.any():
@@ -382,9 +397,11 @@ def finalization_result(
         require(bool(work.loc[persons, name].notna().all()), "ALLOCATION_NULL")
         written[name] = persons
         per_unit = work.loc[persons, name].astype("float64")
-        unit_totals[name] = per_unit.groupby(
-            unit_of.loc[persons], sort=False
-        ).sum().reindex(selected[resolved], fill_value=0.0)
+        unit_totals[name] = (
+            per_unit.groupby(unit_of.loc[persons], sort=False)
+            .sum()
+            .reindex(selected[resolved], fill_value=0.0)
+        )
         allocation_evidence[name] = evidence
         statuses[name] = pd.array(reason.tolist(), dtype="string")
 
@@ -404,15 +421,17 @@ def finalization_result(
             converted = raw.astype(dtype)
             require(
                 np.isfinite(raw).all()
-                and np.array_equal(converted.astype("float64").view("u8"), raw.view("u8")),
+                and np.array_equal(
+                    converted.astype("float64").view("u8"), raw.view("u8")
+                ),
                 "LOSSY_WRITE",
             )
             output.loc[ids] = converted
         require(output.dtype == targets[entity, name].dtype, "OUTPUT_DTYPE")
         columns[entity, name] = output
-        result_seal.append(
-            ((entity, name), recipients._table_digest(output.to_frame()))
-        )
+    columns = placement._carry_tail(full_inputs, columns, tail)
+    for key, output in columns.items():
+        result_seal.append((key, recipients._table_digest(output.to_frame())))
 
     weights = pd.Series(
         support._tax_unit_household_weights(inputs.receiving.frame, selected),
@@ -461,16 +480,15 @@ def finalization_result(
             "fixed_knownness": fixed_knownness(basis.known, current, selected),
             "recipient_units": int(len(selected)),
             "reason_counts": reason_counts,
-            "unit_status_sha256": codec.sha(
-                statuses.to_json(orient="table").encode()
-            ),
+            "unit_status_sha256": codec.sha(statuses.to_json(orient="table").encode()),
             "write_counts": {name: int(len(ids)) for name, ids in written.items()},
             "allocation": allocation_evidence,
             "descriptive_diagnostics": diagnostics,
             "diagnostics_use": "comparison_only_not_calibration_selection_or_gate",
             "output_hashes": [[*key, digest] for key, digest in result_seal],
             "missingness": "unresolved_cells_keep_arm_one_nulls",
-            "clone_axis": "arm_zero_by_clone_index_0_tail_copies_refused",
+            "clone_axis": "arm_zero_by_clone_index_0",
+            "own_tail_copies_carried": tail or {},
             "source_observation_claim": False,
             "source_admission_issued": False,
             "population_admission_issued": False,
@@ -478,7 +496,8 @@ def finalization_result(
         }
     )
     require(
-        placement._stamp(inputs) == basis.source_stamp
+        placement._stamp(full_inputs) == full_stamp
+        and placement._stamp(inputs) == basis.source_stamp
         and values.fixed_input_stamp(qualified) == basis.fixed_stamp
         and recipients._table_digest(conditioning) == basis.table_stamp
         and [

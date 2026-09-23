@@ -31,7 +31,9 @@ CLONE = final.provenance.support_clone_index_column
 # Person 2 is outside the pension/IRA/net-property reporting universe, so unit
 # 10 is mixed-known for those three development targets and known for farm.
 UNITS = {10: [1, 2], 20: [3, 4, 5], 30: [6, 7], 40: [8], 50: [9, 10]}
-NON_FIXED_PERSON = tuple(t for t in PROFILE.person_outputs if t not in final.FIXED_TARGETS)
+NON_FIXED_PERSON = tuple(
+    t for t in PROFILE.person_outputs if t not in final.FIXED_TARGETS
+)
 
 
 def whole_fixture(*, dtype="float64", extra_person=None, draw=20.25):
@@ -184,12 +186,19 @@ def test_unit_outputs_match_the_conservative_placement_where_it_writes():
         pd.testing.assert_series_equal(columns[key][written], placed[written])
     # The whole arm writes a superset: collectibles reach every unit, not only
     # the complete singleton.
-    assert conservative["person", "long_term_capital_gains_on_collectibles"].loc[
-        range(1, 11)
-    ].notna().sum() == 1
-    assert columns["person", "long_term_capital_gains_on_collectibles"].loc[
-        range(1, 11)
-    ].notna().all()
+    assert (
+        conservative["person", "long_term_capital_gains_on_collectibles"]
+        .loc[range(1, 11)]
+        .notna()
+        .sum()
+        == 1
+    )
+    assert (
+        columns["person", "long_term_capital_gains_on_collectibles"]
+        .loc[range(1, 11)]
+        .notna()
+        .all()
+    )
     assert columns["person", "partnership_income"].loc[8] == -72.5
 
 
@@ -340,12 +349,15 @@ def test_negative_nonnegative_draw_stays_unresolved_and_signed_draw_is_kept():
     table.loc[30, "rental_income_would_be_qualified"] = -1.0
     table.loc[30, "farm_rent_income"] = -40.0
     columns, payload = run(qualified, inputs, table)
-    assert person_values(columns, "charitable_cash_donations").loc[
-        UNITS[30]
-    ].isna().all()
-    assert person_values(columns, "rental_income_would_be_qualified").loc[
-        UNITS[30]
-    ].isna().all()
+    assert (
+        person_values(columns, "charitable_cash_donations").loc[UNITS[30]].isna().all()
+    )
+    assert (
+        person_values(columns, "rental_income_would_be_qualified")
+        .loc[UNITS[30]]
+        .isna()
+        .all()
+    )
     assert person_values(columns, "farm_rent_income").loc[UNITS[30]].sum() == -40.0
     counts = codec.decode_json(payload)["reason_counts"]
     assert counts["charitable_cash_donations"]["draw_domain_unresolved"] == 1
@@ -372,36 +384,153 @@ def test_numerical_policy_records_every_skipped_arm_one_step():
     assert len(document["candidate_outputs"]) == 40 + 3
 
 
-def test_tail_clone_in_the_receiving_population_is_refused_by_name():
-    qualified, inputs, table = whole_fixture()
+def with_tail(inputs, units=(1020, 1040), *, interleave=False, defect=None):
+    """Append (or interleave) invented own-tail copies of clone-one units.
+
+    Each copy is a whole clone-one household (every group of an invented unit
+    shares its ID) with IDs shifted by 1000 and clone index 2. It keeps its
+    twin's source IDs and PUF channel, so only the clone index separates the
+    two, and the twin's household weight is split in half between them, like
+    the native tail expansion. This is not the native tail EXPAND itself.
+    """
     frame = inputs.receiving.frame
-    tables = {e: frame.table(e).copy(deep=True) for e in frame.entities}
-    for entity, table_ in tables.items():
-        tail = table_.loc[table_[entity + "_id"].eq(1040)].copy()
+    schema = frame.schema
+    weights = frame.weights_for("household")
+    household = dict(
+        zip(frame.table("household").household_id, weights.values, strict=True)
+    )
+    tables = {}
+    for entity in frame.entities:
+        table = frame.table(entity).copy(deep=True)
+        key = "person_tax_unit_id" if entity == "person" else entity + "_id"
+        rows = table.loc[table[key].isin(units)].copy()
+        rows[schema.entity_id_column(entity)] += 1000
         if entity == "person":
-            tail = table_.loc[table_.person_tax_unit_id.eq(1040)].copy()
-            tail["person_id"] += 1000
-            for group in frame.schema.group_entities:
-                tail["person_" + group + "_id"] += 1000
+            for group in schema.group_entities:
+                rows[schema.membership_column(group)] += 1000
+        rows[CLONE(entity)] = 2
+        if defect == "core_group":
+            # Copied people stay in their twins' SPM units; no SPM copy exists.
+            if entity == "person":
+                rows["person_spm_unit_id"] -= 1000
+            elif entity == "spm_unit":
+                rows = rows.iloc[:0]
+        if entity == "tax_unit" and defect == "domain":
+            rows[CLONE(entity)] = 3
+        # Core rows keep their order. Group tables stay sorted by ID, so copies
+        # (IDs above every current ID) come last; interleaving moves copied
+        # people directly after their twins.
+        position = pd.Series(np.arange(len(table), dtype="float64"), index=table.index)
+        if interleave and entity == "person":
+            last = position.groupby(table[key]).max()
+            after = rows[key].map(lambda k, last=last: last[k - 1000] + 0.5)
         else:
-            tail[entity + "_id"] += 1000
-        tail[CLONE(entity)] = 2
-        tables[entity] = pd.concat([table_, tail], ignore_index=True)
+            after = pd.Series(len(table) + np.arange(len(rows)), index=rows.index)
+        merged = pd.concat([table, rows], ignore_index=True)
+        order = np.concatenate([position.to_numpy(), after.to_numpy(dtype="float64")])
+        tables[entity] = merged.iloc[np.argsort(order, kind="stable")].reset_index(
+            drop=True
+        )
+    for unit in units:
+        household[unit] = household[unit] / 2
+        household[unit + 1000] = household[unit]
+    ids = tables["household"].household_id
     tailed = Frame(
         tables,
-        frame.schema,
-        {"household": type(frame.weights_for("household"))(
-            np.ones(len(tables["household"])), frame.weights_for("household").kind
-        )},
+        schema,
+        {
+            "household": type(weights)(
+                np.array([household[i] for i in ids]), weights.kind
+            )
+        },
         pd.Series(["invented"] * len(tables["person"]), dtype="string"),
+        metadata=frame.metadata,
     )
     receiving = populations.Population.from_frame(
         tailed, inputs.receiving.version, inputs.receiving.owners
     )
-    with pytest.raises(
-        ValueError, match="PUF55_ORIGINAL_FINALIZATION_TAIL_CLONE_BEFORE"
-    ):
-        run(qualified, replace(inputs, receiving=receiving), table)
+    return replace(inputs, receiving=receiving)
+
+
+@pytest.mark.parametrize("interleave", (False, True))
+def test_own_tail_copy_is_carried_and_arm_zero_matches_the_two_clone_run(interleave):
+    qualified, inputs, table = whole_fixture()
+    table.loc[20, "educator_expense"] = 120.0
+    two_clone, two_payload = run(qualified, inputs, table)
+    tailed = with_tail(inputs, interleave=interleave)
+    person = tailed.receiving.frame.person
+    tail = person[CLONE("person")].eq(2)
+    twins = person.loc[person.person_id.isin(person.loc[tail, "person_id"] - 1000)]
+    # The copy is indistinguishable from its clone-one twin by (source ID,
+    # channel): two PUF-channel rows per tail source person.
+    assert sorted(person.loc[tail, "person_source_id"]) == sorted(
+        twins.person_source_id
+    )
+    assert set(person.loc[tail, "person_support_channel"]) == set(
+        twins.person_support_channel
+    )
+    before = placement._stamp(tailed)
+    columns, payload = run(qualified, tailed, table)
+    assert placement._stamp(tailed) == before
+    document = codec.decode_json(payload)
+    assert document["own_tail_copies_carried"] == {
+        entity: 2 if entity != "person" else 4
+        for entity in document["own_tail_copies_carried"]
+    }
+    assert len(document["own_tail_copies_carried"]) == 6
+    for (entity, name), column in columns.items():
+        incumbent = tailed.receiving.frame.table(entity).set_index(entity + "_id")[name]
+        assert column.index.equals(incumbent.index)
+        assert column.dtype == incumbent.dtype
+        copies = column.index >= 2000
+        # Every tail cell is exactly the receiving value (the twin's arm-one
+        # value), and every core cell equals the two-clone result.
+        pd.testing.assert_series_equal(column[copies], incumbent[copies])
+        pd.testing.assert_series_equal(
+            column[~copies], two_clone[entity, name].loc[column.index[~copies]]
+        )
+    reference = codec.decode_json(two_payload)
+    for key in ("reason_counts", "write_counts", "allocation", "unit_status_sha256"):
+        assert document[key] == reference[key]
+    # The conservative placement shares the same clone-index split.
+    conservative, conservative_payload = placement_result(qualified, tailed, table)
+    assert codec.decode_json(conservative_payload)["own_tail_copies_carried"]
+    for (entity, name), column in conservative.items():
+        incumbent = tailed.receiving.frame.table(entity).set_index(entity + "_id")[name]
+        pd.testing.assert_series_equal(
+            column[column.index >= 2000], incumbent[incumbent.index >= 2000]
+        )
+
+
+def test_two_clone_documents_do_not_gain_a_tail_field():
+    qualified, inputs, table = whole_fixture()
+    _, payload = placement_result(qualified, inputs, table)
+    assert "own_tail_copies_carried" not in codec.decode_json(payload)
+    _, payload = run(qualified, inputs, table)
+    assert codec.decode_json(payload)["own_tail_copies_carried"] == {}
+
+
+@pytest.mark.parametrize(
+    "defect,reason",
+    (("core_group", "TAIL_MEMBERSHIP"), ("domain", "CLONE_DOMAIN")),
+)
+def test_malformed_tail_copies_refuse(defect, reason):
+    qualified, inputs, table = whole_fixture()
+    with pytest.raises(ValueError, match=reason):
+        run(qualified, with_tail(inputs, defect=defect), table)
+
+
+def test_relabelled_clone_one_rows_are_not_a_tail_copy():
+    # Marking a clone-one unit as clone index 2 instead of copying it removes
+    # the unit from the core, which then cannot reproduce the arm-one axis.
+    qualified, inputs, table = whole_fixture()
+    frame = inputs.receiving.frame
+    for entity in frame.entities:
+        rows = frame.table(entity)
+        key = "person_tax_unit_id" if entity == "person" else entity + "_id"
+        rows.loc[rows[key].eq(1040), CLONE(entity)] = 2
+    with pytest.raises(ValueError, match="ID_AXIS"):
+        run(qualified, inputs, table)
 
 
 def test_float32_outputs_require_lossless_allocation():

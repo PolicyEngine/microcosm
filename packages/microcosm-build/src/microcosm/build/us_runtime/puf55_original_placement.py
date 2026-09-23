@@ -21,7 +21,12 @@ from . import puf55_original_application as application
 
 values, codec = application.values, application.codec
 attachment = application.attachment
+provenance = values.recipients.provenance
 PROTOCOL = "microcosm.us.puf55-original-placement.v1"
+# The capital-gains/AGI own-tail copy. It copies a whole clone-one household
+# and keeps that household's source IDs and PUF channel, so only the clone index
+# tells it apart from its clone-one twin.
+TAIL_CLONE_INDEX = 2
 SINGLETON_OUTPUTS = (
     "long_term_capital_gains_on_collectibles",
     "non_sch_d_capital_gains",
@@ -111,6 +116,115 @@ def _capture_checked_puf_ancestors(puf_run, receiving):
         parent._run_entry(puf_run) is entry and _stamp(result) == stamp,
         "CAPTURE_CHANGED",
     )
+    return result
+
+
+def _receiving_core(inputs):
+    """Split own-tail copies from the two-clone receiving core by clone index.
+
+    Returns ``(inputs, None)`` unchanged when the receiving population carries
+    no own-tail copy, so the two-clone path is exactly the historical one.
+
+    Otherwise a copy is identified by its clone index, never by a ``(source
+    ID, role)`` or channel key: the tail copy keeps its clone-one household's
+    source IDs and PUF channel. The copies must be whole households, closed
+    under every group membership; a tail person in a core group, or a core
+    person in a tail group, is refused. This arm never reads or writes a copy.
+    The detached core Population drops them and must then reproduce the
+    arm-one ID axis exactly, row for row; it takes the arm-one row labels so the
+    shared axis and membership checks run unchanged on it. The caller carries
+    every tail cell through untouched with :func:`_carry_tail`.
+    """
+    require(type(inputs) is PlacementInputs, "INPUT_TYPE")
+    receiving = inputs.receiving
+    frame = receiving.frame
+    masks = {}
+    for entity in frame.entities:
+        column = provenance.support_clone_index_column(entity)
+        if column in frame.table(entity):
+            masks[entity] = frame.table(entity)[column]
+    if not any(bool(clones.eq(TAIL_CLONE_INDEX).any()) for clones in masks.values()):
+        return inputs, None
+    require("person" in masks and "tax_unit" in masks, "CLONE_AXIS")
+    for entity, clones in masks.items():
+        require(clones.dtype == np.dtype("int64"), "CLONE_AXIS")
+        require(
+            set(np.unique(clones.to_numpy()).tolist()) <= {0, 1, TAIL_CLONE_INDEX},
+            "CLONE_DOMAIN",
+        )
+        masks[entity] = clones.eq(TAIL_CLONE_INDEX).to_numpy()
+    person_tail = masks["person"]
+    require(bool(person_tail.any()) and not bool(person_tail.all()), "TAIL_AXIS")
+    schema = frame.schema
+    for group in schema.group_entities:
+        membership = frame.person[schema.membership_column(group)].to_numpy()
+        tail_groups = set(membership[person_tail].tolist())
+        require(
+            tail_groups.isdisjoint(membership[~person_tail].tolist()),
+            "TAIL_MEMBERSHIP",
+        )
+        if group in masks:
+            ids = frame.table(group)[schema.entity_id_column(group)].to_numpy()
+            require(set(ids[masks[group]].tolist()) == tail_groups, "TAIL_MEMBERSHIP")
+    selected = frame.select(~person_tail)
+    reference = inputs.arm_one.frame
+    tables = {}
+    for entity in selected.entities:
+        table, expected = selected.table(entity), reference.table(entity)
+        column = schema.entity_id_column(entity)
+        require(
+            len(table) == len(expected)
+            and np.array_equal(table[column].to_numpy(), expected[column].to_numpy()),
+            "ID_AXIS",
+        )
+        tables[entity] = table.set_axis(expected.index, axis=0)
+    core = Frame(
+        tables,
+        schema,
+        {e: selected.weights_for(e) for e in selected.weighted_entities},
+        selected.strata.set_axis(reference.person.index),
+        mass_log=selected.mass_log,
+        metadata=selected.metadata,
+    )
+    counts = {
+        entity: int(mask.sum()) for entity, mask in sorted(masks.items()) if mask.any()
+    }
+    return (
+        PlacementInputs(
+            inputs.financial_parent,
+            inputs.arm_one,
+            population_ops.Population.from_frame(
+                core, receiving.version, receiving.owners
+            ),
+            inputs.arm_one_node,
+        ),
+        counts,
+    )
+
+
+def _carry_tail(inputs, columns, tail):
+    """Extend core columns to the full receiving axis; tail cells stay as found."""
+    if tail is None:
+        return columns
+    result = {}
+    for (entity, name), core in columns.items():
+        id_column = inputs.receiving.frame.schema.entity_id_column(entity)
+        full = inputs.receiving.frame.table(entity).set_index(id_column)[name]
+        output = full.copy(deep=True)
+        require(
+            core.index.isin(full.index).all()
+            and int((~full.index.isin(core.index)).sum()) == tail.get(entity, 0),
+            "TAIL_AXIS",
+        )
+        output.loc[core.index] = core
+        require(
+            output.dtype == full.dtype
+            and output[~full.index.isin(core.index)].equals(
+                full[~full.index.isin(core.index)]
+            ),
+            "TAIL_CARRIED",
+        )
+        result[entity, name] = output
     return result
 
 
@@ -349,7 +463,10 @@ def placement_result(qualified, inputs, conditioning, merge_receipt, *, profile)
     A canonical missing producer is graph ownership evidence only. It never
     means source NIU, source-observed zero, or legal eligibility. Actual source
     and 55-model producer authentication remains the caller's host obligation.
+    An own-tail copy in the receiving population is carried through unchanged.
     """
+    full_inputs, full_stamp = inputs, _stamp(inputs)
+    inputs, tail = _receiving_core(full_inputs)
     basis = _checked_basis(
         qualified, inputs, conditioning, merge_receipt, profile=profile
     )
@@ -419,6 +536,7 @@ def placement_result(qualified, inputs, conditioning, merge_receipt, *, profile)
                 statuses[name] = pd.array(
                     ["preexisting_parent_preserved"] * len(statuses), dtype="string"
                 )
+    columns = _carry_tail(full_inputs, columns, tail)
     result_seal = tuple(
         (key, values.recipients._table_digest(series.to_frame()))
         for key, series in columns.items()
@@ -455,10 +573,13 @@ def placement_result(qualified, inputs, conditioning, merge_receipt, *, profile)
             "tail_caps": False,
             "donor_positive_rate_alignment": False,
             "signed_mass_alignment": False,
+            # Present only with own-tail copies, so two-clone bytes are unchanged.
+            **({} if tail is None else {"own_tail_copies_carried": tail}),
         }
     )
     require(
-        _stamp(inputs) == source_stamp
+        _stamp(full_inputs) == full_stamp
+        and _stamp(inputs) == source_stamp
         and values.fixed_input_stamp(qualified) == fixed_stamp
         and values.recipients._table_digest(conditioning) == table_stamp
         and tuple(
