@@ -512,6 +512,36 @@ lock unchanged:
     cost before scaling. Extracted with the independently reviewed observer
     isolation repair on 2026-09-12.
 
+    (Amendment 25, the caller-declared live observer, landed on `main` in
+    #951 and is not on the native integration base this branch starts from.)
+
+26. **Kernels may run concurrently; admission stays canonical.**
+    `run_graph(..., max_workers=N)`, or `MICROCOSM_GRAPH_MAX_WORKERS` when the
+    argument is `None`, lets a node whose declared predecessors are all
+    admitted have its context projected and its kernel called on a worker
+    thread ahead of its turn. Everything that touches shared state stays on
+    the calling thread in `compiled.order`, through the sequential code:
+    validation, patching the cumulative population, the observer, every
+    store write and every receipt. A turn uses a precomputed call only when
+    its own projection is the one that call received: the same incumbent
+    object with equal tolerance and numeric scopes, or an equal context digest
+    with equal scopes. Otherwise it runs the kernel on its own context.
+    Node keys, receipts, cache records, stored bytes and the manifest key are
+    the sequential run's at every worker count. A failure is the sequential
+    run's too, raised at the same node with the same published prefix,
+    because a worker's result is read only at its node's turn. Workers never
+    publish, and they are joined before a failed run is settled and before
+    the run-end source pass. `resume="require"` runs sequentially. The worker
+    count enters no key, receipt, cache record or manifest field. The caller
+    promises that every registered kernel, and any state it shares, is safe
+    to call from a worker thread while others run. The executor cannot check
+    that promise, so the default is one worker. Extra memory is bounded by
+    `max_workers` early contexts with their results and discarded calls still
+    finishing, plus whatever the kernels allocate concurrently. There is no
+    byte budget. Runtime-only; the interface lock is unchanged. Design and
+    evidence: [graph-parallel-executor.md](graph-parallel-executor.md).
+    Implemented 2026-09-23 on the native line (epic #956, acceleration B).
+
 Adding a normative field with a default changes the canonical projection
 of every node that carries it, so node keys moved with amendments 11 and
 13's sibling field `entrants`; no released artifact pins a graph key yet.

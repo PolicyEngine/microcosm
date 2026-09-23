@@ -1,0 +1,1 @@
+Add opt-in concurrent kernel execution to `run_graph` (`max_workers`, or `MICROCOSM_GRAPH_MAX_WORKERS`; default 1). Independent nodes run their kernels on worker threads while validation, patching, the observer, store writes and receipts stay on the calling thread in canonical order, so node keys, receipts, stored bytes and failures match the sequential run (amendment 26).
