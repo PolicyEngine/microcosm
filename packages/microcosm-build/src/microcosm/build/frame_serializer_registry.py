@@ -236,6 +236,18 @@ HDF_WRITE_EXCLUSIONS = (
         ),
         reason="Adds geography provenance root attributes only.",
     ),
+    HdfWriteExclusion(
+        exclusion_id="acs_donor_receipt_qualification_raw_append",
+        writer=HdfWriteSite(
+            "tools/build_us_acs_donor_receipt_qualification.py",
+            "append_boolean_fields",
+        ),
+        reason=(
+            "Copies existing HDF compound-record bytes and appends validated "
+            "non-nullable Boolean arrays to the person and spm_unit tables; "
+            "accepts no Frame or table collection."
+        ),
+    ),
 )
 
 

@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import inspect
 import json
+import os
 import sys
 from dataclasses import replace
 from pathlib import Path
@@ -43,6 +44,19 @@ def _installed_variable_metadata_index(builder):
         return builder.PolicyEngineUSVariableMetadataIndex()
     except ImportError:
         pytest.skip("requires the policyengine-us [us] extra")
+
+
+def _load_acs_local_release_module():
+    root = Path(__file__).resolve().parents[3]
+    tools_path = str(root / "tools")
+    if tools_path not in sys.path:
+        sys.path.insert(0, tools_path)
+    path = root / "tools" / "build_us_acs_local_release.py"
+    spec = importlib.util.spec_from_file_location("build_us_acs_local_release", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
 
 def _load_scorer_module():
@@ -2466,6 +2480,558 @@ def test_identity_ledger_filter_qualifiers_are_inert_not_unsupported() -> None:
     assert builder._unsupported_ledger_filter_metadata(specs) == {
         "unknown_domain_filter": ("ledger_filter_novel_dimension",)
     }
+
+
+_RESTATED_AGI_LOWER = (
+    "ledger_filter_us:statutes/26/62#adjusted_gross_income_lower_bound"
+)
+_RESTATED_AGI_UPPER = (
+    "ledger_filter_us:statutes/26/62#adjusted_gross_income_upper_bound"
+)
+_RESTATED_AGI_EXACT = "ledger_filter_us:statutes/26/62#adjusted_gross_income"
+_RESTATED_EITC_CHILDREN_LOWER = (
+    "ledger_filter_us.tax.earned_income_credit_qualifying_children_lower_bound"
+)
+_RESTATED_EITC_CHILDREN_UPPER = (
+    "ledger_filter_us.tax.earned_income_credit_qualifying_children_upper_bound"
+)
+_RESTATED_EITC_CHILDREN_EXACT = (
+    "ledger_filter_us.tax.earned_income_credit_qualifying_children"
+)
+
+
+def _soi_band_metadata(**overrides: str | None) -> dict[str, str]:
+    """A compiled SOI AGI-band spec's metadata, in the shape the compiler emits.
+
+    Mirrors ``_soi_target_reference`` output for an IRS SOI Historic Table 2
+    state AGI cell: the half-open band the materializer slices on
+    (``agi_lower_bound``/``agi_upper_bound``) plus the supported Ledger filter
+    keys. An override of ``None`` drops the key.
+    """
+
+    metadata = {
+        "source_measure_id": "taxable_interest_amount",
+        "source_variable": "taxable_interest",
+        "variable": "taxable_interest",
+        "materializer": "irs_soi_slice",
+        "measure_mode": "sum",
+        "agi_lower_bound": "100000.0",
+        "agi_upper_bound": "200000.0",
+        "filing_status": "All",
+        "state_fips": "02",
+        "ledger_filter_filing_status": "all",
+        "ledger_filter_income_range": "100k_to_200k",
+    }
+    for key, value in overrides.items():
+        if value is None:
+            metadata.pop(key, None)
+        else:
+            metadata[key] = value
+    return metadata
+
+
+def _spec(name: str, metadata: dict[str, str]) -> SimpleNamespace:
+    return SimpleNamespace(name=name, metadata=metadata)
+
+
+def test_restated_agi_bounds_pass_the_guard_only_where_they_agree() -> None:
+    """A labelled AGI bound equal to the compiled one is ignorable, so accepted.
+
+    The labelled Chronicle vocabulary restates a fact's universe constraint as
+    ``ledger_filter_us:statutes/26/62#adjusted_gross_income_{lower,upper}_bound``
+    beside the compiled ``agi_lower_bound``/``agi_upper_bound`` the materializer
+    actually slices on. Where the two name the same edge, dropping the
+    restatement changes no population, so the guard lets it through — one side
+    at a time, and with the open ends spelled the compiler's way (``-inf`` and
+    ``inf``).
+    """
+
+    builder = _load_builder_module()
+    both = _spec(
+        "irs_soi.ty2022.historic_table_2.state_agi.ak.100k_to_200k.taxable_interest_amount",
+        _soi_band_metadata(
+            **{_RESTATED_AGI_LOWER: "100000", _RESTATED_AGI_UPPER: "200000"}
+        ),
+    )
+    lower_only = _spec(
+        "lower_only", _soi_band_metadata(**{_RESTATED_AGI_LOWER: "100000.0"})
+    )
+    upper_only = _spec(
+        "upper_only", _soi_band_metadata(**{_RESTATED_AGI_UPPER: "200000"})
+    )
+    open_ends = _spec(
+        "open_ends",
+        _soi_band_metadata(
+            agi_lower_bound="-inf",
+            agi_upper_bound="inf",
+            **{_RESTATED_AGI_LOWER: "-inf", _RESTATED_AGI_UPPER: "inf"},
+        ),
+    )
+
+    assert (
+        builder._unsupported_ledger_filter_metadata(
+            (both, lower_only, upper_only, open_ends)
+        )
+        == {}
+    )
+    builder._assert_supported_ledger_filter_metadata(
+        (both, lower_only, upper_only, open_ends)
+    )
+
+
+def test_disagreeing_restated_agi_bounds_are_refused_by_value() -> None:
+    """Negative control for the acceptance above: only equality is accepted.
+
+    Each spec here carries a labelled bound the materializer would ignore
+    while slicing a different population — a lower edge below the compiled
+    one, an upper edge above it, a bound on a spec that compiles no band at
+    all, and an exact-value restatement for which the materializer has no
+    filter. All four keep the pre-existing refusal, now naming the values that
+    disagree. The unknown key is the control that the ordinary path is
+    untouched: it still refuses under its bare name.
+    """
+
+    builder = _load_builder_module()
+    specs = (
+        _spec(
+            "disagreeing_lower", _soi_band_metadata(**{_RESTATED_AGI_LOWER: "50000"})
+        ),
+        _spec(
+            "disagreeing_upper", _soi_band_metadata(**{_RESTATED_AGI_UPPER: "250000"})
+        ),
+        _spec(
+            "no_compiled_lower",
+            _soi_band_metadata(agi_lower_bound=None, **{_RESTATED_AGI_LOWER: "100000"}),
+        ),
+        _spec("exact_agi", _soi_band_metadata(**{_RESTATED_AGI_EXACT: "100000"})),
+        _spec(
+            "unknown_key",
+            _soi_band_metadata(ledger_filter_novel_dimension="specific_slice"),
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "disagreeing_lower": (
+            f"{_RESTATED_AGI_LOWER}=50000 disagrees with agi_lower_bound=100000.0",
+        ),
+        "disagreeing_upper": (
+            f"{_RESTATED_AGI_UPPER}=250000 disagrees with agi_upper_bound=200000.0",
+        ),
+        "no_compiled_lower": (
+            f"{_RESTATED_AGI_LOWER}=100000 restates a bound the spec does not "
+            "compile: no agi_lower_bound",
+        ),
+        "exact_agi": (
+            f"{_RESTATED_AGI_EXACT}=100000 restates an exact AGI, but the "
+            "materializer slices a half-open AGI band and applies no "
+            "exact-value AGI filter",
+        ),
+        "unknown_key": ("ledger_filter_novel_dimension",),
+    }
+    with pytest.raises(RuntimeError) as excinfo:
+        builder._assert_supported_ledger_filter_metadata(specs)
+    message = str(excinfo.value)
+    assert "Unsupported Ledger target filter metadata would be ignored" in message
+    assert "disagrees with agi_lower_bound=100000.0" in message
+    assert "ledger_filter_novel_dimension" in message
+
+
+def test_restated_eitc_child_bounds_pass_the_guard_only_where_they_agree() -> None:
+    """A restated qualifying-child bound is judged against the applied filter.
+
+    ``_soi_eitc_child_count_filter`` is what the materializer applies, and
+    ``_eitc_child_count_mask`` resolves it to ``== 0``, ``== 1``, ``== 2`` or
+    ``>= 3``. A lower bound of three therefore agrees with ``3plus`` and only
+    with it, and a suffix-free key restates an exact count. Upper bounds are
+    not compared at all; see
+    :func:`test_restated_eitc_child_upper_bounds_are_refused_outright`.
+    """
+
+    builder = _load_builder_module()
+    three_plus = _spec(
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children",
+        _soi_band_metadata(
+            ledger_filter_eitc_child_count="3plus",
+            **{_RESTATED_EITC_CHILDREN_LOWER: "3"},
+        ),
+    )
+    exactly_two = _spec(
+        "exactly_two",
+        _soi_band_metadata(
+            ledger_filter_eitc_child_count="2",
+            **{_RESTATED_EITC_CHILDREN_EXACT: "2"},
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata((three_plus, exactly_two)) == {}
+    assert builder._unsupported_soi_ledger_filters(three_plus.metadata) == ()
+    assert builder._unsupported_soi_ledger_filters(exactly_two.metadata) == ()
+
+
+def test_restated_eitc_child_upper_bounds_are_refused_outright() -> None:
+    """A qualifying-child upper bound is refused whatever it would agree with.
+
+    Max's ruling (2026-09-22): until the Ledger confirms whether a count upper
+    bound means ``<`` or ``<=``, none is compared. ``< 1`` would agree with a
+    compiled ``0`` and ``<= 0`` would too, so both specs below are ones an
+    agreement rule could accept under one reading — and each is refused, with
+    the operator named as the reason, as is an upper bound on a spec with no
+    child-count filter. The refusal is per key: an exact restatement on the
+    same spec is still accepted, and a restated AGI upper bound is untouched.
+    The fatal guard raises, and the SOI skip keeps the key listed, so the
+    refusal cannot turn into a silent drop. ``_upper_bound_inclusive`` names
+    no restated concept and stays refused by its bare key.
+    """
+
+    builder = _load_builder_module()
+    reason = (
+        "restates a qualifying-child upper bound, refused outright: the "
+        "Ledger's operator for it (< or <=) is unconfirmed, and the two "
+        "readings select different returns"
+    )
+    inclusive_upper = f"{_RESTATED_EITC_CHILDREN_UPPER}_inclusive"
+    exclusive_reading = _soi_band_metadata(
+        ledger_filter_eitc_child_count="0",
+        **{
+            _RESTATED_EITC_CHILDREN_UPPER: "1",
+            _RESTATED_EITC_CHILDREN_EXACT: "0",
+            _RESTATED_AGI_UPPER: "200000",
+        },
+    )
+    specs = (
+        _spec("exclusive_reading", exclusive_reading),
+        _spec(
+            "inclusive_reading",
+            _soi_band_metadata(
+                ledger_filter_eitc_child_count="0",
+                **{_RESTATED_EITC_CHILDREN_UPPER: "0"},
+            ),
+        ),
+        _spec(
+            "no_child_filter",
+            _soi_band_metadata(**{_RESTATED_EITC_CHILDREN_UPPER: "1"}),
+        ),
+        _spec(
+            "inclusive_key",
+            _soi_band_metadata(
+                ledger_filter_eitc_child_count="0", **{inclusive_upper: "0"}
+            ),
+        ),
+    )
+
+    assert builder.RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES == frozenset({"upper"})
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "exclusive_reading": (f"{_RESTATED_EITC_CHILDREN_UPPER}=1 {reason}",),
+        "inclusive_reading": (f"{_RESTATED_EITC_CHILDREN_UPPER}=0 {reason}",),
+        "no_child_filter": (f"{_RESTATED_EITC_CHILDREN_UPPER}=1 {reason}",),
+        "inclusive_key": (inclusive_upper,),
+    }
+    assert builder._unsupported_soi_ledger_filters(exclusive_reading) == (
+        _RESTATED_EITC_CHILDREN_UPPER,
+    )
+    with pytest.raises(RuntimeError, match=r"operator for it \(< or <=\)"):
+        builder._assert_supported_ledger_filter_metadata(specs[:1])
+
+
+def test_restated_eitc_child_comparison_never_guesses_an_upper_reading() -> None:
+    """Dropping ``upper`` from the refused sides must not reopen a guess.
+
+    The comparison reads only lower and exact restatements. If a later edit
+    empties :data:`RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES` without choosing
+    an operator, an upper bound must fail loudly rather than fall through to
+    an exact-count comparison that happens to accept it (``== 0`` against a
+    compiled ``0``).
+    """
+
+    builder = _load_builder_module()
+    builder.RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES = frozenset()
+    metadata = _soi_band_metadata(
+        ledger_filter_eitc_child_count="0",
+        **{_RESTATED_EITC_CHILDREN_UPPER: "0"},
+    )
+
+    with pytest.raises(ValueError, match="reads only lower and exact"):
+        builder._unsupported_ledger_filter_metadata(
+            (_spec("unguarded_upper", metadata),)
+        )
+
+
+def test_disagreeing_restated_eitc_child_bounds_are_refused_by_value() -> None:
+    """Negative control: a child bound that selects other returns stays fatal.
+
+    ``>= 3`` against a compiled ``== 2`` selects different returns; a bound on
+    a spec carrying no child-count filter at all has nothing to agree with;
+    and a value that is not a count in the probed range cannot be compared, so
+    it is refused rather than guessed at.
+    """
+
+    builder = _load_builder_module()
+    specs = (
+        _spec(
+            "wrong_group",
+            _soi_band_metadata(
+                ledger_filter_eitc_child_count="2",
+                **{_RESTATED_EITC_CHILDREN_LOWER: "3"},
+            ),
+        ),
+        _spec(
+            "no_child_filter",
+            _soi_band_metadata(**{_RESTATED_EITC_CHILDREN_LOWER: "3"}),
+        ),
+        _spec(
+            "not_a_count",
+            _soi_band_metadata(
+                ledger_filter_eitc_child_count="3plus",
+                **{_RESTATED_EITC_CHILDREN_LOWER: "three"},
+            ),
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "wrong_group": (
+            f"{_RESTATED_EITC_CHILDREN_LOWER}=3 selects different returns than "
+            "the compiled child-count filter '2'",
+        ),
+        "no_child_filter": (
+            f"{_RESTATED_EITC_CHILDREN_LOWER}=3 restates a qualifying-child "
+            "bound on a spec that carries no child-count filter for the "
+            "materializer to apply",
+        ),
+        "not_a_count": (
+            f"{_RESTATED_EITC_CHILDREN_LOWER}=three is not a qualifying-child "
+            f"count in 0..{builder.RESTATED_EITC_CHILD_COUNT_PROBE_MAX}",
+        ),
+    }
+
+
+def test_legacy_agi_usd_dimensions_stay_refused_by_bare_key() -> None:
+    """``agi_lower_usd``/``agi_upper_usd`` are not restated concepts (2026-09-22).
+
+    Max ruled against adding them to ``RESTATED_LEDGER_FILTER_CONCEPTS``: no
+    compiled target carries them today, and the guard already refuses an
+    unknown ``ledger_filter_*`` key loudly. This pins that second half — even
+    where the legacy key equals the compiled edge, it is refused by its bare
+    name and the fatal guard raises, so a future compile that picks those
+    facts up stops rather than being accepted or silently dropped.
+    """
+
+    builder = _load_builder_module()
+    metadata = _soi_band_metadata(
+        ledger_filter_agi_lower_usd="100000", ledger_filter_agi_upper_usd="200000"
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(
+        (_spec("legacy_agi_usd", metadata),)
+    ) == {
+        "legacy_agi_usd": (
+            "ledger_filter_agi_lower_usd",
+            "ledger_filter_agi_upper_usd",
+        )
+    }
+    assert builder._unsupported_soi_ledger_filters(metadata) == (
+        "ledger_filter_agi_lower_usd",
+        "ledger_filter_agi_upper_usd",
+    )
+    with pytest.raises(RuntimeError, match="ledger_filter_agi_lower_usd"):
+        builder._assert_supported_ledger_filter_metadata(
+            (_spec("legacy_agi_usd", metadata),)
+        )
+
+
+def test_restated_filters_clear_the_soi_skip_only_where_they_agree() -> None:
+    """The second checker must not turn an accepted restatement into a silent drop.
+
+    ``_unsupported_soi_ledger_filters`` is consulted inside
+    ``_materialize_target_frame``'s SOI loop, where a non-empty result skips
+    the spec with no error at all — so accepting a restatement at the fatal
+    guard while leaving it listed here would only move the spec from a refusal
+    to a silent disappearance. A disagreeing restatement stays listed, and the
+    fatal guard at the top of the same function refuses it before the loop
+    runs, so the silent skip is unreachable for one. Unknown SOI filters keep
+    their existing behaviour.
+    """
+
+    builder = _load_builder_module()
+    agreeing = _soi_band_metadata(**{_RESTATED_AGI_LOWER: "100000"})
+    disagreeing = _soi_band_metadata(**{_RESTATED_AGI_LOWER: "50000"})
+
+    assert builder._unsupported_soi_ledger_filters(agreeing) == ()
+    assert builder._unsupported_soi_ledger_filters(disagreeing) == (
+        _RESTATED_AGI_LOWER,
+    )
+    with pytest.raises(RuntimeError, match="disagrees with agi_lower_bound"):
+        builder._assert_supported_ledger_filter_metadata(
+            (_spec("disagreeing", disagreeing),)
+        )
+    assert builder._unsupported_soi_ledger_filters(
+        {"ledger_filter_new_dimension": "specific_slice"}
+    ) == ("ledger_filter_new_dimension",)
+
+
+def test_restated_concept_rules_all_have_a_comparison() -> None:
+    """Every named restated concept must route to an implemented comparison.
+
+    Adding a concept to ``RESTATED_LEDGER_FILTER_CONCEPTS`` without a rule
+    would raise at compile time on the first spec carrying it; this pins the
+    two rules that exist instead.
+    """
+
+    builder = _load_builder_module()
+
+    assert set(builder.RESTATED_LEDGER_FILTER_CONCEPTS.values()) == {
+        "agi_band",
+        "eitc_child_count",
+    }
+    assert builder._restated_ledger_filter_concept(_RESTATED_AGI_LOWER) == (
+        "us:statutes/26/62#adjusted_gross_income",
+        "lower",
+    )
+    assert builder._restated_ledger_filter_concept(_RESTATED_EITC_CHILDREN_EXACT) == (
+        "us.tax.earned_income_credit_qualifying_children",
+        None,
+    )
+    assert builder._restated_ledger_filter_concept("not_a_filter_key") == ("", None)
+
+
+_COMPILED_LEDGER_FILTER_FIXTURE = (
+    Path(__file__).resolve().parent
+    / "fixtures"
+    / "us_compiled_ledger_filter_specs.json"
+)
+
+
+def _compiled_ledger_filter_fixture() -> dict:
+    return json.loads(_COMPILED_LEDGER_FILTER_FIXTURE.read_text())
+
+
+def test_pinned_chronicle_feed_compiles_no_unsupported_ledger_filters() -> None:
+    """The pre-merge compile of the feed #955 pins carries no ignored filter key.
+
+    The fixture is compiled target metadata from
+    ``compile_us_fiscal_target_registry`` over that feed — the sampled rows in
+    full, and a key census covering every one of its compiled targets. Both
+    guards must clear: no target refused, no ``irs_soi`` target dropped from
+    SOI materialization by the silent skip. The census arm generalises the
+    sample: any ``ledger_filter_*`` key the feed carries that is neither
+    supported nor a reviewed identity qualifier must be noop-valued on every
+    target that carries it, which is what makes "zero unsupported" a statement
+    about the whole registry and not only about the fifty rows kept here.
+
+    The census was captured at ``369dedf1f``, before this branch merged
+    ``origin/main`` and so before
+    :func:`microcosm.build.ledger_targets._constraint_bound_filters` existed;
+    a compile at the current head stamps restated keys this census does not
+    list. That is deliberate — the rows keep pinning the compile the
+    supported/identity classification was reviewed against, and
+    :func:`test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters`
+    is the arm that meets the restated keys on the live feed.
+    """
+
+    builder = _load_builder_module()
+    payload = _compiled_ledger_filter_fixture()
+    specs = tuple(_spec(row["name"], dict(row["metadata"])) for row in payload["specs"])
+    assert specs
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {}
+    builder._assert_supported_ledger_filter_metadata(specs)
+    for spec in specs:
+        if spec.metadata.get("family") == "irs_soi":
+            assert builder._unsupported_soi_ledger_filters(spec.metadata) == ()
+
+    classified = (
+        builder.SUPPORTED_LEDGER_FILTER_METADATA_KEYS
+        | builder.IDENTITY_LEDGER_FILTER_METADATA_KEYS
+    )
+    for key, census in payload["ledger_filter_key_census"].items():
+        if key in classified:
+            continue
+        for value in census["values"]:
+            assert builder._is_noop_ledger_filter_value(value), (key, value)
+
+
+def test_restated_bounds_track_each_compiled_band_in_the_fixture() -> None:
+    """Replay the rule over real compiled bands, agreeing and perturbed.
+
+    In the pre-merge compile the fixture pins, the feed states its AGI band
+    only as compiled metadata, so this injects the restatement a labelled
+    vocabulary would add onto real rows: each banded target's own lower edge
+    is accepted, and the same target with that edge moved is refused. Guards
+    the rule against a fixture that happens to contain no band — if the sample
+    ever loses its SOI rows, the assertion on ``banded`` fails rather than the
+    test passing vacuously.
+    """
+
+    builder = _load_builder_module()
+    payload = _compiled_ledger_filter_fixture()
+    banded = [
+        row
+        for row in payload["specs"]
+        if row["metadata"].get("agi_lower_bound") is not None
+    ]
+    assert len(banded) >= 4
+
+    agreeing = []
+    perturbed = []
+    for row in banded:
+        metadata = dict(row["metadata"])
+        compiled = metadata["agi_lower_bound"]
+        agreeing.append(_spec(row["name"], {**metadata, _RESTATED_AGI_LOWER: compiled}))
+        moved = "0" if compiled == "-inf" else str(builder._as_bound(compiled) + 1.0)
+        perturbed.append(_spec(row["name"], {**metadata, _RESTATED_AGI_LOWER: moved}))
+
+    assert builder._unsupported_ledger_filter_metadata(tuple(agreeing)) == {}
+    refused = builder._unsupported_ledger_filter_metadata(tuple(perturbed))
+    assert len(refused) == len({spec.name for spec in perturbed})
+    assert all(
+        entry.startswith(_RESTATED_AGI_LOWER)
+        and "disagrees with agi_lower_bound" in entry
+        for entries in refused.values()
+        for entry in entries
+    )
+
+
+def test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters() -> None:
+    """The same assertion against the real feed, when this machine has it.
+
+    The pinned consumer-facts feed is a 164 MB restricted-free public
+    aggregate export that no CI lane carries, so this runs only when
+    ``MICROCOSM_US_CHRONICLE_FACTS`` points at it.
+    ``experiments/us-labelled-filter-support/census_compiled_ledger_filters.py``
+    surveys the same compile.
+
+    This is the arm that meets real restated keys. Since the branch merged
+    ``origin/main``,
+    :func:`microcosm.build.ledger_targets._constraint_bound_filters` stamps the
+    feed's AGI and qualifying-child universe constraints as
+    ``ledger_filter_us:statutes/26/62#adjusted_gross_income_{lower,upper}_bound``
+    and
+    ``ledger_filter_us.tax.earned_income_credit_qualifying_children_lower_bound``,
+    and 1,988 of the 31,066 state-surface specs carry one. Reverting either
+    call site of :func:`_restated_ledger_filter_refusal` fails this assertion
+    on exactly those 1,988.
+    """
+
+    feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
+    if not feed or not Path(feed).exists():
+        pytest.skip(
+            "set MICROCOSM_US_CHRONICLE_FACTS to the pinned consumer-facts feed"
+        )
+
+    builder = _load_builder_module()
+    acs_release = _load_acs_local_release_module()
+    registry, _substitutions = acs_release.state_admin_specs(
+        feed, ["snap", "medicaid", "soi"], soi_mode="full"
+    )
+    specs = tuple(registry.specs)
+
+    assert specs
+    assert builder._unsupported_ledger_filter_metadata(specs) == {}
+    assert not [
+        spec
+        for spec in specs
+        if spec.family == "irs_soi"
+        and builder._unsupported_soi_ledger_filters(spec.metadata)
+    ]
 
 
 def test_eitc_child_count_mask_supports_soi_child_groups() -> None:
