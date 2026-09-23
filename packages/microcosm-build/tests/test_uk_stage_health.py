@@ -819,6 +819,8 @@ def test_cgt_incidence_anchor_gate_holds_the_composition_and_the_pairs() -> None
         )
     with pytest.raises(ValueError, match="pair_count"):
         _anchor_gate(_anchor_evidence(pair_count=1.5))
+
+
 def _gate_parameters(gate_id: str) -> dict:
     import json
     from pathlib import Path
@@ -1019,3 +1021,83 @@ def test_bus_support_pricing_gate_recomputes_the_factors_from_the_vendored_rows(
     )
     with pytest.raises(ValueError, match="bus_support_pricing must be an object"):
         run(None)
+
+
+def test_spi_income_band_donor_support_gate_checks_every_reserved_band() -> None:
+    bands = [200_000, 500_000, 1_000_000, 2_000_000]
+    taxpayers = {
+        200_000: 359_000.0,
+        500_000: 61_000.0,
+        1_000_000: 20_000.0,
+        2_000_000: 10_000.0,
+    }
+    rows = [
+        {
+            "lower_bound": lower,
+            "donor_households": 120,
+            "carriers": 120,
+            "donor_weight": taxpayers[lower] / 120,
+            "weighted_taxpayers": taxpayers[lower],
+            "published_taxpayers": taxpayers[lower],
+        }
+        for lower in bands
+    ]
+    evidence = {
+        "stage": "spi_income_band_donors",
+        "donors_per_band": 120,
+        "bands": rows,
+    }
+    parameters = {
+        "stage": "spi_income_band_donors",
+        "check": "spi_income_band_donor_support",
+        "donors_per_band": 120,
+        "band_lower_bounds": bands,
+    }
+    assert _passed(
+        uk_stage_health_gate(
+            evidence=evidence,
+            stage="spi_income_band_donors",
+            check="spi_income_band_donor_support",
+            parameters=parameters,
+        )
+    )
+    # A band whose copy lost its carrier fails.
+    broken = [dict(row) for row in rows]
+    broken[-1]["carriers"] = 119
+    result = uk_stage_health_gate(
+        evidence={**evidence, "bands": broken},
+        stage="spi_income_band_donors",
+        check="spi_income_band_donor_support",
+        parameters=parameters,
+    )
+    assert not result.passed and "119 carriers" in " ".join(result.failures)
+    # A missing band fails against the declared four.
+    result = uk_stage_health_gate(
+        evidence={**evidence, "bands": rows[:-1]},
+        stage="spi_income_band_donors",
+        check="spi_income_band_donor_support",
+        parameters=parameters,
+    )
+    assert not result.passed and "differ from the declared" in " ".join(result.failures)
+    # A scaled rung (fewer donors than declared) is not held to the published
+    # mass, but a full stack whose weights do not sum to it is.
+    scaled = [{**row, "donor_households": 2, "carriers": 2} for row in rows]
+    assert _passed(
+        uk_stage_health_gate(
+            evidence={**evidence, "donors_per_band": 2, "bands": scaled},
+            stage="spi_income_band_donors",
+            check="spi_income_band_donor_support",
+            parameters=parameters,
+        )
+    )
+    off = [dict(row) for row in rows]
+    off[0]["donor_weight"] = 1.0
+    result = uk_stage_health_gate(
+        evidence={**evidence, "bands": off},
+        stage="spi_income_band_donors",
+        check="spi_income_band_donor_support",
+        parameters=parameters,
+    )
+    assert not result.passed and "differ from the published" in " ".join(
+        result.failures
+    )
