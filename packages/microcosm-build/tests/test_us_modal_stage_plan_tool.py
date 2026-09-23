@@ -12,6 +12,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -521,27 +522,30 @@ def _smoke_plan_data() -> dict:
     }
 
 
-def test_runner_smoke_is_inline_small_and_runs_the_synced_environment(
-    tmp_path: Path,
-) -> None:
+def test_runner_smoke_is_inline_and_check_sized() -> None:
     plan = plan_lib.parse_plan(_smoke_plan_data())
     assert plan.resources is plan_lib.CHECK
     argv = plan_lib.planned_argv(plan)
     assert argv[:3] == ["/opt/venv/bin/python", "-B", "-c"]
+    assert "import microcosm.build" in argv[3]
     assert argv[4:] == [
         "/work/state",
         "/work/inputs/ladder/us_puma_ladder_2020.npz",
     ]
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("policyengine_us") is None,
+    reason="the smoke records the policyengine-us version (the us extra)",
+)
+def test_runner_smoke_code_writes_its_state_file(tmp_path: Path) -> None:
     # The inline code runs as written: it writes the state file the receipt
     # lists (executed here against a local stand-in input).
-    code = argv[3]
-    assert "import microcosm.build" in code
+    code = plan_lib.planned_argv(plan_lib.parse_plan(_smoke_plan_data()))[3]
     ladder = tmp_path / "inputs" / "ladder" / "us_puma_ladder_2020.npz"
     ladder.parent.mkdir(parents=True)
     ladder.write_bytes(b"npz")
     state = tmp_path / "state"
-    import subprocess
-
     subprocess.run([sys.executable, "-c", code, str(state), str(ladder)], check=True)
     payload = json.loads((state / "smoke" / "inputs.json").read_text())
     assert payload["inputs"] == [{"input": "ladder", "bytes": 3}]
