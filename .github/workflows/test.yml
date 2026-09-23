@@ -197,7 +197,7 @@ jobs:
       - name: Engine-free tests (${{ matrix.group }})
         run: |
           mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list "${{ matrix.group }}")
-          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider --durations=25
 
   engine-shared:
     # Deliberately does NOT depend on `changes`: it reads no classifier output,
@@ -218,7 +218,7 @@ jobs:
       - name: Shared/spec engine tests
         run: |
           mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list shared-spec)
-          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+          /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider --durations=25
 
   engine-us:
     needs: changes
@@ -240,7 +240,7 @@ jobs:
         run: |
           while IFS= read -r proc; do
             mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list "${{ matrix.group }}:${proc}")
-            /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+            /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider --durations=25
           done < <(uv run --no-sync python tools/ci_test_groups.py --procs "${{ matrix.group }}")
 
   engine-uk:
@@ -263,7 +263,7 @@ jobs:
         run: |
           while IFS= read -r proc; do
             mapfile -t files < <(uv run --no-sync python tools/ci_test_groups.py --list "uk:${proc}")
-            /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider
+            /usr/bin/time -v uv run --no-sync pytest "${files[@]}" -p no:cacheprovider --durations=25
           done < <(uv run --no-sync python tools/ci_test_groups.py --procs uk)
 
   wheels:
