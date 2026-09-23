@@ -3003,7 +3003,11 @@ def _execute_graph(
                 and dict(prepared.tolerances) == dict(input_tolerances)
                 and dict(prepared.numerics) == dict(input_numerics)
             )
-            if prepared is not None and scopes_match and prepared.incumbent is incumbent:
+            if (
+                prepared is not None
+                and scopes_match
+                and prepared.incumbent is incumbent
+            ):
                 # Nothing the projection reads has moved since it was taken:
                 # admitted populations are immutable (patch copies the tables
                 # and returns a new Population), so the same incumbent object,

@@ -294,7 +294,9 @@ class Speculation:
         assert prepared.future is not None
         prepared.future.cancel()
 
-    def run(self, node_id: str, kernel: object, context: KernelContext) -> KernelOutcome:
+    def run(
+        self, node_id: str, kernel: object, context: KernelContext
+    ) -> KernelOutcome:
         """Run a turn's own context on a worker and wait for it."""
 
         self._seen.add(node_id)

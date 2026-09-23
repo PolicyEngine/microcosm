@@ -331,7 +331,8 @@ def wide_graph(width: int = 10) -> Graph:
 
     full = toy.full_graph()
     survey_leaves = tuple(
-        toy.draw(f"leaf_{index:02d}", f"leaf_{index:02d}_value") for index in range(width)
+        toy.draw(f"leaf_{index:02d}", f"leaf_{index:02d}_value")
+        for index in range(width)
     )
     derived_leaves = tuple(
         toy.derive(
@@ -438,7 +439,9 @@ def population_fingerprint(manifest: object) -> dict[str, object]:
             )
             for entity in view.weighted_entities
         }
-        strata = pd.util.hash_pandas_object(view.strata, index=True).to_numpy().tobytes()
+        strata = (
+            pd.util.hash_pandas_object(view.strata, index=True).to_numpy().tobytes()
+        )
         found[version] = (tables, weights, strata)
     return found
 
@@ -684,10 +687,14 @@ def test_warm_reruns_hit_every_record_and_dispatch_nothing(tmp_path: Path) -> No
     graph = wide_graph()
     source = toy.copy_source(tmp_path / "source")
     store = ContentStore(tmp_path / "store")
-    cold = execute(graph, tmp_path / "cold", workers=4, source=source, store=store, seed=1)
+    cold = execute(
+        graph, tmp_path / "cold", workers=4, source=source, store=store, seed=1
+    )
     assert not any(cold.outcome.hits.values())
 
-    warm = execute(graph, tmp_path / "warm", workers=4, source=source, store=store, seed=2)
+    warm = execute(
+        graph, tmp_path / "warm", workers=4, source=source, store=store, seed=2
+    )
     assert all(warm.outcome.hits.values())
     assert warm.manifest.key == cold.manifest.key
     assert warm.outcome.objects == cold.outcome.objects
@@ -715,7 +722,9 @@ def test_a_partial_store_resumes_to_the_same_bytes(tmp_path: Path) -> None:
         source = toy.copy_source(root / "source")
         store = ContentStore(root / "store")
         execute(prefix, root / "prefix", workers=1, source=source, store=store)
-        run = execute(graph, root / "full", workers=workers, source=source, store=store, seed=3)
+        run = execute(
+            graph, root / "full", workers=workers, source=source, store=store, seed=3
+        )
         assert any(run.outcome.hits.values()) and not all(run.outcome.hits.values())
         outcomes[workers] = run.outcome
     outcomes[1].assert_identical(outcomes[4], label="partial resume")
@@ -883,7 +892,9 @@ def test_a_speculative_sibling_failure_surfaces_only_at_its_own_turn(
     assert len(results[1][1]) > 0
 
 
-def test_a_gate_that_raises_on_a_worker_is_still_a_failed_verdict(tmp_path: Path) -> None:
+def test_a_gate_that_raises_on_a_worker_is_still_a_failed_verdict(
+    tmp_path: Path,
+) -> None:
     graph = replace_gate(toy.full_graph(), kernel="bad.gate_raise@1")
     baseline = execute(graph, tmp_path / "w1", workers=1)
     run = execute(graph, tmp_path / "w4", workers=4, seed=5)
@@ -978,7 +989,10 @@ def test_the_observer_sees_the_canonical_order_on_the_calling_thread(
     order = None
     for workers in (1, 4):
         run = execute(
-            wide_graph(), tmp_path / f"w{workers}", workers=workers, observer=observer_for(workers)
+            wide_graph(),
+            tmp_path / f"w{workers}",
+            workers=workers,
+            observer=observer_for(workers),
         )
         order = run.manifest.nodes.keys()
     assert calls[4] == calls[1]
@@ -1027,7 +1041,11 @@ def test_a_source_changed_by_a_worker_evicts_the_run_as_sequentially(
                 kernels=registry,
                 max_workers=workers,
             )
-        results[workers] = (str(raised.value), store_objects(store), store_litter(store))
+        results[workers] = (
+            str(raised.value),
+            store_objects(store),
+            store_litter(store),
+        )
     assert "survey" in results[1][0]
     assert results[4] == results[1]
 
@@ -1060,7 +1078,9 @@ def test_a_stale_early_projection_is_discarded_and_the_turn_recomputes(
 
     def registry() -> KernelRegistry:
         kernels = toy.toy_registry()
-        kernels.register(FnKernel("ok.slow@1", _PLAIN, _slow(0.2, _ages("leaf_00_value"))))
+        kernels.register(
+            FnKernel("ok.slow@1", _PLAIN, _slow(0.2, _ages("leaf_00_value")))
+        )
         return kernels
 
     baseline = execute(graph, tmp_path / "w1", workers=1, registry=registry())
@@ -1259,7 +1279,12 @@ def test_the_scheduler_offers_only_nodes_whose_predecessors_are_admitted() -> No
     admitted: dict[str, object] = {}
     probe = Probe()
     speculation = _speculation(
-        order, predecessors, admitted, workers=4, probe=probe, decline=frozenset({"right"})
+        order,
+        predecessors,
+        admitted,
+        workers=4,
+        probe=probe,
+        decline=frozenset({"right"}),
     )
     try:
         speculation.fill(0)
@@ -1289,9 +1314,7 @@ def test_the_scheduler_offers_only_nodes_whose_predecessors_are_admitted() -> No
 def test_closing_the_scheduler_joins_calls_still_running() -> None:
     order = ("a", "b")
     probe = Probe()
-    speculation = _speculation(
-        order, {"a": (), "b": ()}, {}, workers=2, probe=probe
-    )
+    speculation = _speculation(order, {"a": (), "b": ()}, {}, workers=2, probe=probe)
     speculation.fill(0)
     speculation.close()
     assert live_workers() == []
