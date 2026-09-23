@@ -588,7 +588,7 @@ checks the column again with a zero clipped-row allowance. spine-s4
 `b899f40a…`): the clip receipt shows 0 rows clipped low and 0 high over 16,288 households
 (every draw is a donor value, positive-regime fills included), the payload is identical to
 spine-s3, and the three transferred-phase stage gates pass (15 columns checked on the lcfs
-support gate). `45aef087` also moved the UK `spec_sha256` (`d2e82feb…` → `08fbe013…`, the declaration
+support gate). `713b5064` (pre-rebase `45aef087`) also moved the UK `spec_sha256` (`d2e82feb…` → `08fbe013…`, the declaration
 changed) and the gate digests, re-pinned in the same commit but unmentioned in its message; the H2
 fixture was regenerated separately at `10d85464`.
 
@@ -630,7 +630,7 @@ lockstep claim had gone stale. Fixes:
   `applied_to` (schema `required`, runtime refusal, no defaults).
 - The crosswalk's `area_definitions_url` is Ofgem's regional cap page (the fourteen regions
   with their standing charges and unit rates), with a note on the dominant-area basis.
-- Attribution corrections: the UK `spec_sha256` moved at `45aef087` (Part R), the fixture was
+- Attribution corrections: the UK `spec_sha256` moved at `713b5064` (pre-rebase `45aef087`; Part R), the fixture was
   regenerated at `12628088` and `10d85464`, not `47ea5a03` (PR body).
 
 On the spine-s4 build record the reworked gate passes with 46 cells fact-checked and the
@@ -679,7 +679,7 @@ the coicop dimension; census central-heating tables (TS046, UV407; not consumed,
 counts carry the connection). Vendored: need_energy_facts.json (456 rows, 2023 and 2024),
 ons_household_expenditure_facts.json (42), desnz_domestic_energy_facts.json (155: Energy Trends
 plus the sixteen region/country subnational areas), qep_energy_prices.json (1,465). National
-surface 614 active (613 + 04.5.1 + 04.5.2 − 04.5 signed out `superseded_by_component_targets`),
+surface 614 active (613 + 04.5.1 + 04.5.2 − 04.5 signed out `superseded_by_component_targets`; ONS 04.5.3 liquid fuels, GBP 1.20bn in 2024, and 04.5.4 solid fuels, GBP 0.35bn, are vendored in `ons_household_expenditure_facts.json` and unbound because the frame models neither fuel, so the sign-out leaves about GBP 1.57bn of household fuel spend outside the bound rows; the sign-out's `approved_by juaristi22`, 2026-09-16, was confirmed by María on 2026-09-17 at the #930 plan review),
 local surface unchanged (20,885), compile-parity receipts rebuilt.
 
 The published facts (FY2024-25 unless stated):

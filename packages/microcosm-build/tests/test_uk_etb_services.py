@@ -394,7 +394,7 @@ def test_stage_transform_records_its_mass_conservation_receipt(
             clipped=d, receipt=SimpleNamespace(evidence=lambda: {})
         ),
     )
-    monkeypatch.setattr(module, "etb_bus_support_rake", lambda _s, d, **_: (d, {}))
+    monkeypatch.setattr(module, "etb_bus_support_pricing", lambda _s, d, **_: (d, {}))
     monkeypatch.setattr(
         module, "allocate_nhs_by_age_gender", lambda *_, **__: (nhs, {})
     )

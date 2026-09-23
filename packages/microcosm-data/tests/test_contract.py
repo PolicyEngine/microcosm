@@ -116,13 +116,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "1f3980db96a922ced81c89b63daae829f180984b1157a0a73cdc768c1ade7017"
+    "8757f540a12bdfd65f3466ba4b1bdf31ff29a765bc7caa2b4ca5236c738f843c"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "c9141c748dac31d4a0f37d746a8a7639080cf9a80f8cc296aae8e7ef6bafbf79"
+    "e16c751623fe0bccd1ef5409a60a6a9d9e3d44d1b071a8178314de615b1adb32"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "4e88c60ff7688a8528b793bee666ec669b871899f9d8eae7a6d19eb0b659ddd2"
+    "86325b18815736f41a2b6d85f468692e721e5131d945635ee9ab0850b14c3266"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -156,8 +156,12 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
     "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred", None),
+    "uk_stage_lcfs_consumption_bus_pricing": ("stage_health", "transferred", None),
+    "uk_stage_nts_bus_travel_support": ("stage_health", "transferred", None),
+    "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred", None),
     "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
     "uk_stage_etb_services_support": ("stage_health", "transferred", None),
+    "uk_stage_etb_services_support_pricing": ("stage_health", "transferred", None),
     "uk_stage_frs_hmrc_spine_leaves_signal": (
         "stage_health",
         "transferred",
@@ -1178,8 +1182,12 @@ def _gate_battery_payload(
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
         "uk_stage_lcfs_consumption_energy_rake": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_bus_pricing": "lcfs_consumption",
+        "uk_stage_nts_bus_travel_support": "nts_bus_travel",
+        "uk_stage_nts_bus_travel_facts": "nts_bus_travel",
         "uk_stage_etb_vat_support": "etb_vat",
         "uk_stage_etb_services_support": "etb_services",
+        "uk_stage_etb_services_support_pricing": "etb_services",
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",

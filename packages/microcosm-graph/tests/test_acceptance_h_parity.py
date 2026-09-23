@@ -43,7 +43,7 @@ PARITY = Path(__file__).parent / "fixtures" / "parity"
 #: was taken under).
 KERNEL_PARITY = PARITY / "kernels"
 
-#: H2: ``uk_spine.json`` — the 30-stage FRS spine expressed as a graph — plus
+#: H2: ``uk_spine.json`` — the 32-stage FRS spine expressed as a graph — plus
 #: ``sources/``, the data-only bundle both the graph and the legacy oracle
 #: rebuild their transforms from. The root transform's weights differ at the
 #: last bit between machines, so both sides recompute the root from the raw
@@ -256,7 +256,7 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     from declared ``consumes``: the assertion below is that the compiled
     topological order is derived, so the hand-maintained ``_STAGE_NAMES`` tuple
     in ``tools/build_uk_frs_spine.py`` — the 30 names intersected with a
-    30-stage packaged manifest, kept in step by hand — can be deleted.
+    32-stage packaged manifest, kept in step by hand — can be deleted.
     """
     _require(UK_SPINE_PARITY, "the UK migration lane (charter H2, María reviews)")
 
@@ -280,7 +280,7 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     graph = uk_spine_graph()
     assert graph_from_json((UK_SPINE_PARITY / "uk_spine.json").read_text()) == graph
     compiled = compile_graph(graph)
-    assert len(compiled.order) >= 31, "a CREATE node plus the 30 spine stages"
+    assert len(compiled.order) >= 32, "a CREATE node plus the 32 spine stages"
     assert all(
         set(compiled.predecessors[node_id]) <= set(compiled.order[:index])
         for index, node_id in enumerate(compiled.order)

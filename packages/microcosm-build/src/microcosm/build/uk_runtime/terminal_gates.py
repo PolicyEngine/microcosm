@@ -186,6 +186,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "household.household_is_capital_gains_clone",
     "household.household_is_cgt_band_donor",
     "household.household_is_spi_synthetic",
+    # #930: the NTS bus-travel stage's household journey cell.
+    "household.household_local_bus_trips",
     "household.la_code_oa",
     # #953: the engine's household local_authority enum input, written by the
     # rowwise geography ladder from local_authority_code. The incumbent never
@@ -211,6 +213,8 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.attends_private_school_random_draw",
     "person.capital_gains_asset_type",
     "person.capital_gains_residential_property",
+    "person.bus_in_london_trips",
+    "person.bus_pass_eligible",
     "person.care_hours",
     "person.charitable_investment_gifts",
     "person.dla_m_category",
@@ -225,8 +229,12 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.is_parent",
     "person.is_uc_claimant",
     "person.legacy_jobseeker_proxy",
+    "person.local_bus_single_fare_share",
+    "person.local_bus_trips",
+    "person.local_bus_use_band",
     "person.ons_family_index",
     "person.ons_family_role",
+    "person.other_local_bus_trips",
     "person.outpatient_visits",
     "person.pension_contributions_via_salary_sacrifice",
     "person.pip_dl_category",

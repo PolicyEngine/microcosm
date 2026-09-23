@@ -44,6 +44,7 @@ E5_STAGE_NAMES = [
     "regional_property_uprating",
 ]
 E6_STAGE_NAMES = [
+    "nts_bus_travel",
     "lcfs_consumption",
     "etb_vat",
     "etb_services",
@@ -311,6 +312,7 @@ class TestUKSourceStagesManifest:
                     "frs_household_draws": _identity,
                     "frs_brma": _identity,
                     "was_wealth": _identity,
+                    "nts_bus_travel": _identity,
                     "regional_property_uprating": _identity,
                     "lcfs_consumption": _identity,
                     "etb_vat": _identity,
@@ -638,18 +640,26 @@ class TestE3ManifestLockstep:
             "uprate_to_regional_reference",
             "record_mass_conservation_receipt",
         ]
+        assert [op.kind for op in stages["nts_bus_travel"].operations] == [
+            "clean_nts_travel_tables",
+            "materialize_rules_engine_predictors",
+            "impute_bus_use_band",
+            "assign_trips_from_band_means",
+            "assign_bus_pass_eligibility",
+            "support_clip",
+            "record_mass_conservation_receipt",
+        ]
         assert [op.kind for op in stages["lcfs_consumption"].operations] == [
             "derive",
             "uprate_donor_columns",
             "iterative_proportional_fit",
             "assign_binary_from_rate",
-            "assign_bus_use_incidence",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
             "iterative_proportional_fit",
             "price_domestic_energy",
-            "rake_to_vendored_facts",
+            "price_bus_journeys",
             "fold_into",
             "zero_when_false",
             "record_mass_conservation_receipt",
@@ -667,7 +677,7 @@ class TestE3ManifestLockstep:
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf_chain",
             "support_clip",
-            "rake_to_vendored_facts",
+            "price_bus_support",
             "compute_ratio",
             "allocate_per_capita_from_cell_table",
             "record_mass_conservation_receipt",
@@ -937,7 +947,6 @@ class TestE3ManifestLockstep:
         }
         assert lcfs_seeded == {
             "assign_binary_from_rate": 0,
-            "assign_bus_use_incidence": 0,
             "fit_weighted_qrf_chain": 0,
         }
         assert stages["etb_vat"].operations[2].parameters["seed"] == 0
