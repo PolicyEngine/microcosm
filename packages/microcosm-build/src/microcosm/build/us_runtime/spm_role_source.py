@@ -153,17 +153,27 @@ def _reconcile_units(persons: pd.DataFrame, key: str, label: str) -> pd.DataFram
     return units
 
 
-def _read_source_columns(source: Path | Any) -> pd.DataFrame:
+#: Census identifiers read as exact text, never as numbers (a numeric parse
+#: would silently drop PERIDNUM's leading zeros).
+_TEXT_SOURCE_COLUMNS = ("PERIDNUM", "SPM_ID")
+
+
+def _read_source_columns(
+    source: Path | Any, columns: tuple[str, ...] = _SOURCE_COLUMNS
+) -> pd.DataFrame:
     return pd.read_csv(
         source,
-        usecols=list(_SOURCE_COLUMNS),
-        dtype={"PERIDNUM": str, "SPM_ID": str},
+        usecols=list(columns),
+        dtype={column: str for column in _TEXT_SOURCE_COLUMNS if column in columns},
         low_memory=False,
     )
 
 
 def _read_archive_member(
-    path: Path, pin: AsecSpmRoleSource, label: str
+    path: Path,
+    pin: AsecSpmRoleSource,
+    label: str,
+    columns: tuple[str, ...] = _SOURCE_COLUMNS,
 ) -> pd.DataFrame:
     """Read the pinned person CSV from inside the official Census archive.
 
@@ -171,7 +181,10 @@ def _read_archive_member(
     person CSV (``education_assistance_source._load_one_source`` accepts both),
     so the role stage accepts both too. The archive must be the pinned one and
     hold exactly one pinned member whose size and SHA-256 equal the CSV pins;
-    the archive is re-hashed after reading.
+    the archive is re-hashed after reading. ``columns`` defaults to the role
+    stage's own; the #720 Census person-column restoration
+    (:mod:`.asec_census_person_columns`) reads its reviewed set through the
+    same verified path.
     """
 
     _require(_sha256(path) == pin.archive_sha256, f"{label} archive SHA-256 mismatch.")
@@ -191,11 +204,39 @@ def _read_archive_member(
                 digest.update(chunk)
         _require(digest.hexdigest() == pin.csv_sha256, f"{label} CSV SHA-256 mismatch.")
         with archive.open(info) as member:
-            source = _read_source_columns(member)
+            source = _read_source_columns(member, columns)
     _require(
         _sha256(path) == pin.archive_sha256, f"{label} archive changed while reading."
     )
     return source
+
+
+def read_pinned_asec_person_columns(
+    path: Path,
+    pin: AsecSpmRoleSource,
+    label: str,
+    columns: tuple[str, ...] = _SOURCE_COLUMNS,
+) -> tuple[pd.DataFrame, str]:
+    """Read ``columns`` of one pinned complete Census ASEC person CSV.
+
+    ``path`` is the official archive (verified by :func:`_read_archive_member`)
+    or its extracted person CSV, whose byte length and SHA-256 must equal the
+    pins before reading and whose SHA-256 is re-checked after. Returns the
+    columns and the path form read (``"archive"`` or ``"csv"``). The row count
+    is the caller's check. This is the one reader the SPM role derivation and
+    the #720 Census person-column restoration share.
+    """
+
+    if zipfile.is_zipfile(path):
+        return _read_archive_member(path, pin, label, columns), "archive"
+    _require(
+        path.stat().st_size == pin.csv_size_bytes,
+        f"{label} CSV byte length mismatch.",
+    )
+    _require(_sha256(path) == pin.csv_sha256, f"{label} CSV SHA-256 mismatch.")
+    source = _read_source_columns(path, columns)
+    _require(_sha256(path) == pin.csv_sha256, f"{label} CSV changed while reading.")
+    return source, "csv"
 
 
 def _load_source(
@@ -205,16 +246,7 @@ def _load_source(
     _require(
         pin.survey_year == pin.income_year + 1, f"{label} income/survey year mismatch."
     )
-    if zipfile.is_zipfile(path):
-        source = _read_archive_member(path, pin, label)
-    else:
-        _require(
-            path.stat().st_size == pin.csv_size_bytes,
-            f"{label} CSV byte length mismatch.",
-        )
-        _require(_sha256(path) == pin.csv_sha256, f"{label} CSV SHA-256 mismatch.")
-        source = _read_source_columns(path)
-        _require(_sha256(path) == pin.csv_sha256, f"{label} CSV changed while reading.")
+    source, _form = read_pinned_asec_person_columns(path, pin, label)
     _require(len(source) == pin.persons, f"{label} CSV person count mismatch.")
     source["PERIDNUM"] = _exact_person_keys(source.PERIDNUM, label)
     _require(bool(source.PERIDNUM.is_unique), f"{label} has duplicate PERIDNUM keys.")

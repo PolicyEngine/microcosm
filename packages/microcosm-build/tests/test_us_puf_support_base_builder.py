@@ -1831,6 +1831,10 @@ def test_pooled_asec_mode_loads_sources_with_manifest_metadata(
             f"2023={asec_2023}",
             "--asec-h5",
             f"2024={asec_2024}",
+            "--asec-education-source",
+            f"2023={tmp_path / 'asecpub24csv.zip'}",
+            "--asec-education-source",
+            f"2024={tmp_path / 'asecpub25csv.zip'}",
             "--target-year",
             "2024",
             "--asec-max-households",
@@ -1848,11 +1852,17 @@ def test_pooled_asec_mode_loads_sources_with_manifest_metadata(
     assert frame is sentinel_frame
     assert captured["target_year"] == 2024
     assert [
-        (source.year, source.path.name, source.max_households)
+        (
+            source.year,
+            source.path.name,
+            source.max_households,
+            source.census_person_source,
+            source.census_person_pin,
+        )
         for source in captured["sources"]
     ] == [
-        (2023, "asec_2023.h5", 50),
-        (2024, "asec_2024.h5", 50),
+        (2023, "asec_2023.h5", 50, tmp_path / "asecpub24csv.zip", None),
+        (2024, "asec_2024.h5", 50, tmp_path / "asecpub25csv.zip", None),
     ]
     assert metadata == {
         "kind": "pooled_asec",
@@ -1933,6 +1943,13 @@ def test_support_spine_spec_resolves_relative_years_and_shares(
         fake_build_pooled_asec_unit_frame,
     )
     monkeypatch.setattr(builder, "_sha256", lambda path: f"sha:{Path(path).name}")
+    resolved = {}
+
+    def fake_resolve(paths, *, income_years):
+        resolved["call"] = (paths, income_years)
+        return {year: tmp_path / f"census_{year}.zip" for year in income_years}
+
+    monkeypatch.setattr(builder, "resolve_asec_spm_role_source_paths", fake_resolve)
 
     args = builder._parse_args(
         [
@@ -1962,9 +1979,85 @@ def test_support_spine_spec_resolves_relative_years_and_shares(
         (2024, "asec_2024.h5", 0.25),
         (2025, "asec_2025.h5", 0.75),
     ]
+    # Spine-spec sources are bound to their Census person files like any other.
+    assert resolved["call"] == (None, (2024, 2025))
+    assert [source.census_person_source for source in captured["sources"]] == [
+        tmp_path / "census_2024.zip",
+        tmp_path / "census_2025.zip",
+    ]
     assert metadata["support_spine_spec"]["path"] == str(spec_path.resolve())
     assert metadata["support_spine_spec"]["sources"][0]["resolved_year"] == 2024
     assert metadata["support_spine_spec"]["sources"][1]["resolved_year"] == 2025
+
+
+def test_pooled_asec_sources_fetch_unmapped_census_person_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A pooled year without --asec-education-source is fetched and pinned (#720).
+
+    Source construction resolves the Census person files exactly as the SPM
+    role stage does, so no base built from --asec-h5 inputs can skip the
+    restoration of the columns its H5 lacks.
+    """
+
+    from microcosm.build.us_runtime import spm_independence_role
+
+    builder = _load_support_builder_module()
+    fetched = []
+
+    def fake_fetch(year):
+        fetched.append(year)
+        return tmp_path / f"fetched_{year}.csv"
+
+    monkeypatch.setattr(
+        spm_independence_role, "fetch_asec_education_assistance_source", fake_fetch
+    )
+    args = builder._parse_args(
+        [
+            "--asec-h5",
+            f"2024={tmp_path / 'asec_2024.h5'}",
+            "--asec-h5",
+            f"2022={tmp_path / 'asec_2022.h5'}",
+            "--asec-education-source",
+            f"2024={tmp_path / 'asecpub25csv.zip'}",
+            "--puf-h5",
+            "puf.h5",
+            "--out",
+            "out",
+            "--without-block-ladder",
+        ]
+    )
+
+    sources = builder._asec_sources_from_args(args, support_spine_spec=None)
+
+    assert fetched == [2022]
+    assert [(source.year, source.census_person_source) for source in sources] == [
+        (2024, tmp_path / "asecpub25csv.zip"),
+        (2022, tmp_path / "fetched_2022.csv"),
+    ]
+
+
+def test_pooled_asec_sources_refuse_an_income_year_without_census_pins(
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    args = builder._parse_args(
+        [
+            "--asec-h5",
+            f"2021={tmp_path / 'asec_2021.h5'}",
+            "--asec-education-source",
+            f"2021={tmp_path / 'asecpub22csv.zip'}",
+            "--puf-h5",
+            "puf.h5",
+            "--out",
+            "out",
+            "--without-block-ladder",
+        ]
+    )
+
+    with pytest.raises(ValueError, match=r"income year\(s\) \[2021\]"):
+        builder._asec_sources_from_args(args, support_spine_spec=None)
 
 
 def test_support_spine_spec_requires_mapped_asec_year(tmp_path: Path) -> None:
