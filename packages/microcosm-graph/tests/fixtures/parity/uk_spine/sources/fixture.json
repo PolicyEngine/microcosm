@@ -3964,6 +3964,13 @@
         {
           "kind": "support_clip",
           "range": "donor_realized"
+        },
+        {
+          "declared_factor": 1,
+          "entity": "household",
+          "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.",
+          "kind": "record_mass_conservation_receipt",
+          "reason": "NTS bus-travel imputation on the source spine: household weights pass through unchanged and total household mass is conserved."
         }
       ],
       "outputs": [

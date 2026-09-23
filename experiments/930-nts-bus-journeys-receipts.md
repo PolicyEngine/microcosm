@@ -341,3 +341,49 @@ alternatives are a different declared proxy region, or scaling the devolved seri
 published boardings ratio; (2) whether the ETB support rake now retires in favour of the
 support-per-journey value side (0.95 and 1.16 of the raked levels); (3) the vehicle-share gap
 (frame two-plus-car households 0.301 against NTS0205's 0.340) as a `was_wealth` follow-up.
+
+## Part H — the support rake retires: bus support priced from journeys (C12, 2026-09-23)
+
+María's ruling (2026-09-23): raking retires with the imputation; Wales and Northern Ireland keep
+the raw ETB draw for support; the change goes into #954. Commits `f9b3fcc4` (the pricing step,
+the retired `rake_to_vendored_facts` kind, `fact_raking.py` and the `fact_rake` check leaving with
+their last consumer, the `uk_stage_etb_services_support_pricing` gate) and `742a2346` (the ETB
+support-clip gate no longer exempts the column: spine-t2's first build blocked on that pin, the
+column is clipped like education and rail at the same zero allowance), both rebased below.
+
+Declaration: `price_bus_support` on `etb_services` — support areas London and England outside
+London (DfT BUS05bi reimbursement and net support, BUS01 boardings and concessionary boardings)
+and Scotland (Scottish Transport Statistics: concessionary fares £392m inside all government
+support £499m; 334m journeys, 183.6m concessionary); `raw_draw_regions: [WALES,
+NORTHERN_IRELAND]` (no published Welsh boardings; the NITHC accounts carry bus and rail jointly).
+Per household: reimbursement per concessionary boarding × its eligible persons' boardings plus
+the rest of the net support per boarding × every boarding, boardings being the `nts_bus_travel`
+trips times the fare pricing's boardings per resident trip. The published totals stay bound as
+calibration targets.
+
+spine-t2 (code `742a2346`, same base as spine-t, 364 s): 24 of 24 stage gates. Support clip:
+0 rows clipped on `bus_subsidy_spending` (donor max £14,074). Pricing receipt (design weights,
+the FRS sample before the CGT clone; 13,373 households priced, 2,915 on the raw draw):
+
+- England outside London: £1.215 per concessionary boarding, £0.683 per boarding; frame boardings
+  1,929m, eligible boarding share 0.208 beside the publisher's 0.281; support £1,856m (clipped
+  raw draw) → £1,807m priced against the published £1,895m, 0.953.
+- London: £0.369 and £0.520; boardings 1,950m, eligible share 0.410 beside 0.273; £307m → £1,308m
+  against £1,130m, 1.158.
+- Scotland: £2.135 and £0.320; boardings 519m (1.55× the published 334m, the proxy-region reading
+  of Part F), eligible share 0.581 beside 0.550; £224m → £810m against £499m, 1.623.
+- Raw draw: Wales £133.6m (the published concessionary-plus-operator support is £131.5m),
+  Northern Ireland £84.0m (the joint bus-plus-rail cell was £111.7m).
+- Weighted support in total: £2,605m before, £4,142m after (the priced areas' published total is
+  £3,524m).
+
+Twin diff spine-t → spine-t2 (`twin_diff_930_t2.sh`, expectation `spine-t2-payload-expectation.json`):
+three observed differences, three expected, none unexpected. `bus_subsidy_spending` moves on every
+row (priced in the three areas; Wales and Northern Ireland return from the raked value to the
+clipped raw draw). `rail_subsidy_spending` and `rail_usage` move on exactly the 679 Northern
+Ireland rows the retired joint bus-plus-rail cell used to scale. Weights, indices, every other
+column and root attribute byte-equal.
+
+The `bus_support_pricing` gate recomputes the three areas' components and per-boarding rates from
+the vendored rows at 1e-9 and reports the priced-over-published ratios (0.953, 1.158, 1.623)
+without fencing them: the calibration targets act on them, as they act on the fares.

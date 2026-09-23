@@ -647,6 +647,7 @@ class TestE3ManifestLockstep:
             "assign_trips_from_band_means",
             "assign_bus_pass_eligibility",
             "support_clip",
+            "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["lcfs_consumption"].operations] == [
             "derive",

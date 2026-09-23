@@ -49,6 +49,7 @@ from microcosm.build.uk_runtime.bus_use_incidence import (
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 from microcosm.build.uk_runtime.national_frame import (
+    uk_household_mass_conservation_receipt,
     uk_household_weight_kind,
     uk_national_frame,
     uk_time_period,
@@ -62,6 +63,13 @@ from microcosm.frame import Frame
 from microcosm.frame.rules import assert_rules_engine_country
 
 UK_NTS_BUS_TRAVEL_STAGE_NAME = "nts_bus_travel"
+#: The household-mass receipt this stage records (the manifest's
+#: ``record_mass_conservation_receipt`` operation repeats it): the terminal
+#: family gate requires exactly this reason on a valid mass-conserving record.
+UK_NTS_BUS_TRAVEL_MASS_CONSERVATION_REASON = (
+    "NTS bus-travel imputation on the source spine: household weights pass "
+    "through unchanged and total household mass is conserved."
+)
 UK_NTS_HOUSEHOLD_TAB_ROLE = "nts_household_tab"
 UK_NTS_INDIVIDUAL_TAB_ROLE = "nts_individual_tab"
 UK_NTS_TRIP_TAB_ROLE = "nts_trip_tab"
@@ -1424,7 +1432,12 @@ class UKNTSBusTravelStageTransform:
             time_period=uk_time_period(frame),
             weight_kind=uk_household_weight_kind(frame),
             household_weights=household_weights,
-            mass_log=frame.mass_log,
+            mass_log=(
+                *frame.mass_log,
+                uk_household_mass_conservation_receipt(
+                    frame, UK_NTS_BUS_TRAVEL_MASS_CONSERVATION_REASON
+                ),
+            ),
         )
         validate_uk_national_frame(result)
         self.last_fit_weight_records = imputation.fit_weight_records

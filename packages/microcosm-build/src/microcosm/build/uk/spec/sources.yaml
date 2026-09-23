@@ -1349,6 +1349,11 @@ stages:
         min_age: 65
   - kind: support_clip
     range: donor_realized
+  - kind: record_mass_conservation_receipt
+    entity: household
+    reason: 'NTS bus-travel imputation on the source spine: household weights pass through unchanged and total household mass is conserved.'
+    declared_factor: 1.0
+    gate_coupling: The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason.
   outputs:
   - local_bus_use_band
   - bus_in_london_trips
