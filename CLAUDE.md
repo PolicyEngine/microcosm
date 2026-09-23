@@ -75,7 +75,9 @@ coverage on every pull request to `main` and on manual dispatch. Its current UK
 job runs the real spine command against the complete committed synthetic fixture
 with seed 42, uses `--smoke --staging-local-only`, writes only under the runner's
 temporary directory, and is not part of
-`ci-ok`. The job has `contents: read`, does not persist checkout credentials,
+`ci-ok`. Like the test workflow, a new commit to a PR cancels that PR's older
+unfinished integration run; each manual dispatch runs independently. The job
+has `contents: read`, does not persist checkout credentials,
 does not reference a protected GitHub environment, and receives no external
 writer credential. Fork pull requests run the synthetic test without secrets.
 An optional repository-level `HF_STAGING_READ_TOKEN` permits a separate
