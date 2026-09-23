@@ -170,6 +170,14 @@ opt-ins. See
 [the ACS local-area SOI target surface](docs/us-acs-local-soi-target-surface.md)
 for what each mode contains and where the build records it.
 
+National and ACS local-area builds now use the same typed schema-8 calibration
+diagnostics writer. The local builder adds its Census population marginals to a
+versioned `TargetRegistry`, including provider, category, geography, and target
+hierarchy, before calibration. Both builders always attempt diagnostics after
+the calibrated dataset exists. If construction, validation, serialization, or
+writing fails, the release manifest records the failure and publication emits a
+warning without discarding the dataset release.
+
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs
 on the build machine (it needs the freshly built H5), so it isn't a CI step:
