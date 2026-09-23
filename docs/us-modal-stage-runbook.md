@@ -29,9 +29,13 @@ release directory onto the runs volume. Publication stays the human step in
    `run_id`, a full 40-hex commit and the branch it was pushed on, and every
    input as `{uri, sha256}`. Options (`soi_mode`, `hh_chunk`, `epochs` and
    so on) and environment overrides (`MICROCOSM_*`, `POPULACE_*`,
-   `*_NUM_THREADS`) come from allowlists. The runner sets the flags for
-   input paths, checkpoints and outputs, and a plan cannot pass them. It
-   also cannot pass `--allow-dirty`: every run builds from a clean clone.
+   `*_NUM_THREADS`) come from allowlists; an environment variable whose name
+   looks like a credential (`KEY`, `TOKEN`, `SECRET`, `PASSW`, `SIGNING`,
+   `CREDENTIAL`) is refused even under an allowed prefix. The runner sets the
+   flags for input paths, checkpoints and outputs, and a plan cannot pass
+   them. It also cannot pass `--allow-dirty`: every run builds from a clean
+   clone. `"nonpreemptible": true` asks for Modal's non-preemptible
+   placement at three times the list price (see "Preemption and restarts").
 2. **The image is the commit.** It starts from `debian_slim` with Python
    3.14, the minor version the local US builds record (`runtime.python`
    3.14.4 in the #974 build manifest; Modal served 3.14.2). It adds git and uv 0.11.7, makes a shallow
@@ -58,15 +62,24 @@ release directory onto the runs volume. Publication stays the human step in
    file at an explicit revision:
    `hf://datasets/<org>/<repo>@<revision>/<path>`. Public repos need no
    token. Each input is copied or downloaded to a stable local path,
-   `/work/inputs/<name>/<file>`, hashed in the same pass, and refused on
-   mismatch.
+   `/work/inputs/<name>/<file>`, and refused on a digest mismatch before the
+   tool starts: a volume input is hashed while it is copied, a Hub input
+   after it downloads. A Hub revision may be a branch name; the sha256 still
+   pins the bytes, so a branch that has moved fails verification.
 4. **State lives on the runs volume.** Each `run_id` keeps
    `runs/<run_id>/state/` on `microcosm-us-stage-runs`. That directory holds
    the checkpoints, the calibrated H5, the release root for `package` and
    the stage logs. A stage pulls the state to local disk and runs the tool
-   there, since materialize writes a memory-mapped matrix. It then mirrors
-   the state back: changed files are copied and files the tool deleted are
-   removed. Later stages of the same run pick up from that state. Before
+   there, since materialize writes a memory-mapped matrix. Before anything
+   uses the pulled state, it is verified against the run's latest receipt
+   (by `finished_at`): every file the receipt lists, with its bytes and
+   sha256, and nothing else. With no receipt the state must be empty. A
+   mismatch means a stage was cut short after changing the state, and the
+   stage refuses; start a new `run_id`. When the tool exits the state is
+   mirrored back: each changed file is copied under a temporary name in its
+   own directory and renamed over the old one, and files the tool deleted
+   are removed, so a mirror cut short never leaves a half-written file.
+   Later stages of the same run pick up from that state. Before
    paying for inputs, a stage after materialize checks that the run's
    `checkpoints/run_identity.json` exists and pins the same staging and
    ladder digests. The tool re-verifies the staging digest itself
@@ -74,12 +87,19 @@ release directory onto the runs volume. Publication stays the human step in
 5. **Every output has a receipt.** `runs/<run_id>/receipts/<stage>-<utc>.json`
    (`microcosm-modal-us-stage-receipt/1`) records:
    - the plan and its sha256;
-   - the commit, the clone's `HEAD`, clean state and branch;
+   - the commit, the clone's `HEAD`, clean state, and the branch with the
+     remote tip it was verified against;
    - the sha256 of the runner files and of `uv.lock`;
-   - the resource class, the exact argv, the return code and wall seconds;
-   - peak child RSS and the list-price cost estimate;
+   - the resource class and placement, the exact argv, the return code and
+     wall seconds;
+   - peak child RSS and the list-price cost estimate, for this container and
+     for every earlier unfinished attempt of the plan;
+   - the attempt id and this attempt's share of `max_wall_seconds`;
    - every verified input;
-   - the sha256 of the earlier receipts in the run;
+   - the names, never the values, of environment variables withheld from
+     the tool;
+   - the sha256 of the earlier receipts in the run, and the receipt the
+     pulled state matched;
    - every file in the state tree with its bytes and sha256.
 
    A failed stage still mirrors its state, so `calibrate` can resume from
@@ -92,9 +112,9 @@ The heavy and light classes are sized from the #974 measured peaks
 totals SOI surface). On the state SOI surface, the overnight build of 23
 September measured materialize locally at a 77.9 GB peak, 5,569 s of tool
 wall and 5,472 CPU-s (4,459 targets; see the acceptance attempt below). On
-Modal the same stage ran two to five times slower per chunk and held 15 to
-24 GB more RSS at the same point, so the local wall times in this table
-understate Modal's wall and cost.
+Modal the same stage ran 3.3 to 7.6 times slower per chunk (3.93 times over
+chunks 1 to 29) and held 15 to 24 GB more RSS at the same chunk, so the
+local wall times in this table understate Modal's wall and cost.
 
 | Stage | Measured locally | Class | Request | List price at measured wall |
 | --- | --- | --- | --- | --- |
@@ -109,9 +129,11 @@ The prices are Modal's list prices for standard compute, read from
 modal.com/pricing on 22 September 2026: $0.0000131 per core-second and
 $0.00000222 per GiB-second. Modal bills the higher of the request and actual
 use. The heavy class costs about $1.21 an hour, so an 8-hour timeout costs at
-most about $9.70. The engine pass in materialize is single-threaded (CPU
-seconds roughly equal wall seconds), so extra cores would not speed it up.
-The table leaves out volume storage and image builds.
+most about $9.70. With `"nonpreemptible": true` every figure is three times
+higher: about $3.63 an hour for the heavy class. The engine pass in
+materialize is single-threaded (CPU seconds roughly equal wall seconds), so
+extra cores would not speed it up. The table leaves out volume storage and
+image builds.
 
 ## Commands
 
@@ -138,18 +160,23 @@ modal volume put microcosm-us-stage-inputs <file> cas/sha256/<digest>/<name>
 python3 tools/modal_us_stage_plan.py validate plan.json
 
 # 3. Check on Modal (default mode; 2 cores / 8 GiB). It builds the image,
-#    verifies the clone, imports the environment, runs the pinned tool's own
-#    _parse_args on the built argv, checks every input digest (Hub inputs
-#    by their LFS sha256, without downloading) and the run's prior state.
+#    verifies the clone and that the plan's branch contains its commit,
+#    imports the environment, runs the pinned tool's own _parse_args on the
+#    built argv, checks every input digest (Hub inputs by their LFS sha256,
+#    without downloading), hashes the run's state against its latest
+#    receipt, and reports the attempts charged to the budget and any
+#    attempt of the run that may still be running.
 MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 
 # 4. Run the stage. --detach keeps it running if this terminal goes away;
 #    the receipt lands on the runs volume either way. Set "max_wall_seconds"
 #    in the plan to cap the cost below the class's hard timeout: the runner
 #    stops the tool then, and the receipt says FAILED, stopped_at_budget.
-#    The budget covers every attempt: when Modal restarts a preempted
-#    container, the time the cut-short attempts ran comes off it (see
-#    "Preemption" below).
+#    The budget covers every attempt that never finished: when Modal
+#    restarts a preempted container, the time the cut-short attempts ran
+#    comes off it (see "Preemption and restarts" below). A stop at the
+#    budget writes a receipt, so launching the same plan again gets the
+#    whole budget again.
 MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run
 
 # 5. Fetch the state and verify it against the receipt.
@@ -170,7 +197,8 @@ and receipt code as a real stage.
 Next stage: copy the plan, change `stage`, keep the `run_id`, and drop `feed`
 if you like, since only materialize reads it. Run steps 3 and 4 again. Run
 one stage of a run at a time, because two concurrent stages would race on the
-same state directory.
+same state directory. The attempt ledger enforces this, best effort (see
+"Preemption and restarts").
 
 For a gated or private Hub input, set `MICROCOSM_MODAL_HF_SECRET` to the name
 of a Modal secret that holds `HF_TOKEN`, for example `huggingface-token` in
@@ -229,8 +257,12 @@ overnight build and the Hub were not touched.
   recorded 3.14.4.
 
 The heavy materialize replay has not been run. It needs the staging H5 on
-the inputs volume, which is about 10.7 GB to upload, plus one heavy run at
-about $1.71 list price for the measured wall time. That run is the next
+the inputs volume, which is about 10.7 GB to upload, plus one heavy run.
+That is about $1.71 at the local wall time, but at the Modal pace measured
+on 23 September (3.93 times local, below) it is closer to 5.5 hours: about
+$6.70 if nothing preempts it, or about $20 non-preemptible, which a run that
+long needs (see "Preemption and restarts"). Add `"nonpreemptible": true` and
+a `max_wall_seconds` to a copy of the plan first. That run is the next
 step:
 
 ```bash
@@ -249,10 +281,20 @@ The plan `docs/us-modal-stage-acceptance-20260923-plan.json` ran the
 materialize stage of the overnight build of 23 September on Modal
 (`run_id` `overnight-20260923-materialize-state`). It pinned build commit
 `767312d6` on branch `overnight-acs-local-20260923`, `soi_mode` `state`,
-`hh_chunk` 20,000, the local run's peak-limit environment and a
-26,400-second wall budget. The same stage ran locally at the same time from
-the same inputs. The Modal run did not finish, so its outputs could not be
-compared.
+`hh_chunk` 20,000 and a 26,400-second wall budget. The same stage ran
+locally at the same time from the same inputs. The Modal run did not finish,
+so its outputs could not be compared.
+
+The plan as launched (`b2e34fe4f`, plan sha256 `5ec595c7…`) also set four
+peak-limit variables copied from the local run's environment:
+`MICROCOSM_ACS_POOL_PEAK_LIMIT_BYTES`,
+`MICROCOSM_STAGING_EXPORT_PEAK_LIMIT_BYTES` and their `POPULACE_` twins. At
+`767312d6` none of them reaches materialize. The two `MICROCOSM_` names are
+read nowhere. The two `POPULACE_` names only set defaults for
+`with_optional_acs_spine` and `_preflight_staging_export`, which only the
+staging builder calls. They were removed from the committed plan, whose
+sha256 is now `d1341ec0…`, so a relaunch of this file is a new plan to the
+attempt ledger.
 
 - **Inputs.** The staging H5 (`ed2e6308…`, 10,685,765,051 bytes) went to
   the inputs volume in 255 seconds, about 42 MB/s, and the staging summary
@@ -262,16 +304,23 @@ compared.
   policyengine-us 2.2.1 and policyengine-core 3.32.5, the same versions as
   the local environment. The tool's parser accepted the argv, and all four
   inputs matched their digests on the volume.
-- **Run.** The container started at 06:03:06 UTC and the tool's first
-  log line came at 06:06:22, so staging and verifying the inputs took under
-  3.5 minutes. The tool's own timings, Modal against local:
+- **Run.** It was launched detached at 06:02:58 UTC (02:02:58 EDT) as app
+  `ap-mzp14wEyVLIFlYX5qQQxFZ`, on runner commit `1d80287af`, before the
+  attempt ledger existed. The container started at 06:03:06 UTC and the
+  tool's first log line came at 06:06:22, so staging and verifying the
+  inputs took under 3.5 minutes. The tool's own timings, Modal against
+  local:
 
   | Step | Modal | Local |
   | --- | --- | --- |
-  | Start to staging frame loaded (hashing, specs, load) | 255 to 281 s | 79 s |
-  | One chunk of 20,000 households | 149 to 355 s | 66 to 80 s |
+  | Start to staging frame loaded (hashing, specs, load) | 280.6 and 254.6 s | 79.3 s |
+  | One chunk of 20,000 households | 144.0 to 354.5 s | 36.8 to 80.1 s (mean 66.3 s over 80) |
+  | Chunks 1 to 29 in all (second attempt) | 6,832 s | 1,737 s |
   | peak RSS after chunk 1 | 66.3 GB | 51.0 GB |
   | peak RSS after chunk 29 | 74.5 GB | 51.0 GB |
+
+  Per chunk Modal was 3.3 to 7.6 times slower, and 3.93 times over chunks 1
+  to 29.
 
   The container ran gVisor (`Linux-4.19.0-gvisor-x86_64`) with Python
   3.14.2. In the check-class container Modal set `OMP_NUM_THREADS`,
@@ -286,16 +335,20 @@ compared.
   minutes (after chunk 12 of 80) and the second after 2 hours 4 minutes
   (after chunk 29). Each time it restarted the function from zero. The run
   was launched before the attempt ledger existed, so the budget restarted
-  too. It was stopped by hand (`modal app stop`) 34 seconds into a third
-  attempt, because at the observed pace a third attempt needed 6.5 to 7
-  more hours and would have taken the total past $10.
+  too. It was stopped by hand (`modal app stop`, 09:02:22 UTC) 34 seconds
+  into a third attempt, because at the observed pace a third attempt needed
+  6.5 to 7 more hours and would have taken the total past $10. It left no
+  receipt and no state: that runner mirrors state and writes the receipt
+  only when the tool exits, and the runs volume has no
+  `runs/overnight-20260923-materialize-state`.
 - **Cost.** Modal's workspace billing report
   (`modal.billing.workspace_billing_report`, hourly) shows $3.57 for the
   run through 09:00 UTC. The last 2.5 minutes add about $0.05, for about
   $3.62 in total. The check cost $0.02. Billing was at the request, about
   $1.21 an hour.
 - **Local result for the next comparison.** The local run finished in
-  5,569 s with a 77.9 GB peak. `run_identity`: staging `ed2e6308…`, ladder
+  5,604.5 s of wall (5,569 s in the tool) with a 77.9 GB peak (the tool's
+  log; 76.7 GB by the supervisor). `run_identity`: staging `ed2e6308…`, ladder
   `39a2ab2a…`, 1,588,854 households, 4,459 targets (3,972 admin specs
   declared and compiled, plus 487 state and CD population cells), no
   dropped cells, `targets_sha256`
@@ -309,13 +362,98 @@ compared.
   local file next to the overnight run.
 
 At the pace observed, one uninterrupted Modal materialize on the state
-surface takes about 3.5 to 7 hours. That is about $4 to $9 on preemptible
-placement, or $13 to $26 with `"nonpreemptible": true`, against 1.5 hours
-locally. The Modal path works, but it does not yet make this stage cheaper
-or faster. The run did show that the stage runs as one long single-core
+surface takes about 5.3 to 6.9 hours: 80 chunks at the second attempt's
+mean of 235.6 s, or at its last five chunks' 308.2 s, plus about 4.5
+minutes of loading. That is about $6.40 to $8.40 at the preemptible list
+price if nothing preempts it, and $19 to $25 with `"nonpreemptible": true`,
+against 1.6 hours locally. At the preemption rate this run saw, a 5- to
+7-hour preemptible run finishes uninterrupted 1 to 3% of the time, so
+non-preemptible is the practical placement for it. The Modal path works,
+but it does not yet make this stage cheaper or faster. The run did show that the stage runs as one long single-core
 loop over 80 chunks of households. If the chunks are independent, which
 this runbook has not checked in `materialize_chunked`, fanning them out
 across containers would let preemption lose one chunk instead of the run.
+
+## Preemption and restarts
+
+Functions run on Modal's preemptible placement unless the plan sets
+`"nonpreemptible": true`. When Modal preempts a container it restarts the
+function on the same input, from zero, whatever `retries` says
+(modal.com/docs/guide/preemption). The 23 September acceptance run was
+preempted twice. The state is mirrored and the receipt written only when
+the tool exits, so a preempted attempt's tool work is lost, but it is
+billed.
+
+**The attempt ledger.** Each attempt writes
+`runs/<run_id>/attempts/<stage>-<attempt id>.json` when it starts and
+rewrites it every 120 seconds until it ends: through the lock wait, input
+staging, the tool, hashing and mirroring. The record ends with one outcome.
+
+| Outcome | When | Charged to the budget |
+| --- | --- | --- |
+| `receipt` | the tool ran and a receipt was written, COMPLETED or FAILED | no |
+| `refused` | the lock or the budget stopped it before it staged anything | no |
+| `error` | any exception after its first record: a digest mismatch, a failed pull or mirror, a pulled-state mismatch, a runner bug | yes |
+| none | preempted (or still running) | yes |
+
+**The budget.** A new attempt charges every unfinished attempt of the same
+plan (same `run_id`, stage and plan sha256) to `max_wall_seconds`. Its tool
+gets what is left, and it refuses to start with less than 60 seconds. A
+preempted attempt is charged from the start of `_run_stage` to its last
+record, so the charge leaves out the container's cold start and image load,
+up to 120 seconds after the last record (more if a heartbeat write failed),
+and the preemption grace period. A stop at the budget is not a preemption:
+the tool is stopped, the state mirrored and a FAILED receipt with
+`stopped_at_budget` written, so that attempt is finished and launching the
+same plan again gets the whole budget again. To launch past a spent budget,
+raise `max_wall_seconds` or use a new `run_id`. Any change to the plan,
+`nonpreemptible` included, is a new plan sha256 and a fresh budget.
+
+**The lock.** Two attempts of one run would race on its state directory,
+so the ledger is also the run's lock. An attempt refuses to start while an
+earlier attempt of the same run, of any stage or plan, is still writing its
+record. A record less than 300 seconds old is ambiguous, because Modal
+restarts a preempted input within moments. The new attempt waits 270
+seconds (two heartbeats) and reads again. A record that moved belongs to a
+running attempt, and the new one refuses; a record that did not move
+belongs to a dead one, and the new attempt starts. A restart after
+preemption can therefore spend up to 4.5 more minutes. There is no
+override: a dead attempt stops blocking after one wait, and a running one
+must not be raced. Modal volumes have no atomic lock, so two attempts that
+start within one volume commit of each other can both pass; run one stage
+of a run at a time. The check reports recent records without waiting.
+
+**The state after a cut.** The mirror writes each file under a temporary
+name and renames it, so it never leaves a half-written file. A preemption
+during mirroring can still leave some files new and some old. The next
+attempt verifies the pulled state against the run's latest receipt and
+refuses that mix; start a new `run_id`.
+
+**When to set `"nonpreemptible": true`.** Non-preemptible placement costs
+three times the list price for CPU and memory (modal.com/docs/guide/preemption
+and modal.com/pricing, read 23 September 2026): about $3.63 an hour for the
+heavy class instead of $1.21. Set it for heavy stages expected to run
+longer than about an hour. The acceptance run was preempted twice in about
+2.97 hours of running (after 54 minutes and after 2 hours 4 minutes), a
+rate λ of about 0.67 an hour. Each preemption restarts the stage from zero,
+so at that rate a stage of T hours on preemptible placement takes
+(e^(λT) − 1)/λ hours in expectation:
+
+| Stage length | Uninterrupted on preemptible | Expected preemptible hours and cost | Non-preemptible cost |
+| --- | --- | --- | --- |
+| 1 h | 51% | 1.4 h, $1.73 | $3.63 |
+| 2 h | 26% | 4.2 h, $5.12 | $7.27 |
+| 3 h | 13% | 9.7 h, $11.78 | $10.90 |
+| 6 h | 2% | 83 h, $101 | $21.81 |
+
+Past about an hour a preemptible attempt is more likely than not to be cut
+short. Non-preemptible placement pays for itself in expected cost from
+about 2.8 hours. Before that it costs up to three times as much for a
+result that arrives on time. A `max_wall_seconds` budget also usually stops
+a long preemptible run before it finishes. Two preemptions in one run is a
+small sample: a 95% interval for the rate runs from about 0.08 to 2.4 an
+hour, so read the table as an order of magnitude. Light stages and short
+heavy stages (calibrate took 7 minutes locally) are cheaper preemptible.
 
 ## Data placement
 
@@ -343,25 +481,12 @@ hold digests, sizes and paths, never file contents.
   registered either. It takes a directory input (`--inputs-dir`, the ACS
   PUMS archive cache), which the plan format does not support. Supporting it
   would take an archive digest plus extraction.
-- **Preemption and out-of-memory kills.** Functions run on Modal's default
-  (preemptible) placement. When Modal preempts a container it restarts the
-  function on the same input, from scratch, whatever `retries` says; this
-  happened to the 23 September acceptance run after 54 minutes. State is
-  only mirrored and the receipt only written when the tool exits, so the
-  cut-short attempt leaves no receipt and its work is lost, but it is
-  billed. Each attempt therefore writes
-  `runs/<run_id>/attempts/<stage>-<utc>.json` when it starts and rewrites
-  it every 120 seconds. A restart charges the time of every earlier attempt
-  of the same plan that never wrote a receipt to `max_wall_seconds`, and
-  refuses to start when less than a minute is left. The check reports those
-  attempts and the time left. To launch again past a spent budget, raise
-  `max_wall_seconds` (a new plan digest) or use a new `run_id`. A plan can
-  set `"nonpreemptible": true` to run on Modal's non-preemptible placement,
-  which avoids restarts at three times the list price for CPU and memory
-  (modal.com/docs/guide/preemption, read 23 September 2026); `validate` and
-  the receipt price it that way. The heavy class sets a memory request but
-  no hard limit. What Modal does with a container killed for memory has not
-  been observed here.
+- **Work lost to preemption, and memory kills.** A preempted attempt's
+  tool work is lost: the state is mirrored only when the tool exits, and
+  materialize has no resume point inside its chunk loop. Non-preemptible
+  placement avoids preemption (see "Preemption and restarts"). The heavy
+  class sets a memory request but no hard limit. What Modal does with a
+  container killed for memory has not been observed here.
 - **Certification.** A receipt proves which bytes a stage produced. It does
   not certify a release. Preflight (`tools/preflight_us_release_gates.py`)
   and certification still run on the output as before.
