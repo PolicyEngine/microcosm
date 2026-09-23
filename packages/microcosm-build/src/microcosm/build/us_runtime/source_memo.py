@@ -13,16 +13,30 @@ It is not a source of authority. Owners still capture their current source
 bytes and check them against the pins, still construct, register and seal
 every issued object, and still run every live-object, mutation and producer
 check. An entry only stands in for the pure computation those same bytes
-would have produced under that same code.
+would have produced under that same code. A refusal is never recorded: only
+a computation that returned is.
 
 Keys
     ``sha256("microcosm.us.source-memo.v1\\0" + canonical(document))`` where the
     document holds the namespace, a runtime identity (interpreter, platform,
-    zlib, the digests of the stdlib parser modules, of the binary that provides
-    the C ``_csv``/``zlib``/``_json`` code and of this module), the owner's
-    code identity, every input as ``{role, sha256, bytes}`` and the canonical
-    parameters. File inputs are hashed through one no-follow descriptor at call
-    time; stat metadata and modification times are never trusted.
+    optimisation level, zlib, the digests of the stdlib parser modules, of the
+    binary that provides the C ``_csv``/``_json``/``zlib`` code and of this
+    module), the owner's code identity, every input as ``{role, sha256,
+    bytes}`` and the canonical parameters. ``canonical`` is sorted compact JSON
+    encoded as strict UTF-8, so distinct values have distinct keys; a value it
+    cannot encode exactly (a lone surrogate, a NaN) never forms a key. File
+    inputs are hashed through one no-follow descriptor at call time; stat
+    metadata and modification times are never trusted.
+
+Code identity
+    Each owner passes its own recorded producer or implementation identity
+    (the one its receipts already carry) plus ``live_code(*modules)``: the
+    SHA-256 of each module's file, a check that every function and method the
+    module defines still runs the code compiled from those bytes, the identity
+    of every function bound in its namespace and its immutable constants
+    (limits, pins, field lists). A monkeypatched constant or function
+    therefore changes the key, and loaded code that no longer matches its file
+    bypasses the memo entirely.
 
 Entries fail closed
     ``index/<kk>/<key>.json`` names content-addressed ``blobs/<dd>/<sha256>``
@@ -46,6 +60,7 @@ Activation
     ``MICROCOSM_US_SOURCE_MEMO_KEY`` (or ``key_path=``) names the HMAC key
     file, by default ``$XDG_CONFIG_HOME/microcosm/us-source-memo.key`` or
     ``~/.config/microcosm/us-source-memo.key``, created 0600 on first use.
+    The memo is a cache: deleting its root is always safe.
 """
 
 from __future__ import annotations
@@ -63,6 +78,7 @@ import json.scanner
 import math
 import os
 import platform
+import re
 import secrets
 import stat
 import sys
@@ -76,6 +92,7 @@ from collections import Counter
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from types import CodeType, FunctionType
 
 PROTOCOL = "microcosm.us.source-memo.v1"
 ROOT_ENV = "MICROCOSM_US_SOURCE_MEMO"
@@ -88,12 +105,15 @@ _INDEX_MAX_BYTES = 1024**2
 _BLOB_MAX_BYTES = 16 * 1024**3
 _BLOBS_MAX = 64
 _CHUNK = 1024**2
+_COMPILED_MAX = 64
 _HEX = frozenset("0123456789abcdef")
 _DISABLED = object()
+_SKIP = object()
 _ACTIVE = contextvars.ContextVar("microcosm_us_source_memo", default=None)
 _LOCK = threading.RLock()
 _STATISTICS = Counter()
 _ENVIRONMENT_MEMOS = {}
+_COMPILED = {}
 _RUNTIME = None
 _SELF_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -112,17 +132,25 @@ def _sha(value: bytes) -> str:
 
 
 def canonical(value) -> bytes:
-    """Sorted, compact, ASCII JSON; the only encoding of keys and indexes."""
+    """Sorted compact JSON as strict UTF-8: the only encoding of keys and indexes.
+
+    Strict UTF-8 refuses a lone surrogate instead of escaping it, so two
+    distinct strings never share an encoding.
+    """
     return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True, allow_nan=False
-    ).encode("ascii")
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
 
 
 def ordered(value) -> bytes:
-    """Compact ASCII JSON preserving mapping order, for JSON-native values."""
+    """Compact strict-UTF-8 JSON preserving mapping order, for JSON-native values."""
     return json.dumps(
-        value, separators=(",", ":"), ensure_ascii=True, allow_nan=False
-    ).encode("ascii")
+        value, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
 
 
 def _is_hex(value, size=64):
@@ -159,7 +187,7 @@ def _binary_sha(module) -> str:
             if sysconfig.get_config_var("Py_ENABLE_SHARED")
             else Path(sys.executable)
         )
-    return _sha(Path(path).read_bytes())
+    return file_sha256(path)[0]
 
 
 def runtime_identity() -> dict:
@@ -172,6 +200,7 @@ def runtime_identity() -> dict:
                 "python": sys.version,
                 "hexversion": sys.hexversion,
                 "cache_tag": sys.implementation.cache_tag,
+                "optimize": sys.flags.optimize,
                 "machine": platform.machine(),
                 "system": platform.system(),
                 "byteorder": sys.byteorder,
@@ -206,6 +235,116 @@ def _self_unchanged() -> bool:
         return False
 
 
+def _compiled(path: str, payload: bytes) -> dict:
+    """Code objects compiled from exact module bytes, by qualified name."""
+    key = (path, _sha(payload))
+    with _LOCK:
+        codes = _COMPILED.get(key)
+    if codes is None:
+        codes = {}
+
+        def visit(code):
+            codes.setdefault(code.co_qualname, []).append(code)
+            for value in code.co_consts:
+                if isinstance(value, CodeType):
+                    visit(value)
+
+        visit(compile(payload, path, "exec", dont_inherit=True))
+        with _LOCK:
+            while len(_COMPILED) >= _COMPILED_MAX:
+                del _COMPILED[next(iter(_COMPILED))]
+            _COMPILED[key] = codes
+    return codes
+
+
+def _immutable(value, depth=0):
+    """A JSON form of an immutable constant, or _SKIP for anything else."""
+    _require(depth <= 32, "MEMO_CONSTANT_DEPTH")
+    kind = type(value)
+    if value is None or kind in (bool, int, str):
+        return [kind.__name__, value]
+    if kind is float:
+        return ["float", value.hex()]
+    if kind is bytes:
+        return ["bytes", value.hex()]
+    if kind is re.Pattern:
+        return ["pattern", _immutable(value.pattern, depth + 1), value.flags]
+    if kind in (tuple, frozenset):
+        items = [_immutable(item, depth + 1) for item in value]
+        if any(item is _SKIP for item in items):
+            return _SKIP
+        if kind is frozenset:
+            items = sorted(items, key=canonical)
+        return [kind.__name__, items]
+    return _SKIP
+
+
+def _function(value, module, codes, seen):
+    """Identity of one bound function, checking code the module itself defines."""
+    if id(value) in seen:
+        return ["seen", value.__qualname__]
+    seen.add(id(value))
+    code = value.__code__
+    own = value.__globals__ is vars(module) and code.co_filename != "<string>"
+    if own:
+        candidates = codes.get(code.co_qualname, ())
+        _require(any(code == item for item in candidates), "MEMO_LIVE_CODE")
+    return [
+        value.__module__,
+        value.__qualname__,
+        code.co_qualname,
+        own,
+        [
+            _function(cell.cell_contents, module, codes, seen)
+            for cell in value.__closure__ or ()
+            if isinstance(cell.cell_contents, FunctionType)
+        ],
+    ]
+
+
+def live_code(*modules) -> dict:
+    """Current file bytes, checked loaded code and constants of ``modules``.
+
+    Raises ``SourceMemoError`` when a function or method a module defines no
+    longer runs the code compiled from its file, so the memo is bypassed.
+    """
+    result = {}
+    for module in modules:
+        path = module.__file__
+        payload = Path(path).read_bytes()
+        codes = _compiled(path, payload)
+        functions, constants, seen = {}, {}, set()
+        for name, value in sorted(vars(module).items()):
+            if name.startswith("__"):
+                continue
+            if isinstance(value, FunctionType):
+                functions[name] = _function(value, module, codes, seen)
+            elif isinstance(value, type) and value.__module__ == module.__name__:
+                for method_name, method in sorted(vars(value).items()):
+                    if isinstance(method, (staticmethod, classmethod)):
+                        method = method.__func__
+                    parts = (
+                        (method.fget, method.fset, method.fdel)
+                        if isinstance(method, property)
+                        else (method,)
+                    )
+                    for index, part in enumerate(parts):
+                        if isinstance(part, FunctionType):
+                            functions[f"{name}.{method_name}/{index}"] = _function(
+                                part, module, codes, seen
+                            )
+            else:
+                form = _immutable(value)
+                if form is not _SKIP:
+                    constants[name] = form
+        result[module.__name__] = {
+            "sha256": _sha(payload),
+            "functions": functions,
+            "constants": constants,
+        }
+    return result
+
+
 @dataclass(frozen=True)
 class FileInput:
     """A source file hashed at call time through a no-follow descriptor."""
@@ -233,12 +372,13 @@ def _stat_identity(value):
     )
 
 
-def file_sha256(path) -> tuple[str, int]:
+def file_sha256(path, *, maximum=None) -> tuple[str, int]:
     """SHA-256 and size of one regular non-symlink file, unchanged while read."""
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         before = os.fstat(descriptor)
         _require(stat.S_ISREG(before.st_mode), "MEMO_INPUT_KIND")
+        _require(maximum is None or before.st_size <= maximum, "MEMO_INPUT_SIZE")
         digest, count = hashlib.sha256(), 0
         with os.fdopen(descriptor, "rb", buffering=0, closefd=False) as stream:
             while chunk := stream.read(_CHUNK):
@@ -304,11 +444,10 @@ def strict_equal(left, right) -> bool:
 
 
 def exact_text(value) -> bool:
-    """A str that ASCII JSON escaping round-trips exactly: no surrogate code points.
+    """A str that strict UTF-8 JSON round-trips exactly: no surrogate code points.
 
-    ``ensure_ascii`` writes an astral character as a surrogate pair and the
-    decoder joins any adjacent pair, so a str holding two lone surrogates would
-    come back as one character. Strictly decoded UTF-8 never contains one.
+    Strictly decoded UTF-8 never contains one, and ``ordered`` refuses to
+    encode one, so this only lets a proof refuse early instead of at encoding.
     """
     if value.isascii():
         return True
@@ -355,7 +494,10 @@ def _private_directory(path: Path) -> Path:
     try:
         info = path.lstat()
     except FileNotFoundError:
-        path.mkdir(mode=0o700)
+        try:
+            path.mkdir(mode=0o700)
+        except FileExistsError:
+            pass
         info = path.lstat()
     _require(stat.S_ISDIR(info.st_mode), "MEMO_DIRECTORY")
     _require(info.st_uid == os.getuid(), "MEMO_DIRECTORY_OWNER")
@@ -369,14 +511,19 @@ def _load_secret(path: Path) -> bytes:
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except FileNotFoundError:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        descriptor = os.open(
-            path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
-        )
+        # Write a complete key under a private name, then link it into place:
+        # a concurrent first use either wins the link or reads the winner's key.
+        descriptor, temporary = tempfile.mkstemp(prefix=".key-", dir=path.parent)
         try:
             os.write(descriptor, secrets.token_bytes(_SECRET_BYTES))
             os.fsync(descriptor)
-        finally:
             os.close(descriptor)
+            try:
+                os.link(temporary, path)
+            except FileExistsError:
+                pass
+        finally:
+            os.unlink(temporary)
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         info = os.fstat(descriptor)
@@ -405,18 +552,24 @@ def _read_regular(path: Path, maximum: int, exact=None) -> bytes | None:
         _require(stat.S_ISREG(before.st_mode), "MEMO_ENTRY_KIND")
         _require(before.st_size <= maximum, "MEMO_ENTRY_SIZE")
         _require(exact is None or before.st_size == exact, "MEMO_ENTRY_SIZE")
-        parts, count = [], 0
+        # One read per GiB: a blob up to 1 GiB is a single allocation, never
+        # copied again. One byte past the recorded size detects growth.
+        parts, remaining = [], before.st_size + 1
         with os.fdopen(descriptor, "rb", buffering=0, closefd=False) as stream:
-            while chunk := stream.read(min(_CHUNK * 64, before.st_size - count + 1)):
-                count += len(chunk)
-                _require(count <= before.st_size, "MEMO_ENTRY_CHANGED")
+            while remaining > 0:
+                chunk = stream.read(min(remaining, 1024**3))
+                if not chunk:
+                    break
                 parts.append(chunk)
+                remaining -= len(chunk)
+        value = parts[0] if len(parts) == 1 else b"".join(parts)
+        del parts
         _require(
-            count == before.st_size
+            len(value) == before.st_size
             and _stat_identity(before) == _stat_identity(os.fstat(descriptor)),
             "MEMO_ENTRY_CHANGED",
         )
-        return b"".join(parts)
+        return value
     finally:
         os.close(descriptor)
 
@@ -502,7 +655,7 @@ class _Memo:
         return None
 
     def _publish(self, target: Path, data: bytes):
-        directory = _private_directory(target.parent)
+        _private_directory(target.parent)
         descriptor, temporary = tempfile.mkstemp(prefix=".memo-", dir=self.root / "tmp")
         try:
             with os.fdopen(descriptor, "wb") as stream:
@@ -517,7 +670,12 @@ class _Memo:
             except FileNotFoundError:
                 pass
             raise
-        del directory
+
+    def _blob_present(self, path, digest, size):
+        try:
+            return file_sha256(path, maximum=size) == (digest, size)
+        except (OSError, SourceMemoError):
+            return False
 
     def store(self, namespace, key, document, blobs):
         described = []
@@ -528,11 +686,7 @@ class _Memo:
             digest = _sha(value)
             described.append({"sha256": digest, "bytes": len(value)})
             path = self._blob_path(digest)
-            try:
-                existing = _read_regular(path, _BLOB_MAX_BYTES, len(value))
-            except SourceMemoError:
-                existing = None
-            if existing is None or _sha(existing) != digest:
+            if not self._blob_present(path, digest, len(value)):
                 self._publish(path, value)
         entry = {
             "protocol": PROTOCOL,
@@ -541,7 +695,9 @@ class _Memo:
             "blobs": described,
         }
         entry["mac"] = self._mac(canonical(entry))
-        self._publish(self._index_path(key), canonical(entry))
+        body = canonical(entry)
+        _require(len(body) <= _INDEX_MAX_BYTES, "INDEX_SIZE")
+        self._publish(self._index_path(key), body)
         _count(namespace, "stored")
         _count(namespace, "stored_bytes", sum(len(value) for value in blobs))
 
@@ -586,11 +742,13 @@ def memoized(
     ``code`` returns the owner's JSON code identity and is evaluated before the
     lookup and again after a miss's computation. ``inputs`` are FileInput or
     DigestInput items and ``parameters`` a canonical JSON value; either may be
-    a zero-argument callable, evaluated only when the memo is enabled. ``encode(value)`` returns a list of bytes blobs and
-    ``decode(blobs)`` rebuilds the value. ``proof(value, blobs)`` must return
-    True only if ``decode(blobs)`` is exactly ``value``; by default the decoded
-    value is compared with ``strict_equal``. Exceptions from ``compute`` always
-    propagate unchanged, so owner refusals keep their codes and timing.
+    a zero-argument callable, evaluated only when the memo is enabled.
+    ``encode(value)`` returns a list of bytes blobs and ``decode(blobs)``
+    rebuilds the value. ``proof(value, blobs)`` must return True only if
+    ``decode(blobs)`` is exactly ``value``; by default the decoded value is
+    compared with ``strict_equal``. Exceptions from ``compute`` always
+    propagate unchanged, so owner refusals keep their codes and timing, and
+    nothing is recorded for them.
     """
     memo = _current()
     if memo is None:
@@ -632,6 +790,7 @@ def memoized(
             _count(namespace, "hit")
             _count(namespace, "decode_seconds", time.perf_counter() - decoding)
             return value
+        del blobs
     _count(namespace, "miss")
     computing = time.perf_counter()
     value = compute()

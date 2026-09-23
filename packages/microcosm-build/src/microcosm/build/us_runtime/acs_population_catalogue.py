@@ -20,7 +20,14 @@ from . import acs_housing_universe_source as housing
 from . import acs_native_coverage_binding as native
 from . import acs_person_coverage_columns as literal
 from . import survey_population_domains as domains
-from .source_memo import DigestInput, FileInput, exact_text, json_native, memoized
+from .source_memo import (
+    DigestInput,
+    FileInput,
+    exact_text,
+    json_native,
+    live_code,
+    memoized,
+)
 from .source_memo import ordered as _ordered
 
 PROTOCOL = "microcosm.acs-source-catalogue.v1"
@@ -391,6 +398,17 @@ def _decode_records(raw):
     )
 
 
+def _memo_code():
+    """This issuer's recorded producer plus the live code, bound functions and
+    constants of the modules ``_collect`` executes; see ``source_memo``."""
+    return {
+        "producer": _producer(),
+        "live": live_code(
+            sys.modules[__name__], housing, literal, native.coverage, domains
+        ),
+    }
+
+
 def _collected(held, projection_sha256, projection_bytes, paths):
     """``_collect`` over the verified full projection, memoized by its exact bytes.
 
@@ -404,7 +422,7 @@ def _collected(held, projection_sha256, projection_bytes, paths):
 
     return memoized(
         "acs_population_catalogue._collect",
-        code=_producer,
+        code=_memo_code,
         inputs=lambda: (
             DigestInput("full_projection", projection_sha256, projection_bytes),
             FileInput("household_archive", paths["household"]),

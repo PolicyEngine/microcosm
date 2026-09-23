@@ -175,8 +175,8 @@
         "numpy",
         "pandas"
       ],
-      "resource_accesses_sha256": "62fb460f6e9e83950ebde58268452ef422125abc9cab4ba9e3baf891faaf8c8a",
-      "unbound_uses_sha256": "2d15da648f88028d9eaaf529d5ff0595844fe1f8b4204040c8e8894290bbd915"
+      "unbound_uses_sha256": "ed4ca6ee36b38732b9fbe1d64aec5021ee4eb281e86353da416dda016f558d15",
+      "resource_accesses_sha256": "62fb460f6e9e83950ebde58268452ef422125abc9cab4ba9e3baf891faaf8c8a"
     },
     "microcosm.build/us_runtime/acs_person_coverage_columns.py": {
       "imports": [
@@ -192,8 +192,8 @@
         "microcosm.build.us_runtime",
         "microcosm.build.us_runtime.source_memo"
       ],
-      "resource_accesses_sha256": "8899ffc02d4808966ab99d6897940046a3d422acb99014c0f3cb44591978c775",
-      "unbound_uses_sha256": "c175b4f5a567b65b62146020a7b0ae39aa9d32d57bdf0839618b13d1003721a1"
+      "unbound_uses_sha256": "20e48cd4e0a94c13d1509befe350c18380a1342e8c8ff01c688432bd7cbf5b7f",
+      "resource_accesses_sha256": "8899ffc02d4808966ab99d6897940046a3d422acb99014c0f3cb44591978c775"
     },
     "microcosm.build/us_runtime/acs_pums.py": {
       "imports": [
@@ -887,8 +887,8 @@
     },
     "microcosm.build/us_runtime/source_memo.py": {
       "imports": [],
-      "resource_accesses_sha256": "4ede4d228fb2a25c35b3c1dee9a0e582414cc8841f686caf12ca55a5fcf4075c",
-      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "resource_accesses_sha256": "ef63c979814ce7123792c51c7808a1c8bf41bd07b4dc29fbd66cd30df705afb9"
     },
     "microcosm.build/us_runtime/spine_assembly.py": {
       "imports": [

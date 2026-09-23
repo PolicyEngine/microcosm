@@ -788,6 +788,9 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         # Bind source CSV readers to the real stdlib builtin, including caller
         # aliases
         "source_csv_builtin.py",
+        # Persistent, content-addressed memo for deterministic US source
+        # derivations
+        "source_memo.py",
         # Explicit S0101-only activation for the selected ACS/ASEC development path
         "survey_age_activation.py",
         # Country admission for survey age profiles with an explicit source prefix

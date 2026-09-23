@@ -31,7 +31,14 @@ from . import acs_housing_universe_source as custody
 from . import acs_person_coverage_columns as literal
 from .acs_pums import AcsPumsSource
 from .source_csv_builtin import csv_reader_bound
-from .source_memo import FileInput, exact_text, json_native, memoized, ordered
+from .source_memo import (
+    FileInput,
+    exact_text,
+    json_native,
+    live_code,
+    memoized,
+    ordered,
+)
 
 PROTOCOL = "microcosm.acs-person-coverage-authentication.v1"
 MAX_HEADER_BYTES = 1024**2
@@ -61,6 +68,7 @@ _IMPLEMENTATION_FILES = (
     "acs_sources.py",
     "acs_pums.py",
     "source_csv_builtin.py",
+    "source_memo.py",
     "acs_2024_1yr_sources.json",
 )
 
@@ -490,16 +498,25 @@ def _prove_inventory(role):
     return prove
 
 
+def _memo_code():
+    """This owner's recorded producer plus the live code, bound functions and
+    constants of the modules an inventory executes; see ``source_memo``."""
+    return {
+        "producer": _producer(),
+        "live": live_code(sys.modules[__name__], literal, custody),
+    }
+
+
 def _inventory(path, role, serialnos):
     """Complete member inventory and selected rows of one archive, memoized.
 
     A deterministic function of the archive's bytes, role, exact selection
-    and this owner's producer; see ``source_memo``. Refusals are unchanged:
-    only a completed inventory is ever recorded.
+    and this owner's code; see ``source_memo``. Refusals are unchanged: only
+    a completed inventory is ever recorded.
     """
     return memoized(
         "acs_person_coverage_authentication._inventory",
-        code=_producer,
+        code=_memo_code,
         inputs=(FileInput("archive", path),),
         parameters=lambda: _selection_parameters(role, serialnos),
         compute=lambda: _inventory_uncached(path, role, serialnos),

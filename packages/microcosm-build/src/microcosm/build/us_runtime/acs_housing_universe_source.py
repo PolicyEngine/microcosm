@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import stat
+import sys
 import tempfile
 import zipfile
 from contextlib import contextmanager, suppress
@@ -43,7 +44,7 @@ from .acs_sources import load_acs_source_manifest
 from .graph_implementation import implementation_hash
 from .operator_boundary import assert_operator_free_source_frame
 from .source_csv_builtin import capture_csv_reader
-from .source_memo import DigestInput, FileInput, memoized
+from .source_memo import DigestInput, FileInput, live_code, memoized
 from .source_memo import json_native as _json_native
 from .source_memo import ordered as _ordered
 
@@ -632,8 +633,44 @@ class AuthenticatedACSHousingSource:
 
 
 def _memo_code():
-    """Code identity of this owner's memoized derivations, recomputed per call."""
-    return {"owner": ACS_HU_STAGE, "implementation_sha256": _implementation()}
+    """Code identity of this owner's memoized derivations, recomputed per call.
+
+    The scoped implementation hash this owner records in every receipt, plus
+    the live code, bound functions and constants (limits, pins, field lists)
+    of the modules the two derivations execute. See ``source_memo.live_code``.
+    """
+    return {
+        "owner": ACS_HU_STAGE,
+        "implementation_sha256": _implementation(),
+        "live": live_code(
+            sys.modules[__name__],
+            sys.modules[capture_csv_reader.__module__],
+            sys.modules[canonical_json.__module__],
+        ),
+    }
+
+
+def _selection_parameters(pins, serialnos, implementation):
+    """Exact selection identity: ``None`` or a tuple of strings, by digest.
+
+    Anything else is not a key, so the memo is bypassed and ``_select``
+    refuses it exactly as it would without a memo.
+    """
+    if serialnos is None:
+        selection = None
+    else:
+        _require(
+            type(serialnos) is tuple and all(type(v) is str for v in serialnos),
+            "SELECTION_KEYS",
+        )
+        raw = _ordered(list(serialnos))
+        selection = {"sha256": _sha(raw), "bytes": len(raw), "keys": len(serialnos)}
+    return {
+        "pins": [list(pin) for pin in pins],
+        "selection": selection,
+        "implementation_sha256": implementation,
+        "definition_sha256": _definition()[1],
+    }
 
 
 def _full_projection(paths):
@@ -705,12 +742,7 @@ def _selection(full_bytes, members, parsed, pins, serialnos, implementation):
         "acs_housing_universe_source.selection",
         code=_memo_code,
         inputs=inputs,
-        parameters=lambda: {
-            "pins": [list(pin) for pin in pins],
-            "serialnos": None if serialnos is None else list(serialnos),
-            "implementation_sha256": implementation,
-            "definition_sha256": _definition()[1],
-        },
+        parameters=lambda: _selection_parameters(pins, serialnos, implementation),
         compute=compute,
         encode=list,
         decode=tuple,
