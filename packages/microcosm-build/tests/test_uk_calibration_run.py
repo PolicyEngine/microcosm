@@ -69,11 +69,13 @@ def _fake_cgt_projection(base_year: int = 2023, horizon_year: int = 2030):
 
     # The manifest pins the engine's growth path; the fake must sit on it or
     # the binding's drift check fails the gate.
-    pinned = next(
+    parameters = next(
         entry
         for entry in load_country_spec("uk").gates.gates
         if entry.id == "uk_cgt_projection_entrants"
-    ).parameters["expected_yoy_growth_by_year"]
+    ).parameters
+    pinned = parameters["expected_yoy_growth_by_year"]
+    pinned_exempt = parameters["expected_exempt_amount_by_year"]
     growth: dict[str, float] = {}
     cumulative: dict[str, float] = {}
     factor = 1.0
@@ -90,7 +92,8 @@ def _fake_cgt_projection(base_year: int = 2023, horizon_year: int = 2030):
         yoy_growth_by_year=growth,
         cumulative_gains_factor_by_year=cumulative,
         exempt_amount_by_year={
-            str(year): 3_000.0 for year in range(base_year, horizon_year + 1)
+            str(year): float(pinned_exempt[str(year)])
+            for year in range(base_year, horizon_year + 1)
         },
         engine="test",
     )

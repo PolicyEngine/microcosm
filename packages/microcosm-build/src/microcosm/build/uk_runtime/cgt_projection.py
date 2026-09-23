@@ -24,8 +24,10 @@ __all__ = [
     "UK_CGT_GAINS_GROWTH_PARAMETER",
     "UK_CGT_PROJECTION_ARTIFACT_KEY",
     "UK_CGT_PROJECTION_INSTANT_RULE",
+    "UK_CGT_PROJECTION_PINS_ENGINE",
     "UKCGTProjection",
     "uk_cgt_projection",
+    "uk_cgt_projection_from_pins",
 ]
 
 #: The engine's uprating index for ``capital_gains`` (per-capita GDP growth).
@@ -36,6 +38,9 @@ UK_CGT_EXEMPT_AMOUNT_PARAMETER = "gov.hmrc.cgt.annual_exempt_amount"
 UK_CGT_PROJECTION_ARTIFACT_KEY = "cgt_projection"
 #: Parameters are read at 1 January of each year, as the donor uprating does.
 UK_CGT_PROJECTION_INSTANT_RULE = "january_first"
+#: The engine label of a projection built from the manifest pins because no
+#: engine is installed; the binding still drift-checks it against the pins.
+UK_CGT_PROJECTION_PINS_ENGINE = "manifest_pins (policyengine-uk unavailable)"
 
 ParameterReader = Callable[[str, int], float]
 
@@ -142,6 +147,7 @@ def uk_cgt_projection(
     growth_parameter: str = UK_CGT_GAINS_GROWTH_PARAMETER,
     exempt_amount_parameter: str = UK_CGT_EXEMPT_AMOUNT_PARAMETER,
     parameter_reader: ParameterReader | None = None,
+    engine_label: str | None = None,
 ) -> UKCGTProjection:
     """Read the growth path and exempt amounts from the engine (or a reader).
 
@@ -166,7 +172,7 @@ def uk_cgt_projection(
         engine = _installed_engine()
     else:
         reader = parameter_reader
-        engine = "supplied_parameter_reader"
+        engine = engine_label or "supplied_parameter_reader"
     growth: dict[str, float] = {}
     cumulative: dict[str, float] = {}
     exempt: dict[str, float] = {
@@ -199,4 +205,46 @@ def uk_cgt_projection(
         cumulative_gains_factor_by_year=cumulative,
         exempt_amount_by_year=exempt,
         engine=engine,
+    )
+
+
+def uk_cgt_projection_from_pins(
+    base_year: int,
+    horizon_year: int,
+    *,
+    growth_by_year: Mapping[str, float],
+    exempt_amount_by_year: Mapping[str, float],
+    growth_parameter: str = UK_CGT_GAINS_GROWTH_PARAMETER,
+    exempt_amount_parameter: str = UK_CGT_EXEMPT_AMOUNT_PARAMETER,
+) -> UKCGTProjection:
+    """The projection the manifest pins describe, for an engine-free build.
+
+    The seam reads the installed engine when there is one and drift-checks it
+    against the pins; without an engine (the secrets-free fast lane, a
+    data-only build) the pins themselves are the reviewed statement of the
+    engine's uprating, and the receipt names that source. A year the pins do
+    not cover fails closed here rather than at the gate.
+    """
+
+    def read(path: str, year: int) -> float:
+        table = (
+            growth_by_year
+            if path == growth_parameter
+            else exempt_amount_by_year
+            if path == exempt_amount_parameter
+            else None
+        )
+        if table is None or str(year) not in table:
+            raise ValueError(
+                f"The CGT projection pins carry no {path!r} value for {year}."
+            )
+        return float(table[str(year)])
+
+    return uk_cgt_projection(
+        base_year,
+        horizon_year,
+        growth_parameter=growth_parameter,
+        exempt_amount_parameter=exempt_amount_parameter,
+        parameter_reader=read,
+        engine_label=UK_CGT_PROJECTION_PINS_ENGINE,
     )

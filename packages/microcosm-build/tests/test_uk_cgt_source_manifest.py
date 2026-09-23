@@ -160,7 +160,11 @@ def test_manifest_declares_the_advani_summers_remainder_surface() -> None:
     assert surface["resource"] == ADVANI_SUMMERS_RESOURCE
     assert surface["format"] == "json"
     assert surface["runtime_sha256_required"] is True
-    assert remainder["policy"] == UK_CGT_REMAINDER_POLICY
+    # The manifest carries the reviewed sentence; the receipt carries the
+    # short policy name the code pins.
+    assert "Advani-Summers within-band" in remainder["policy"]
+    assert "(0, annual exempt amount]" in remainder["policy"]
+    assert UK_CGT_REMAINDER_POLICY == "advani_summers_within_band_exempt_range"
     assert remainder["resource"] == ADVANI_SUMMERS_RESOURCE
     assert remainder["quantile_points"] == list(CGT_QUANTILE_POINTS)
     assert remainder["spline_degree"] == 1
@@ -185,7 +189,9 @@ def test_incidence_anchor_family_requires_its_conserving_receipt() -> None:
 
 def test_incidence_anchor_manifest_operations_match_the_stage_implementation() -> None:
     stage = load_country_spec("uk").sources.stage_map()[CGT_INCIDENCE_ANCHOR_STAGE_NAME]
-    declared = [(operation.kind, dict(operation.parameters)) for operation in stage.operations]
+    declared = [
+        (operation.kind, dict(operation.parameters)) for operation in stage.operations
+    ]
 
     assert declared == [
         (kind, dict(parameters))
@@ -198,4 +204,6 @@ def test_incidence_anchor_manifest_operations_match_the_stage_implementation() -
     assert roles["capital_gains_incidence_and_quantiles"]["resource"] == (
         ADVANI_SUMMERS_RESOURCE
     )
-    assert "gov.hmrc.cgt.annual_exempt_amount" in roles["policy_parameters"]["parameters"]
+    assert (
+        "gov.hmrc.cgt.annual_exempt_amount" in roles["policy_parameters"]["parameters"]
+    )

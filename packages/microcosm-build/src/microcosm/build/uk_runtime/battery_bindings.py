@@ -609,7 +609,7 @@ _CGT_PROJECTION_PARAMETER_KEYS = frozenset(
         "gains_growth_parameter",
         "exempt_amount_parameter",
         "expected_yoy_growth_by_year",
-        "expected_exempt_amount",
+        "expected_exempt_amount_by_year",
         "maximum_growth_drift",
         "bound_resource",
         "bound_size_band_lower_bound",
@@ -679,7 +679,12 @@ def _evaluate_cgt_projection_entrants(
             "to rates."
         )
     drift_tolerance = float(parameters["maximum_growth_drift"])
-    expected_exempt = float(parameters["expected_exempt_amount"])
+    expected_exempt = parameters["expected_exempt_amount_by_year"]
+    if not isinstance(expected_exempt, Mapping):
+        raise ValueError(
+            "cgt_projection_entrants expected_exempt_amount_by_year must map years "
+            "to amounts."
+        )
     drifts: list[str] = []
     for year in projection.projected_years:
         pinned = expected_growth.get(str(year))
@@ -690,9 +695,12 @@ def _evaluate_cgt_projection_entrants(
         if abs(actual_rate - float(pinned)) > drift_tolerance:
             drifts.append(f"growth {year}: engine {actual_rate} vs pinned {pinned}")
     for year, amount in projection.exempt_amount_by_year.items():
-        if abs(float(amount) - expected_exempt) > 0.5:
+        pinned_amount = expected_exempt.get(str(year))
+        if pinned_amount is None:
+            drifts.append(f"no pinned exempt amount for {year}")
+        elif abs(float(amount) - float(pinned_amount)) > 0.5:
             drifts.append(
-                f"exempt amount {year}: engine {amount} vs pinned {expected_exempt}"
+                f"exempt amount {year}: engine {amount} vs pinned {pinned_amount}"
             )
     if drifts:
         raise ValueError(

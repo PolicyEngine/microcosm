@@ -51,6 +51,7 @@ from microcosm.build.uk_runtime.cgt_projection import (
     UK_CGT_PROJECTION_ARTIFACT_KEY,
     UKCGTProjection,
     uk_cgt_projection,
+    uk_cgt_projection_from_pins,
 )
 from microcosm.build.uk_runtime.diagnostics import (
     uk_target_geography_levels,
@@ -981,7 +982,10 @@ def uk_cgt_projection_artifact(
 
     The declared entry names the horizon and the two parameter paths; the
     base year is the calibrated frame's period. Reading from the installed
-    engine keeps the receipt reproducible from the parameter tree alone.
+    engine keeps the receipt reproducible from the parameter tree alone;
+    without an engine (a data-only build, the secrets-free fast lane) the
+    entry's pinned path is used and the receipt names that source. Either
+    way the binding drift-checks the projection against the pins.
     """
 
     for entry in manifest.gates:
@@ -993,12 +997,26 @@ def uk_cgt_projection_artifact(
             "The calibration seam declares no uk_cgt_projection_entrants entry; "
             "refusing to fabricate a projection."
         )
-    return uk_cgt_projection(
-        int(uk_time_period(frame)),
-        int(parameters["horizon_year"]),
-        growth_parameter=str(parameters["gains_growth_parameter"]),
-        exempt_amount_parameter=str(parameters["exempt_amount_parameter"]),
-    )
+    base_year = int(uk_time_period(frame))
+    horizon_year = int(parameters["horizon_year"])
+    growth_parameter = str(parameters["gains_growth_parameter"])
+    exempt_amount_parameter = str(parameters["exempt_amount_parameter"])
+    try:
+        return uk_cgt_projection(
+            base_year,
+            horizon_year,
+            growth_parameter=growth_parameter,
+            exempt_amount_parameter=exempt_amount_parameter,
+        )
+    except ImportError:
+        return uk_cgt_projection_from_pins(
+            base_year,
+            horizon_year,
+            growth_by_year=parameters["expected_yoy_growth_by_year"],
+            exempt_amount_by_year=parameters["expected_exempt_amount_by_year"],
+            growth_parameter=growth_parameter,
+            exempt_amount_parameter=exempt_amount_parameter,
+        )
 
 
 def uk_aggregate_admin_totals(

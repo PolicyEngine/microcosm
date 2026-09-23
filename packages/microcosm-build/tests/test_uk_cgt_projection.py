@@ -10,14 +10,17 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.gate_battery import EvidenceContext, GateStatus, evaluate_phase
+from microcosm.build.uk_runtime import calibration_run
 from microcosm.build.uk_runtime.battery_bindings import UK_GATE_REGISTRY
 from microcosm.build.uk_runtime.calibration_run import UK_CALIBRATION_GATE_SCOPE
 from microcosm.build.uk_runtime.cgt_projection import (
     UK_CGT_EXEMPT_AMOUNT_PARAMETER,
     UK_CGT_GAINS_GROWTH_PARAMETER,
     UK_CGT_PROJECTION_ARTIFACT_KEY,
+    UK_CGT_PROJECTION_PINS_ENGINE,
     UKCGTProjection,
     uk_cgt_projection,
+    uk_cgt_projection_from_pins,
 )
 from microcosm.build.uk_runtime.hmrc_capital_gains import (
     HMRC_CGT_CONDITIONING_RESOURCE,
@@ -65,13 +68,16 @@ class _PinnedReader:
             int(year): float(rate) + growth_offset
             for year, rate in parameters["expected_yoy_growth_by_year"].items()
         }
-        self.exempt = float(parameters["expected_exempt_amount"])
+        self.exempt = {
+            int(year): float(amount)
+            for year, amount in parameters["expected_exempt_amount_by_year"].items()
+        }
 
     def __call__(self, path: str, year: int) -> float:
         if path == UK_CGT_GAINS_GROWTH_PARAMETER:
             return self.growth[year]
         if path == UK_CGT_EXEMPT_AMOUNT_PARAMETER:
-            return self.exempt
+            return self.exempt[year]
         raise AssertionError(path)
 
 
@@ -288,6 +294,7 @@ def test_manifest_entry_and_bound_are_the_reviewed_ones() -> None:
         # The OBR per-capita path as the engine carries it; 2030 is its last
         # published year and later years repeat the 2030 rate.
         "expected_yoy_growth_by_year": {
+            "2023": 0.0532,
             "2024": 0.0372,
             "2025": 0.0438,
             "2026": 0.0292,
@@ -296,7 +303,12 @@ def test_manifest_entry_and_bound_are_the_reviewed_ones() -> None:
             "2029": 0.0296,
             "2030": 0.0315,
         },
-        "expected_exempt_amount": 3_000.0,
+        # 6,000 in 2023-24, 3,000 from 2024-25: a 2023-period frame's base
+        # year reads the older amount.
+        "expected_exempt_amount_by_year": {
+            "2023": 6_000.0,
+            **{str(year): 3_000.0 for year in range(2024, 2031)},
+        },
         "maximum_growth_drift": 0.0005,
         "bound_resource": HMRC_CGT_CONDITIONING_RESOURCE,
         "bound_size_band_lower_bound": 3_000,
@@ -336,3 +348,45 @@ def test_engine_projection_matches_the_published_growth_path() -> None:
     # Beyond the pinned horizon the engine repeats the 2030 rate.
     beyond = uk_cgt_projection(2024, 2033)
     assert beyond.yoy_growth_by_year["2033"] == projection.yoy_growth_by_year["2030"]
+
+
+def test_projection_from_pins_is_the_engine_free_statement_of_the_path() -> None:
+    parameters = _manifest_entry().parameters
+    pinned = uk_cgt_projection_from_pins(
+        2023,
+        2030,
+        growth_by_year=parameters["expected_yoy_growth_by_year"],
+        exempt_amount_by_year=parameters["expected_exempt_amount_by_year"],
+    )
+    assert pinned.engine == UK_CGT_PROJECTION_PINS_ENGINE
+    assert pinned.exempt_amount_by_year["2023"] == 6_000.0
+    assert pinned.exempt_amount_by_year["2024"] == 3_000.0
+    assert pinned.yoy_growth_by_year["2024"] == pytest.approx(0.0372)
+    with pytest.raises(ValueError, match="no .* value for 2031"):
+        uk_cgt_projection_from_pins(
+            2024,
+            2031,
+            growth_by_year=parameters["expected_yoy_growth_by_year"],
+            exempt_amount_by_year=parameters["expected_exempt_amount_by_year"],
+        )
+
+
+def test_seam_artifact_falls_back_to_the_pins_without_an_engine(monkeypatch) -> None:
+    """The secrets-free fast lane and data-only builds have no engine: the
+    seam still produces the projection, from the pins, and says so."""
+
+    def no_engine(*args, **kwargs):
+        raise ImportError("No module named 'policyengine_uk'")
+
+    monkeypatch.setattr(calibration_run, "uk_cgt_projection", no_engine)
+    frame = _frame([3_000.0, 2_000.0], [1.0, 1.0], time_period="2023")
+    projection = calibration_run.uk_cgt_projection_artifact(
+        frame, load_country_spec("uk").gates
+    )
+    assert projection.engine == UK_CGT_PROJECTION_PINS_ENGINE
+    assert projection.base_year == 2023 and projection.horizon_year == 2030
+    assert projection.exempt_amount_by_year["2023"] == 6_000.0
+    # The binding accepts a pinned projection: it drift-checks against itself.
+    battery, outcome = _outcome(frame, {UK_CGT_PROJECTION_ARTIFACT_KEY: projection})
+    assert outcome.status is GateStatus.PASSED
+    assert outcome.result.details["projection_engine"] == UK_CGT_PROJECTION_PINS_ENGINE
