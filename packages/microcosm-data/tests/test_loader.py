@@ -345,10 +345,23 @@ def _patch_engine(
     return constructed
 
 
-def test_resolve_uk_defaults_to_2025_through_national_line_pointer(
+def test_resolve_uk_default_stays_on_2023_until_the_national_line_is_promoted():
+    """The national line is registered off the default variant until its
+    pointer exists on the Hub, so a default load never chases an absent
+    pointer (review of #966); the flip is a one-line follow-up."""
+    assert latest_year("uk") == 2023
+    assert resolve("uk").key == ("uk", 2023, DEFAULT_VARIANT)
+    assert resolve("uk", 2025, variant="national").pointer_path == (
+        "latest-national.json"
+    )
+    with pytest.raises(ValueError, match="published years"):
+        resolve("uk", 2025)
+
+
+def test_resolve_uk_national_variant_follows_the_line_pointer(
     tmp_path: Path,
 ) -> None:
-    spec = resolve("uk")
+    spec = resolve("uk", 2025, variant="national")
     manifest = _uk_release_manifest()
     hub = _line_pointer_hub(
         tmp_path,
@@ -361,7 +374,7 @@ def test_resolve_uk_defaults_to_2025_through_national_line_pointer(
     certified = loader._resolve_certified_release(spec, hub_download=hub)
 
     manifest_path = f"releases/{UK_NATIONAL_RELEASE_ID}/release_manifest.json"
-    assert spec.key == ("uk", 2025, DEFAULT_VARIANT)
+    assert spec.key == ("uk", 2025, "national")
     assert spec.pointer_path == "latest-national.json"
     assert certified.release_id == UK_NATIONAL_RELEASE_ID
     assert certified.artifact_revision == UK_NATIONAL_CUT_TAG
@@ -436,7 +449,9 @@ def test_line_pointer_refuses_any_artifact_revision_mismatch(tmp_path: Path) -> 
         ValueError,
         match=r"artifacts not pinned to expected revision.*calibration_report",
     ):
-        loader._resolve_certified_release(resolve("uk"), hub_download=hub)
+        loader._resolve_certified_release(
+            resolve("uk", 2025, variant="national"), hub_download=hub
+        )
 
 
 def test_local_area_line_selects_its_only_microdata_artifact(tmp_path: Path) -> None:
@@ -553,7 +568,9 @@ def test_loader_refuses_an_unknown_dataset_role(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="unknown dataset_role 'research_preview'"):
-        loader._resolve_certified_release(resolve("uk"), hub_download=hub)
+        loader._resolve_certified_release(
+            resolve("uk", 2025, variant="national"), hub_download=hub
+        )
 
 
 def test_download_uses_pointer_manifest_and_release_revision(
@@ -799,11 +816,29 @@ def _is_offline_error(exc: Exception) -> bool:
     )
 
 
+def _is_missing_pointer_error(exc: BaseException) -> bool:
+    names = {cls.__name__ for cls in type(exc).__mro__}
+    text = str(exc)
+    return bool(
+        names & {"EntryNotFoundError", "FileNotFoundError"}
+        or "404" in text
+        or "Entry Not Found" in text
+    )
+
+
 @pytest.mark.skipif(_hf_offline(), reason="Hugging Face offline mode is enabled")
-@pytest.mark.parametrize(("country", "year"), [("us", 2024), ("uk", 2023)])
+@pytest.mark.parametrize(
+    ("country", "year", "variant"),
+    [
+        ("us", 2024, DEFAULT_VARIANT),
+        ("uk", 2023, DEFAULT_VARIANT),
+        ("uk", 2025, "national"),
+    ],
+)
 def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
     country: str,
     year: int,
+    variant: str,
 ) -> None:
     """The real pointer and pinned manifest resolve without downloading large H5s.
 
@@ -815,12 +850,16 @@ def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
     release *identity* belongs to policyengine.py's certification fixtures,
     which are updated atomically with each certification PR.
     """
-    spec = resolve(country, year)
+    spec = resolve(country, year, variant=variant)
     try:
         certified = loader._resolve_certified_release(spec)
     except Exception as exc:
         if _is_offline_error(exc):
             pytest.skip(f"Hugging Face metadata unavailable offline: {exc}")
+        if variant != DEFAULT_VARIANT and _is_missing_pointer_error(exc):
+            # A line pointer exists only once its first cut is promoted;
+            # until then the line is registered but not yet live.
+            pytest.skip(f"line pointer {spec.pointer_path} not yet promoted: {exc}")
         if isinstance(exc, (RepositoryNotFoundError, GatedRepoError)) or "401" in str(
             exc
         ):
@@ -836,6 +875,60 @@ def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
     )
     assert certified.artifact_repo_id == spec.hf_repo
     assert certified.artifact_path == spec.filename
-    assert certified.artifact_revision == certified.release_id
+    if variant == DEFAULT_VARIANT:
+        assert certified.artifact_revision == certified.release_id
+    else:
+        # A line pointer names the immutable cut tag of its constant id.
+        assert certified.artifact_revision.startswith(f"{certified.release_id}-")
     assert re.fullmatch(r"[0-9a-f]{64}", certified.artifact_sha256)
     assert certified.model.name == spec.engine_package
+
+
+def test_line_pointer_refuses_a_manifest_with_another_lines_role(tmp_path: Path):
+    """A line pointer carries one role: the national pointer cannot select a
+    local-area manifest, nor a local-area pointer a national one."""
+    spec = resolve("uk", 2025, variant="national")
+    manifest = _uk_release_manifest()
+    manifest["dataset_role"] = "non_default_local_area"
+    manifest["default_datasets"] = {}
+    hub = _line_pointer_hub(
+        tmp_path,
+        line="national",
+        release_id=UK_NATIONAL_RELEASE_ID,
+        revision=UK_NATIONAL_CUT_TAG,
+        manifest=manifest,
+    )
+    with pytest.raises(ValueError, match="publishes only 'national_default'"):
+        loader._resolve_certified_release(spec, hub_download=hub)
+
+
+def test_latest_pointer_refuses_any_artifact_revision_mismatch(tmp_path: Path):
+    """One revision per pointer, by intent: the loader is stricter than the
+    publisher contract's annual-revision allowance (review of #966)."""
+    spec = resolve("uk", 2023)
+    manifest = _uk_release_manifest(
+        release_id=UK_2023_RELEASE_ID,
+        revision=UK_2023_RELEASE_ID,
+        filename="populace_uk_2023.h5",
+        artifact_key="populace_uk_2023",
+        dataset_role=None,
+    )
+    manifest["artifacts"]["calibration_report"] = {
+        "kind": "diagnostics",
+        "path": f"releases/{UK_2023_RELEASE_ID}/calibration_diagnostics.json",
+        "repo_id": UK_REPO_ID,
+        "revision": f"{UK_2023_RELEASE_ID}-annual-2027",
+        "sha256": "0" * 64,
+    }
+    pointer = latest_pointer_payload(
+        UK_2023_RELEASE_ID, updated_at="2026-06-19T03:00:00+00:00"
+    )
+    hub = _hub_with_pointer(
+        tmp_path,
+        repo_id=UK_REPO_ID,
+        pointer_path=LATEST_POINTER_PATH,
+        pointer=pointer,
+        manifest=manifest,
+    )
+    with pytest.raises(ValueError, match="not pinned to expected revision"):
+        loader._resolve_certified_release(spec, hub_download=hub)

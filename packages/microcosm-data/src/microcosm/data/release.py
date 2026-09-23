@@ -49,6 +49,7 @@ from microcosm.data.contract import (
     EVIDENCE_RELEASE_ID_SEGMENT,
     NATIONAL_DEFAULT_DATASET_ROLE,
     _uk_line_cut_tag_re,
+    dataset_role_for_line,
     line_for_release_id,
     release_dataset_role,
     required_release_files,
@@ -165,6 +166,13 @@ def line_pointer_path(line: str) -> str:
     if _LINE_RE.fullmatch(line) is None:
         raise ValueError(
             f"invalid release line {line!r}; expected ^[a-z]+(-k[1-9][0-9]*)?$"
+        )
+    if line == "evidence":
+        # The grammar would render latest-evidence.json, the evidence-tier
+        # pointer: refused at the grammar, not only downstream.
+        raise ValueError(
+            "release line 'evidence' collides with the evidence-tier pointer "
+            f"{LATEST_EVIDENCE_POINTER_PATH}; it is not a publication line."
         )
     return LINE_POINTER_PATH_TEMPLATE.format(line=line)
 
@@ -306,6 +314,12 @@ def prepare_release(
             raise ValueError(
                 f"release {release_id!r} belongs to line {expected_line!r}, "
                 f"not {line!r}."
+            )
+        expected_role = dataset_role_for_line(line)
+        if role != expected_role:
+            raise ValueError(
+                f"release {release_id!r} declares dataset_role {role!r}; line "
+                f"{line!r} publishes only {expected_role!r} releases."
             )
     else:
         pointer_path = LATEST_EVIDENCE_POINTER_PATH if evidence else LATEST_POINTER_PATH
@@ -553,7 +567,14 @@ def publish_release(
             the evidence pointer.
         line: Promote an approved release line through ``latest-<line>.json``.
             Line promotion requires ``update_latest=True``, a matching line
-            release id, and artifact revisions pinned to the selected tag.
+            release id, the line's dataset role, and artifact revisions
+            pinned to the selected tag. A cut published for inspection
+            earlier (``update_latest=False`` under the same tag) is promoted
+            by the same call: the publisher recognises the existing tag that
+            already describes this release, creates no second immutable
+            revision, and writes only the main commit carrying the pointer.
+            The same recognition makes a retry after a failure between tag
+            creation and the pointer commit safe.
 
     Returns:
         The release's pointer payload (``latest.json`` shape, plus ``tier`` at
@@ -719,43 +740,61 @@ def _publish_atomic(
 ) -> None:
     staging_branch = f"release-staging/{release_id}"
     main_revision = _repo_revision(api, repo_id=repo_id)
-    api.create_branch(
-        repo_id=repo_id,
-        branch=staging_branch,
-        repo_type="dataset",
-        revision=main_revision,
+    existing_revision = (
+        _tag_revision(api, repo_id=repo_id, tag=tag) if create_tag else None
     )
-    immutable_commit = api.create_commit(
-        repo_id=repo_id,
-        repo_type="dataset",
-        revision=staging_branch,
-        commit_message=f"Publish immutable release {release_id}",
-        operations=_commit_operations(
-            release_dir=release_dir,
-            artifact_root=artifact_root,
-            release_id=release_id,
-            filenames=filenames,
-            root_artifacts=root_artifacts,
-        ),
-    )
-    immutable_revision = _commit_revision(immutable_commit)
-    if immutable_revision is None:
-        raise RuntimeError(
-            "Hub create_commit returned no revision for immutable release "
-            f"{release_id!r}; refusing to update main or {pointer_path}."
-        )
-    if create_tag:
-        _create_release_tag(
+    if existing_revision is not None:
+        # The immutable revision already exists under this tag (an inspect
+        # publication of the same cut, or a run that failed after tagging).
+        # It must describe exactly this release; then there is nothing
+        # immutable left to write, and publication continues with the main
+        # commit alone. A tag that describes another release refuses.
+        _require_tag_describes_release(
             api,
             repo_id=repo_id,
+            release_id=release_id,
             tag=tag,
-            revision=immutable_revision,
+            release_dir=release_dir,
         )
-    api.delete_branch(
-        repo_id=repo_id,
-        branch=staging_branch,
-        repo_type="dataset",
-    )
+        immutable_revision = existing_revision
+    else:
+        api.create_branch(
+            repo_id=repo_id,
+            branch=staging_branch,
+            repo_type="dataset",
+            revision=main_revision,
+        )
+        immutable_commit = api.create_commit(
+            repo_id=repo_id,
+            repo_type="dataset",
+            revision=staging_branch,
+            commit_message=f"Publish immutable release {release_id}",
+            operations=_commit_operations(
+                release_dir=release_dir,
+                artifact_root=artifact_root,
+                release_id=release_id,
+                filenames=filenames,
+                root_artifacts=root_artifacts,
+            ),
+        )
+        immutable_revision = _commit_revision(immutable_commit)
+        if immutable_revision is None:
+            raise RuntimeError(
+                "Hub create_commit returned no revision for immutable release "
+                f"{release_id!r}; refusing to update main or {pointer_path}."
+            )
+        if create_tag:
+            _create_release_tag(
+                api,
+                repo_id=repo_id,
+                tag=tag,
+                revision=immutable_revision,
+            )
+        api.delete_branch(
+            repo_id=repo_id,
+            branch=staging_branch,
+            repo_type="dataset",
+        )
     if tag_only:
         # The release-id tag points directly at immutable_revision, so deleting
         # the temporary branch does not make the candidate unreachable. Exact-k
@@ -924,6 +963,58 @@ def _commit_revision(commit_info: Any) -> str | None:
             if value:
                 return str(value)
     return None
+
+
+def _tag_revision(api: object, *, repo_id: str, tag: str) -> str | None:
+    """The revision an existing tag points at, or None when the tag is absent."""
+    repo_info = getattr(api, "repo_info", None)
+    if not callable(repo_info):
+        return None
+    try:
+        info = repo_info(repo_id=repo_id, repo_type="dataset", revision=tag)
+    except Exception:  # noqa: BLE001 - an absent revision is the common case
+        return None
+    value = info.get("sha") if isinstance(info, Mapping) else getattr(info, "sha", None)
+    return str(value) if value else None
+
+
+def _require_tag_describes_release(
+    api: object,
+    *,
+    repo_id: str,
+    release_id: str,
+    tag: str,
+    release_dir: Path,
+) -> None:
+    """Refuse an existing tag unless its release manifest is byte-identical.
+
+    The manifest pins every artifact's digest and revision, so equal bytes
+    mean the tagged revision is this release; anything else (another cut,
+    a manifest that never landed) must not be promoted under this tag.
+    """
+    manifest_path = f"releases/{release_id}/release_manifest.json"
+    try:
+        remote = Path(
+            api.hf_hub_download(
+                repo_id=repo_id,
+                filename=manifest_path,
+                repo_type="dataset",
+                revision=tag,
+            )
+        ).read_bytes()
+    except Exception as exc:  # noqa: BLE001 - the refusal names the cause
+        raise ValueError(
+            f"tag {tag!r} already exists in {repo_id} but carries no readable "
+            f"{manifest_path} ({exc}); it does not describe this release, so "
+            "it cannot be reused. Publish under a fresh cut tag."
+        ) from exc
+    local = (release_dir / "release_manifest.json").read_bytes()
+    if remote != local:
+        raise ValueError(
+            f"tag {tag!r} already exists in {repo_id} and describes another "
+            f"release (its {manifest_path} differs from the local one); "
+            "refusing to promote it. Publish under a fresh cut tag."
+        )
 
 
 def _create_release_tag(api: object, *, repo_id: str, tag: str, revision: str | None):

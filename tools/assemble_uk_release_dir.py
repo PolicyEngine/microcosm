@@ -161,6 +161,11 @@ def _assemble(args: argparse.Namespace) -> dict[str, object]:
     )
 
     _require_equal(
+        "certification.candidate.filename vs the national line's dataset filename",
+        candidate.get("filename"),
+        _DATASET_FILENAME,
+    )
+    _require_equal(
         "candidate bytes vs certification.candidate.sha256",
         measured["candidate"],
         candidate.get("sha256"),

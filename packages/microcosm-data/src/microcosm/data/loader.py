@@ -30,6 +30,7 @@ from microcosm.data.contract import (
     NATIONAL_DEFAULT_DATASET_ROLE,
     NON_DEFAULT_LOCAL_AREA_DATASET_ROLE,
     RELEASE_MANIFEST_SCHEMA_VERSION,
+    dataset_role_for_line,
 )
 from microcosm.data.registry import DEFAULT_VARIANT, REGISTRY, DatasetSpec
 from microcosm.data.release import (
@@ -289,6 +290,17 @@ def _certified_release_from_manifest(
         raise ValueError(
             f"Release {release_id!r} has unknown dataset_role {dataset_role!r}."
         )
+    pointer_line = _line_from_pointer_path(spec.pointer_path)
+    if pointer_line is not None:
+        # A line pointer carries one role: the manifest it names must
+        # declare it, whatever its release id says.
+        expected_role = dataset_role_for_line(pointer_line)
+        if dataset_role != expected_role:
+            raise ValueError(
+                f"Release {release_id!r} declares dataset_role {dataset_role!r}; "
+                f"{spec.pointer_path!r} follows line {pointer_line!r}, which "
+                f"publishes only {expected_role!r} releases."
+            )
     default_datasets = _required_mapping(
         manifest, "default_datasets", release_id=release_id
     )
@@ -316,6 +328,12 @@ def _certified_release_from_manifest(
         artifact_label = "local-area"
 
     artifacts = _required_mapping(manifest, "artifacts", release_id=release_id)
+    # One revision per pointer, by intent: the loader follows a pointer to a
+    # single immutable revision and downloads every artifact of the release
+    # from it, so every artifact must be pinned to exactly that revision.
+    # This is stricter than the publisher contract's annual-revision
+    # allowance for mixed-revision releases; a release that mixes revisions
+    # is publishable for inspection but never resolvable as a default here.
     mismatched_revisions = {
         str(key): candidate.get("revision") if isinstance(candidate, Mapping) else None
         for key, candidate in artifacts.items()

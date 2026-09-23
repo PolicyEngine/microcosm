@@ -631,6 +631,23 @@ def line_for_release_id(release_id: str) -> str | None:
     return None
 
 
+def dataset_role_for_line(line: str) -> str:
+    """The one dataset role a publication line may carry.
+
+    The national line publishes national-default releases; every local-area
+    line publishes non-default local-area releases. The publisher refuses a
+    line promotion whose manifest declares another role, and the loader
+    refuses a manifest that reached a line pointer with the wrong role, so a
+    local-area release can never ride the national pointer (or the reverse)
+    on the strength of its release id alone.
+    """
+    if line == "national":
+        return NATIONAL_DEFAULT_DATASET_ROLE
+    if re.fullmatch(r"local-k[1-9][0-9]*", line):
+        return NON_DEFAULT_LOCAL_AREA_DATASET_ROLE
+    raise ValueError(f"{line!r} is not a publication line.")
+
+
 # The dense joint national + local line (microcosm#762 A18, ruling
 # 2026-09-03): the same constant-id approach, published on the inspect lane
 # under the non-default local-area role. Mirrored from

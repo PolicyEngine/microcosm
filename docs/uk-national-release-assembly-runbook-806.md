@@ -168,11 +168,18 @@ mandatory for the inspect publication. The promotion command replaces it with
 `--tag-name` and refuses to combine it with `--no-latest`. A per-cut tag without
 either flag cannot move the repository-global `latest.json`.
 
-If tag creation returns HTTP 409 after the staging commit, publication can
-leave the constant branch
-`release-staging/microcosm-uk-2024-25-national` behind. Delete that branch
-manually in the private Hugging Face repository before retrying the same cut.
-Do not delete the immutable cut tag.
+The two commands share the cut tag by design: the promotion recognises the
+immutable tag the inspect publication created, checks that the tagged
+`release_manifest.json` is byte-identical to the local one, creates no second
+immutable revision, and writes only the main commit carrying
+`latest-national.json`. The same recognition makes a retry safe after a
+failure between tag creation and the pointer commit: rerun the same command.
+A tag that describes another release refuses; publish under a fresh cut tag.
+
+Only a failure before the tag exists (the staging commit itself) can leave
+the constant branch `release-staging/microcosm-uk-2024-25-national` behind.
+Delete that branch manually in the private Hugging Face repository before
+retrying. Never delete an immutable cut tag.
 
 ## 5. Inspect on the dashboard
 
@@ -193,10 +200,14 @@ in §4. The promotion moves only `latest-national.json`, recording `national` as
 the line and the reviewed cut tag as its `revision`. It never moves the
 repository-global `latest.json`, which remains on the June 2023 release.
 
-After promotion, `microcosm.data.resolve("uk")` lands on the 2025 registry
-entry, whose certified loader follows `latest-national.json` to the reviewed
-revision. An explicit `microcosm.data.load("uk", 2023)` continues to follow
-`latest.json`.
+The 2025 national entry is registered off the default variant until this
+first promotion: `microcosm.data.load("uk", 2025, variant="national")` follows
+`latest-national.json` as soon as the pointer exists, while
+`microcosm.data.resolve("uk")` stays on the June 2023 line. The default moves
+in a one-line follow-up PR after promotion (the registry entry's `variant`
+becomes the default), with its test; sequencing it this way means a default
+load never chases a pointer that does not exist yet. An explicit
+`microcosm.data.load("uk", 2023)` continues to follow `latest.json`.
 
 With `SLACK_WEBHOOK_POPULACE_UK` configured, successful promotion sends an
 alert naming the `national` line and the promoted revision.

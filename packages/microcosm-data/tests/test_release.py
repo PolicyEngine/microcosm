@@ -2264,3 +2264,168 @@ def test_non_enrichment_publisher_refuses_enrichment_only_arguments(
         publish_cli.main([*cli_args, "--preflight-only"])
     assert hub.events == []
     assert hub.uploads == []
+
+
+def _uk_hub(tmp_path: Path) -> FakeHub:
+    hub = FakeHub("policyengine/populace-uk-private")
+    hub._download_dir = tmp_path / "uk-hub-cache"
+    june_pointer = latest_pointer_payload(
+        JUNE_UK_RELEASE_ID, updated_at="2026-06-19T02:38:00+00:00"
+    )
+    hub.seed_main_file(LATEST_POINTER_PATH, json.dumps(june_pointer, indent=1).encode())
+    return hub
+
+
+def test_inspect_then_promote_reuses_the_immutable_tag(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """The documented two-step sequence: publish for inspection under the cut
+    tag, then promote the same cut. The second call recognises the existing
+    tag that describes this release, writes no second immutable revision
+    and only the main commit carrying the pointer (review of #966)."""
+    national = _as_uk_national_line_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+    )
+    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    hub = _uk_hub(tmp_path)
+    june_pointer_bytes = hub._commits[hub._refs["main"]][LATEST_POINTER_PATH]
+
+    publish_release(
+        national,
+        "policyengine/populace-uk-private",
+        api=hub,
+        artifact_root=artifact_root,
+        tag_name=UK_NATIONAL_CUT_TAG,
+        update_latest=False,
+    )
+    assert line_pointer_path("national") not in hub._commits[hub._refs["main"]]
+    events_after_inspect = len(hub.events)
+
+    promoted = publish_release(
+        national,
+        "policyengine/populace-uk-private",
+        api=hub,
+        artifact_root=artifact_root,
+        tag_name=UK_NATIONAL_CUT_TAG,
+        line="national",
+        updated_at="2026-09-23T12:00:00+00:00",
+    )
+
+    kinds = [event for event, _ in hub.events[events_after_inspect:]]
+    assert kinds == ["create_commit"], kinds
+    assert hub.tags == [{"tag": UK_NATIONAL_CUT_TAG, "revision": "commit-1"}]
+    main_files = hub._commits[hub._refs["main"]]
+    assert main_files[LATEST_POINTER_PATH] == june_pointer_bytes
+    assert json.loads(main_files[line_pointer_path("national")])["revision"] == (
+        UK_NATIONAL_CUT_TAG
+    )
+    assert promoted["revision"] == UK_NATIONAL_CUT_TAG
+    assert (
+        latest_line_release(
+            "policyengine/populace-uk-private", line="national", api=hub
+        ).revision
+        == UK_NATIONAL_CUT_TAG
+    )
+
+
+def test_retry_after_a_failed_pointer_commit_reuses_the_tag(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """A failure between tag creation and the pointer commit leaves the tag;
+    the retry stands on it instead of dying on create_tag."""
+    national = _as_uk_national_line_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+    )
+    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    hub = _uk_hub(tmp_path)
+    hub.fail_main_commit = True
+    with pytest.raises(RuntimeError, match="injected main commit failure"):
+        publish_release(
+            national,
+            "policyengine/populace-uk-private",
+            api=hub,
+            artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
+        )
+    assert hub.tags == [{"tag": UK_NATIONAL_CUT_TAG, "revision": "commit-1"}]
+    assert line_pointer_path("national") not in hub._commits[hub._refs["main"]]
+
+    hub.fail_main_commit = False
+    publish_release(
+        national,
+        "policyengine/populace-uk-private",
+        api=hub,
+        artifact_root=artifact_root,
+        tag_name=UK_NATIONAL_CUT_TAG,
+        line="national",
+    )
+
+    assert hub.tags == [{"tag": UK_NATIONAL_CUT_TAG, "revision": "commit-1"}]
+    assert line_pointer_path("national") in hub._commits[hub._refs["main"]]
+
+
+def test_promotion_refuses_a_tag_that_describes_another_release(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    national = _as_uk_national_line_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+    )
+    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    hub = _uk_hub(tmp_path)
+    # A tag already pointing at a revision with no manifest for this release.
+    hub._refs[UK_NATIONAL_CUT_TAG] = hub._refs["main"]
+    with pytest.raises(ValueError, match="does not describe this release"):
+        publish_release(
+            national,
+            "policyengine/populace-uk-private",
+            api=hub,
+            artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
+        )
+    # A tag whose manifest is another cut's.
+    hub._commits["other"] = {
+        f"releases/{UK_NATIONAL_RELEASE_ID}/release_manifest.json": b"{}"
+    }
+    hub._refs[UK_NATIONAL_CUT_TAG] = "other"
+    with pytest.raises(ValueError, match="describes another release"):
+        publish_release(
+            national,
+            "policyengine/populace-uk-private",
+            api=hub,
+            artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
+        )
+    assert line_pointer_path("national") not in hub._commits[hub._refs["main"]]
+
+
+def test_line_pointer_path_refuses_the_evidence_line() -> None:
+    with pytest.raises(ValueError, match="collides with the evidence-tier pointer"):
+        line_pointer_path("evidence")
+
+
+def test_line_promotion_refuses_a_release_whose_role_is_not_the_lines(
+    release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    """The national line carries national-default releases only; a
+    local-area manifest cannot ride the national pointer on its id."""
+    national = _as_uk_national_line_release(release_dir)
+    manifest_path = national / "release_manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest["dataset_role"] = "non_default_local_area"
+    manifest_path.write_text(json.dumps(manifest))
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+    )
+    with pytest.raises(ValueError, match="publishes only 'national_default'"):
+        release_module.prepare_release(
+            national,
+            artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
+        )

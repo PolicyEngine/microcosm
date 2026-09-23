@@ -75,7 +75,7 @@ def test_national_dataset_filename_mirrors_registry() -> None:
 
     assert driver._DATASET_KEY == "microcosm_uk_2024_25"
     assert driver._DATASET_FILENAME == f"{driver._DATASET_KEY}.h5"
-    assert REGISTRY[("uk", 2025, "compact")].filename == driver._DATASET_FILENAME
+    assert REGISTRY[("uk", 2025, "national")].filename == driver._DATASET_FILENAME
 
 
 def _frame(weights: list[float], *, weight_kind: WeightKind):
