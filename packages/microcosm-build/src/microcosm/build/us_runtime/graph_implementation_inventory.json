@@ -1199,6 +1199,7 @@
         "microcosm.graph.keys",
         "microcosm.graph.manifest",
         "microcosm.graph.population",
+        "microcosm.graph.scheduling",
         "microcosm.graph.store",
         "numpy",
         "pandas"
@@ -1269,6 +1270,13 @@
       "imports": [
         "microcosm.graph.canonical",
         "numpy"
+      ],
+      "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    "microcosm.graph/scheduling.py": {
+      "imports": [
+        "microcosm.graph.kernel"
       ],
       "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
@@ -1557,6 +1565,7 @@
     "microcosm.graph.manifest": "whole-module in explicit stages",
     "microcosm.graph.population": "whole-module in explicit stages",
     "microcosm.graph.randomness": "whole-module in explicit stages",
+    "microcosm.graph.scheduling": "whole-module in explicit stages",
     "microcosm.graph.serialize": "whole-module in explicit stages",
     "microcosm.graph.store": "whole-module in explicit stages",
     "microcosm.graph.view": "whole-module in explicit stages",
@@ -1623,6 +1632,7 @@
       "manifest.py",
       "population.py",
       "randomness.py",
+      "scheduling.py",
       "serialize.py",
       "store.py",
       "view.py"
@@ -1708,6 +1718,7 @@
         "microcosm.graph/manifest.py",
         "microcosm.graph/population.py",
         "microcosm.graph/randomness.py",
+        "microcosm.graph/scheduling.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
@@ -1783,6 +1794,7 @@
         "microcosm.graph/manifest.py",
         "microcosm.graph/population.py",
         "microcosm.graph/randomness.py",
+        "microcosm.graph/scheduling.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
@@ -1854,6 +1866,7 @@
         "microcosm.graph/manifest.py",
         "microcosm.graph/population.py",
         "microcosm.graph/randomness.py",
+        "microcosm.graph/scheduling.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py"
@@ -1938,6 +1951,7 @@
         "microcosm.graph/manifest.py",
         "microcosm.graph/population.py",
         "microcosm.graph/randomness.py",
+        "microcosm.graph/scheduling.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
@@ -2013,6 +2027,7 @@
         "microcosm.graph/manifest.py",
         "microcosm.graph/population.py",
         "microcosm.graph/randomness.py",
+        "microcosm.graph/scheduling.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py"
@@ -2081,6 +2096,7 @@
         "microcosm.graph/manifest.py",
         "microcosm.graph/population.py",
         "microcosm.graph/randomness.py",
+        "microcosm.graph/scheduling.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
@@ -2192,6 +2208,7 @@
         "microcosm.graph/manifest.py",
         "microcosm.graph/population.py",
         "microcosm.graph/randomness.py",
+        "microcosm.graph/scheduling.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
@@ -2315,6 +2332,7 @@
         "microcosm.graph/manifest.py",
         "microcosm.graph/population.py",
         "microcosm.graph/randomness.py",
+        "microcosm.graph/scheduling.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
@@ -2436,6 +2454,7 @@
         "microcosm.graph/manifest.py",
         "microcosm.graph/population.py",
         "microcosm.graph/randomness.py",
+        "microcosm.graph/scheduling.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py",
@@ -2509,6 +2528,7 @@
         "microcosm.graph/manifest.py",
         "microcosm.graph/population.py",
         "microcosm.graph/randomness.py",
+        "microcosm.graph/scheduling.py",
         "microcosm.graph/serialize.py",
         "microcosm.graph/store.py",
         "microcosm.graph/view.py"
