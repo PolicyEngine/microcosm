@@ -45,7 +45,7 @@ Every `hmrc_spi` reference declares an `uprating_index`; the appliers live in
 the generator and the runtime apply the same factor and the committed
 membership carries the uprated value with its receipt.
 
-- Amount rows: `policyengine_uk.parameter:<path>`, the ratio of the pinned
+- Amount rows: `policyengine_uk_parameter:<path>`, the ratio of the pinned
   engine's parameter between 1 January of the fact's opening year and 1
   January of the calibration year, the instants the SPI donor rebasing already
   uses. Employment income follows `obr.average_earnings`, self-employment

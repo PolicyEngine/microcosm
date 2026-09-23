@@ -4010,7 +4010,7 @@
       "name": "hmrc/employment_income_income_band_100_000_to_150_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "82300000000.0"
     },
@@ -4018,7 +4018,7 @@
       "name": "hmrc/employment_income_income_band_1_000_000_to_inf",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "35500000000.0"
     },
@@ -4026,7 +4026,7 @@
       "name": "hmrc/employment_income_income_band_12_570_to_15_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "16900000000.0"
     },
@@ -4034,7 +4034,7 @@
       "name": "hmrc/employment_income_income_band_15_000_to_20_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "48600000000.0"
     },
@@ -4042,7 +4042,7 @@
       "name": "hmrc/employment_income_income_band_150_000_to_200_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "39200000000.0"
     },
@@ -4050,7 +4050,7 @@
       "name": "hmrc/employment_income_income_band_20_000_to_30_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "172000000000.0"
     },
@@ -4058,7 +4058,7 @@
       "name": "hmrc/employment_income_income_band_200_000_to_300_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "36600000000.0"
     },
@@ -4066,7 +4066,7 @@
       "name": "hmrc/employment_income_income_band_30_000_to_40_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "170000000000.0"
     },
@@ -4074,7 +4074,7 @@
       "name": "hmrc/employment_income_income_band_300_000_to_500_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "29000000000.0"
     },
@@ -4082,7 +4082,7 @@
       "name": "hmrc/employment_income_income_band_40_000_to_50_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "139000000000.0"
     },
@@ -4090,7 +4090,7 @@
       "name": "hmrc/employment_income_income_band_50_000_to_70_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "174000000000.0"
     },
@@ -4098,7 +4098,7 @@
       "name": "hmrc/employment_income_income_band_500_000_to_1_000_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "23100000000.0"
     },
@@ -4106,7 +4106,7 @@
       "name": "hmrc/employment_income_income_band_70_000_to_100_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "factor": "1.10670439319018",
       "value_before_uprating": "118000000000.0"
     },
@@ -4218,7 +4218,7 @@
       "name": "hmrc/self_employment_income_income_band_100_000_to_150_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "4980000000.0"
     },
@@ -4226,7 +4226,7 @@
       "name": "hmrc/self_employment_income_income_band_1_000_000_to_inf",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "19500000000.0"
     },
@@ -4234,7 +4234,7 @@
       "name": "hmrc/self_employment_income_income_band_12_570_to_15_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "4810000000.0"
     },
@@ -4242,7 +4242,7 @@
       "name": "hmrc/self_employment_income_income_band_15_000_to_20_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "8030000000.0"
     },
@@ -4250,7 +4250,7 @@
       "name": "hmrc/self_employment_income_income_band_150_000_to_200_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "3650000000.0"
     },
@@ -4258,7 +4258,7 @@
       "name": "hmrc/self_employment_income_income_band_20_000_to_30_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "15700000000.0"
     },
@@ -4266,7 +4266,7 @@
       "name": "hmrc/self_employment_income_income_band_200_000_to_300_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "4390000000.0"
     },
@@ -4274,7 +4274,7 @@
       "name": "hmrc/self_employment_income_income_band_30_000_to_40_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "12600000000.0"
     },
@@ -4282,7 +4282,7 @@
       "name": "hmrc/self_employment_income_income_band_300_000_to_500_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "4840000000.0"
     },
@@ -4290,7 +4290,7 @@
       "name": "hmrc/self_employment_income_income_band_40_000_to_50_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "8730000000.0"
     },
@@ -4298,7 +4298,7 @@
       "name": "hmrc/self_employment_income_income_band_50_000_to_70_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "8220000000.0"
     },
@@ -4306,7 +4306,7 @@
       "name": "hmrc/self_employment_income_income_band_500_000_to_1_000_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "6670000000.0"
     },
@@ -4314,7 +4314,7 @@
       "name": "hmrc/self_employment_income_income_band_70_000_to_100_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "factor": "1.0343847100897",
       "value_before_uprating": "5360000000.0"
     },
@@ -4426,7 +4426,7 @@
       "name": "hmrc/dividend_income_income_band_100_000_to_150_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "6870000000.0"
     },
@@ -4434,7 +4434,7 @@
       "name": "hmrc/dividend_income_income_band_1_000_000_to_inf",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "11100000000.0"
     },
@@ -4442,7 +4442,7 @@
       "name": "hmrc/dividend_income_income_band_12_570_to_15_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "175000000.0"
     },
@@ -4450,7 +4450,7 @@
       "name": "hmrc/dividend_income_income_band_15_000_to_20_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "855000000.0"
     },
@@ -4458,7 +4458,7 @@
       "name": "hmrc/dividend_income_income_band_150_000_to_200_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "3450000000.0"
     },
@@ -4466,7 +4466,7 @@
       "name": "hmrc/dividend_income_income_band_20_000_to_30_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "3330000000.0"
     },
@@ -4474,7 +4474,7 @@
       "name": "hmrc/dividend_income_income_band_200_000_to_300_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "3700000000.0"
     },
@@ -4482,7 +4482,7 @@
       "name": "hmrc/dividend_income_income_band_30_000_to_40_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "4700000000.0"
     },
@@ -4490,7 +4490,7 @@
       "name": "hmrc/dividend_income_income_band_300_000_to_500_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "3430000000.0"
     },
@@ -4498,7 +4498,7 @@
       "name": "hmrc/dividend_income_income_band_40_000_to_50_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "8400000000.0"
     },
@@ -4506,7 +4506,7 @@
       "name": "hmrc/dividend_income_income_band_50_000_to_70_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "12500000000.0"
     },
@@ -4514,7 +4514,7 @@
       "name": "hmrc/dividend_income_income_band_500_000_to_1_000_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "3820000000.0"
     },
@@ -4522,7 +4522,7 @@
       "name": "hmrc/dividend_income_income_band_70_000_to_100_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "factor": "1.08262675352428",
       "value_before_uprating": "9440000000.0"
     },
@@ -4738,7 +4738,7 @@
       "name": "hmrc/private_pension_income_income_band_100_000_to_150_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "5430000000.0"
     },
@@ -4746,7 +4746,7 @@
       "name": "hmrc/private_pension_income_income_band_1_000_000_to_inf",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "370000000.0"
     },
@@ -4754,7 +4754,7 @@
       "name": "hmrc/private_pension_income_income_band_12_570_to_15_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "4350000000.0"
     },
@@ -4762,7 +4762,7 @@
       "name": "hmrc/private_pension_income_income_band_15_000_to_20_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "13600000000.0"
     },
@@ -4770,7 +4770,7 @@
       "name": "hmrc/private_pension_income_income_band_150_000_to_200_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "1810000000.0"
     },
@@ -4778,7 +4778,7 @@
       "name": "hmrc/private_pension_income_income_band_20_000_to_30_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "30200000000.0"
     },
@@ -4786,7 +4786,7 @@
       "name": "hmrc/private_pension_income_income_band_200_000_to_300_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "1570000000.0"
     },
@@ -4794,7 +4794,7 @@
       "name": "hmrc/private_pension_income_income_band_30_000_to_40_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "24900000000.0"
     },
@@ -4802,7 +4802,7 @@
       "name": "hmrc/private_pension_income_income_band_300_000_to_500_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "1120000000.0"
     },
@@ -4810,7 +4810,7 @@
       "name": "hmrc/private_pension_income_income_band_40_000_to_50_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "16900000000.0"
     },
@@ -4818,7 +4818,7 @@
       "name": "hmrc/private_pension_income_income_band_50_000_to_70_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "17400000000.0"
     },
@@ -4826,7 +4826,7 @@
       "name": "hmrc/private_pension_income_income_band_500_000_to_1_000_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "640000000.0"
     },
@@ -4834,7 +4834,7 @@
       "name": "hmrc/private_pension_income_income_band_70_000_to_100_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "factor": "1.08769137555276",
       "value_before_uprating": "9470000000.0"
     },
@@ -4946,7 +4946,7 @@
       "name": "hmrc/state_pension_income_band_100_000_to_150_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "847000000.0"
     },
@@ -4954,7 +4954,7 @@
       "name": "hmrc/state_pension_income_band_1_000_000_to_inf",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "20000000.0"
     },
@@ -4962,7 +4962,7 @@
       "name": "hmrc/state_pension_income_band_12_570_to_15_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "11800000000.0"
     },
@@ -4970,7 +4970,7 @@
       "name": "hmrc/state_pension_income_band_15_000_to_20_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "22200000000.0"
     },
@@ -4978,7 +4978,7 @@
       "name": "hmrc/state_pension_income_band_150_000_to_200_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "265000000.0"
     },
@@ -4986,7 +4986,7 @@
       "name": "hmrc/state_pension_income_band_20_000_to_30_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "24900000000.0"
     },
@@ -4994,7 +4994,7 @@
       "name": "hmrc/state_pension_income_band_200_000_to_300_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "179000000.0"
     },
@@ -5002,7 +5002,7 @@
       "name": "hmrc/state_pension_income_band_30_000_to_40_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "12300000000.0"
     },
@@ -5010,7 +5010,7 @@
       "name": "hmrc/state_pension_income_band_300_000_to_500_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "96000000.0"
     },
@@ -5018,7 +5018,7 @@
       "name": "hmrc/state_pension_income_band_40_000_to_50_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "6020000000.0"
     },
@@ -5026,7 +5026,7 @@
       "name": "hmrc/state_pension_income_band_50_000_to_70_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "4660000000.0"
     },
@@ -5034,7 +5034,7 @@
       "name": "hmrc/state_pension_income_band_500_000_to_1_000_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "43000000.0"
     },
@@ -5042,7 +5042,7 @@
       "name": "hmrc/state_pension_income_band_70_000_to_100_000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "factor": "1.12950699043414",
       "value_before_uprating": "1890000000.0"
     },
@@ -7540,7 +7540,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_100000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "1260000000.0"
     },
@@ -7548,7 +7548,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_1000000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "1240000000.0"
     },
@@ -7556,7 +7556,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_12570",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "274000000.0"
     },
@@ -7564,7 +7564,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_15000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "1370000000.0"
     },
@@ -7572,7 +7572,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_150000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "650000000.0"
     },
@@ -7580,7 +7580,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_20000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "3130000000.0"
     },
@@ -7588,7 +7588,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_200000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "733000000.0"
     },
@@ -7596,7 +7596,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_30000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "2530000000.0"
     },
@@ -7604,7 +7604,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_300000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "673000000.0"
     },
@@ -7612,7 +7612,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_40000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "1870000000.0"
     },
@@ -7620,7 +7620,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_50000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "2340000000.0"
     },
@@ -7628,7 +7628,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_500000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "653000000.0"
     },
@@ -7636,7 +7636,7 @@
       "name": "hmrc.spi.savings_interest_income.amount_by_total_income_band.band_70000",
       "from": "2023",
       "to": "2025",
-      "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "factor": "1.18185603729846",
       "value_before_uprating": "1620000000.0"
     },
@@ -11179,7 +11179,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_b1c634a871c843888ab00545",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "82300000000.0"
           }
@@ -11194,7 +11194,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_16019afa59e224b690877826",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "35500000000.0"
           }
@@ -11209,7 +11209,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_a82c84f67b40867564d2c847",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "16900000000.0"
           }
@@ -11224,7 +11224,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_42eb325b6a29afb3e6d157fa",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "48600000000.0"
           }
@@ -11239,7 +11239,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_1f93702eb88f381f0701c4f8",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "39200000000.0"
           }
@@ -11254,7 +11254,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_794fd9633d6a2018fee633e7",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "172000000000.0"
           }
@@ -11269,7 +11269,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d85ad655daaa164b1ab33231",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "36600000000.0"
           }
@@ -11284,7 +11284,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_3607635c72d16b4059b6a3f6",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "170000000000.0"
           }
@@ -11299,7 +11299,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_5c3674b48269ffe3c7b28a1b",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "29000000000.0"
           }
@@ -11314,7 +11314,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_525aeb02ab9a831608756200",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "139000000000.0"
           }
@@ -11329,7 +11329,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_9f1a70b4e0995af34d7dbbfb",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "174000000000.0"
           }
@@ -11344,7 +11344,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_1944a2f33309b41b2d5f348d",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "23100000000.0"
           }
@@ -11359,7 +11359,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_6178d003a4c1a6198294f174",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
             "factor": "1.10670439319018",
             "value_before_uprating": "118000000000.0"
           }
@@ -11579,7 +11579,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_5b616c7ebeb21ef5305b8beb",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "4980000000.0"
           }
@@ -11594,7 +11594,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_761827852b6a2fccb3d15132",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "19500000000.0"
           }
@@ -11609,7 +11609,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_1a69068db718770de7df525e",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "4810000000.0"
           }
@@ -11624,7 +11624,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_c1df7ca022a9c007f122de6d",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "8030000000.0"
           }
@@ -11639,7 +11639,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_7183b7c143f8e897552ad685",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "3650000000.0"
           }
@@ -11654,7 +11654,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_33c4f0779c40ec91ff6761da",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "15700000000.0"
           }
@@ -11669,7 +11669,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_90652f32ebe0ff36c569998d",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "4390000000.0"
           }
@@ -11684,7 +11684,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_1b9ad3f39e949b92a26ec28c",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "12600000000.0"
           }
@@ -11699,7 +11699,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_96f921ffdb56a575057076f8",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "4840000000.0"
           }
@@ -11714,7 +11714,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_645090db5db62f7c47a34f60",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "8730000000.0"
           }
@@ -11729,7 +11729,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_f0d7af3458463a645af3cb76",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "8220000000.0"
           }
@@ -11744,7 +11744,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_fc7a985c6a2a3d69e2c9ae75",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "6670000000.0"
           }
@@ -11759,7 +11759,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_c588886840e4e7e4a141ac75",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
             "factor": "1.0343847100897",
             "value_before_uprating": "5360000000.0"
           }
@@ -11979,7 +11979,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_6fd01f132dc6b218c02326b1",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "6870000000.0"
           }
@@ -11994,7 +11994,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_3c0cd54a0f0609d8ebc58a25",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "11100000000.0"
           }
@@ -12009,7 +12009,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_b63a84056f85bed14b8ab8fd",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "175000000.0"
           }
@@ -12024,7 +12024,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_3c4f22fc63944665033b18b3",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "855000000.0"
           }
@@ -12039,7 +12039,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_ced1a5840ced099b471d4e84",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "3450000000.0"
           }
@@ -12054,7 +12054,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_8a115e840b38a6603d618bc0",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "3330000000.0"
           }
@@ -12069,7 +12069,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_0394e55216df7f3dcab84fb5",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "3700000000.0"
           }
@@ -12084,7 +12084,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_ea93d59adaf66ef73e9dddbf",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "4700000000.0"
           }
@@ -12099,7 +12099,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_8d09d2287cbdb2e4f4004521",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "3430000000.0"
           }
@@ -12114,7 +12114,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_0a4329a3eb027a530c6f02ec",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "8400000000.0"
           }
@@ -12129,7 +12129,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_c11497ffe45250b909593f1d",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "12500000000.0"
           }
@@ -12144,7 +12144,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_dafc8ca1cd03e5d461b11d4e",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "3820000000.0"
           }
@@ -12159,7 +12159,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_940e6ce9db10080ed5613faa",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
             "factor": "1.08262675352428",
             "value_before_uprating": "9440000000.0"
           }
@@ -12591,7 +12591,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_cb943439ee9edfb445bc3fa5",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "5430000000.0"
           }
@@ -12606,7 +12606,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_7dcf8568040de10d9b3765da",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "370000000.0"
           }
@@ -12621,7 +12621,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_699889c2fb48479e27e44a4a",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "4350000000.0"
           }
@@ -12636,7 +12636,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_0f977d0b50c1d0f1d1364e88",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "13600000000.0"
           }
@@ -12651,7 +12651,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d29aac0680380c80bd842bae",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "1810000000.0"
           }
@@ -12666,7 +12666,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_bafcebe21a05cb0ca19d5e4f",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "30200000000.0"
           }
@@ -12681,7 +12681,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_de0ed091681463c4ddec5b85",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "1570000000.0"
           }
@@ -12696,7 +12696,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_2884a006a8d7c144a8570a7d",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "24900000000.0"
           }
@@ -12711,7 +12711,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_73e8de3b1ac198cc75c2b696",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "1120000000.0"
           }
@@ -12726,7 +12726,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_6b29cd5a1d665a00bb3e8046",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "16900000000.0"
           }
@@ -12741,7 +12741,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_8f911d955de4f80e87dc69d8",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "17400000000.0"
           }
@@ -12756,7 +12756,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_a13e6165bec82537c5c2883c",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "640000000.0"
           }
@@ -12771,7 +12771,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_0a1db235b87cad00eeddbfd8",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
             "factor": "1.08769137555276",
             "value_before_uprating": "9470000000.0"
           }
@@ -12991,7 +12991,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d63e1a96cab57582f482b8c2",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "847000000.0"
           }
@@ -13006,7 +13006,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_9a20bd62d4d5984865242929",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "20000000.0"
           }
@@ -13021,7 +13021,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_45083c1383ea711226aebd1b",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "11800000000.0"
           }
@@ -13036,7 +13036,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_310febb949c686fad2b71a94",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "22200000000.0"
           }
@@ -13051,7 +13051,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_e79668076aadc063559585e9",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "265000000.0"
           }
@@ -13066,7 +13066,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_3d18e138c32f6581d6dafdd7",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "24900000000.0"
           }
@@ -13081,7 +13081,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_e1dda799099ac0f4f439700d",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "179000000.0"
           }
@@ -13096,7 +13096,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_151045b793ac454ab29260fc",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "12300000000.0"
           }
@@ -13111,7 +13111,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_c95154893499181b7f3a8903",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "96000000.0"
           }
@@ -13126,7 +13126,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_bc4cee7d39f5e1c311464a55",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "6020000000.0"
           }
@@ -13141,7 +13141,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_7f09c940c0fbc3cc42b9e510",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "4660000000.0"
           }
@@ -13156,7 +13156,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d265dfcd4ba09d10053a78a4",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "43000000.0"
           }
@@ -13171,7 +13171,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_41c1df25454fdf413d5765d7",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+            "index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
             "factor": "1.12950699043414",
             "value_before_uprating": "1890000000.0"
           }
@@ -20648,7 +20648,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_0ef4a95b830d9e4e41b15e02",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "1260000000.0"
           }
@@ -20663,7 +20663,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_4f8e330da2fcd6774dd7ea1a",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "1240000000.0"
           }
@@ -20678,7 +20678,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_bd65aa884ad89d9837551b0e",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "274000000.0"
           }
@@ -20693,7 +20693,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_34ecf84ec234f3525db59f91",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "1370000000.0"
           }
@@ -20708,7 +20708,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_89bdbe74eda3cee8844ad898",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "650000000.0"
           }
@@ -20723,7 +20723,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_752ea2329d313046c61bf1e2",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "3130000000.0"
           }
@@ -20738,7 +20738,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_02f3a7f7b7097a3fd455b702",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "733000000.0"
           }
@@ -20753,7 +20753,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_d341b6820714e38a12ac4b1c",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "2530000000.0"
           }
@@ -20768,7 +20768,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_8fc8bdb298f62c90d7af57b8",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "673000000.0"
           }
@@ -20783,7 +20783,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_367d1c49bfab3c640463ded8",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "1870000000.0"
           }
@@ -20798,7 +20798,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_819d2f77e45b3ba5a7907a4a",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "2340000000.0"
           }
@@ -20813,7 +20813,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_5d68b2314b5c54a09f274733",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "653000000.0"
           }
@@ -20828,7 +20828,7 @@
           "resolved_fact_period": "2023",
           "resolved_fact_key": "ledger_aggregate_fact_v2_ab8a5ac6dd4ba75e194133f1",
           "uprating": {
-            "index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+            "index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
             "factor": "1.18185603729846",
             "value_before_uprating": "1620000000.0"
           }

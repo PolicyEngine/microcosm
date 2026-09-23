@@ -417,13 +417,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "8757f540a12bdfd65f3466ba4b1bdf31ff29a765bc7caa2b4ca5236c738f843c"
+    "3981a7d1fa1c141b6426eb55e0d1b7b38b5b238f5ad33ebbdda2e12f37e352c7"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "e16c751623fe0bccd1ef5409a60a6a9d9e3d44d1b071a8178314de615b1adb32"
+    "84cd0ebfd29b5ac1c7a51bd42b769f341a5c5a87b16dd51831b6b64a5cb23c00"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "86325b18815736f41a2b6d85f468692e721e5131d945635ee9ab0850b14c3266"
+    "aecc898089f015b30cbe65cff3de097367337ce8cbb06e7181c9895d6fd245a1"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -488,6 +488,7 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_stage_cgt_incidence_clone_mass": ("stage_health", "transferred"),
     "uk_stage_cgt_band_donors_support": ("stage_health", "transferred"),
+    "uk_stage_spi_income_band_donors_support": ("stage_health", "transferred"),
     "uk_stage_hmrc_cgt_gains_spine_summary": (
         "stage_health",
         "transferred",
@@ -580,6 +581,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_hmrc_spi_income_spine_identity",
         "uk_stage_cgt_incidence_clone_mass",
         "uk_stage_cgt_band_donors_support",
+        "uk_stage_spi_income_band_donors_support",
         "uk_stage_hmrc_cgt_gains_spine_summary",
         "uk_stage_hmrc_cgt_asset_type_spine_summary",
         "uk_stage_cgt_incidence_anchor_composition",
@@ -771,6 +773,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_stage_age_tail_targets",
             "uk_stage_cgt_band_donors_support",
             "uk_stage_cgt_incidence_anchor_composition",
+            "uk_stage_spi_income_band_donors_support",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_etb_services_support",
             "uk_stage_etb_services_support_pricing",
@@ -831,10 +834,10 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "54fe5008caa27a8cc2653b49ac44178ac3f02e973b412b1decac58437d76542f"
+            "81782e03c6cf6504b25f9372b3e66385bbd31acf4c5bc6de0724ead327601c36"
         ),
         "policy_sha256": (
-            "6082b3101196c42cd96c272d48cb8a428e0ed9f0355858651505034f507b52d8"
+            "10bca98c83aae6decd1d584ec55f34ffcd054f64527c60583ae3e93cccc25535"
         ),
     },
     "calibration_seam": {
@@ -847,10 +850,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "22f3d3de05309ae84e211e1f04b11cdeb245ef16ea25f220f903a50028641791"
+            "7e03311af04b1f1ae3bb38aafa5d8df1fca6898cfd4b437e2acd9151f72558c9"
         ),
         "policy_sha256": (
-            "4da18f48c0f51c90da39c73a332a999c57c6e5e4b7fdd3a1faa40cadfeefb86b"
+            "183b897c7809f7a6bb74f63b0ced789990d7340a37597d4f8bd00e5d0ac80f5c"
         ),
     },
 }

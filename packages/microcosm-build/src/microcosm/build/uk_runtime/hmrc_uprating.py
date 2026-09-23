@@ -42,7 +42,7 @@ from microcosm.build.ledger_targets import (
 )
 from microcosm.build.uk_runtime.ledger_fact_vendoring import vendored_rows
 
-UK_ENGINE_PARAMETER_INDEX_PREFIX = "policyengine_uk.parameter:"
+UK_ENGINE_PARAMETER_INDEX_PREFIX = "policyengine_uk_parameter:"
 UK_ENGINE_INDEX_BASIS = (
     "policyengine-uk parameter ratio between 1 January of the fact's opening "
     "year and 1 January of the calibration year (the SPI donor rebasing convention)"

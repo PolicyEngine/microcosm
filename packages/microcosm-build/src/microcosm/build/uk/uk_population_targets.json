@@ -3045,7 +3045,7 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.average_earnings",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.average_earnings",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.average_earnings between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
@@ -3133,7 +3133,7 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.mixed_income",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.mixed_income between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
@@ -3221,7 +3221,7 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
@@ -3309,7 +3309,7 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.per_capita.gdp",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.per_capita.gdp between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
@@ -3397,7 +3397,7 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.obr.private_pension_index",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.obr.private_pension_index",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.obr.private_pension_index between 1 January 2023 and 1 January 2025, the instants the SPI donor rebasing uses (the engine's OBR indices are calendar-year series, so period 2025 is calendar 2025 for incomes). Ruled by María on 2026-09-22 (microcosm#280 lane): the calibration binds at calendar 2025 and published facts move to it; the v20 national build measured the held 2023-24 levels as income tax 13 percent under and the state-pension bands 8 to 18 percent over."
     },
     {
@@ -3485,7 +3485,7 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk.parameter:gov.dwp.state_pension.new_state_pension.amount",
+      "uprating_index": "policyengine_uk_parameter:gov.dwp.state_pension.new_state_pension.amount",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the new State Pension weekly rate the engine pays at each period (203.85 at 2023, 230.25 at 2025 on the pinned engine): the engine fixes every pensioner's amount at the period's rate, so the bands can only be met at that level. Ruled by María on 2026-09-22 (microcosm#280 lane)."
     },
     {
@@ -17882,7 +17882,7 @@
       },
       "category_id": "hmrc.survey_of_personal_incomes",
       "label": "Amount by total income band",
-      "uprating_index": "policyengine_uk.parameter:gov.economic_assumptions.indices.ons.household_interest_income",
+      "uprating_index": "policyengine_uk_parameter:gov.economic_assumptions.indices.ons.household_interest_income",
       "selector_note": "Uprated from the SPI 2023-24 fact to the 2025 calibration period by the pinned engine's gov.economic_assumptions.indices.ons.household_interest_income between 1 January 2023 and 1 January 2025, the index the engine uprates savings_interest_income with. Ruled by María on 2026-09-22 (microcosm#280 lane). The ONS UKEA HAXV row (ons.savings_interest_income) is a national-accounts D.41 resources concept and stays a measured diagnostic on the exclusion register (microcosm#866)."
     },
     {

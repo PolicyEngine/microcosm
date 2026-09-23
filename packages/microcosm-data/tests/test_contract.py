@@ -116,13 +116,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "8757f540a12bdfd65f3466ba4b1bdf31ff29a765bc7caa2b4ca5236c738f843c"
+    "3981a7d1fa1c141b6426eb55e0d1b7b38b5b238f5ad33ebbdda2e12f37e352c7"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "e16c751623fe0bccd1ef5409a60a6a9d9e3d44d1b071a8178314de615b1adb32"
+    "84cd0ebfd29b5ac1c7a51bd42b769f341a5c5a87b16dd51831b6b64a5cb23c00"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "86325b18815736f41a2b6d85f468692e721e5131d945635ee9ab0850b14c3266"
+    "aecc898089f015b30cbe65cff3de097367337ce8cbb06e7181c9895d6fd245a1"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -183,6 +183,11 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_cgt_band_donors_support": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_spi_income_band_donors_support": (
         "stage_health",
         "transferred",
         None,
@@ -1193,6 +1198,7 @@ def _gate_battery_payload(
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
         "uk_stage_cgt_incidence_clone_mass": "cgt_incidence_clone",
         "uk_stage_cgt_band_donors_support": "cgt_band_donors",
+        "uk_stage_spi_income_band_donors_support": "spi_income_band_donors",
         "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",
         "uk_stage_hmrc_cgt_asset_type_spine_summary": "hmrc_cgt_asset_type_spine",
         "uk_stage_cgt_incidence_anchor_composition": "cgt_incidence_anchor",
