@@ -1,20 +1,24 @@
-"""Unit tests for the pure half of the US Modal stage runner.
+"""Unit tests for the US Modal stage runner.
 
 ``tools/modal_us_stage_plan.py`` builds the plan, argv and sha256 receipts
-that ``tools/modal_us_stage.py`` executes on Modal. Nothing here imports
-``modal`` or touches the network.
+that ``tools/modal_us_stage.py`` executes on Modal. The app's helpers are
+imported against a stub ``modal`` module, so nothing here needs the Modal
+client, a Modal connection or the network (git runs against a local repo).
 """
 
 from __future__ import annotations
 
 import copy
+import dataclasses
 import hashlib
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -33,6 +37,32 @@ def _load():
 
 
 plan_lib = _load()
+
+
+@pytest.fixture
+def app(monkeypatch):
+    """``tools/modal_us_stage.py`` imported against a stub ``modal`` module.
+
+    The stub answers ``is_local()`` with False, so the module defines its
+    image and functions without reading a plan or contacting Modal; volume
+    calls (commit, reload) are recorded, not performed.
+    """
+
+    stub = MagicMock(name="modal")
+    stub.is_local.return_value = False
+    stub.current_input_id.return_value = "in-test"
+    stub.current_function_call_id.return_value = "fc-test"
+    monkeypatch.setitem(sys.modules, "modal", stub)
+    monkeypatch.setitem(sys.modules, "modal_us_stage_plan", plan_lib)
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    spec = importlib.util.spec_from_file_location(
+        "modal_us_stage_under_test", ROOT / "tools" / "modal_us_stage.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
 
 COMMIT = "4d773a4785a1e2c7f0b9d3e6a8c5b1f2e3d4c5b6"
 STAGING_SHA = "a" * 64
@@ -732,3 +762,107 @@ def test_receipt_prices_earlier_preempted_attempts() -> None:
     assert receipt["estimated_usd_container_at_list_price"] == pytest.approx(
         1.21, abs=0.01
     )
+
+
+# --------------------------------------------------------------------------- #
+# Branch verification                                                          #
+# --------------------------------------------------------------------------- #
+
+
+_GIT_ENV = {
+    "PATH": os.environ.get("PATH", ""),
+    "HOME": os.environ.get("HOME", "/"),
+    "GIT_CONFIG_GLOBAL": os.devnull,
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_AUTHOR_NAME": "t",
+    "GIT_AUTHOR_EMAIL": "t@example.com",
+    "GIT_COMMITTER_NAME": "t",
+    "GIT_COMMITTER_EMAIL": "t@example.com",
+}
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        env=_GIT_ENV,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+
+@pytest.fixture
+def remote(tmp_path: Path) -> dict[str, str]:
+    """A local remote: main c1-c2-c4 and feature/x c1-c2-c3."""
+
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    repo = tmp_path / "remote"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "config", "uploadpack.allowFilter", "true")
+    shas = {}
+    for name in ("c1", "c2"):
+        _git(repo, "commit", "-q", "--allow-empty", "-m", name)
+        shas[name] = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "-b", "feature/x")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "c3")
+    shas["c3"] = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "commit", "-q", "--allow-empty", "-m", "c4")
+    shas["c4"] = _git(repo, "rev-parse", "HEAD")
+    return {"url": repo.as_uri(), **shas}
+
+
+@pytest.mark.parametrize(
+    ("branch", "commit", "verified", "check"),
+    [
+        ("feature/x", "c3", True, "is the branch tip"),
+        ("feature/x", "c2", True, "is an ancestor of the tip"),
+        ("feature/x", "c4", False, "not reachable"),
+        ("main", "c3", False, "not reachable"),
+        ("no-such-branch", "c3", False, "could not be fetched"),
+    ],
+)
+def test_branch_is_verified_against_the_remote(
+    app, remote, monkeypatch, branch, commit, verified, check
+) -> None:
+    for key, value in _GIT_ENV.items():
+        monkeypatch.setenv(key, value)
+    plan = dataclasses.replace(
+        plan_lib.parse_plan(_plan_data()),
+        repo_url=remote["url"],
+        branch=branch,
+        commit=remote[commit],
+    )
+    result = app._verify_branch(plan)
+    assert result["branch_verified"] is verified
+    assert check in result["branch_check"]
+    if verified:
+        assert result["branch_tip"] == remote["c3"]
+
+
+def test_branch_check_argvs_never_touch_the_pinned_clone() -> None:
+    argvs = plan_lib.branch_check_argvs(
+        plan_lib.DEFAULT_REPO_URL, "us-modal-stage-runner", COMMIT, "/tmp/check.git"
+    )
+    for argv in argvs:
+        assert plan_lib.IMAGE_REPO_ROOT not in argv
+    assert argvs[1][-1] == "+refs/heads/us-modal-stage-runner:refs/branch-check/tip"
+    assert "--filter=tree:0" in argvs[1]
+    assert argvs[-1][-3:] == ["--is-ancestor", COMMIT, "refs/branch-check/tip"]
+
+
+def test_branch_verdict_needs_a_proven_ancestry() -> None:
+    verdict = plan_lib.branch_verdict
+    assert verdict("b", COMMIT, fetch_returncode=0, tip=COMMIT, ancestor_returncode=0)[
+        "branch_verified"
+    ]
+    for kwargs in (
+        {"fetch_returncode": 128, "fetch_stderr": "fatal: couldn't find remote ref"},
+        {"fetch_returncode": 0, "tip": "f" * 40, "ancestor_returncode": 1},
+        {"fetch_returncode": 0, "tip": "f" * 40, "ancestor_returncode": 128},
+        {"fetch_returncode": 0, "tip": None, "ancestor_returncode": None},
+    ):
+        assert verdict("b", COMMIT, **kwargs)["branch_verified"] is False

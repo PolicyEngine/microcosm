@@ -39,8 +39,15 @@ release directory onto the runs volume. Publication stays the human step in
    and asserts `HEAD` equals the commit. It then runs
    `uv sync --all-packages --extra us --frozen` against that tree's own
    `uv.lock` into `/opt/venv` and asserts `git status --porcelain` is empty.
-   The release tool's `_repo_code_identity` therefore records the real sha
-   and branch. A commit that is not on GitHub fails the build. The runner
+   A commit that is not on GitHub fails the build. `checkout -B` would put
+   any branch name on any commit, so each container also proves the name
+   before it runs anything: it fetches the plan's branch from the remote
+   (commits only, into a scratch repository) and requires
+   `git merge-base --is-ancestor <commit> <branch tip>`. The check and the
+   run both refuse a plan whose branch is missing or does not contain the
+   commit, and the receipt records the tip it was checked against. The
+   release tool's `_repo_code_identity` therefore records the real sha and a
+   branch that contained it when the stage ran. The runner
    code comes from your checkout, not from the pinned commit, so any pushed
    commit whose tree has the tool can run, including commits older than the
    runner. The receipt records the sha256 of both runner files.

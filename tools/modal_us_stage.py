@@ -37,6 +37,7 @@ import resource
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from datetime import UTC, datetime
@@ -139,9 +140,57 @@ def _git_state(plan: plan_lib.Plan) -> dict[str, object]:
         "head_matches_plan": head == plan.commit,
         "tree_clean": clean,
         "branch_checked_out": _git("branch", "--show-current"),
+        **_verify_branch(plan),
         "tool_present": plan.tool.script is None
         or (Path(plan_lib.IMAGE_REPO_ROOT) / plan.tool.script).is_file(),
     }
+
+
+def _verify_branch(plan: plan_lib.Plan) -> dict[str, object]:
+    """Prove the plan's commit is on its branch on the remote, as of now.
+
+    The image checks the branch name out with ``checkout -B``, which would
+    name any commit; the tool records that name, so it is verified here, at
+    run time rather than in the cached image layer.
+    """
+
+    scratch = tempfile.mkdtemp(prefix="branch-check-")
+    # A missing or private repository must fail, not wait for a password.
+    env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+    try:
+        init, fetch, rev_parse, ancestry = plan_lib.branch_check_argvs(
+            plan.repo_url, plan.branch, plan.commit, str(Path(scratch) / "repo.git")
+        )
+        subprocess.run(init, check=True, capture_output=True, timeout=60, env=env)
+        fetched = subprocess.run(
+            fetch, capture_output=True, text=True, timeout=300, env=env
+        )
+        if fetched.returncode != 0:
+            return plan_lib.branch_verdict(
+                plan.branch,
+                plan.commit,
+                fetch_returncode=fetched.returncode,
+                fetch_stderr=fetched.stderr,
+            )
+        tip = subprocess.run(
+            rev_parse, capture_output=True, text=True, timeout=60, env=env
+        ).stdout.strip()
+        ancestor = subprocess.run(ancestry, capture_output=True, timeout=300, env=env)
+        return plan_lib.branch_verdict(
+            plan.branch,
+            plan.commit,
+            fetch_returncode=0,
+            tip=tip or None,
+            ancestor_returncode=ancestor.returncode,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return {
+            "branch_verified": False,
+            "branch_tip": None,
+            "branch_check": f"{type(error).__name__}: {error}",
+        }
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
 
 
 def _runner_identity() -> dict[str, object]:
@@ -402,6 +451,8 @@ def check_stage(plan_data: dict) -> dict:
         problems.append(f"clone HEAD {git['head']} is not the plan commit")
     if not git["tree_clean"]:
         problems.append("the image's clone is dirty")
+    if not git["branch_verified"]:
+        problems.append(f"branch not verified: {git['branch_check']}")
     if not git["tool_present"]:
         problems.append(f"{plan.tool.script} is not in commit {plan.commit}")
 
@@ -462,7 +513,15 @@ def _run_stage(plan_data: dict) -> dict:
     container_started = time.time()
     plan = plan_lib.parse_plan(plan_data)
     git = _git_state(plan)
-    if not (git["head_matches_plan"] and git["tree_clean"] and git["tool_present"]):
+    if not all(
+        git[key]
+        for key in (
+            "head_matches_plan",
+            "tree_clean",
+            "branch_verified",
+            "tool_present",
+        )
+    ):
         raise plan_lib.PlanError(f"image clone does not match the plan: {git}")
 
     work = Path(plan_lib.WORK_ROOT)
@@ -585,12 +644,40 @@ def run_stage_heavy(plan_data: dict) -> dict:
     image=image,
     volumes=VOLUMES,
     secrets=_secrets(),
+    cpu=plan_lib.HEAVY.cpu,
+    memory=plan_lib.HEAVY.memory_mib,
+    timeout=plan_lib.HEAVY.timeout_s,
+    retries=0,
+    nonpreemptible=True,
+)
+def run_stage_heavy_nonpreemptible(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
     cpu=plan_lib.LIGHT.cpu,
     memory=plan_lib.LIGHT.memory_mib,
     timeout=plan_lib.LIGHT.timeout_s,
     retries=0,
 )
 def run_stage_light(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.LIGHT.cpu,
+    memory=plan_lib.LIGHT.memory_mib,
+    timeout=plan_lib.LIGHT.timeout_s,
+    retries=0,
+    nonpreemptible=True,
+)
+def run_stage_light_nonpreemptible(plan_data: dict) -> dict:
     return _run_stage(plan_data)
 
 
@@ -608,9 +695,11 @@ def run_stage_small(plan_data: dict) -> dict:
 
 
 RUNNERS = {
-    "heavy": run_stage_heavy,
-    "light": run_stage_light,
-    "check": run_stage_small,
+    ("heavy", False): run_stage_heavy,
+    ("heavy", True): run_stage_heavy_nonpreemptible,
+    ("light", False): run_stage_light,
+    ("light", True): run_stage_light_nonpreemptible,
+    ("check", False): run_stage_small,
 }
 
 
@@ -627,7 +716,7 @@ def main(run: bool = False) -> None:
             raise SystemExit(f"CHECK FAILED: {report['problems']}")
         print("CHECK OK")
         return
-    runner = RUNNERS[plan.resources.name]
+    runner = RUNNERS[(plan.resources.name, plan.nonpreemptible)]
     receipt = runner.remote(plan_data)
     brief = {
         key: receipt[key]

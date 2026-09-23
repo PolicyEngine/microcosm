@@ -67,6 +67,9 @@ WORK_ROOT = "/work"
 # when the stage stays inside it.
 CPU_USD_PER_CORE_SECOND = 0.0000131
 MEMORY_USD_PER_GIB_SECOND = 0.00000222
+# Modal applies this to the CPU and memory list price of a function set
+# nonpreemptible=True (modal.com/docs/guide/preemption, read 2026-09-23).
+NONPREEMPTIBLE_PRICE_MULTIPLIER = 3.0
 
 # Every pattern is applied with ``fullmatch``: ``re.match`` with ``$`` would
 # also accept the value followed by a newline.
@@ -117,14 +120,14 @@ class Resources:
     def memory_gib(self) -> float:
         return self.memory_mib / 1024
 
-    def estimated_usd(self, wall_seconds: float) -> float:
+    def estimated_usd(self, wall_seconds: float, multiplier: float = 1.0) -> float:
         """List-price cost of holding this request for ``wall_seconds``."""
 
         per_second = (
             self.cpu * CPU_USD_PER_CORE_SECOND
             + self.memory_gib * MEMORY_USD_PER_GIB_SECOND
         )
-        return round(per_second * wall_seconds, 2)
+        return round(per_second * wall_seconds * multiplier, 2)
 
 
 # Sized from measured local peaks (see MEASURED below): the heavy class holds
@@ -481,6 +484,10 @@ class Plan:
     # Runner-side budget: the tool is stopped after this many seconds, so a
     # stage's cost is bounded below the resource class's hard timeout.
     max_wall_seconds: int | None = None
+    # Run on Modal's non-preemptible placement, at NONPREEMPTIBLE_PRICE_MULTIPLIER
+    # times the list price. A preempted stage restarts from scratch, and a
+    # multi-hour materialize was preempted twice in three hours (runbook).
+    nonpreemptible: bool = False
 
     @property
     def stage_spec(self) -> StageSpec:
@@ -489,6 +496,10 @@ class Plan:
     @property
     def resources(self) -> Resources:
         return self.stage_spec.resources
+
+    @property
+    def price_multiplier(self) -> float:
+        return NONPREEMPTIBLE_PRICE_MULTIPLIER if self.nonpreemptible else 1.0
 
 
 _PLAN_KEYS = {
@@ -501,6 +512,7 @@ _PLAN_KEYS = {
     "options",
     "env",
     "max_wall_seconds",
+    "nonpreemptible",
 }
 # Time the container keeps for staging inputs, hashing and mirroring state.
 _RUNNER_OVERHEAD_SECONDS = 15 * 60
@@ -623,6 +635,12 @@ def parse_plan(data: object) -> Plan:
             f"stage {stage!r}"
         )
 
+    nonpreemptible = data.get("nonpreemptible", False)
+    if not isinstance(nonpreemptible, bool):
+        raise PlanError("nonpreemptible must be true or false")
+    if nonpreemptible and tool.stages[stage].resources.name == "check":
+        raise PlanError("the check class always runs preemptible")
+
     return Plan(
         tool=tool,
         stage=stage,
@@ -634,6 +652,7 @@ def parse_plan(data: object) -> Plan:
         options=options,
         env=env,
         max_wall_seconds=max_wall,
+        nonpreemptible=nonpreemptible,
     )
 
 
@@ -674,6 +693,79 @@ def image_build_commands(plan: Plan, repo_root: str = IMAGE_REPO_ROOT) -> list[s
         f"cd {root} && uv sync --all-packages --extra us --frozen",
         f'test -z "$(git -C {root} status --porcelain)"',
     ]
+
+
+_BRANCH_CHECK_REF = "refs/branch-check/tip"
+
+
+def branch_check_argvs(
+    repo_url: str, branch: str, commit: str, scratch: str
+) -> list[list[str]]:
+    """Git steps that prove ``commit`` is reachable from ``branch`` on the remote.
+
+    The image checks out the plan's branch name with ``checkout -B``, which
+    names any commit; this is what makes the recorded branch true. A
+    commits-only fetch (``--filter=tree:0``) of the branch into a scratch
+    bare repository, then ``merge-base --is-ancestor``. The pinned clone is
+    not touched. Run in order; see :func:`branch_verdict`.
+    """
+
+    return [
+        ["git", "init", "-q", "--bare", scratch],
+        [
+            "git",
+            "-C",
+            scratch,
+            "fetch",
+            "-q",
+            "--no-tags",
+            "--filter=tree:0",
+            repo_url,
+            f"+refs/heads/{branch}:{_BRANCH_CHECK_REF}",
+        ],
+        ["git", "-C", scratch, "rev-parse", _BRANCH_CHECK_REF],
+        [
+            "git",
+            "-C",
+            scratch,
+            "merge-base",
+            "--is-ancestor",
+            commit,
+            _BRANCH_CHECK_REF,
+        ],
+    ]
+
+
+def branch_verdict(
+    branch: str,
+    commit: str,
+    *,
+    fetch_returncode: int,
+    fetch_stderr: str = "",
+    tip: str | None = None,
+    ancestor_returncode: int | None = None,
+) -> dict[str, object]:
+    """Interpret :func:`branch_check_argvs`; only a proven ancestry verifies."""
+
+    if fetch_returncode != 0:
+        detail = fetch_stderr.strip().splitlines()[-1:] or ["no output"]
+        return {
+            "branch_verified": False,
+            "branch_tip": None,
+            "branch_check": f"branch {branch!r} could not be fetched: {detail[0]}",
+        }
+    if ancestor_returncode == 0:
+        how = "is the branch tip" if tip == commit else "is an ancestor of the tip"
+        return {
+            "branch_verified": True,
+            "branch_tip": tip,
+            "branch_check": f"commit {how}",
+        }
+    if ancestor_returncode == 1:
+        why = f"commit is not reachable from branch {branch!r} (tip {tip})"
+    else:
+        why = f"ancestry check failed (exit {ancestor_returncode})"
+    return {"branch_verified": False, "branch_tip": tip, "branch_check": why}
 
 
 def option_argv(plan: Plan) -> list[str]:
@@ -849,10 +941,10 @@ def build_receipt(
         container = {
             "container_wall_seconds": round(container_wall_seconds, 1),
             "estimated_usd_container_at_list_price": resources.estimated_usd(
-                container_wall_seconds
+                container_wall_seconds, plan.price_multiplier
             ),
             "estimated_usd_all_attempts_at_list_price": resources.estimated_usd(
-                container_wall_seconds + prior_seconds
+                container_wall_seconds + prior_seconds, plan.price_multiplier
             ),
         }
     return {
@@ -877,6 +969,7 @@ def build_receipt(
             "cpu": resources.cpu,
             "memory_mib": resources.memory_mib,
             "timeout_s": resources.timeout_s,
+            "nonpreemptible": plan.nonpreemptible,
         },
         "argv": list(argv),
         "returncode": returncode,
@@ -888,7 +981,9 @@ def build_receipt(
         "finished_at": finished_at,
         "wall_seconds": round(wall_seconds, 1),
         "peak_rss_bytes": peak_rss_bytes,
-        "estimated_usd_at_list_price": resources.estimated_usd(wall_seconds),
+        "estimated_usd_at_list_price": resources.estimated_usd(
+            wall_seconds, plan.price_multiplier
+        ),
         **container,
         "inputs": [dict(item) for item in inputs_verified],
         "prior_receipts": [dict(item) for item in prior_receipts],
@@ -1038,6 +1133,7 @@ def summarize(plan: Plan) -> dict[str, object]:
             "cpu": resources.cpu,
             "memory_gib": resources.memory_gib,
             "timeout_h": resources.timeout_s / 3600,
+            "nonpreemptible": plan.nonpreemptible,
         },
         "inputs": {name: ref.to_json() for name, ref in plan.inputs.items()},
         "argv": planned_argv(plan),
@@ -1050,7 +1146,11 @@ def summarize(plan: Plan) -> dict[str, object]:
             "source": measured.source,
         }
         summary["estimated_usd_at_measured_wall"] = resources.estimated_usd(
-            measured.wall_seconds
+            measured.wall_seconds, plan.price_multiplier
+        )
+    if plan.max_wall_seconds is not None:
+        summary["estimated_usd_at_max_wall"] = resources.estimated_usd(
+            plan.max_wall_seconds + _RUNNER_OVERHEAD_SECONDS, plan.price_multiplier
         )
     return summary
 
