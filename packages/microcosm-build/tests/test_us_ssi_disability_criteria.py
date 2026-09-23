@@ -40,6 +40,18 @@ from microcosm.build.us_runtime.ssi_disability_criteria import (
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _OUTPUT = US_SSI_DISABILITY_CRITERIA_OUTPUT_COLUMNS[0]
+
+
+def _load_tail_fixtures():
+    path = Path(__file__).with_name("us_tail_clone_fixtures.py")
+    spec = importlib.util.spec_from_file_location("us_tail_clone_fixtures", path)
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+_TAIL = _load_tail_fixtures()
 _policyengine_us_installed = importlib.util.find_spec("policyengine_us") is not None
 requires_us = pytest.mark.skipif(
     not _policyengine_us_installed,
@@ -626,6 +638,69 @@ def test_stacked_clone_divergence_diagnostic_checks_clone_two() -> None:
     )
 
     summary = us_ssi_disability_criteria_summary(stacked)
+
+    assert summary["clone_divergence_source_people"] == 1
+
+
+def test_historical_tail_copy_predicts_in_the_puf_role_stream(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    tailed = _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(_frame()), [1, 3]
+    )
+    person = tailed.table("person")
+    assert "person_spine_source_id" not in person
+    tail = person["person_support_clone_index"].eq(2)
+    assert int(tail.sum()) == 2
+    assert set(person.loc[tail, "person_support_channel"]) == {"puf_tax_detail"}
+    # Give source person 3's PUF-role copies, the tail copy included, a
+    # positive model draw and disability signal.
+    puf = person["person_support_channel"].astype(str).eq("puf_tax_detail")
+    source_three = person["person_source_id"].eq(3)
+    person.loc[puf & source_three, "bank_account_assets"] = 100.0
+    person.loc[puf & source_three, "PEDISDRS"] = 1
+
+    result = impute_us_ssi_disability_criteria(tailed, _donor(), seed=7)
+    assert [len(receiver) for receiver in _FakeQRF.predict_receivers] == [20, 22]
+    assert _FakeQRF.predict_start_offsets == [0, 0]
+    rows = pd.DataFrame(
+        {
+            "source": person["person_source_id"].to_numpy(),
+            "clone": person["person_support_clone_index"].to_numpy(),
+            "value": result.to_numpy(),
+        }
+    )
+    reporter = rows[rows["source"] == 1].set_index("clone")["value"]
+    source_three_values = rows[rows["source"] == 3].set_index("clone")["value"]
+    # The ASEC reporter anchor stays on the native copy; the tail copy is
+    # treated exactly like its primary PUF-detail twin.
+    assert reporter.to_dict() == {0: True, 1: False, 2: False}
+    assert source_three_values.to_dict() == {0: False, 1: True, 2: True}
+
+    materialized = _replace_person(tailed, **{_OUTPUT: result.to_numpy()})
+    summary = us_ssi_disability_criteria_summary(materialized)
+    # Sources 1 and 3 diverge between their native and PUF-role copies; the
+    # diagnostic groups every copy, the tail copy included, by source person.
+    assert summary["clone_divergence_source_people"] == 2
+
+
+def test_historical_tail_copy_divergence_joins_its_source_group() -> None:
+    tailed = _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(_frame(3)), [2]
+    )
+    person = tailed.table("person")
+    values = np.zeros(len(person), dtype=bool)
+    values[
+        np.flatnonzero(
+            person["person_support_clone_index"].eq(2)
+            & person["person_source_id"].eq(2)
+        )
+    ] = True
+
+    summary = us_ssi_disability_criteria_summary(
+        _replace_person(tailed, **{_OUTPUT: values})
+    )
 
     assert summary["clone_divergence_source_people"] == 1
 

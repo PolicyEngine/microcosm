@@ -11,6 +11,7 @@ import pandas as pd
 import pytest
 
 import microcosm.build.us_runtime.sipp_head_start as module
+from microcosm.build.us_runtime.puf_support import clone_us_frame_for_puf_support
 from microcosm.build.us_runtime.sipp_head_start import (
     HEAD_START_SIPP_DICTIONARY_URL,
     SIPP_2023_HEAD_START_DONOR_REVISION,
@@ -34,6 +35,18 @@ from microcosm.build.us_runtime.sipp_head_start import (
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _OUTPUT = US_SIPP_HEAD_START_OUTPUT_COLUMNS[0]
+
+
+def _load_tail_fixtures():
+    path = Path(__file__).with_name("us_tail_clone_fixtures.py")
+    spec = importlib.util.spec_from_file_location("us_tail_clone_fixtures", path)
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+_TAIL = _load_tail_fixtures()
 _policyengine_us_installed = importlib.util.find_spec("policyengine_us") is not None
 requires_us = pytest.mark.skipif(
     not _policyengine_us_installed,
@@ -425,7 +438,7 @@ def test_imputer_rejects_identical_duplicate_same_role_source_rows(
         channels=["asec", "asec"],
     )
 
-    with pytest.raises(ValueError, match="duplicated same-role rows"):
+    with pytest.raises(ValueError, match="duplicated support copies"):
         impute_us_sipp_head_start(duplicate, _donor(), seed=0)
 
 
@@ -463,6 +476,128 @@ def test_assembled_clone_two_uses_lowest_clone_and_fans_to_every_clone(
     materialized.loc[materialized["person_support_clone_index"].eq(2), _OUTPUT] ^= True
     mismatch = us_sipp_head_start_summary(_replace_person(frame, materialized))
     assert mismatch["clone_mismatch_count"] == 2
+
+
+def _historical_tail_frame() -> Frame:
+    """A non-assembled PUF-support frame whose source 10 has a tail copy."""
+
+    native = _frame(
+        [10, 20, 30],
+        ages=[4, 5, 40],
+        female=[True, False, True],
+    )
+    native = _replace_person(
+        native, native.table("person").drop(columns=["person_source_id"])
+    )
+    cloned = clone_us_frame_for_puf_support(native)
+    tailed = _TAIL.with_capital_gains_tail_copies(cloned, [1])
+    person = tailed.table("person").copy()
+    # Source IDs are the pre-clone person IDs; restate them as the test's
+    # source labels so assertions read in source-person terms.
+    person["person_source_id"] = person["person_source_id"].map({1: 10, 2: 20, 3: 30})
+    return _replace_person(tailed, person)
+
+
+def test_historical_tail_copy_fans_the_source_decision_to_every_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _historical_tail_frame()
+    person = frame.table("person")
+    assert "person_spine_source_id" not in person
+    assert person["person_support_clone_index"].tolist() == [0, 0, 0, 1, 1, 1, 2]
+    assert person["person_support_channel"].tolist() == [
+        "asec",
+        "asec",
+        "asec",
+        "puf_tax_detail",
+        "puf_tax_detail",
+        "puf_tax_detail",
+        "puf_tax_detail",
+    ]
+
+    # Give the tail copy a predictor that would flip the fake QRF's decision:
+    # the native copy must still be the canonical predictor row.
+    divergent = person.copy()
+    divergent.loc[divergent["person_support_clone_index"].eq(2), "is_female"] = False
+    predicted = impute_us_sipp_head_start(
+        _replace_person(frame, divergent), _donor(), seed=3
+    )
+    receiver = _FakeQRF.instances[-1].receiver
+    assert receiver is not None
+    assert len(receiver) == 2  # one canonical row per eligible source person
+    by_source = pd.DataFrame(
+        {"source": person["person_source_id"], "value": predicted}
+    ).groupby("source")["value"]
+    assert (by_source.nunique() == 1).all()
+    assert by_source.first().to_dict() == {10: True, 20: False, 30: False}
+    tail = person["person_support_clone_index"].eq(2).to_numpy()
+    twin = (
+        person["person_support_clone_index"].eq(1) & person["person_source_id"].eq(10)
+    ).to_numpy()
+    assert predicted[tail].tolist() == predicted[twin].tolist() == [True]
+
+    materialized = person.copy()
+    materialized[_OUTPUT] = predicted.to_numpy()
+    summary = us_sipp_head_start_summary(_replace_person(frame, materialized))
+    assert summary["clone_group_count"] == 3
+    assert summary["clone_mismatch_count"] == 0
+    materialized.loc[tail, _OUTPUT] = False
+    mismatch = us_sipp_head_start_summary(_replace_person(frame, materialized))
+    assert mismatch["clone_mismatch_count"] == 1
+
+
+def test_historical_puf_only_survivor_predicts_from_the_primary_detail_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _historical_tail_frame()
+    person = frame.table("person").copy()
+    # Selection kept only source 10's PUF-role copies, tail copy first.
+    survivor = ~(
+        person["person_source_id"].eq(10) & person["person_support_clone_index"].eq(0)
+    )
+    person = person.loc[survivor].iloc[::-1].reset_index(drop=True)
+    person.loc[person["person_support_clone_index"].eq(2), "is_female"] = False
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    tables["person"] = person
+    kept_households = set(person["person_household_id"])
+    tables["household"] = tables["household"].loc[
+        tables["household"]["household_id"].isin(kept_households)
+    ]
+    weights = frame.weights_for("household").values[
+        frame.table("household")["household_id"].isin(kept_households).to_numpy()
+    ]
+    for entity in ("tax_unit", "spm_unit", "family", "marital_unit"):
+        membership = f"person_{entity}_id"
+        tables[entity] = tables[entity].loc[
+            tables[entity][f"{entity}_id"].isin(set(person[membership]))
+        ]
+    survivor_frame = Frame(
+        tables,
+        frame.schema,
+        {"household": Weights(weights, WeightKind.DESIGN)},
+    )
+
+    predicted = impute_us_sipp_head_start(survivor_frame, _donor(), seed=3)
+    source_ten = person["person_source_id"].eq(10).to_numpy()
+    # Copy rank, not row order or role, picks the primary PUF-detail copy.
+    assert predicted[source_ten].tolist() == [True, True]
+
+
+def test_historical_duplicate_clone_index_still_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _historical_tail_frame()
+    person = frame.table("person").copy()
+    person.loc[
+        person["person_support_clone_index"].eq(2), "person_support_clone_index"
+    ] = 1
+    duplicated = _replace_person(frame, person)
+
+    with pytest.raises(ValueError, match=r"duplicated support copies.*\('10', 1\)"):
+        impute_us_sipp_head_start(duplicated, _donor(), seed=3)
 
 
 def test_wrapper_heals_stale_output_and_is_exactly_idempotent(

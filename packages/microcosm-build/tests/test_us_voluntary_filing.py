@@ -42,6 +42,18 @@ from microcosm.build.us_runtime.voluntary_filing import (
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 _OUTPUT = US_VOLUNTARY_FILING_OUTPUT_COLUMNS[0]
+
+
+def _load_tail_fixtures():
+    path = Path(__file__).with_name("us_tail_clone_fixtures.py")
+    spec = importlib.util.spec_from_file_location("us_tail_clone_fixtures", path)
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+_TAIL = _load_tail_fixtures()
 _policyengine_us_installed = importlib.util.find_spec("policyengine_us") is not None
 requires_us = pytest.mark.skipif(
     not _policyengine_us_installed,
@@ -648,8 +660,148 @@ def test_duplicate_same_role_source_rows_fail_closed() -> None:
         asec_rows[0], "tax_unit_source_id"
     ]
 
-    with pytest.raises(ValueError, match="duplicated same-role rows"):
+    with pytest.raises(ValueError, match="duplicated support copies"):
         impute_us_voluntary_filing(expanded, _donor(), seed=17)
+
+
+class _IncomeThresholdQRF:
+    """Predict filing iff tax-unit wages reach 10,000; records the receiver."""
+
+    receivers: list[pd.DataFrame] = []
+
+    def __init__(self, **_kwargs: object) -> None:
+        pass
+
+    def fit(self, *_args: object, **_kwargs: object) -> _IncomeThresholdQRF:
+        return self
+
+    def predict(self, receiver: pd.DataFrame) -> pd.DataFrame:
+        self.receivers.append(receiver.copy())
+        return pd.DataFrame(
+            {_OUTPUT: receiver["employment_income"].ge(10_000.0).to_numpy()},
+            index=receiver.index,
+        )
+
+
+def _historical_tail_frame() -> Frame:
+    """A non-assembled PUF-support frame with tail copies of units 3 and 6."""
+
+    return _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(_frame(6)), [3, 6]
+    )
+
+
+def _divergent_tail_wages(frame: Frame) -> Frame:
+    """Zero the tail copies' wages so a tail-row prediction would flip."""
+
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    person = tables["person"]
+    tail = person["person_support_clone_index"].eq(2)
+    person.loc[tail, "employment_income_before_lsr"] = 0.0
+    return Frame(
+        tables,
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+        frame.strata,
+        mass_log=frame.mass_log,
+    )
+
+
+def test_historical_tail_copy_fans_the_source_decision_to_every_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame = _historical_tail_frame()
+    tax_unit = frame.table("tax_unit")
+    assert "tax_unit_spine_source_id" not in tax_unit
+    assert tax_unit["tax_unit_support_clone_index"].value_counts().to_dict() == {
+        0: 6,
+        1: 6,
+        2: 2,
+    }
+    assert set(
+        tax_unit.loc[
+            tax_unit["tax_unit_support_clone_index"].eq(2),
+            "tax_unit_support_channel",
+        ]
+    ) == {"puf_tax_detail"}
+
+    _IncomeThresholdQRF.receivers.clear()
+    monkeypatch.setattr(module, "QRF", _IncomeThresholdQRF)
+    predicted = impute_us_voluntary_filing(
+        _divergent_tail_wages(frame), _donor(), seed=17
+    )
+    (receiver,) = _IncomeThresholdQRF.receivers
+    assert len(receiver) == 6  # one canonical row per source tax unit
+    by_source = pd.DataFrame(
+        {"source": tax_unit["tax_unit_source_id"], "value": predicted}
+    ).groupby("source")["value"]
+    assert (by_source.nunique() == 1).all()
+    # Unit wages are 3,000 x household id (+2,000 per spouse): units 3 to 6
+    # file. The zero-wage tail copies inherit the native copy's decision.
+    assert by_source.first().to_dict() == {
+        101: False,
+        102: False,
+        103: True,
+        104: True,
+        105: True,
+        106: True,
+    }
+    tail = tax_unit["tax_unit_support_clone_index"].eq(2).to_numpy()
+    assert predicted[tail].all()
+
+    materialized = _replace_tax_unit(frame, **{_OUTPUT: predicted.to_numpy()})
+    summary = us_voluntary_filing_summary(materialized)
+    assert summary["clone_source_units"] == 6
+    assert summary["clone_mismatch_source_units"] == 0
+
+    flipped = predicted.to_numpy().copy()
+    flipped[np.flatnonzero(tail)[0]] = False
+    mismatch = _replace_tax_unit(frame, **{_OUTPUT: flipped})
+    mismatch_summary = us_voluntary_filing_summary(mismatch)
+    assert mismatch_summary["clone_mismatch_source_units"] == 1
+    gate = us_voluntary_filing_signal_gate(mismatch)
+    assert any("disagree for 1 source unit" in failure for failure in gate.failures)
+
+
+def test_historical_puf_only_survivor_predicts_from_the_primary_detail_copy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame = _divergent_tail_wages(_historical_tail_frame())
+    tax_unit = frame.table("tax_unit")
+    person = frame.table("person")
+    native_unit_six = tax_unit.loc[
+        tax_unit["tax_unit_source_id"].eq(106)
+        & tax_unit["tax_unit_support_clone_index"].eq(0),
+        "tax_unit_id",
+    ]
+    survivors = frame.select(
+        ~person["person_tax_unit_id"].isin(native_unit_six).to_numpy()
+    )
+
+    _IncomeThresholdQRF.receivers.clear()
+    monkeypatch.setattr(module, "QRF", _IncomeThresholdQRF)
+    predicted = impute_us_voluntary_filing(survivors, _donor(), seed=17)
+    surviving_units = survivors.table("tax_unit")
+    source_six = surviving_units["tax_unit_source_id"].eq(106).to_numpy()
+    surviving_clones = surviving_units.loc[source_six, "tax_unit_support_clone_index"]
+    assert surviving_clones.tolist() == [1, 2]
+    # Copy rank picks the primary PUF-detail copy (wages 18,000), never the
+    # zero-wage tail copy.
+    assert predicted[source_six].tolist() == [True, True]
+
+
+def test_historical_duplicate_clone_index_still_fails_closed() -> None:
+    frame = _historical_tail_frame()
+    tax_unit = frame.table("tax_unit")
+    tail = tax_unit["tax_unit_support_clone_index"].eq(2).to_numpy()
+    clone_index = tax_unit["tax_unit_support_clone_index"].to_numpy().copy()
+    clone_index[tail] = 1
+    duplicated = _replace_tax_unit(
+        frame, **{"tax_unit_support_clone_index": clone_index}
+    )
+
+    with pytest.raises(ValueError, match=r"duplicated support copies.*\('103', 1\)"):
+        impute_us_voluntary_filing(duplicated, _donor(), seed=17)
 
 
 def test_assembled_clone_two_uses_explicit_index_and_checks_every_clone() -> None:

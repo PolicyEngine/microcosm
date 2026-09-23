@@ -47,6 +47,18 @@ from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
 
 policyengine_us_installed = importlib.util.find_spec("policyengine_us") is not None
+
+
+def _load_tail_fixtures():
+    path = Path(__file__).with_name("us_tail_clone_fixtures.py")
+    spec = importlib.util.spec_from_file_location("us_tail_clone_fixtures", path)
+    fixtures = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(fixtures)
+    return fixtures
+
+
+_TAIL = _load_tail_fixtures()
 requires_us = pytest.mark.skipif(
     not policyengine_us_installed,
     reason="requires the policyengine-us [us] extra (build environment)",
@@ -574,6 +586,38 @@ def test_clone_availability_checks_all_assembled_clones_and_legacy_pairs() -> No
     )
     legacy_summary = module.us_prior_year_income_summary(legacy)
     assert legacy_summary["clone_availability_mismatches"] == 0
+
+
+def test_clone_availability_checks_the_historical_tail_copy() -> None:
+    native = _frame(
+        pd.DataFrame(
+            {
+                "self_employment_income_last_year": [10.0, -5.0, 0.0],
+                "previous_year_income_available": [True, False, True],
+            }
+        )
+    )
+    tailed = _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(native), [1, 3]
+    )
+    person = tailed.table("person")
+    assert "person_spine_source_id" not in person
+    assert person["person_support_clone_index"].tolist() == [0, 0, 0, 1, 1, 1, 2, 2]
+
+    agreeing = module.us_prior_year_income_summary(tailed)
+    assert agreeing["clone_availability_mismatches"] == 0
+
+    # The own-tail copy is a PUF-role row of its source person: under the old
+    # (source, role-occurrence) pairing it sat alone and was never compared.
+    divergent_person = person.copy()
+    clone_index = divergent_person["person_support_clone_index"]
+    tail_of_source_one = clone_index.eq(2) & divergent_person["person_source_id"].eq(1)
+    divergent_person.loc[tail_of_source_one, "previous_year_income_available"] = False
+    divergent = module._replace_person_table(tailed, divergent_person)
+    summary = module.us_prior_year_income_summary(divergent)
+    assert summary["clone_availability_mismatches"] == 1
+    gate = us_prior_year_income_signal_gate(divergent)
+    assert any("1 source person" in failure for failure in gate.failures)
 
 
 def test_source_reconciliation_detects_plausible_but_wrong_asec_carry() -> None:

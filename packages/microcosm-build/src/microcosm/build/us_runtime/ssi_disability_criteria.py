@@ -45,8 +45,8 @@ import pandas as pd
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
 from microcosm.build.us_runtime.support_provenance import (
-    has_assembled_support_metadata,
     has_support_role_metadata,
+    support_clone_index_column,
     support_role_series,
 )
 from microcosm.build.us_runtime.voluntary_filing import (
@@ -1188,7 +1188,9 @@ def us_ssi_disability_criteria_summary(frame: Frame) -> dict[str, object]:
                     "value": values,
                 }
             )
-            if has_assembled_support_metadata(person, entity="person"):
+            # With clone provenance every copy of a source person, the
+            # capital-gains own-tail copy included, joins one divergence group.
+            if support_clone_index_column("person") in person:
                 clone_groups = ["source_id"]
             else:
                 clone_table["source_occurrence"] = clone_table.groupby(

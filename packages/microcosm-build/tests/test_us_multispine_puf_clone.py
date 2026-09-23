@@ -22,6 +22,7 @@ from microcosm.build.us_runtime.puf_support import (
 )
 from microcosm.build.us_runtime.support_provenance import (
     spine_assembly_manifest,
+    support_copy_rank_series,
     support_gate_source_channel_series,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
@@ -208,3 +209,70 @@ def test_support_role_legacy_fallback_is_closed_to_known_roles() -> None:
     with pytest.raises(ValueError, match="complete support provenance"):
         support_role_series(legacy, entity="person")
     assert not has_support_role_metadata(pd.DataFrame(), entity="person")
+
+
+def test_support_copy_rank_uses_clone_index_on_every_frame_kind() -> None:
+    # A historical PUF-support base with a capital-gains own-tail copy: two
+    # PUF-role rows of source 7 that only the clone index tells apart.
+    historical = pd.DataFrame(
+        {
+            support_source_id_column("person"): [7, 7, 7, 8, 8],
+            support_channel_column("person"): [
+                BASE_ASEC_SUPPORT_CHANNEL,
+                PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+                BASE_ASEC_SUPPORT_CHANNEL,
+                PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+            ],
+            support_clone_index_column("person"): [0, 1, 2, 0, 1],
+        },
+        index=[10, 11, 12, 13, 14],
+    )
+    assert not has_assembled_support_metadata(historical, entity="person")
+    assert support_role_series(historical, entity="person").tolist() == [
+        BASE_ASEC_SUPPORT_CHANNEL,
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+        BASE_ASEC_SUPPORT_CHANNEL,
+        PUF_TAX_DETAIL_SUPPORT_CHANNEL,
+    ]
+    ranks = support_copy_rank_series(historical, entity="person")
+    assert ranks.tolist() == [0, 1, 2, 0, 1]
+    assert ranks.index.tolist() == [10, 11, 12, 13, 14]
+    assert ranks.dtype == np.int64
+    keyed = pd.DataFrame(
+        {"source": historical[support_source_id_column("person")], "rank": ranks}
+    )
+    assert not keyed.duplicated().any()
+
+    assembled = historical.assign(
+        **{
+            spine_source_id_column("person"): [1, 1, 1, 2, 2],
+            support_channel_column("person"): ["acs"] * 5,
+        }
+    )
+    assert support_copy_rank_series(assembled, entity="person").tolist() == [
+        0,
+        1,
+        2,
+        0,
+        1,
+    ]
+
+    channel_only = historical.drop(columns=[support_clone_index_column("person")])
+    assert support_copy_rank_series(channel_only, entity="person").tolist() == [
+        0,
+        1,
+        1,
+        0,
+        1,
+    ]
+
+    # Rank inherits the role validator: a clone index must agree with its
+    # historical channel, and metadata must be present.
+    inconsistent = historical.copy()
+    inconsistent.loc[12, support_clone_index_column("person")] = 0
+    with pytest.raises(ValueError, match="inconsistent"):
+        support_copy_rank_series(inconsistent, entity="person")
+    with pytest.raises(ValueError, match="missing both"):
+        support_copy_rank_series(pd.DataFrame({"x": [1]}), entity="person")
