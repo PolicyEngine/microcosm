@@ -17,6 +17,16 @@ Example (read-only against the artifacts)::
         --selection-source-manifest inputs/buildm_keogh_swap_selection_source.json \
         --export-input-mass-reference-h5 forensics/populace_us_2024.h5
 
+A release built on a fresh base with no selection source (a new lineage,
+``docs/us-release-build-rule.md`` section 3) has no frozen selection to carry
+over. Say so explicitly with ``--new-lineage`` in place of
+``--selection-source-manifest``: the selection-carryover check is recorded as
+SKIPPED with that reason, the base-level half of it (the materialized PUF
+capital-gains own-tail) still runs, and every other check runs unchanged on the
+whole base. The two options are mutually exclusive; with neither, the manifest
+is required as before. With ``--release-manifest``, ``--new-lineage`` also
+requires that release to record no selection source.
+
 An SPM unit with no classified adult is a FAIL here: in spm-calculator 1.0.0
 one such unit raises ``SPM_COMPOSITION_REQUIRED`` for the whole population's SPM
 measurement. The release tool refuses the same composition by name in its
@@ -54,6 +64,8 @@ from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: E402
 
 _ALLOW_GATE_FAILED_BASE_POOL_FLAG = "--allow-gate-failed-base-pool"
 _CARRIED_BATTERY_PAYLOAD_KEY = "carried_base_pool_agreement_battery"
+_NEW_LINEAGE_FLAG = "--new-lineage"
+_SELECTION_SOURCE_MANIFEST_FLAG = "--selection-source-manifest"
 
 
 def _json_object(value: object, *, label: str) -> dict[str, object]:
@@ -189,6 +201,35 @@ def _carried_base_pool_battery(
     }
 
 
+def _require_release_without_selection_source(path: Path) -> None:
+    """Refuse ``--new-lineage`` for a release that carried a frozen selection.
+
+    The release tool records ``build.selection_source`` as ``{"enabled":
+    false}`` when it ran without one, and as the selection report otherwise.
+    Skipping the carryover check is sound only for the former, so a built
+    release named beside ``--new-lineage`` must be the former.
+    """
+
+    release_manifest = _json_object(
+        json.loads(path.read_text()),
+        label=f"release manifest {path}",
+    )
+    build = release_manifest.get("build")
+    if not isinstance(build, dict):
+        raise ValueError(f"Release manifest {path} has no build object.")
+    selection_source = build.get("selection_source")
+    if not (
+        isinstance(selection_source, dict) and selection_source.get("enabled") is False
+    ):
+        raise ValueError(
+            f"{_NEW_LINEAGE_FLAG} was set, but release manifest {path} "
+            f"build.selection_source is {selection_source!r}, not a record of "
+            "a build without a selection source. A release built with a frozen "
+            "selection is not a new lineage: preflight it with "
+            f"{_SELECTION_SOURCE_MANIFEST_FLAG}."
+        )
+
+
 def _require_matching_release_base_pool(
     authenticated: dict[str, object] | None,
     carried: dict[str, object] | None,
@@ -246,7 +287,13 @@ def _non_negative_int(value: str) -> int:
     return parsed
 
 
-def _parser() -> argparse.ArgumentParser:
+def _parser(*, selection_source_required: bool = True) -> argparse.ArgumentParser:
+    """The CLI parser.
+
+    ``selection_source_required`` is lifted only when the command line carries
+    ``--new-lineage`` (see :func:`main`), so a default invocation refuses a
+    missing manifest with argparse's usual required-arguments error, unchanged.
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Statically preview the US release gates (selection carryover, "
@@ -271,10 +318,27 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--selection-source-manifest",
-        required=True,
+        _SELECTION_SOURCE_MANIFEST_FLAG,
+        required=selection_source_required,
         type=Path,
-        help="Frozen selection-source manifest JSON.",
+        default=None,
+        help=(
+            "Frozen selection-source manifest JSON. Required unless "
+            f"{_NEW_LINEAGE_FLAG} is set; mutually exclusive with it."
+        ),
+    )
+    parser.add_argument(
+        _NEW_LINEAGE_FLAG,
+        action="store_true",
+        help=(
+            "The release is built on a fresh base with no selection source "
+            "(a new lineage): there is no prior selection to carry over, so "
+            "the selection-carryover check is recorded as SKIPPED with that "
+            "reason. The base-level PUF capital-gains own-tail refusal inside "
+            "it still runs, and every other check runs unchanged on the whole "
+            "base. Mutually exclusive with "
+            f"{_SELECTION_SOURCE_MANIFEST_FLAG}."
+        ),
     )
     parser.add_argument(
         "--release-manifest",
@@ -357,7 +421,21 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    # Only the explicit flag lifts the manifest requirement. An abbreviation
+    # that argparse would expand to it leaves the manifest required, which
+    # fails closed rather than skipping a check nobody named.
+    parser = _parser(selection_source_required=_NEW_LINEAGE_FLAG not in arguments)
+    args = parser.parse_args(arguments)
+    if args.new_lineage and args.selection_source_manifest is not None:
+        parser.error(
+            f"argument {_NEW_LINEAGE_FLAG}: not allowed with argument "
+            f"{_SELECTION_SOURCE_MANIFEST_FLAG} (a new lineage has no prior "
+            "selection to carry over; a release built with a frozen selection "
+            "must have that selection preflighted)"
+        )
+    if args.new_lineage and args.release_manifest is not None:
+        _require_release_without_selection_source(args.release_manifest)
     release_base_pool = (
         _load_release_base_pool_receipt(args.release_manifest)
         if args.release_manifest is not None
@@ -380,6 +458,7 @@ def main(argv: list[str] | None = None) -> int:
     report = run_preflight(
         base_h5=args.base_h5,
         selection_source_manifest=args.selection_source_manifest,
+        new_lineage=args.new_lineage,
         export_input_mass_reference_h5=args.export_input_mass_reference_h5,
         ledger_facts=args.ledger_facts,
         ledger_facts_sha256=args.ledger_facts_sha256,

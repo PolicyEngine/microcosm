@@ -113,7 +113,9 @@ def _check(frame: Frame) -> dict:
         ],
         "role_source": result.details["role_source"],
         "fallback_columns_present": result.details["fallback_columns_present"],
-        "offending_unit_ids_reported": [row["spm_unit_id"] for row in result.rows],
+        # A count, never the unit ids: this is an aggregate receipt (the
+        # 2026-09-23 redaction of the two committed receipts).
+        "n_offending_units_reported": len(result.rows),
     }
 
 

@@ -7,7 +7,11 @@ spm-calculator 1.0.0 / policyengine-core 3.32.5. This note implements the
 decision Max took on 2026-09-18 ("sure we can take your rec on spm"):
 `docs/us-spm-role-for-a-fresh-base.md` Option 1, shape (b). Build P's post-hoc
 enrichment lane (`tools/build_us_spm_role_enrichment.py`,
-`microcosm.data.source_enrichment`) is untouched and stays pinned to Build P.
+`microcosm.data.source_enrichment`) stays pinned to Build P, and its driver and
+validator are untouched. One of its producer source files is not: `47976be6c`
+added an archive reader to `us_runtime/spm_role_source.py`. The reader, and
+what it means for the lane's producer-identity check, are in §2 under "The
+archive reader".
 
 ## 1. Where the rule's columns enter the pool today, and where they are dropped
 
@@ -80,8 +84,10 @@ deliberate:
   columns (plus whichever of the optional raw fields the frame carries) and the
   `spm_unit` table into a temporary H5, hashes it, and calls the certified
   derivation with that digest as `expected_parent_sha256`. Nothing about the
-  rule, the join, or the refusals is re-implemented; `spm_role_source.py` is
-  byte-identical to `origin/main`. The projection is the derivation's only
+  rule, the join, or the refusals is re-implemented. `spm_role_source.py` was
+  byte-identical to `origin/main` until `47976be6c`, which added only the
+  archive reader described below; the rule, the join, the refusals and the
+  extracted-CSV path are unchanged. The projection is the derivation's only
   input, so the `dataset_sha256` in its provenance names the projection, and
   the stage's summary records it as `frame_projection_sha256`. Since the
   re-level onto `main` (2026-09-23) the projection is written by
@@ -95,16 +101,68 @@ deliberate:
   the receipts' `frame_projection_sha256` values were never reproducible
   bytes. `pd.read_hdf` returns tables equal to the ones written under both
   writers (same synthetic check), and the derivation sees only those tables.
-- **The source is a set of pinned CSV paths, not a loaded sidecar.** The
-  derivation re-verifies each CSV's size and SHA-256 itself, before and after
-  reading; a DataFrame handed in would bypass that. Paths reach the handler
-  through `SourceRuntimeConfig.extra["asec_spm_role_source_paths"]`, keyed by
-  income year, exactly the `--asec-education-source INCOME_YEAR=PATH`
-  vocabulary; a missing year is fetched and verified by
-  `fetch_asec_education_assistance_source`, as the education sidecar does.
+- **The source is a set of pinned source paths, not a loaded sidecar.** Each
+  path is either the official Census survey archive (`asecpub23csv.zip`,
+  `asecpub24csv.zip`, `asecpub25csv.zip`) or the person CSV extracted from it
+  (`pppub23.csv`, `pppub24.csv`, `pppub25.csv`). The derivation verifies the
+  source itself, so a DataFrame handed in would bypass that. Paths reach the
+  handler through `SourceRuntimeConfig.extra["asec_spm_role_source_paths"]`,
+  keyed by income year, exactly the `--asec-education-source INCOME_YEAR=PATH`
+  vocabulary. The base builder passes whatever `--asec-education-source`
+  names; the 2026-09-23 base run names the three archives. A year without a
+  path is fetched and verified by `fetch_asec_education_assistance_source`,
+  which returns the extracted CSV; that is the release tool's path.
 - **Two tables, not one.** The stage runs with `tables={"person": ..,
   "spm_unit": ..}` because the derivation requires that SPM membership exactly
   covers the SPM table.
+
+### The archive reader (`47976be6c`)
+
+`--asec-education-source` has always accepted either the archive or its
+extracted member (`education_assistance_source._load_one_source` reads both),
+but `spm_role_source._load_source` read only a CSV. A base run that named the
+archives would have refused the role at the CSV byte-length check. `47976be6c`
+makes the derivation accept both forms, keyed on `zipfile.is_zipfile(path)`:
+
+- **Archive** (`_read_archive_member`): the archive's SHA-256 must equal the
+  pinned `archive_sha256`; the archive must hold exactly one member named the
+  pinned `member`; that member's declared size must equal `csv_size_bytes` and
+  its streamed SHA-256 must equal `csv_sha256`; the member is then read with
+  the same `pd.read_csv` call the CSV path uses; and the archive is re-hashed
+  after reading. The pins are the existing
+  `ASEC_EDUCATION_ASSISTANCE_ARCHIVES` values, so no new pin was introduced.
+- **Extracted CSV**: unchanged statement for statement — size check, SHA-256
+  check, the same read, and the post-read SHA-256 check. The only edit on this
+  path is that the `pd.read_csv` call moved into `_read_source_columns`, which
+  both paths share.
+
+Everything after the read (person count, key, missing-value, integer, role,
+reconciliation and unit-count checks) is shared and unchanged. In an
+independent review on 2026-09-23 (a local run, not a committed receipt), the
+archive and the extracted CSV gave equal frames and equal source checks for
+each of the three pinned vintages: 146,133 / 144,265 / 142,125 persons and
+59,181 / 58,711 / 58,147 units. `test_us_spm_role_source.py` pins, on a
+synthetic fixture, that the two forms derive identical roles, evidence and
+provenance, and that an unpinned archive, an archive without the pinned
+member, and a member with the wrong size or SHA-256 are each refused.
+
+**Consequence for the Build P lane's producer identity.** `spm_role_source.py`
+is one of the six files in `source_enrichment.PRODUCER_SOURCE_FILES`.
+`_check_producer_source_identity` requires each listed file, in the checkout
+running certification or publication, to hash to the value the candidate's
+build manifest recorded. A native-SPM-role candidate built before `47976be6c`
+recorded the old hash (`a6cb7a9d…`), so certifying or publishing it from a
+checkout that contains this change is refused
+(`producer checkout source differs from recorded hash`). This does not create
+the requirement. `populace-us-2024-spm-20260915` recorded producer commit
+`743683b0e`, and `source_enrichment.py` and `contract.py` have already
+changed on `main` since that commit. The candidate therefore already had to be
+re-validated from a checkout at its recorded producer commit. That is how
+its 2026-09-15 recertification ran: every certify, validate and publish
+command runs from a clean worktree detached at `743683b0e`, the commit its
+build manifest records. The role vector and the H5 bytes do not depend on
+this change: the CSV path is unchanged, and the lane's builder reads the
+extracted CSVs.
 
 ### The fail-closed gates
 
@@ -122,7 +180,8 @@ check first so the message names the stage. Read from `spm_role_source.py`:
 | any SPM unit still has no classified adult after the role | `_reconcile_units`: `units.adults.ge(1).all()` — `"has an unresolved zero-adult SPM unit."` |
 | derived adult/child/person counts disagree with Census's own `SPM_NUMADULTS` / `SPM_NUMKIDS` / `SPM_NUMPER` | `_reconcile_units` count reconciliation, again on both sides |
 | a raw field the frame carries disagrees with the pinned CSV | `_REQUIRED_RAW_CHECKS` / `_OPTIONAL_RAW_CHECKS` equality |
-| the CSV changed while being read; the projection changed while deriving | the pre/post digest checks |
+| the CSV or archive changed while being read; the projection changed while deriving | the pre/post digest checks |
+| an archive is not the pinned one, lacks exactly one pinned member, or its member's size or SHA-256 differs from the CSV pins | `_read_archive_member` (`47976be6c`) |
 
 The earlier note said the zero-adult invariant was "missing today". That was
 wrong: `_reconcile_units` has enforced `adults >= 1` since `43171405d`. What
@@ -187,7 +246,17 @@ carry is a decision (§7).
 
 ## 4. The adapter carve-out, driven by the engine's declaration
 
-Two classification paths refuse the role today, and the release tool uses both:
+> Dated note (2026-09-23): the two numbered paths below describe the adapter
+> as it was on `main` before this PR. With this PR merged, both classify the
+> role as an input leaf, as described after them. The live engine's
+> `variables()` lists it, `formula_owned_outputs()` and
+> `_engine_computed_columns()` do not flag it, and `write_dataset` persists it
+> when the frame carries it. The generated metadata index records it
+> `formula_owned=False`. `default_values()` returns no default for it. The
+> release requires it with no reviewed exclusion.
+
+Before this PR, two classification paths refused the role, and the release
+tool used both:
 
 1. **the live engine** (`PolicyEngineUSEngine`): `variables()`,
    `formula_owned_outputs()` and `_engine_computed_columns()` classify with
@@ -243,12 +312,18 @@ microcosm's own:
 | `us/release_input_coverage_manifest.json` | role required | `tools/build_us_release_input_coverage_manifest.py` after adding it to `POST_REFERENCE_ECPS_REQUIRED_INPUTS` (module and tool) |
 | seed-protocol / seed-map digests, `us-f0-coverage.json`, loader golden, `test_us_multispine_pool_tool.py` `spec_sha256`, `field_usage` counts, pointer-inventory digest | `us_runtime.source_runtime` is on `_DIRECT_KERNEL_MODULES`, and the bundle gains authored fields | `tools/spec_engine_coverage.py`; `EXPECTED_HASHES` and the count constants take observed values |
 | `l0_refit_export.US_RELEASE_REQUIRED_PERSON_SOURCE_COLUMNS` and its test fixture | role required non-constant in the export | authored |
-| `SPM_COMPOSITION_REMEDY`, `_spm_composition_report` docstring | remedy (a) now names the stage; the "cannot be written" sentence becomes false | authored |
+| `SPM_COMPOSITION_REMEDY`, `_spm_composition_report` docstring | remedy (a) now names the stage; the "cannot be written" sentence becomes false. On 2026-09-23 the former remedy (b), carrying only `is_household_head` / `is_household_spouse` for the engine's fallback, was restated as not a release remedy, because the release now requires the source role | authored |
 
-Not moved: `spm_role_source.py`, `source_enrichment.py`,
-`build_us_spm_role_enrichment.py`, `h5_enrichment.py` (the Build P lane), the
-multispine pool operator order and its registries, `asec_checkpoint.py` (no raw
-column is materialized on the frame).
+Not moved: `source_enrichment.py`, `build_us_spm_role_enrichment.py` and
+`h5_enrichment.py` (the Build P lane's driver, validator and writer); the
+multispine pool operator order and its registries; and `asec_checkpoint.py`
+(no raw column is materialized on the frame).
+
+Moved once, late: `spm_role_source.py`. It was unchanged through the re-level,
+but `47976be6c` added the archive reader so the derivation reads the archives
+the base stage passes. That makes it the one Build P lane producer file this
+PR changes. See "The archive reader" in §2 for what changed and for the
+consequence for `_check_producer_source_identity`.
 
 ## 6. Proof
 
@@ -256,7 +331,17 @@ The original receipts below exercise `derive_spm_role_source` directly through
 `experiments/spm_role_stage_proof.py`. They prove source derivation and
 composition repair, but do not exercise the new stage wrapper, temporary
 projection, provenance transport or weighted signal gate. Wrapper acceptance
-is recorded separately; these historical receipts are preserved unchanged.
+is recorded separately. These historical receipts are preserved except for
+one redaction on 2026-09-23. Each receipt's `before` and `after` blocks
+listed up to 20 internal `spm_unit_id` values of minor-only SPM units
+(`offending_unit_ids_reported`). They now carry only the count
+(`n_offending_units_reported`: 20 before, 0 after), as
+`experiments/893-spm-composition-base-q3-receipt.json` does, and
+`spm_role_stage_proof.py` now emits the count. Each redacted receipt records
+its pre-redaction SHA-256 under `redaction`. That digest is the
+`historical_receipt_sha256` the wrapper receipts below recorded. Their
+`original_proof_script_sha256` likewise names the proof script before this
+one-line change.
 
 **Phase-2 base** (`experiments/893-spm-role-stage-base-q3-receipt.json`),
 read-only, digest verified against its sidecar before and after:
@@ -290,7 +375,8 @@ lane's pin records as resolved.
 populations. The final v2 receipts test committed source
 `6a6d53b2fb2cad7ac7b84634decc2a41125efa92` with an empty source diff, including
 the complete gate-details JSON serialization and ordered role binding.
-The original derivation and first wrapper receipts remain unchanged.
+The first wrapper receipts remain unchanged. The original derivation receipts
+changed only by the 2026-09-23 unit-id redaction described above.
 
 | Population | Persons compared | Unresolved SPM units before → after | Wrapper seconds | Peak process RSS |
 |---|---:|---:|---:|---:|

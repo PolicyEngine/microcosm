@@ -132,6 +132,19 @@ Decided 18 September 2026: the next certified default may be a new lineage. The
 `--exact-k` arm refuses a frozen selection source outright, so the July
 selection is out of scope there, not merely inconvenient.
 
+**23 September 2026:** the preflight gained an explicit new-lineage mode, so a
+`--base-h5` release built without a selection source can be preflighted as this
+rule requires. Until then `tools/preflight_us_release_gates.py` required
+`--selection-source-manifest` and always ran `check_selection_carryover`.
+`--new-lineage` is mutually exclusive with the manifest, which stays required
+without it. It records `selection_carryover` as `SKIPPED` with reason
+`new_lineage`. It keeps the one refusal in that check that belongs to the base,
+not to a selection, as `capital_gains_tail_presence`: the base must carry the
+materialized PUF capital-gains own-tail, the same call the release tool makes
+on every arm after loading the base. It runs the other checks unchanged on the
+whole base. With `--release-manifest`, it also requires that release to record
+`build.selection_source` as `{"enabled": false}`.
+
 `--dense-default-dataset` is diagnostic only. A release build leaves it unset,
 so the default is the sparse dataset that runs on standard machines.
 

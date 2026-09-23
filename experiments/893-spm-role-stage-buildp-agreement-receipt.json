@@ -149,28 +149,7 @@
     "fallback_columns_present": [
       "is_household_head"
     ],
-    "offending_unit_ids_reported": [
-      11494,
-      51421,
-      61533,
-      61718,
-      64384,
-      67813,
-      80093,
-      120195,
-      131780,
-      136162,
-      155348,
-      1010486,
-      1018423,
-      1023298,
-      1035795,
-      1045639,
-      1045719,
-      1061533,
-      1064384,
-      1067813
-    ]
+    "n_offending_units_reported": 20
   },
   "after": {
     "status": "PASS",
@@ -180,7 +159,7 @@
     "n_units_without_member_aged_18_or_over": 28,
     "role_source": "source_column",
     "fallback_columns_present": [],
-    "offending_unit_ids_reported": []
+    "n_offending_units_reported": 0
   },
   "timing_seconds": {
     "frame_load": 1.53,
@@ -188,5 +167,16 @@
     "total": 7.92
   },
   "parent_sha256_after": "48b9d479fb4fd1c3537f9383ce4697d130b6f618658409d74f6233c43b994c7e",
-  "parent_unchanged": true
+  "parent_unchanged": true,
+  "redaction": {
+    "date": "2026-09-23",
+    "fields": [
+      "before.offending_unit_ids_reported",
+      "after.offending_unit_ids_reported"
+    ],
+    "replaced_by": "n_offending_units_reported (the number of units the check named)",
+    "reason": "The lists named internal spm_unit_id values of minor-only SPM units in gated populations. Aggregate receipts report counts only, as experiments/893-spm-composition-base-q3-receipt.json does. Nothing else in this receipt changed.",
+    "pre_redaction_sha256": "25ce2800568842eb7e02ea2b19b9740a5e82f0cc5143a52bd394f509a3d27ced",
+    "pre_redaction_sha256_note": "The historical_receipt_sha256 recorded by the 893-spm-role-stage-wrapper-* receipts names these pre-redaction bytes."
+  }
 }

@@ -10,7 +10,8 @@ measurement (``SPM_COMPOSITION_REQUIRED``).
 None of the frozen ``census_cps_*.h5`` inputs carries ``SPM_HEAD``, and only the
 2024 vintage carries ``A_FAMTYP``/``A_FAMREL``, so the role cannot be read off
 the pooled frame. This stage restores it the way ``LKWEEKS``, ``ED_VAL`` and
-``PAW_TYP`` are restored: from the pinned complete Census ASEC person CSVs by
+``PAW_TYP`` are restored: from the pinned complete Census ASEC person CSVs
+(read from the official archive or its extracted member) by
 exact ``(source_year, PERIDNUM)`` identity, through the certified derivation
 :func:`~microcosm.build.us_runtime.spm_role_source.derive_spm_role_source`,
 unchanged. That derivation refuses a person with no ASEC origin, a native SPM
@@ -114,7 +115,8 @@ US_SPM_INDEPENDENCE_ROLE_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
 US_SPM_INDEPENDENCE_ROLE_OPTIONAL_SOURCE_COLUMNS: tuple[str, ...] = _OPTIONAL_RAW_CHECKS
 
 #: ``SourceRuntimeConfig.extra`` keys the handler reads: income year -> pinned
-#: complete Census ASEC person CSV path, and (tests only) income year ->
+#: complete Census ASEC person source path (the official archive or its
+#: extracted person CSV), and (tests only) income year ->
 #: :class:`AsecSpmRoleSource` pins for a synthetic CSV.
 US_SPM_INDEPENDENCE_ROLE_SOURCE_PATHS_KEY = "asec_spm_role_source_paths"
 US_SPM_INDEPENDENCE_ROLE_SOURCE_PINS_KEY = "asec_spm_role_source_pins"
@@ -163,12 +165,15 @@ def resolve_asec_spm_role_source_paths(
     *,
     income_years: tuple[int, ...] = ASEC_EDUCATION_ASSISTANCE_INCOME_YEARS,
 ) -> dict[int, Path]:
-    """Return one pinned complete person CSV path per pooled income year.
+    """Return one pinned complete person source path per pooled income year.
 
-    ``paths`` uses the ``--asec-education-source INCOME_YEAR=PATH`` vocabulary.
-    An income year without a path is fetched from the official Census archive
-    and verified against the same pins, exactly as the education sidecar is.
-    The derivation re-verifies every CSV's size and SHA-256 itself.
+    ``paths`` uses the ``--asec-education-source INCOME_YEAR=PATH`` vocabulary:
+    each path is the pinned official Census survey archive or the person CSV
+    extracted from it. An income year without a path is fetched from the
+    official Census archive, verified against the same pins and extracted,
+    exactly as the education sidecar is; the returned path is then the CSV.
+    The derivation re-verifies every source itself: a CSV's size and SHA-256,
+    or an archive's SHA-256 and its one pinned member's size and SHA-256.
     """
 
     provided = (
@@ -363,8 +368,9 @@ def with_us_spm_independence_role(
 
     An existing role is checked against the pinned source again, never treated
     as evidence that source reconciliation has already happened.
-    ``asec_spm_role_source_paths`` maps income years to the pinned complete
-    Census ASEC person CSVs; years without a path are fetched and verified.
+    ``asec_spm_role_source_paths`` maps income years to the pinned official
+    Census ASEC archives or their extracted person CSVs; years without a path
+    are fetched and verified.
     ``source_pins`` exists for synthetic tests and defaults to the certified
     pins of the frame's own income years.
     """
