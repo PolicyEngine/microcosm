@@ -353,7 +353,9 @@ def with_us_spm_independence_role(
     if frame.schema != US_SCHEMA:
         raise ValueError("US SPM independence role requires the US schema.")
     person = frame.table("person")
-    existing_role = person.get(NATIVE_SPM_ROLE)
+    existing_role = (
+        person[NATIVE_SPM_ROLE] if NATIVE_SPM_ROLE in person.columns else None
+    )
     if existing_role is not None and (
         existing_role.isna().any()
         or pd.api.types.infer_dtype(existing_role, skipna=False) != "boolean"
