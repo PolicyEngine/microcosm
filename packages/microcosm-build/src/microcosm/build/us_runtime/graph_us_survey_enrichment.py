@@ -855,12 +855,25 @@ class Boundary:
         full_original_amount_donors=False,
         canonical_state_input=False,
         original_application_seed=None,
+        original_finalization=None,
     ):
         require(
             original_application_seed is None or type(original_application_seed) is int,
             "ORIGINAL_APPLICATION_SEED",
         )
+        # One exact policy name, and only on top of an explicit original seed;
+        # never a truthy switch. None keeps the conservative placement.
+        require(
+            original_finalization is None
+            or (
+                type(original_finalization) is str
+                and original_finalization in original_host.finalization.POLICIES
+                and original_application_seed is not None
+            ),
+            "ORIGINAL_FINALIZATION_OPTION",
+        )
         self.original_application_seed = original_application_seed
+        self.original_finalization = original_finalization
         self.original = None
         require(type(canonical_state_input) is bool, "CANONICAL_STATE_OPTION")
         self.canonical_state_input = canonical_state_input
@@ -1052,6 +1065,7 @@ class Boundary:
                 self,
                 terminal=self.receiving_terminal,
                 application_seed=original_application_seed,
+                finalization_policy=original_finalization,
             )
             self.nodes = (*self.nodes, *self.original.nodes)
         self.declaration = tuple(self.nodes)
@@ -1225,13 +1239,17 @@ class Boundary:
             "RECEIVING_TERMINAL_CHANGED",
         )
         if self.original_application_seed is None:
-            require(self.original is None, "ORIGINAL_DISABLED_STATE")
+            require(
+                self.original is None and self.original_finalization is None,
+                "ORIGINAL_DISABLED_STATE",
+            )
         else:
             require(
                 type(self.original) is original_host.Binding
                 and self.original.host is self
                 and self.original.seeds["original_application_seed"]
-                == self.original_application_seed,
+                == self.original_application_seed
+                and self.original.finalization_policy == self.original_finalization,
                 "ORIGINAL_BINDING",
             )
             self.original.pure()
@@ -1897,6 +1915,7 @@ def _construct(
     full_original_amount_donors=False,
     canonical_state_input=False,
     original_application_seed=None,
+    original_finalization=None,
 ):
     boundary = Boundary(
         run,
@@ -1912,6 +1931,7 @@ def _construct(
         full_original_amount_donors=full_original_amount_donors,
         canonical_state_input=canonical_state_input,
         original_application_seed=original_application_seed,
+        original_finalization=original_finalization,
     )
     compiled = compile_graph(
         replace(run.compiled.graph, nodes=(*run.compiled.graph.nodes, *boundary.nodes))
@@ -2209,6 +2229,7 @@ def run_us_survey_enrichment(
     full_original_amount_donors=False,
     canonical_state_input=False,
     original_application_seed=None,
+    original_finalization=None,
 ):
     """Execute and verify enrichment with optional SPM and realized immigration.
 
@@ -2228,6 +2249,10 @@ def run_us_survey_enrichment(
     An explicit distinct original_application_seed additionally applies all PUF55
     models to the original arm and performs the conservative development placement
     after the completed enrichment terminal; omission preserves existing behavior.
+    With that seed, an exact original_finalization policy name replaces the
+    conservative placement by the whole-arm finalization (mixed-known chain
+    prefixes, maintained person allocation, no caps/snapping/pruning/signed-mass
+    alignment); omission keeps the conservative placement.
     """
     require(resume in ("auto", "require"), "RESUME")
     boundary = _construct(
@@ -2244,6 +2269,7 @@ def run_us_survey_enrichment(
         full_original_amount_donors=full_original_amount_donors,
         canonical_state_input=canonical_state_input,
         original_application_seed=original_application_seed,
+        original_finalization=original_finalization,
     )
     observed, stamps = {}, {}
 
@@ -2744,6 +2770,17 @@ def run_us_survey_enrichment(
                         "receiving_version": boundary.receiving_terminal.population,
                         "placement_sha256": codec.sha(
                             loaded[original_host.fragment.ATTACH_NODE, "placement"]
+                        ),
+                        # Present only when opted in, so placement receipts
+                        # keep their exact historical fields.
+                        **(
+                            {}
+                            if boundary.original.finalization_policy is None
+                            else {
+                                "finalization_policy": (
+                                    boundary.original.finalization_policy
+                                )
+                            }
                         ),
                         "scientific_qualification": "pending",
                     }

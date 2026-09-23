@@ -7,20 +7,38 @@ evidence of a genuine financial owner, fitted models or a qualified release.
 """
 
 from dataclasses import replace
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
 from test_us_puf55_observed_recipients import _invented_values
-from test_us_puf55_original_placement import _frame
+from test_us_puf55_original_application import _codec_only_full55, real_chain
+from test_us_puf55_original_host import _descriptive_binding
+from test_us_puf55_original_placement import AFTER, SEEDS, _edge, _frame, routes
 from test_us_puf55_original_placement import result as placement_result
 
+from microcosm.build.us_runtime import graph_puf55_original_host as original_host
+from microcosm.build.us_runtime import graph_puf55_original_placement as graph
+from microcosm.build.us_runtime import graph_us_survey_enrichment as host
 from microcosm.build.us_runtime import puf55_original_finalization as final
 from microcosm.build.us_runtime import puf55_original_placement as placement
 from microcosm.frame import Frame
-from microcosm.graph import Node, Owned
+from microcosm.graph import (
+    ArtifactOutput,
+    Graph,
+    KernelResult,
+    Node,
+    Owned,
+    SourceRef,
+    StructuralDelta,
+    compile_graph,
+)
 from microcosm.graph import population as populations
 
+# real_chain supplies three real fits only as envelope templates; the 55-target
+# envelopes in the typed-result test remain explicitly synthetic.
+assert real_chain
 values, application, codec = placement.values, placement.application, placement.codec
 support = final.support
 PROFILE = placement.attachment.PROFILES[0]
@@ -591,10 +609,312 @@ def test_final_input_change_during_allocation_is_refused(monkeypatch):
         run(qualified, inputs, table)
 
 
-@pytest.mark.parametrize("module", ("puf55_original_finalization.py",))
-def test_new_module_uses_reviewed_dynamic_selectors_without_provenance_exemption(
-    module,
-):
+# Opt-in host wiring. Descriptive bindings and invented fixtures only; nothing
+# below admits a financial owner, fits 55 models or runs the enrichment host.
+
+
+@pytest.mark.parametrize(
+    "seed,policy",
+    [
+        (73, True),
+        (73, "v1"),
+        (73, POLICY.encode()),
+        (73, POLICY + " "),
+        (73, placement.PROTOCOL),
+        (None, POLICY),
+    ],
+)
+def test_finalization_option_refuses_before_parent_access(seed, policy):
+    with pytest.raises(ValueError, match="ORIGINAL_FINALIZATION_OPTION"):
+        host.Boundary(
+            object(),
+            groups=(),
+            n_estimators=2,
+            original_application_seed=seed,
+            original_finalization=policy,
+        )
+
+
+def test_valid_finalization_option_still_requires_an_issued_parent():
+    with pytest.raises(ValueError, match="UNISSUED_PUF55_RUN"):
+        host.Boundary(
+            object(),
+            groups=(),
+            n_estimators=2,
+            original_application_seed=73,
+            original_finalization=POLICY,
+        )
+
+
+@pytest.mark.parametrize(
+    "entry,callee",
+    [("run_us_survey_enrichment", "_construct"), ("_construct", "Boundary")],
+)
+def test_finalization_option_defaults_off_and_is_forwarded(entry, callee, monkeypatch):
+    import inspect
+
+    assert (
+        inspect.signature(getattr(host, entry))
+        .parameters["original_finalization"]
+        .default
+        is None
+    )
+    seen = []
+
+    def stop(run, **kwargs):
+        seen.append(kwargs)
+        raise RuntimeError("stop before source admission")
+
+    monkeypatch.setattr(host, callee, stop)
+    with pytest.raises(RuntimeError, match="stop before source admission"):
+        getattr(host, entry)(
+            object(),
+            groups=(),
+            n_estimators=2,
+            original_application_seed=73,
+            original_finalization=POLICY,
+        )
+    assert seen[0]["original_finalization"] == POLICY
+    assert seen[0]["original_application_seed"] == 73
+
+
+def test_finalization_declarations_own_every_non_fixed_output_and_declare_reads():
+    qualified, inputs, _ = whole_fixture()
+    declarations = routes(qualified)
+    conservative = graph.original_placement_nodes(
+        qualified, inputs, declarations, after=AFTER, **SEEDS
+    )
+    assert conservative == graph.original_placement_nodes(
+        qualified, inputs, declarations, after=AFTER, finalization_policy=None, **SEEDS
+    )
+    keep, attach = graph.original_placement_nodes(
+        qualified,
+        inputs,
+        declarations,
+        after=AFTER,
+        finalization_policy=POLICY,
+        **SEEDS,
+    )
+    assert (keep.id, keep.kernel) == (graph.KEEP_NODE, graph.KEEP_REF)
+    assert (attach.id, attach.kernel) == (
+        graph.ATTACH_NODE,
+        graph.FINALIZATION_ATTACH_REF,
+    )
+    assert attach.artifact_outputs == (
+        ArtifactOutput("placement", graph.FINALIZATION_TYPE),
+    )
+    assert len(attach.outputs) == 43 and all(o.rewrite for o in attach.outputs)
+    assert not {o.column for o in attach.outputs} & set(final.FIXED_TARGETS)
+    assert attach.params["protocol"] == POLICY
+    assert attach.params["numerical_policy"] == final.NUMERICAL_POLICY
+    person = next(x for x in attach.inputs if x.entity == "person")
+    assert "age" in person.columns  # the earnings-universe read is declared
+    assert set(final.read_columns(inputs, PROFILE)) <= set(person.columns)
+    # The same strict artifact edges as the conservative cut: all 55 steps.
+    assert attach.artifact_inputs == conservative[1].artifact_inputs
+    with pytest.raises(ValueError, match="PUF55_ORIGINAL_FINALIZATION_POLICY"):
+        graph.original_placement_nodes(
+            qualified,
+            inputs,
+            declarations,
+            after=AFTER,
+            finalization_policy="v1",
+            **SEEDS,
+        )
+
+
+def test_finalization_declarations_compile_after_a_late_terminal():
+    """Actual declarations; metadata suppliers are placeholders, not models."""
+    b, inputs = _descriptive_binding(POLICY, whole_fixture=whole_fixture)
+    frame = inputs.receiving.frame
+    structural = {(e, frame.schema.entity_id_column(e)) for e in frame.entities} | {
+        ("person", frame.schema.membership_column(g))
+        for g in frame.schema.group_entities
+    }
+    create = Node(
+        inputs.receiving.version,
+        "fixture.create@1",
+        structural=StructuralDelta.CREATE,
+        sources=("invented",),
+        mass="free",
+        outputs=tuple(
+            Owned(e, c, populations.token_for_dtype(frame.table(e)[c].dtype))
+            for e in frame.entities
+            for c in frame.table(e)
+            if (e, c) not in structural
+        ),
+    )
+    extension = (*b.apply_nodes, *b.placement_nodes)
+    local = {n.id for n in extension} | {create.id, b.terminal.id}
+    suppliers = {}
+    for node in extension:
+        for edge in node.artifact_inputs:
+            if edge.producer not in local:
+                suppliers.setdefault(edge.producer, {})[edge.artifact] = edge.type
+    prefix = tuple(
+        Node(
+            name,
+            "fixture.metadata@1",
+            population=create.id,
+            artifact_outputs=tuple(ArtifactOutput(n, t) for n, t in outputs.items()),
+        )
+        for name, outputs in suppliers.items()
+    )
+    compiled = compile_graph(
+        Graph(
+            "invented-declaration-only",
+            (SourceRef("invented", "frame-store"),),
+            (create, b.terminal, *prefix, *extension),
+        )
+    )
+    assert compiled.versions[graph.ATTACH_NODE] == graph.KEEP_NODE
+    assert compiled.order.index(b.terminal.id) < compiled.order.index(graph.KEEP_NODE)
+
+
+def test_finalization_binding_observes_terminal_and_rebuilds_keep_all():
+    b, inputs = _descriptive_binding(POLICY, whole_fixture=whole_fixture)
+    assert b.finalization_policy == POLICY
+    b.observe_terminal(b.terminal.id, inputs.receiving)
+    expected = b.reconstruct(b.placement_nodes[0], inputs.receiving, {}, {})
+    original_host.physical.replay.same_replayed_population(expected, b.kept)
+    b.finalization_policy = None  # a changed policy is a changed binding
+    with pytest.raises(ValueError, match="HOST_BINDING_CHANGED"):
+        b.pure()
+
+
+@pytest.mark.parametrize("policy", [None, POLICY])
+def test_attach_kernel_passes_exactly_its_policy(monkeypatch, policy):
+    seen = []
+    result = KernelResult(artifacts={"placement": b"invented"}, receipt={"x": 1})
+
+    def capture(*args, **kwargs):
+        seen.append(kwargs)
+        return result
+
+    b = SimpleNamespace(
+        context=lambda context: None,
+        fixed=None,
+        inputs=lambda: None,
+        routes=(),
+        after=None,
+        seeds=SEEDS,
+        finalization_policy=policy,
+    )
+    monkeypatch.setattr(graph, "original_placement_result", capture)
+    kernel = (
+        original_host.PlacementKernel
+        if policy is None
+        else original_host.FinalizationKernel
+    )(b)
+    assert kernel.run(SimpleNamespace(node=None, artifacts={})) is result
+    assert seen[0].get("finalization_policy") == policy
+    assert kernel.ref == (
+        graph.ATTACH_REF if policy is None else graph.FINALIZATION_ATTACH_REF
+    )
+    if policy is not None:
+        b.finalization_policy = None
+        with pytest.raises(ValueError, match="FINALIZATION_KERNEL_POLICY"):
+            kernel.run(SimpleNamespace(node=None, artifacts={}))
+
+
+def test_typed_finalization_consumes_strict_full55_codecs(real_chain):
+    """Synthetic 55-step envelopes through the strict merger; no 55-fit claim."""
+    qualified, transports = _codec_only_full55(real_chain)
+    _, inputs, _ = whole_fixture()
+    declarations = routes(qualified)
+    keep, node = graph.original_placement_nodes(
+        qualified,
+        inputs,
+        declarations,
+        after=AFTER,
+        finalization_policy=POLICY,
+        **SEEDS,
+    )
+    fixed = graph.fixed_graph._payloads(
+        qualified,
+        {
+            route.profile.value: (route.matrix.payload, route.matrix.producer_key)
+            for route in transports
+        },
+    )
+    artifacts = {
+        "qualification": _edge(
+            qualified.receipt, graph.fixed_graph.QUALIFICATION_TYPE, "qualification"
+        ),
+        "source_basis": _edge(
+            fixed["source_basis"], graph.fixed_graph.SOURCE_BASIS_TYPE, "source_basis"
+        ),
+    }
+    for r, route in enumerate(transports):
+        artifacts[f"r{r}_matrix"] = route.matrix
+        artifacts.update(
+            {f"r{r}_fixed_{target}": edge for target, edge in route.fixed_inputs}
+        )
+        for t, step in enumerate(route.steps):
+            for name in (
+                "model",
+                "training_state",
+                "raw_draw",
+                "conditioning",
+                "apply_state",
+            ):
+                artifacts[f"r{r}_t{t}_{name}"] = getattr(step, name)
+    actual = graph.original_placement_result(
+        node,
+        qualified,
+        inputs,
+        declarations,
+        artifacts,
+        after=AFTER,
+        finalization_policy=POLICY,
+        **SEEDS,
+    )
+    document = codec.decode_json(actual.artifacts["placement"])
+    assert document["protocol"] == POLICY
+    assert document["source_admission_issued"] is False
+    assert set(actual.columns) == {(e, n) for e, n, _ in document["candidate_outputs"]}
+    # Every arm-zero person of every unit reaches the pre-pension outputs; the
+    # mixed-known unit stops at its first mixed fixed input, as with invented
+    # draws. These synthetic draws are not fitted-model evidence.
+    assert document["write_counts"]["long_term_capital_gains_on_collectibles"] == 10
+    assert document["reason_counts"]["alimony_income"] == {
+        "modeled": 4,
+        "fixed_chain_unresolved": 1,
+    }
+    final_population = populations.patch(
+        graph.keep_all_population(inputs, keep), node, actual
+    )
+    for (entity, name), column in actual.columns.items():
+        assert final_population.owners[entity, name] == graph.ATTACH_NODE
+        clone_one = column.index >= 1000
+        incumbent = inputs.receiving.frame.table(entity).set_index(entity + "_id")[name]
+        pd.testing.assert_series_equal(column[clone_one], incumbent[clone_one])
+    # A conservative declaration cannot be run under the finalization policy.
+    conservative = graph.original_placement_nodes(
+        qualified, inputs, declarations, after=AFTER, **SEEDS
+    )[1]
+    with pytest.raises(ValueError, match="DECLARATION"):
+        graph.original_placement_result(
+            conservative,
+            qualified,
+            inputs,
+            declarations,
+            artifacts,
+            after=AFTER,
+            finalization_policy=POLICY,
+            **SEEDS,
+        )
+
+
+@pytest.mark.parametrize(
+    "module",
+    (
+        "puf55_original_finalization.py",
+        "graph_puf55_original_placement.py",
+        "graph_puf55_original_host.py",
+    ),
+)
+def test_changed_modules_keep_the_spine_guard(module):
     import test_us_spine_blindness as scanner
 
     assert module not in scanner._SOURCE_SPINE_PROVENANCE_OWNERS

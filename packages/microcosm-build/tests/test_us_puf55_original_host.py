@@ -127,13 +127,14 @@ def test_terminal_uses_actual_selected_node_version(
     assert selected.population.startswith("actual.version.")
 
 
-def _descriptive_binding():
+def _descriptive_binding(finalization_policy=None, *, whole_fixture=None):
     """Exercise retained-value mechanics, explicitly bypassing no source issuer.
 
     This constructs an internal descriptive fixture directly, never calls the
     production admission constructor, and cannot satisfy the real host registry.
+    ``whole_fixture`` supplies a fixture carrying every non-fixed arm-one output.
     """
-    fixed, inputs, _ = fixture()
+    fixed, inputs, _ = (whole_fixture or fixture)()
     declarations = routes(fixed)
     terminal = Node(
         "invented.complete.terminal",
@@ -149,12 +150,14 @@ def _descriptive_binding():
     binding.fixed_stamp = original.fixed_graph.values.fixed_input_stamp(fixed)
     binding.template = replace(inputs, receiving=inputs.arm_one)
     binding.template_stamp = values._stamp(binding.template)
+    binding.finalization_policy = finalization_policy
     binding.placement_nodes = fragment.original_placement_nodes(
         fixed,
         binding.template,
         declarations,
         after=after,
         receiving_version=terminal.population,
+        finalization_policy=finalization_policy,
         **SEEDS,
     )
     binding.source_nodes = ()
@@ -173,6 +176,7 @@ def _descriptive_binding():
         declarations,
         terminal,
         after,
+        finalization_policy,
     )
     parent = SimpleNamespace(routes=declarations, seed=31)
     b = SimpleNamespace(

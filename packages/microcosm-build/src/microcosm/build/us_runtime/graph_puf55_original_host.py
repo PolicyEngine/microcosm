@@ -31,6 +31,7 @@ from microcosm.graph.serialize import _node_payload
 from . import graph_puf55_original_placement as fragment
 
 application, values = fragment.application, fragment.values
+finalization = fragment.finalization
 fixed_graph = application.fixed_graph
 recipient_graph = fixed_graph.parent
 codec, physical = values.codec, values.attachment.physical
@@ -86,6 +87,7 @@ def modules():
         sys.modules[__name__],
         fragment,
         values,
+        finalization,
         application,
         fixed_graph,
         fixed_graph.values,
@@ -112,15 +114,21 @@ def configuration():
         fragment.KEEP_REF,
         fragment.ATTACH_REF,
         fragment.PLACEMENT_TYPE,
+        finalization.POLICIES,
+        finalization.NUMERICAL_POLICY,
+        values.TAIL_CLONE_INDEX,
+        fragment.FINALIZATION_ATTACH_REF,
+        fragment.FINALIZATION_TYPE,
     )
 
 
 class Binding:
     """Host-owned retained source/terminal state; never an independently issued run."""
 
-    def __init__(self, host, *, terminal, application_seed):
+    def __init__(self, host, *, terminal, application_seed, finalization_policy=None):
         self.host = host
         self.terminal = terminal
+        self.finalization_policy = fragment._finalization_policy(finalization_policy)
         puf_boundary = host.parent_entry[2].boundary
         application._seeds(puf_boundary.seed, application_seed)
         self.seeds = dict(
@@ -161,6 +169,7 @@ class Binding:
             self.routes,
             after=after,
             receiving_version=terminal.population,
+            finalization_policy=self.finalization_policy,
             **self.seeds,
         )
         self.nodes = (*self.source_nodes, *self.apply_nodes, *self.placement_nodes)
@@ -171,6 +180,7 @@ class Binding:
             self.routes,
             terminal,
             after,
+            self.finalization_policy,
         )
         self.receiving = self.receiving_stamp = self.kept = self.kept_stamp = None
 
@@ -183,6 +193,7 @@ class Binding:
                 self.routes,
                 self.terminal,
                 self.after,
+                self.finalization_policy,
             )
             and self.routes == self.host.parent_entry[2].boundary.routes
             and self.seeds["clone_one_seed"] == self.host.parent_entry[2].boundary.seed
@@ -216,7 +227,12 @@ class Binding:
         inputs = replace(self.template, receiving=population)
         values._axes(inputs, self.fixed)
         expected = fragment.original_placement_nodes(
-            self.fixed, inputs, self.routes, after=self.after, **self.seeds
+            self.fixed,
+            inputs,
+            self.routes,
+            after=self.after,
+            finalization_policy=self.finalization_policy,
+            **self.seeds,
         )
         require(expected == self.placement_nodes, "TERMINAL_OUTPUT_DECLARATIONS")
         self.receiving = population
@@ -333,6 +349,7 @@ class Binding:
                 self.routes,
                 artifacts,
                 after=self.after,
+                finalization_policy=self.finalization_policy,
                 **self.seeds,
             )
             require(persisted == result.artifacts, "PLACEMENT_ARTIFACTS")
@@ -398,6 +415,10 @@ class KeepAllKernel(_Kernel):
 class PlacementKernel(_Kernel):
     ref = fragment.ATTACH_REF
 
+    def _policy(self, binding):
+        """The conservative placement passes no finalization policy."""
+        return {}
+
     def run(self, context):
         b = self.binding
         b.context(context)
@@ -409,6 +430,7 @@ class PlacementKernel(_Kernel):
             context.artifacts,
             after=b.after,
             **b.seeds,
+            **self._policy(b),
         )
         seal = (
             codec.encode_json(result.receipt),
@@ -434,7 +456,24 @@ class PlacementKernel(_Kernel):
         return result
 
 
+class FinalizationKernel(PlacementKernel):
+    """The same checked attach step under one exact whole-arm policy."""
+
+    ref = fragment.FINALIZATION_ATTACH_REF
+
+    def _policy(self, binding):
+        policy = binding.finalization_policy
+        require(
+            policy is not None and fragment._finalization_policy(policy) == policy,
+            "FINALIZATION_KERNEL_POLICY",
+        )
+        return {"finalization_policy": policy}
+
+
 def kernels(binding):
+    attach = (
+        PlacementKernel if binding.finalization_policy is None else (FinalizationKernel)
+    )
     return (
         fixed_graph.Puf55SurveyFixedInputKernel(
             binding.host.run.financial_run,
@@ -443,5 +482,5 @@ def kernels(binding):
         application.observed.LegacyQRFApplyObservedMatrixKernel(),
         SourceVersionKernel(binding),
         KeepAllKernel(binding),
-        PlacementKernel(binding),
+        attach(binding),
     )

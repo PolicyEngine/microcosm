@@ -23,6 +23,7 @@ from microcosm.graph import (
 )
 from microcosm.graph import population as population_ops
 
+from . import puf55_original_finalization as finalization
 from . import puf55_original_placement as values
 
 application, attachment = values.application, values.attachment
@@ -32,7 +33,18 @@ ATTACH_NODE = "survey_puf55.original.placement_attach"
 KEEP_REF = "us.survey_puf55.original_placement_keep@1"
 ATTACH_REF = "us.survey_puf55.original_placement_attach@1"
 PLACEMENT_TYPE = ArtifactType("microcosm.us.puf55_original_placement", 1)
+# Opt-in whole-arm finalization reuses both node IDs and the keep-all kernel;
+# its attach kernel, parameters, outputs and artifact type are its own.
+FINALIZATION_ATTACH_REF = "us.survey_puf55.original_finalization_attach@1"
+FINALIZATION_TYPE = ArtifactType("microcosm.us.puf55_original_finalization", 1)
 require = values.require
+
+
+def _finalization_policy(policy):
+    """None keeps the conservative placement; otherwise one exact policy name."""
+    if policy is not None:
+        finalization.require_policy(policy)
+    return policy
 
 
 def _application_layout(qualified, routes, *, population, seeds):
@@ -105,12 +117,18 @@ def original_placement_nodes(
     clone_one_seed,
     original_application_seed,
     receiving_version=None,
+    finalization_policy=None,
 ):
     """Declare keep-all after the actual terminal and eight-or-fewer rewrites.
 
     The full actual PUF55 roster is 52 person plus 3 tax-unit targets. No SCF
     mortgage fields, QBI-support output or tuition allocation is introduced here.
+
+    An exact ``finalization_policy`` instead declares the whole-arm
+    finalization: every non-fixed output introduced by the checked arm-one
+    attachment, plus explicit reads of age and the present allocation bases.
     """
+    finalization_policy = _finalization_policy(finalization_policy)
     require(type(after) is ArtifactInput, "AFTER")
     require(after.producer not in (KEEP_NODE, ATTACH_NODE), "AFTER")
     # The host can declare the terminal version before execution. Runtime result
@@ -133,7 +151,11 @@ def original_placement_nodes(
         all(profile.targets == profiles[0].targets for profile in profiles),
         "ROUTE_TARGETS",
     )
-    candidates = values.candidate_outputs(inputs, profiles[0])
+    if finalization_policy is None:
+        candidates, reads = values.candidate_outputs(inputs, profiles[0]), ()
+    else:
+        candidates = finalization.candidate_outputs(inputs, profiles[0])
+        reads = finalization.read_columns(inputs, profiles[0])
     frame = inputs.receiving.frame
     # Entity IDs and memberships arrive in the executor's structural view; they
     # have no column owner in the compiled declaration, so a Slice naming them
@@ -142,16 +164,28 @@ def original_placement_nodes(
     # declares no Slice.
     slices = []
     for entity in frame.entities:
-        columns = list(qualified.person_values) if entity == "person" else []
+        columns = [*qualified.person_values, *reads] if entity == "person" else []
         columns.extend(name for e, name, _ in candidates if e == entity)
         if columns:
             slices.append(Slice(entity, tuple(dict.fromkeys(columns))))
-    params = {
-        "protocol": values.PROTOCOL,
-        "profiles": tuple(profile.value for profile in profiles),
-        "policy": tuple(sorted(values.output_policy(profiles[0]).items())),
-        **seeds,
-    }
+    if finalization_policy is None:
+        params = {
+            "protocol": values.PROTOCOL,
+            "profiles": tuple(profile.value for profile in profiles),
+            "policy": tuple(sorted(values.output_policy(profiles[0]).items())),
+            **seeds,
+        }
+        attach_ref, artifact_type = ATTACH_REF, PLACEMENT_TYPE
+        description = "Preserve all existing/source-known values; place three modeled unit values and five modeled person values only on eligible complete singletons. Mixed-known units and other person allocation remain unresolved; no pruning or source-observation claim."
+    else:
+        params = {
+            "protocol": finalization_policy,
+            "profiles": tuple(profile.value for profile in profiles),
+            "numerical_policy": finalization.NUMERICAL_POLICY,
+            **seeds,
+        }
+        attach_ref, artifact_type = FINALIZATION_ATTACH_REF, FINALIZATION_TYPE
+        description = "Preserve all existing/source-known values and own-tail copies; attach every non-fixed original-arm PUF55 output on chain-consistent units with the maintained person allocation. Mixed-known units keep only targets before their first mixed fixed input; no caps, snapping, pruning, signed-mass alignment or source-observation claim."
     keep = Node(
         KEEP_NODE,
         KEEP_REF,
@@ -173,7 +207,7 @@ def original_placement_nodes(
     )
     attach = Node(
         ATTACH_NODE,
-        ATTACH_REF,
+        attach_ref,
         population=KEEP_NODE,
         inputs=tuple(slices),
         outputs=tuple(
@@ -182,8 +216,8 @@ def original_placement_nodes(
         ),
         params=params,
         artifact_inputs=_edges(qualified, layout),
-        artifact_outputs=(ArtifactOutput("placement", PLACEMENT_TYPE),),
-        description="Preserve all existing/source-known values; place three modeled unit values and five modeled person values only on eligible complete singletons. Mixed-known units and other person allocation remain unresolved; no pruning or source-observation claim.",
+        artifact_outputs=(ArtifactOutput("placement", artifact_type),),
+        description=description,
     )
     return keep, attach
 
@@ -221,18 +255,27 @@ def original_placement_result(
     after,
     clone_one_seed,
     original_application_seed,
+    finalization_policy=None,
 ):
     """Check every typed application through the strict merger, then place.
 
     Called by a future checked host with executor-supplied artifacts. This pure
     function cannot authenticate arbitrary supplied producer keys or ancestors.
+    An exact ``finalization_policy`` runs the whole-arm finalization instead of
+    the conservative placement, over the same strictly merged conditioning.
     """
+    finalization_policy = _finalization_policy(finalization_policy)
     seeds = dict(
         clone_one_seed=clone_one_seed,
         original_application_seed=original_application_seed,
     )
     expected = original_placement_nodes(
-        qualified, inputs, routes, after=after, **seeds
+        qualified,
+        inputs,
+        routes,
+        after=after,
+        finalization_policy=finalization_policy,
+        **seeds,
     )[1]
     require(node == expected, "DECLARATION")
     stamp = values._stamp(inputs)
@@ -294,9 +337,19 @@ def original_placement_result(
     conditioning, receipt = application.merge_puf55_original_conditioning(
         qualified, tuple(transport), **seeds
     )
-    columns, payload = values.placement_result(
-        qualified, inputs, conditioning, receipt, profile=routes[0].profile
-    )
+    if finalization_policy is None:
+        columns, payload = values.placement_result(
+            qualified, inputs, conditioning, receipt, profile=routes[0].profile
+        )
+    else:
+        columns, payload = finalization.finalization_result(
+            qualified,
+            inputs,
+            conditioning,
+            receipt,
+            profile=routes[0].profile,
+            policy=finalization_policy,
+        )
     require(
         values._stamp(inputs) == stamp
         and values.values.fixed_input_stamp(qualified) == fixed_stamp
