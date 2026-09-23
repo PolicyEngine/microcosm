@@ -1,0 +1,2956 @@
+{
+ "commits": {
+  "audit": "fef2cb56a4ca24d74e217a0cbe4abab7079da723",
+  "integration": "47960af430ff7eaec29bfda504a3c814a9a6c264",
+  "main": "4305a7d34ded67009618990f98c5521731d66e73",
+  "native_base": "8c44daa52354b4e28af315a486df0b0c006f26ff",
+  "pr991": "c3456bb10c4722422ffd2c9dab3ae11baec5c3a9"
+ },
+ "descendants": {
+  "native-agi-tail-matching-20260921": {
+   "changed_python_files": [
+    "us_runtime/graph_native_puf_tail_expand.py",
+    "us_runtime/native_puf_tail.py",
+    "us_runtime/native_puf_tail_matching.py"
+   ],
+   "commit": "1b35534b549fe17650275a19ca6c0305a049dd36",
+   "new_literal_hits": {
+    "alimony_income": [
+     "us_runtime/native_puf_tail.py:63"
+    ],
+    "employment_income_before_lsr": [
+     "us_runtime/native_puf_tail.py:45"
+    ],
+    "estate_income": [
+     "us_runtime/native_puf_tail.py:62"
+    ],
+    "farm_income": [
+     "us_runtime/native_puf_tail.py:59"
+    ],
+    "farm_rent_income": [
+     "us_runtime/native_puf_tail.py:60"
+    ],
+    "long_term_capital_gains_before_response": [
+     "us_runtime/native_puf_tail.py:52"
+    ],
+    "miscellaneous_income": [
+     "us_runtime/native_puf_tail.py:61"
+    ],
+    "non_qualified_dividend_income": [
+     "us_runtime/native_puf_tail.py:50"
+    ],
+    "non_sch_d_capital_gains": [
+     "us_runtime/native_puf_tail.py:53"
+    ],
+    "qualified_dividend_income": [
+     "us_runtime/native_puf_tail.py:49"
+    ],
+    "rental_income": [
+     "us_runtime/native_puf_tail.py:58"
+    ],
+    "salt_refund_income": [
+     "us_runtime/native_puf_tail.py:64"
+    ],
+    "self_employment_income_before_lsr": [
+     "us_runtime/native_puf_tail.py:46"
+    ],
+    "short_term_capital_gains": [
+     "us_runtime/native_puf_tail.py:51"
+    ],
+    "sstb_self_employment_income_before_lsr": [
+     "us_runtime/native_puf_tail.py:47"
+    ],
+    "taxable_interest_income": [
+     "us_runtime/native_puf_tail.py:48"
+    ],
+    "taxable_ira_distributions": [
+     "us_runtime/native_puf_tail.py:55"
+    ],
+    "taxable_private_pension_income": [
+     "us_runtime/native_puf_tail.py:54"
+    ]
+   }
+  },
+  "native-child-pre-geography-integration-20260921": {
+   "changed_python_files": [
+    "us_runtime/current_survey_spm_source.py",
+    "us_runtime/graph_atomic_survey_financial.py",
+    "us_runtime/graph_child_property_income.py",
+    "us_runtime/graph_survey_puf55.py",
+    "us_runtime/graph_us_survey_enrichment.py",
+    "us_runtime/native_survey_handoff.py"
+   ],
+   "commit": "050c58a60fa9567692d51c64f2860e59e5b7fbed",
+   "new_literal_hits": {
+    "household_weight": [
+     "us_runtime/native_survey_handoff.py:124",
+     "us_runtime/native_survey_handoff.py:134"
+    ],
+    "is_household_head": [
+     "us_runtime/native_survey_handoff.py:716"
+    ],
+    "veterans_benefits": [
+     "us_runtime/graph_us_survey_enrichment.py:2767"
+    ]
+   }
+  },
+  "native-household-domain-projection-20260921": {
+   "changed_python_files": [
+    "us_runtime/current_survey_household_domains.py",
+    "us_runtime/native_survey_handoff.py"
+   ],
+   "commit": "292c268a049b7dde02fa158541ea9fe0e160bc44",
+   "new_literal_hits": {
+    "household_weight": [
+     "us_runtime/native_survey_handoff.py:124",
+     "us_runtime/native_survey_handoff.py:134"
+    ],
+    "is_household_head": [
+     "us_runtime/native_survey_handoff.py:683"
+    ]
+   }
+  },
+  "native-other-disability-completion-20260921": {
+   "changed_python_files": [
+    "us_runtime/current_asec_other_disability_source.py",
+    "us_runtime/current_asec_retirement_detail_source.py",
+    "us_runtime/current_survey_other_disability_completion.py",
+    "us_runtime/graph_current_survey_other_disability_completion.py"
+   ],
+   "commit": "0e073d1275bc2dce011722cc865d90be3973db30",
+   "new_literal_hits": {
+    "age": [
+     "us_runtime/current_survey_other_disability_completion.py:213",
+     "us_runtime/current_survey_other_disability_completion.py:252",
+     "us_runtime/current_survey_other_disability_completion.py:90",
+     "us_runtime/graph_current_survey_other_disability_completion.py:125",
+     "us_runtime/graph_current_survey_other_disability_completion.py:142"
+    ]
+   }
+  },
+  "native-other-disability-context-replay-20260921": {
+   "changed_python_files": [
+    "us_runtime/current_asec_other_disability_source.py",
+    "us_runtime/current_asec_retirement_detail_source.py",
+    "us_runtime/current_survey_other_disability_completion.py",
+    "us_runtime/graph_current_survey_other_disability_completion.py",
+    "us_runtime/graph_us_other_disability_host.py",
+    "us_runtime/graph_us_survey_enrichment.py",
+    "us_runtime/native_survey_handoff.py"
+   ],
+   "commit": "aa2eaab111904125ea9fb5861800a219aaf637b5",
+   "new_literal_hits": {
+    "age": [
+     "us_runtime/current_survey_other_disability_completion.py:213",
+     "us_runtime/current_survey_other_disability_completion.py:252",
+     "us_runtime/current_survey_other_disability_completion.py:90",
+     "us_runtime/graph_current_survey_other_disability_completion.py:125",
+     "us_runtime/graph_current_survey_other_disability_completion.py:142"
+    ],
+    "household_weight": [
+     "us_runtime/native_survey_handoff.py:124",
+     "us_runtime/native_survey_handoff.py:134"
+    ],
+    "is_household_head": [
+     "us_runtime/native_survey_handoff.py:683"
+    ],
+    "veterans_benefits": [
+     "us_runtime/graph_us_survey_enrichment.py:2756"
+    ]
+   }
+  },
+  "native-ss-beneficiary-core-20260921": {
+   "changed_python_files": [
+    "us_runtime/native_survey_handoff.py",
+    "us_runtime/survey_social_security_beneficiaries.py"
+   ],
+   "commit": "fa72c60f956564aa2eabb1bee35e99786f13c5ea",
+   "new_literal_hits": {
+    "household_weight": [
+     "us_runtime/native_survey_handoff.py:124",
+     "us_runtime/native_survey_handoff.py:134"
+    ],
+    "is_household_head": [
+     "us_runtime/native_survey_handoff.py:683"
+    ]
+   }
+  },
+  "native-survey-tail-recipients-20260921": {
+   "changed_python_files": [
+    "us_runtime/current_survey_household_domains.py",
+    "us_runtime/graph_atomic_survey_financial.py",
+    "us_runtime/graph_puf55_route_attachment.py",
+    "us_runtime/graph_puf55_survey_recipients.py",
+    "us_runtime/graph_survey_completion_host.py",
+    "us_runtime/graph_survey_puf55.py",
+    "us_runtime/native_survey_handoff.py",
+    "us_runtime/puf55_survey_observed.py",
+    "us_runtime/puf55_survey_recipients.py"
+   ],
+   "commit": "5067f21a4a0cc7df7a577f63f4c794a1ee8a806d",
+   "new_literal_hits": {
+    "household_weight": [
+     "us_runtime/native_survey_handoff.py:124",
+     "us_runtime/native_survey_handoff.py:134"
+    ],
+    "is_household_head": [
+     "us_runtime/native_survey_handoff.py:683"
+    ]
+   }
+  }
+ },
+ "main_manifest_counts": {
+  "required": 167,
+  "reviewed_exclusion": 7,
+  "total": 174
+ },
+ "main_manifest_sha256": "0da6097eddd1e2e33ec02ee820d2a125b37bbcb40abaa5b4af7f459b6e13bc4c",
+ "names": {
+  "age": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 4,
+    "us_runtime/acs_income_universe.py": 5,
+    "us_runtime/acs_inputs.py": 1,
+    "us_runtime/acs_local_hours.py": 3,
+    "us_runtime/acs_release_predictors.py": 3,
+    "us_runtime/acs_transfer.py": 6,
+    "us_runtime/adult_care.py": 1,
+    "us_runtime/child_support.py": 2,
+    "us_runtime/childcare.py": 2,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/demographics.py": 1,
+    "us_runtime/disability_benefits.py": 2,
+    "us_runtime/energy_subsidy.py": 2,
+    "us_runtime/fiscal_targets.py": 3,
+    "us_runtime/graph.py": 1,
+    "us_runtime/housing_inputs.py": 7,
+    "us_runtime/multispine_pool.py": 5,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/org_wages.py": 6,
+    "us_runtime/other_health_insurance.py": 3,
+    "us_runtime/pregnancy.py": 2,
+    "us_runtime/prior_year_income.py": 2,
+    "us_runtime/puf_support.py": 3,
+    "us_runtime/qbi_inputs.py": 1,
+    "us_runtime/retirement_contributions.py": 2,
+    "us_runtime/retirement_distributions.py": 2,
+    "us_runtime/scf_auto_loans.py": 8,
+    "us_runtime/scf_wealth.py": 5,
+    "us_runtime/sipp_financial_assets.py": 5,
+    "us_runtime/sipp_head_start.py": 8,
+    "us_runtime/sipp_tips.py": 7,
+    "us_runtime/sipp_vehicles.py": 4,
+    "us_runtime/spm_composition.py": 1,
+    "us_runtime/spm_independence_role.py": 4,
+    "us_runtime/spm_role_source.py": 2,
+    "us_runtime/ssi_disability_criteria.py": 7,
+    "us_runtime/ssi_take_up.py": 4,
+    "us_runtime/take_up.py": 1,
+    "us_runtime/us_late_producer_registry.py": 9,
+    "us_runtime/voluntary_filing.py": 5,
+    "us_runtime/weeks_unemployed.py": 3,
+    "us_runtime/wic_claim.py": 2,
+    "us_runtime/workers_compensation.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "acs_spm_partition.py:163",
+    "acs_spm_partition.py:475",
+    "us_runtime/acs_person_coverage_authentication.py:531",
+    "us_runtime/asec_population_catalogue.py:205",
+    "us_runtime/asec_population_catalogue.py:208",
+    "us_runtime/cps_carried_current.py:67",
+    "us_runtime/cps_carried_current.py:301",
+    "us_runtime/current_asec_amount_donor.py:253",
+    "us_runtime/current_asec_immigration_donor.py:534",
+    "us_runtime/current_survey_immigration_transfer.py:210",
+    "us_runtime/current_survey_ss_completion.py:135",
+    "us_runtime/current_survey_ss_completion.py:248",
+    "us_runtime/graph_composed_asec_binding.py:541",
+    "us_runtime/graph_composed_asec_measures.py:111",
+    "us_runtime/graph_current_survey_ss_completion.py:93",
+    "us_runtime/graph_current_survey_ss_completion.py:113",
+    "us_runtime/graph_current_survey_ss_completion.py:470",
+    "us_runtime/graph_fiscal_measurement.py:87",
+    "us_runtime/graph_geography.py:311",
+    "us_runtime/graph_geography.py:352",
+    "us_runtime/graph_national_age_counts.py:97",
+    "us_runtime/input_coverage_profile.py:23",
+    "us_runtime/puf_diagnostic_consumer.py:441",
+    "us_runtime/survey_observed_age.py:27",
+    "us_runtime/survey_observed_age.py:101",
+    "us_runtime/survey_population_preparation.py:1114",
+    "us_runtime/survey_population_preparation.py:1115",
+    "us_runtime/survey_population_preparation.py:1150",
+    "us_runtime/survey_population_preparation.py:1151",
+    "us_runtime/survey_population_preparation.py:1160",
+    "us_runtime/survey_population_preparation.py:1191",
+    "us_runtime/survey_population_preparation.py:1194",
+    "us_runtime/survey_population_preparation.py:2083"
+   ]
+  },
+  "alimony_expense": {
+   "main_literal_hits_by_file": {
+    "us_runtime/alimony.py": 2,
+    "us_runtime/puf_aggregate_records.py": 2,
+    "us_runtime/puf_support.py": 3,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:24",
+    "us_runtime/operator_column_contracts.py:86",
+    "us_runtime/puf_full_source.py:434",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "alimony_income": {
+   "main_literal_hits_by_file": {
+    "us_runtime/alimony.py": 5,
+    "us_runtime/puf_aggregate_records.py": 2,
+    "us_runtime/puf_support.py": 4,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:68",
+    "us_runtime/input_coverage_profile.py:25",
+    "us_runtime/operator_column_contracts.py:85",
+    "us_runtime/puf_full_source.py:433",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "attends_eligible_educational_institution_for_american_opportunity_credit": {
+   "main_literal_hits_by_file": {
+    "us_runtime/education_inputs.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:26"
+   ]
+  },
+  "auto_loan_balance": {
+   "main_literal_hits_by_file": {
+    "us_runtime/scf_auto_loans.py": 6
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:27"
+   ]
+  },
+  "auto_loan_interest": {
+   "main_literal_hits_by_file": {
+    "us_runtime/scf_auto_loans.py": 8
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:28"
+   ]
+  },
+  "bank_account_assets": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/scf_wealth.py": 9,
+    "us_runtime/sipp_financial_assets.py": 2,
+    "us_runtime/ssi_disability_criteria.py": 5,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:29"
+   ]
+  },
+  "block_geoid": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_multispine.py": 1,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/block_ladder_sources.py": 1,
+    "us_runtime/geography_ladder.py": 6
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:30",
+    "us_runtime/input_coverage_profile.py:187"
+   ]
+  },
+  "bond_assets": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/scf_wealth.py": 4,
+    "us_runtime/sipp_financial_assets.py": 2,
+    "us_runtime/ssi_disability_criteria.py": 5,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:31"
+   ]
+  },
+  "business_is_sstb": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 7,
+    "us_runtime/qbi_inputs.py": 6,
+    "us_runtime/stacked_spine.py": 2,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:32",
+    "us_runtime/operator_column_contracts.py:27",
+    "us_runtime/puf_qbi_model.py:306",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "casualty_loss": {
+   "main_literal_hits_by_file": {
+    "us_runtime/casualty_losses.py": 3,
+    "us_runtime/puf_aggregate_records.py": 2,
+    "us_runtime/puf_support.py": 4,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:33",
+    "us_runtime/operator_column_contracts.py:97",
+    "us_runtime/puf_full_source.py:442",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "charitable_cash_donations": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:34",
+    "us_runtime/operator_column_contracts.py:88",
+    "us_runtime/puf_full_source.py:436",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "charitable_non_cash_donations": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:35",
+    "us_runtime/operator_column_contracts.py:89",
+    "us_runtime/puf_full_source.py:437",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "child_support_expense": {
+   "main_literal_hits_by_file": {
+    "us_runtime/child_support.py": 4,
+    "us_runtime/post_transfer_calibration.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:36"
+   ]
+  },
+  "child_support_received": {
+   "main_literal_hits_by_file": {
+    "us_runtime/child_support.py": 4,
+    "us_runtime/post_transfer_calibration.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_amounts.py:54",
+    "us_runtime/input_coverage_profile.py:37"
+   ]
+  },
+  "congressional_district_geoid": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 12,
+    "us_runtime/acs_multispine.py": 2,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/base_pool.py": 4,
+    "us_runtime/block_ladder_sources.py": 1,
+    "us_runtime/congressional_district_geography.py": 1,
+    "us_runtime/demographics.py": 2,
+    "us_runtime/fiscal_targets.py": 2,
+    "us_runtime/geography_ladder.py": 3,
+    "us_runtime/h5_io.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/atomic_block_support.py:244",
+    "us_runtime/graph_fiscal_measurement.py:146",
+    "us_runtime/graph_fiscal_measurement.py:575",
+    "us_runtime/input_coverage_profile.py:38",
+    "us_runtime/snap_release_acceptance.py:213",
+    "us_runtime/target_geography_view.py:174"
+   ]
+  },
+  "county_fips": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_multispine.py": 2,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/base_pool.py": 4,
+    "us_runtime/geography_ladder.py": 7,
+    "us_runtime/h5_io.py": 5,
+    "us_runtime/puma_ladder.py": 8
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/atomic_block_support.py:239",
+    "us_runtime/graph_fiscal_measurement.py:87",
+    "us_runtime/graph_geography.py:323",
+    "us_runtime/input_coverage_profile.py:39",
+    "us_runtime/snap_release_acceptance.py:134"
+   ]
+  },
+  "cps_race": {
+   "main_literal_hits_by_file": {
+    "us_runtime/org_wages.py": 4,
+    "us_runtime/scf_auto_loans.py": 1,
+    "us_runtime/scf_wealth.py": 3
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_race_hispanic_source.py:31",
+    "us_runtime/input_coverage_profile.py:40"
+   ]
+  },
+  "detailed_occupation_recode": {
+   "main_literal_hits_by_file": {
+    "us_runtime/org_wages.py": 3
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:41"
+   ]
+  },
+  "disability_benefits": {
+   "main_literal_hits_by_file": {
+    "us_runtime/disability_benefits.py": 1,
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/post_transfer_calibration.py": 1,
+    "us_runtime/ssi_disability_criteria.py": 2,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:42"
+   ]
+  },
+  "domestic_production_ald": {
+   "main_literal_hits_by_file": {
+    "us_runtime/domestic_production.py": 3,
+    "us_runtime/puf_aggregate_records.py": 2,
+    "us_runtime/puf_support.py": 3,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:43",
+    "us_runtime/operator_column_contracts.py:118",
+    "us_runtime/puf55_original_placement.py:33",
+    "us_runtime/puf_full_source.py:447",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "educational_assistance": {
+   "main_literal_hits_by_file": {
+    "us_runtime/education_assistance_source.py": 1,
+    "us_runtime/education_inputs.py": 4,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:44"
+   ]
+  },
+  "educator_expense": {
+   "main_literal_hits_by_file": {
+    "us_runtime/educator_expenses.py": 1,
+    "us_runtime/puf_aggregate_records.py": 3,
+    "us_runtime/puf_support.py": 4,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:45",
+    "us_runtime/operator_column_contracts.py:95",
+    "us_runtime/puf_full_source.py:441",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "employer_sponsored_insurance_premiums": {
+   "main_literal_hits_by_file": {},
+   "main_status": "reviewed_exclusion",
+   "native_literal_hits_at_integration": []
+  },
+  "employment_income_before_lsr": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_income_universe.py": 1,
+    "us_runtime/acs_inputs.py": 1,
+    "us_runtime/acs_local_hours.py": 2,
+    "us_runtime/acs_transfer.py": 3,
+    "us_runtime/adult_care.py": 1,
+    "us_runtime/child_support.py": 1,
+    "us_runtime/childcare.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/disability_benefits.py": 1,
+    "us_runtime/energy_subsidy.py": 1,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/housing_inputs.py": 4,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/org_wages.py": 4,
+    "us_runtime/other_health_insurance.py": 1,
+    "us_runtime/prior_year_income.py": 1,
+    "us_runtime/puf_capital_gains_tail.py": 1,
+    "us_runtime/puf_support.py": 7,
+    "us_runtime/retirement_contributions.py": 1,
+    "us_runtime/retirement_distributions.py": 1,
+    "us_runtime/scf_auto_loans.py": 2,
+    "us_runtime/scf_wealth.py": 2,
+    "us_runtime/sipp_financial_assets.py": 2,
+    "us_runtime/sipp_head_start.py": 2,
+    "us_runtime/sipp_tips.py": 2,
+    "us_runtime/sipp_vehicles.py": 2,
+    "us_runtime/ssi_disability_criteria.py": 1,
+    "us_runtime/us_late_producer_registry.py": 4,
+    "us_runtime/voluntary_filing.py": 1,
+    "us_runtime/workers_compensation.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/asec_engine_evaluation.py:95",
+    "us_runtime/cps_carried_current.py:69",
+    "us_runtime/cps_carried_current.py:238",
+    "us_runtime/cps_carried_current.py:274",
+    "us_runtime/graph_composed_asec_measures.py:112",
+    "us_runtime/input_coverage_profile.py:46",
+    "us_runtime/operator_column_contracts.py:69",
+    "us_runtime/puf55_survey_recipients.py:35",
+    "us_runtime/puf_detail_transfer.py:428",
+    "us_runtime/puf_diagnostic_consumer.py:443",
+    "us_runtime/puf_diagnostic_consumer.py:814",
+    "us_runtime/puf_full_source.py:422",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "estate_income": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/fiscal_targets.py": 4,
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/puf_support.py": 5,
+    "us_runtime/qbi_inputs.py": 2,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 3
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:47",
+    "us_runtime/operator_column_contracts.py:106",
+    "us_runtime/puf_full_source.py:482",
+    "us_runtime/puf_qbi_model.py:33",
+    "us_runtime/puf_qbi_model.py:41",
+    "us_runtime/puf_qbi_model.py:51",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "estate_income_would_be_qualified": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/qbi_inputs.py": 2,
+    "us_runtime/stacked_spine.py": 2,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:48",
+    "us_runtime/operator_column_contracts.py:12",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "farm_income": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:49",
+    "us_runtime/operator_column_contracts.py:107",
+    "us_runtime/puf_full_source.py:443",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "farm_operations_income": {
+   "main_literal_hits_by_file": {
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/farm_business_income.py": 1,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/puf_aggregate_records.py": 2,
+    "us_runtime/puf_support.py": 3,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:70",
+    "us_runtime/cps_carried_current.py:309",
+    "us_runtime/input_coverage_profile.py:50",
+    "us_runtime/operator_column_contracts.py:108",
+    "us_runtime/puf55_survey_observed.py:29",
+    "us_runtime/puf_full_source.py:444",
+    "us_runtime/puf_qbi_model.py:30",
+    "us_runtime/puf_qbi_model.py:38",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "farm_operations_income_would_be_qualified": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/qbi_inputs.py": 1,
+    "us_runtime/stacked_spine.py": 2,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:51",
+    "us_runtime/operator_column_contracts.py:13",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "farm_rent_income": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/farm_business_income.py": 1,
+    "us_runtime/fiscal_targets.py": 2,
+    "us_runtime/puf_aggregate_records.py": 2,
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:52",
+    "us_runtime/operator_column_contracts.py:109",
+    "us_runtime/puf_full_source.py:445",
+    "us_runtime/puf_qbi_model.py:31",
+    "us_runtime/puf_qbi_model.py:39",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "farm_rent_income_would_be_qualified": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/qbi_inputs.py": 1,
+    "us_runtime/stacked_spine.py": 2,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:53",
+    "us_runtime/operator_column_contracts.py:14",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "financial_assistance": {
+   "main_literal_hits_by_file": {},
+   "main_status": "reviewed_exclusion",
+   "native_literal_hits_at_integration": []
+  },
+  "first_home_mortgage_balance": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/full_puf_enrichment.py:53",
+    "us_runtime/input_coverage_profile.py:54",
+    "us_runtime/operator_column_contracts.py:120"
+   ]
+  },
+  "first_home_mortgage_interest": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 5,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/full_puf_enrichment.py:55",
+    "us_runtime/input_coverage_profile.py:55",
+    "us_runtime/operator_column_contracts.py:122"
+   ]
+  },
+  "first_home_mortgage_origination_year": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/puf_support.py": 3,
+    "us_runtime/stacked_spine.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/full_puf_enrichment.py:57",
+    "us_runtime/input_coverage_profile.py:56",
+    "us_runtime/operator_column_contracts.py:124"
+   ]
+  },
+  "fsla_overtime_premium": {
+   "main_literal_hits_by_file": {
+    "us_runtime/org_wages.py": 4,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:57"
+   ]
+  },
+  "has_american_opportunity_credit_1098_t_or_exception": {
+   "main_literal_hits_by_file": {
+    "us_runtime/education_inputs.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:58"
+   ]
+  },
+  "has_american_opportunity_credit_institution_ein": {
+   "main_literal_hits_by_file": {
+    "us_runtime/education_inputs.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:59"
+   ]
+  },
+  "has_champva_health_coverage_at_interview": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 3,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_health_coverage.py:68",
+    "us_runtime/input_coverage_profile.py:60"
+   ]
+  },
+  "has_esi": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/child_support.py": 3,
+    "us_runtime/childcare.py": 3,
+    "us_runtime/cps_carried.py": 3,
+    "us_runtime/disability_benefits.py": 3,
+    "us_runtime/energy_subsidy.py": 3,
+    "us_runtime/housing_inputs.py": 2,
+    "us_runtime/other_health_insurance.py": 4,
+    "us_runtime/prior_year_income.py": 3,
+    "us_runtime/retirement_contributions.py": 3,
+    "us_runtime/retirement_distributions.py": 3,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1,
+    "us_runtime/workers_compensation.py": 3
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_health_coverage.py:36",
+    "us_runtime/input_coverage_profile.py:61"
+   ]
+  },
+  "has_indian_health_service_coverage_at_interview": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 3,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_health_coverage.py:80",
+    "us_runtime/input_coverage_profile.py:62"
+   ]
+  },
+  "has_marketplace_health_coverage_at_interview": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 3,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_health_coverage.py:38",
+    "us_runtime/input_coverage_profile.py:63"
+   ]
+  },
+  "has_medicaid_health_coverage_at_interview": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 3,
+    "us_runtime/medicaid_take_up.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_health_coverage.py:50",
+    "us_runtime/input_coverage_profile.py:64"
+   ]
+  },
+  "has_never_worked": {
+   "main_literal_hits_by_file": {
+    "us_runtime/org_wages.py": 5
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:65"
+   ]
+  },
+  "has_non_marketplace_direct_purchase_health_coverage_at_interview": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 3,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_health_coverage.py:44",
+    "us_runtime/input_coverage_profile.py:66"
+   ]
+  },
+  "has_other_means_tested_health_coverage_at_interview": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 3,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_health_coverage.py:56",
+    "us_runtime/input_coverage_profile.py:67"
+   ]
+  },
+  "has_tricare_health_coverage_at_interview": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 3,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_health_coverage.py:62",
+    "us_runtime/input_coverage_profile.py:68"
+   ]
+  },
+  "has_va_health_coverage_at_interview": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 3,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_health_coverage.py:74",
+    "us_runtime/input_coverage_profile.py:69"
+   ]
+  },
+  "health_insurance_premiums": {
+   "main_literal_hits_by_file": {
+    "us_runtime/other_health_insurance.py": 1,
+    "us_runtime/release_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:70"
+   ]
+  },
+  "health_insurance_premiums_without_medicare_part_b": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 4,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/other_health_insurance.py": 1,
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:71",
+    "us_runtime/cps_carried_current.py:311",
+    "us_runtime/current_survey_amounts.py:48",
+    "us_runtime/input_coverage_profile.py:71"
+   ]
+  },
+  "health_savings_account_ald": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:72",
+    "us_runtime/operator_column_contracts.py:126",
+    "us_runtime/puf55_original_placement.py:35",
+    "us_runtime/puf_full_source.py:449",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "home_mortgage_interest": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 8,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:73",
+    "us_runtime/operator_column_contracts.py:91",
+    "us_runtime/puf59_canonical.py:162",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "hourly_wage": {
+   "main_literal_hits_by_file": {
+    "us_runtime/org_wages.py": 9
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:74"
+   ]
+  },
+  "hours_worked_last_week": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/hours_worked.py": 2,
+    "us_runtime/org_wages.py": 3,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:75"
+   ]
+  },
+  "household_vehicles_owned": {
+   "main_literal_hits_by_file": {
+    "us_runtime/sipp_vehicles.py": 11
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:76"
+   ]
+  },
+  "household_vehicles_value": {
+   "main_literal_hits_by_file": {
+    "us_runtime/sipp_vehicles.py": 12
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:77"
+   ]
+  },
+  "household_weight": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 8,
+    "tools/build_us_puf_support_base.py": 2,
+    "us_runtime/h5_io.py": 6,
+    "us_runtime/housing_inputs.py": 3,
+    "us_runtime/l0_refit_export.py": 1,
+    "us_runtime/nonzero_shares.py": 3,
+    "us_runtime/puf_donor_io.py": 1,
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/release_input_coverage.py": 4,
+    "us_runtime/sipp_vehicles.py": 1,
+    "us_runtime/ssi_disability_criteria.py": 1,
+    "us_runtime/warm_start_selection.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:78",
+    "us_runtime/native_survey_handoff.py:108",
+    "us_runtime/native_survey_handoff.py:118",
+    "us_runtime/population_input_coverage.py:324",
+    "us_runtime/population_input_coverage.py:462",
+    "us_runtime/population_input_coverage.py:465",
+    "us_runtime/snap_release_acceptance.py:104",
+    "us_runtime/snap_release_acceptance.py:130"
+   ]
+  },
+  "immigration_status_str": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/immigration.py": 4,
+    "us_runtime/spine_agreement.py": 1,
+    "us_runtime/stacked_spine.py": 2,
+    "us_runtime/us_late_producer_registry.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_asec_immigration_assignment.py:273",
+    "us_runtime/input_coverage_profile.py:79"
+   ]
+  },
+  "investment_income_elected_form_4952": {
+   "main_literal_hits_by_file": {
+    "us_runtime/form_4952.py": 1,
+    "us_runtime/puf_aggregate_records.py": 2,
+    "us_runtime/puf_support.py": 3,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:80",
+    "us_runtime/operator_column_contracts.py:93",
+    "us_runtime/puf_full_source.py:439",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "investment_interest_expense": {
+   "main_literal_hits_by_file": {
+    "us_runtime/l0_refit_export.py": 1,
+    "us_runtime/puf_support.py": 9,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:81",
+    "us_runtime/operator_column_contracts.py:92",
+    "us_runtime/puf59_canonical.py:163",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "is_blind": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/eligibility_inputs.py": 3,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:82"
+   ]
+  },
+  "is_computer_scientist": {
+   "main_literal_hits_by_file": {
+    "us_runtime/org_wages.py": 4
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:83"
+   ]
+  },
+  "is_disabled": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/eligibility_inputs.py": 5,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:84"
+   ]
+  },
+  "is_enrolled_at_least_half_time_for_american_opportunity_credit": {
+   "main_literal_hits_by_file": {
+    "us_runtime/education_inputs.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:85"
+   ]
+  },
+  "is_executive_administrative_professional": {
+   "main_literal_hits_by_file": {
+    "us_runtime/org_wages.py": 4
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:86"
+   ]
+  },
+  "is_farmer_fisher": {
+   "main_literal_hits_by_file": {
+    "us_runtime/org_wages.py": 4
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:87"
+   ]
+  },
+  "is_female": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_inputs.py": 1,
+    "us_runtime/acs_transfer.py": 7,
+    "us_runtime/child_support.py": 2,
+    "us_runtime/childcare.py": 2,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/disability_benefits.py": 2,
+    "us_runtime/energy_subsidy.py": 2,
+    "us_runtime/housing_inputs.py": 5,
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/org_wages.py": 5,
+    "us_runtime/other_health_insurance.py": 2,
+    "us_runtime/pregnancy.py": 2,
+    "us_runtime/prior_year_income.py": 2,
+    "us_runtime/retirement_contributions.py": 2,
+    "us_runtime/retirement_distributions.py": 2,
+    "us_runtime/scf_auto_loans.py": 6,
+    "us_runtime/scf_wealth.py": 7,
+    "us_runtime/sipp_financial_assets.py": 4,
+    "us_runtime/sipp_head_start.py": 5,
+    "us_runtime/sipp_vehicles.py": 3,
+    "us_runtime/ssi_disability_criteria.py": 7,
+    "us_runtime/us_late_producer_registry.py": 5,
+    "us_runtime/voluntary_filing.py": 4,
+    "us_runtime/weeks_unemployed.py": 2,
+    "us_runtime/wic_claim.py": 2,
+    "us_runtime/workers_compensation.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_acs_immigration_source_projection.py:493",
+    "us_runtime/current_asec_demographics.py:315",
+    "us_runtime/current_asec_immigration_donor.py:535",
+    "us_runtime/current_survey_immigration_transfer.py:211",
+    "us_runtime/current_survey_predictors.py:132",
+    "us_runtime/current_survey_sex_source.py:36",
+    "us_runtime/input_coverage_profile.py:88",
+    "us_runtime/survey_demographic_contract.py:34"
+   ]
+  },
+  "is_full_time_college_student": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/adult_care.py": 2,
+    "us_runtime/eligibility_inputs.py": 4,
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:89"
+   ]
+  },
+  "is_hispanic": {
+   "main_literal_hits_by_file": {
+    "us_runtime/org_wages.py": 7
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_race_hispanic_source.py:31",
+    "us_runtime/input_coverage_profile.py:90"
+   ]
+  },
+  "is_household_head": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_inputs.py": 3,
+    "us_runtime/acs_transfer.py": 3,
+    "us_runtime/housing_inputs.py": 10,
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/relationship_inputs.py": 4,
+    "us_runtime/spm_composition.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_household_roles.py:85",
+    "us_runtime/current_survey_housing.py:827",
+    "us_runtime/current_survey_housing.py:841",
+    "us_runtime/housing_participation.py:235",
+    "us_runtime/housing_participation.py:236",
+    "us_runtime/input_coverage_profile.py:91",
+    "us_runtime/native_survey_handoff.py:666",
+    "us_runtime/survey_demographic_contract.py:56",
+    "us_runtime/survey_population_preparation.py:1111",
+    "us_runtime/survey_population_preparation.py:1123",
+    "us_runtime/survey_population_preparation.py:1164",
+    "us_runtime/survey_population_preparation.py:2068",
+    "us_runtime/survey_population_preparation.py:2073"
+   ]
+  },
+  "is_incapable_of_self_care": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 2,
+    "us_runtime/adult_care.py": 1,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/stacked_spine.py": 2,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:92"
+   ]
+  },
+  "is_military": {
+   "main_literal_hits_by_file": {
+    "us_runtime/org_wages.py": 5
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:93"
+   ]
+  },
+  "is_paid_hourly": {
+   "main_literal_hits_by_file": {
+    "us_runtime/org_wages.py": 8
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:94"
+   ]
+  },
+  "is_pregnant": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 2,
+    "us_runtime/pregnancy.py": 1,
+    "us_runtime/stacked_spine.py": 4,
+    "us_runtime/us_late_producer_registry.py": 3,
+    "us_runtime/wic_claim.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:95"
+   ]
+  },
+  "is_pursuing_credential_for_american_opportunity_credit": {
+   "main_literal_hits_by_file": {
+    "us_runtime/education_inputs.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:96"
+   ]
+  },
+  "is_self_employed": {
+   "main_literal_hits_by_file": {
+    "us_runtime/other_health_insurance.py": 1,
+    "us_runtime/release_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:97"
+   ]
+  },
+  "is_separated": {
+   "main_literal_hits_by_file": {
+    "us_runtime/relationship_inputs.py": 4,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:98"
+   ]
+  },
+  "is_spm_independent_minor_role": {
+   "main_literal_hits_by_file": {
+    "us_runtime/spm_composition.py": 1,
+    "us_runtime/spm_role_source.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "acs_spm_source_assembly.py:184",
+    "spm_input_contract.py:7"
+   ]
+  },
+  "is_surviving_spouse": {
+   "main_literal_hits_by_file": {
+    "us_runtime/relationship_inputs.py": 4,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:99"
+   ]
+  },
+  "is_union_member_or_covered": {
+   "main_literal_hits_by_file": {
+    "us_runtime/org_wages.py": 4
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:100"
+   ]
+  },
+  "is_unmarried_partner_of_household_head": {
+   "main_literal_hits_by_file": {},
+   "main_status": "reviewed_exclusion",
+   "native_literal_hits_at_integration": []
+  },
+  "is_wic_at_nutritional_risk": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1
+   },
+   "main_status": "reviewed_exclusion",
+   "native_literal_hits_at_integration": []
+  },
+  "keogh_distributions": {
+   "main_literal_hits_by_file": {
+    "us_runtime/retirement_distributions.py": 4,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:101"
+   ]
+  },
+  "long_term_capital_gains_before_response": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/graph.py": 1,
+    "us_runtime/multispine_pool.py": 2,
+    "us_runtime/puf_capital_gains_tail.py": 11,
+    "us_runtime/puf_e01000_reconciliation.py": 1,
+    "us_runtime/puf_support.py": 4,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/asec_engine_evaluation.py:75",
+    "us_runtime/cps_carried_current.py:72",
+    "us_runtime/cps_carried_current.py:244",
+    "us_runtime/cps_carried_current.py:279",
+    "us_runtime/input_coverage_profile.py:102",
+    "us_runtime/operator_column_contracts.py:76",
+    "us_runtime/operator_column_contracts.py:134",
+    "us_runtime/puf55_survey_recipients.py:40",
+    "us_runtime/puf_full_source.py:428",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "long_term_capital_gains_on_collectibles": {
+   "main_literal_hits_by_file": {
+    "us_runtime/capital_gain_details.py": 5,
+    "us_runtime/graph.py": 1,
+    "us_runtime/puf_aggregate_records.py": 2,
+    "us_runtime/puf_capital_gains_tail.py": 1,
+    "us_runtime/puf_support.py": 3,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:103",
+    "us_runtime/operator_column_contracts.py:77",
+    "us_runtime/operator_column_contracts.py:135",
+    "us_runtime/puf55_original_placement.py:26",
+    "us_runtime/puf_full_source.py:429",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "meets_ssi_disability_criteria": {
+   "main_literal_hits_by_file": {
+    "us_runtime/ssi_disability_criteria.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:104"
+   ]
+  },
+  "miscellaneous_income": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/alimony.py": 3,
+    "us_runtime/fiscal_targets.py": 4,
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:73",
+    "us_runtime/input_coverage_profile.py:105",
+    "us_runtime/operator_column_contracts.py:110",
+    "us_runtime/puf_full_source.py:446",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "net_worth": {
+   "main_literal_hits_by_file": {
+    "us_runtime/fiscal_targets.py": 2,
+    "us_runtime/scf_wealth.py": 12
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:106"
+   ]
+  },
+  "non_qualified_dividend_income": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/graph.py": 1,
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/puf_aggregate_records.py": 7,
+    "us_runtime/puf_capital_gains_tail.py": 1,
+    "us_runtime/puf_support.py": 8,
+    "us_runtime/qbi_inputs.py": 3,
+    "us_runtime/scf_auto_loans.py": 1,
+    "us_runtime/scf_wealth.py": 1,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/sipp_vehicles.py": 1,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/ssi_disability_criteria.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/asec_engine_evaluation.py:86",
+    "us_runtime/cps_carried_current.py:74",
+    "us_runtime/cps_carried_current.py:242",
+    "us_runtime/cps_carried_current.py:278",
+    "us_runtime/graph_property_tax_leaves.py:50",
+    "us_runtime/input_coverage_profile.py:107",
+    "us_runtime/operator_column_contracts.py:73",
+    "us_runtime/puf55_survey_recipients.py:38",
+    "us_runtime/puf_full_source.py:480",
+    "us_runtime/puf_qbi_model.py:44",
+    "us_runtime/puf_qbi_model.py:57",
+    "us_runtime/puf_qbi_model.py:58",
+    "us_runtime/puf_qbi_model.py:316",
+    "us_runtime/puf_qbi_model.py:321",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "non_sch_d_capital_gains": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 3,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/fiscal_targets.py": 3,
+    "us_runtime/graph.py": 1,
+    "us_runtime/multispine_pool.py": 2,
+    "us_runtime/puf_capital_gains_tail.py": 1,
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:108",
+    "us_runtime/operator_column_contracts.py:78",
+    "us_runtime/operator_column_contracts.py:136",
+    "us_runtime/puf55_original_placement.py:27",
+    "us_runtime/puf_full_source.py:430",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "other_health_insurance_premiums": {
+   "main_literal_hits_by_file": {
+    "us_runtime/other_health_insurance.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:109"
+   ]
+  },
+  "other_medical_expenses": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:75",
+    "us_runtime/cps_carried_current.py:312",
+    "us_runtime/current_survey_amounts.py:49",
+    "us_runtime/input_coverage_profile.py:110"
+   ]
+  },
+  "over_the_counter_health_expenses": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:76",
+    "us_runtime/cps_carried_current.py:313",
+    "us_runtime/current_survey_amounts.py:50",
+    "us_runtime/input_coverage_profile.py:111"
+   ]
+  },
+  "own_children_in_household": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/eligibility_inputs.py": 3,
+    "us_runtime/scf_auto_loans.py": 1,
+    "us_runtime/scf_wealth.py": 3,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1,
+    "us_runtime/wic_claim.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:112"
+   ]
+  },
+  "partnership_s_corp_income_would_be_qualified": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/qbi_inputs.py": 2,
+    "us_runtime/stacked_spine.py": 2,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:113",
+    "us_runtime/operator_column_contracts.py:15",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "pre_subsidy_care_expenses": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 2,
+    "us_runtime/adult_care.py": 1,
+    "us_runtime/post_transfer_calibration.py": 1,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/stacked_spine.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:114"
+   ]
+  },
+  "pre_subsidy_rent": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/housing_inputs.py": 3,
+    "us_runtime/stacked_spine.py": 4
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:115"
+   ]
+  },
+  "previous_year_income_available": {
+   "main_literal_hits_by_file": {
+    "us_runtime/prior_year_income.py": 6,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:116",
+    "us_runtime/prior_year_income_constants.py:6"
+   ]
+  },
+  "qualified_bdc_income": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/qbi_inputs.py": 6,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:117",
+    "us_runtime/operator_column_contracts.py:31",
+    "us_runtime/operator_column_contracts.py:41",
+    "us_runtime/puf_qbi_model.py:320",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "qualified_dividend_income": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/fiscal_targets.py": 4,
+    "us_runtime/puf_aggregate_records.py": 7,
+    "us_runtime/puf_capital_gains_tail.py": 1,
+    "us_runtime/puf_support.py": 6,
+    "us_runtime/scf_auto_loans.py": 1,
+    "us_runtime/scf_wealth.py": 1,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/sipp_vehicles.py": 1,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/ssi_disability_criteria.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/target_aging.py": 2,
+    "us_runtime/us_late_producer_registry.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/asec_engine_evaluation.py:86",
+    "us_runtime/cps_carried_current.py:77",
+    "us_runtime/cps_carried_current.py:241",
+    "us_runtime/cps_carried_current.py:277",
+    "us_runtime/graph_property_tax_leaves.py:49",
+    "us_runtime/input_coverage_profile.py:118",
+    "us_runtime/operator_column_contracts.py:72",
+    "us_runtime/puf55_survey_recipients.py:38",
+    "us_runtime/puf_full_source.py:425",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "qualified_passenger_vehicle_loan_interest": {
+   "main_literal_hits_by_file": {
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/scf_auto_loans.py": 4,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:119"
+   ]
+  },
+  "qualified_reit_and_ptp_income": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/qbi_inputs.py": 6,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:120",
+    "us_runtime/operator_column_contracts.py:32",
+    "us_runtime/operator_column_contracts.py:42",
+    "us_runtime/puf_qbi_model.py:315",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "qualified_tuition_expenses": {
+   "main_literal_hits_by_file": {
+    "us_runtime/education_inputs.py": 4,
+    "us_runtime/puf_aggregate_records.py": 2,
+    "us_runtime/puf_support.py": 6,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_overlap_ownership.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:121",
+    "us_runtime/operator_column_contracts.py:96",
+    "us_runtime/puf59_canonical.py:172",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "real_estate_taxes": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_inputs.py": 1,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/fiscal_targets.py": 4,
+    "us_runtime/housing_inputs.py": 3,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/puf_support.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:122",
+    "us_runtime/operator_column_contracts.py:90",
+    "us_runtime/puf_full_source.py:438",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "receives_housing_assistance": {
+   "main_literal_hits_by_file": {
+    "us_runtime/housing_inputs.py": 10,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_housing.py:62",
+    "us_runtime/housing_participation.py:276",
+    "us_runtime/input_coverage_profile.py:123"
+   ]
+  },
+  "receives_snap": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 3,
+    "us_runtime/release_input_coverage.py": 2,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": []
+  },
+  "receives_tanf": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 3,
+    "us_runtime/release_input_coverage.py": 2,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": []
+  },
+  "receives_wic": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/release_input_coverage.py": 2,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": []
+  },
+  "rental_income": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 2,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/fiscal_targets.py": 2,
+    "us_runtime/puf_support.py": 4,
+    "us_runtime/sipp_financial_assets.py": 3,
+    "us_runtime/sipp_vehicles.py": 4,
+    "us_runtime/ssi_disability_criteria.py": 4,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:78",
+    "us_runtime/cps_carried_current.py:308",
+    "us_runtime/input_coverage_profile.py:124",
+    "us_runtime/operator_column_contracts.py:105",
+    "us_runtime/puf55_survey_observed.py:28",
+    "us_runtime/puf_full_source.py:481",
+    "us_runtime/puf_qbi_model.py:32",
+    "us_runtime/puf_qbi_model.py:40",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "rental_income_would_be_qualified": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/qbi_inputs.py": 1,
+    "us_runtime/stacked_spine.py": 2,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:125",
+    "us_runtime/operator_column_contracts.py:16",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "roth_401k_contributions_desired": {
+   "main_literal_hits_by_file": {
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/retirement_contributions.py": 3,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:126"
+   ]
+  },
+  "roth_ira_contributions_desired": {
+   "main_literal_hits_by_file": {
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/retirement_contributions.py": 2,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:127"
+   ]
+  },
+  "salt_refund_income": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_aggregate_records.py": 2,
+    "us_runtime/puf_support.py": 3,
+    "us_runtime/salt_refund_income.py": 1,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:128",
+    "us_runtime/operator_column_contracts.py:87",
+    "us_runtime/puf_full_source.py:435",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "schedule_d_capital_gain_distributions": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 4,
+    "us_runtime/graph.py": 2,
+    "us_runtime/multispine_pool.py": 5,
+    "us_runtime/release_input_coverage.py": 2,
+    "us_runtime/stacked_spine.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:129",
+    "us_runtime/operator_column_contracts.py:57"
+   ]
+  },
+  "selected_marketplace_plan_benchmark_ratio": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 3,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/l0_refit_export.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:130"
+   ]
+  },
+  "self_employed_pension_contributions_desired": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 4,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/retirement_contributions.py": 3,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_overlap_ownership.py": 1,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:131",
+    "us_runtime/operator_column_contracts.py:104",
+    "us_runtime/puf59_canonical.py:169",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "self_employment_income_before_lsr": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_income_universe.py": 1,
+    "us_runtime/acs_inputs.py": 1,
+    "us_runtime/acs_local_hours.py": 2,
+    "us_runtime/acs_transfer.py": 3,
+    "us_runtime/adult_care.py": 1,
+    "us_runtime/child_support.py": 1,
+    "us_runtime/childcare.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/disability_benefits.py": 1,
+    "us_runtime/energy_subsidy.py": 1,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/graph.py": 1,
+    "us_runtime/housing_inputs.py": 4,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/other_health_insurance.py": 2,
+    "us_runtime/prior_year_income.py": 1,
+    "us_runtime/puf_capital_gains_tail.py": 1,
+    "us_runtime/puf_support.py": 13,
+    "us_runtime/qbi_inputs.py": 1,
+    "us_runtime/retirement_contributions.py": 1,
+    "us_runtime/retirement_distributions.py": 1,
+    "us_runtime/us_late_producer_registry.py": 4,
+    "us_runtime/workers_compensation.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:79",
+    "us_runtime/cps_carried_current.py:239",
+    "us_runtime/cps_carried_current.py:275",
+    "us_runtime/graph_composed_asec_measures.py:113",
+    "us_runtime/input_coverage_profile.py:132",
+    "us_runtime/operator_column_contracts.py:70",
+    "us_runtime/puf55_survey_recipients.py:36",
+    "us_runtime/puf_full_source.py:423",
+    "us_runtime/puf_qbi_model.py:37",
+    "us_runtime/puf_qbi_model.py:46",
+    "us_runtime/puf_qbi_model.py:303",
+    "us_runtime/puf_qbi_model.py:307",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "self_employment_income_last_year": {
+   "main_literal_hits_by_file": {
+    "us_runtime/post_transfer_calibration.py": 1,
+    "us_runtime/prior_year_income.py": 12,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:133",
+    "us_runtime/prior_year_income_constants.py:5"
+   ]
+  },
+  "self_employment_income_would_be_qualified": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/qbi_inputs.py": 4,
+    "us_runtime/stacked_spine.py": 2,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:134",
+    "us_runtime/operator_column_contracts.py:17",
+    "us_runtime/puf_qbi_model.py:309",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "short_term_capital_gains": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/graph.py": 1,
+    "us_runtime/puf_aggregate_records.py": 1,
+    "us_runtime/puf_capital_gains_tail.py": 11,
+    "us_runtime/puf_e01000_reconciliation.py": 1,
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 3
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/asec_engine_evaluation.py:76",
+    "us_runtime/cps_carried_current.py:80",
+    "us_runtime/cps_carried_current.py:243",
+    "us_runtime/cps_carried_current.py:281",
+    "us_runtime/input_coverage_profile.py:135",
+    "us_runtime/operator_column_contracts.py:75",
+    "us_runtime/operator_column_contracts.py:133",
+    "us_runtime/puf55_survey_recipients.py:39",
+    "us_runtime/puf_full_source.py:427",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "social_security_dependents": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/child_support.py": 1,
+    "us_runtime/childcare.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/disability_benefits.py": 1,
+    "us_runtime/energy_subsidy.py": 1,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/housing_inputs.py": 3,
+    "us_runtime/other_health_insurance.py": 1,
+    "us_runtime/prior_year_income.py": 1,
+    "us_runtime/puf_support.py": 4,
+    "us_runtime/retirement_contributions.py": 1,
+    "us_runtime/retirement_distributions.py": 1,
+    "us_runtime/scf_auto_loans.py": 1,
+    "us_runtime/scf_wealth.py": 1,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 2,
+    "us_runtime/workers_compensation.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/asec_engine_evaluation.py:105",
+    "us_runtime/cps_carried_current.py:81",
+    "us_runtime/cps_carried_current.py:167",
+    "us_runtime/input_coverage_profile.py:136",
+    "us_runtime/operator_column_contracts.py:83",
+    "us_runtime/puf59_canonical.py:166",
+    "us_runtime/puf_target2024_growth.py:18",
+    "us_runtime/survey_social_security.py:17"
+   ]
+  },
+  "social_security_disability": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/child_support.py": 1,
+    "us_runtime/childcare.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/disability_benefits.py": 1,
+    "us_runtime/energy_subsidy.py": 1,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/housing_inputs.py": 3,
+    "us_runtime/other_health_insurance.py": 2,
+    "us_runtime/prior_year_income.py": 1,
+    "us_runtime/puf_support.py": 4,
+    "us_runtime/retirement_contributions.py": 1,
+    "us_runtime/retirement_distributions.py": 1,
+    "us_runtime/scf_auto_loans.py": 1,
+    "us_runtime/scf_wealth.py": 1,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/ssi_disability_criteria.py": 6,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 2,
+    "us_runtime/workers_compensation.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/asec_engine_evaluation.py:106",
+    "us_runtime/cps_carried_current.py:82",
+    "us_runtime/cps_carried_current.py:159",
+    "us_runtime/input_coverage_profile.py:137",
+    "us_runtime/operator_column_contracts.py:82",
+    "us_runtime/puf59_canonical.py:165",
+    "us_runtime/puf_target2024_growth.py:18",
+    "us_runtime/survey_social_security.py:16"
+   ]
+  },
+  "social_security_retirement": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/child_support.py": 1,
+    "us_runtime/childcare.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/disability_benefits.py": 1,
+    "us_runtime/energy_subsidy.py": 1,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/housing_inputs.py": 3,
+    "us_runtime/other_health_insurance.py": 1,
+    "us_runtime/prior_year_income.py": 1,
+    "us_runtime/puf_support.py": 5,
+    "us_runtime/retirement_contributions.py": 1,
+    "us_runtime/retirement_distributions.py": 1,
+    "us_runtime/scf_auto_loans.py": 1,
+    "us_runtime/scf_wealth.py": 1,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 2,
+    "us_runtime/workers_compensation.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/asec_engine_evaluation.py:107",
+    "us_runtime/cps_carried_current.py:83",
+    "us_runtime/cps_carried_current.py:156",
+    "us_runtime/input_coverage_profile.py:138",
+    "us_runtime/operator_column_contracts.py:81",
+    "us_runtime/puf55_canonical_donor.py:70",
+    "us_runtime/puf55_canonical_donor.py:87",
+    "us_runtime/puf59_canonical.py:164",
+    "us_runtime/puf_target2024_growth.py:18",
+    "us_runtime/survey_social_security.py:15"
+   ]
+  },
+  "social_security_survivors": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/child_support.py": 1,
+    "us_runtime/childcare.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/disability_benefits.py": 1,
+    "us_runtime/energy_subsidy.py": 1,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/housing_inputs.py": 3,
+    "us_runtime/other_health_insurance.py": 1,
+    "us_runtime/prior_year_income.py": 1,
+    "us_runtime/puf_support.py": 4,
+    "us_runtime/retirement_contributions.py": 1,
+    "us_runtime/retirement_distributions.py": 1,
+    "us_runtime/scf_auto_loans.py": 1,
+    "us_runtime/scf_wealth.py": 1,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 2,
+    "us_runtime/workers_compensation.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/asec_engine_evaluation.py:108",
+    "us_runtime/cps_carried_current.py:84",
+    "us_runtime/cps_carried_current.py:164",
+    "us_runtime/input_coverage_profile.py:139",
+    "us_runtime/operator_column_contracts.py:84",
+    "us_runtime/puf59_canonical.py:167",
+    "us_runtime/puf_target2024_growth.py:18",
+    "us_runtime/survey_social_security.py:18"
+   ]
+  },
+  "spm_unit_energy_subsidy": {
+   "main_literal_hits_by_file": {
+    "us_runtime/energy_subsidy.py": 1,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/post_transfer_calibration.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:140"
+   ]
+  },
+  "spm_unit_pre_subsidy_childcare_expenses": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/adult_care.py": 2,
+    "us_runtime/childcare.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:93",
+    "us_runtime/cps_carried_current.py:318",
+    "us_runtime/input_coverage_profile.py:141"
+   ]
+  },
+  "spm_unit_tenure_type": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_inputs.py": 1,
+    "us_runtime/acs_transfer.py": 3,
+    "us_runtime/housing_inputs.py": 3,
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/graph_fiscal_measurement.py:87",
+    "us_runtime/input_coverage_profile.py:142"
+   ]
+  },
+  "ssn_card_type": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/immigration.py": 4,
+    "us_runtime/spine_agreement.py": 1,
+    "us_runtime/stacked_spine.py": 2,
+    "us_runtime/us_late_producer_registry.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_asec_immigration_assignment.py:272",
+    "us_runtime/input_coverage_profile.py:143"
+   ]
+  },
+  "sstb_self_employment_income_before_lsr": {
+   "main_literal_hits_by_file": {
+    "us_runtime/adult_care.py": 1,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/other_health_insurance.py": 1,
+    "us_runtime/puf_support.py": 7,
+    "us_runtime/qbi_inputs.py": 2,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:144",
+    "us_runtime/operator_column_contracts.py:43",
+    "us_runtime/puf_qbi_model.py:308",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "sstb_self_employment_income_would_be_qualified": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/qbi_inputs.py": 1,
+    "us_runtime/stacked_spine.py": 2,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:145",
+    "us_runtime/operator_column_contracts.py:20",
+    "us_runtime/puf_qbi_model.py:310",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "sstb_unadjusted_basis_qualified_property": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/qbi_inputs.py": 5,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:146",
+    "us_runtime/operator_column_contracts.py:33",
+    "us_runtime/operator_column_contracts.py:44",
+    "us_runtime/puf_qbi_model.py:314",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "sstb_w2_wages_from_qualified_business": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/qbi_inputs.py": 5,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:147",
+    "us_runtime/operator_column_contracts.py:34",
+    "us_runtime/operator_column_contracts.py:45",
+    "us_runtime/puf_qbi_model.py:313",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "state_fips": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 31,
+    "us_runtime/acs_pums.py": 1,
+    "us_runtime/acs_transfer.py": 3,
+    "us_runtime/asec_pool.py": 2,
+    "us_runtime/base_pool.py": 3,
+    "us_runtime/congressional_district_geography.py": 15,
+    "us_runtime/demographics.py": 1,
+    "us_runtime/fiscal_targets.py": 11,
+    "us_runtime/geography_ladder.py": 2,
+    "us_runtime/housing_inputs.py": 5,
+    "us_runtime/l0_refit_export.py": 1,
+    "us_runtime/medicaid_take_up.py": 14,
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/org_wages.py": 8,
+    "us_runtime/puma_ladder.py": 2,
+    "us_runtime/reform_validation.py": 1,
+    "us_runtime/snap_state_take_up.py": 11,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/us_late_producer_registry.py": 3
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/asec_household_observations.py:309",
+    "us_runtime/asec_household_observations.py:326",
+    "us_runtime/atomic_block_api_sources.py:247",
+    "us_runtime/atomic_block_api_sources.py:287",
+    "us_runtime/atomic_block_sources.py:388",
+    "us_runtime/cd_reference.py:143",
+    "us_runtime/cd_reference.py:152",
+    "us_runtime/cd_reference.py:246",
+    "us_runtime/current_acs_immigration_source_projection.py:494",
+    "us_runtime/current_acs_immigration_source_projection.py:508",
+    "us_runtime/current_asec_demographics.py:276",
+    "us_runtime/current_asec_demographics.py:280",
+    "us_runtime/current_asec_immigration_donor.py:543",
+    "us_runtime/current_survey_geography.py:99",
+    "us_runtime/current_survey_immigration_transfer.py:212",
+    "us_runtime/current_survey_immigration_transfer.py:226",
+    "us_runtime/graph_current_survey_state.py:41",
+    "us_runtime/graph_fiscal_measurement.py:145",
+    "us_runtime/graph_fiscal_measurement.py:575",
+    "us_runtime/graph_geography.py:313",
+    "us_runtime/graph_geography.py:315",
+    "us_runtime/graph_geography.py:378",
+    "us_runtime/input_coverage_profile.py:148",
+    "us_runtime/snap_release_acceptance.py:133",
+    "us_runtime/snap_release_acceptance.py:179",
+    "us_runtime/snap_release_acceptance.py:184",
+    "us_runtime/snap_release_acceptance.py:293",
+    "us_runtime/snap_release_acceptance.py:317",
+    "us_runtime/target_geography_view.py:173"
+   ]
+  },
+  "stock_assets": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/scf_wealth.py": 4,
+    "us_runtime/sipp_financial_assets.py": 2,
+    "us_runtime/ssi_disability_criteria.py": 5,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:149"
+   ]
+  },
+  "student_loan_interest": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_aggregate_records.py": 1,
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:150",
+    "us_runtime/operator_column_contracts.py:94",
+    "us_runtime/puf_full_source.py:440",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "survivor_benefits": {
+   "main_literal_hits_by_file": {},
+   "main_status": "reviewed_exclusion",
+   "native_literal_hits_at_integration": []
+  },
+  "takes_up_aca_if_eligible": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 3,
+    "us_runtime/l0_refit_export.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:151"
+   ]
+  },
+  "takes_up_dc_ptc": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "reviewed_exclusion",
+   "native_literal_hits_at_integration": []
+  },
+  "takes_up_early_head_start_if_eligible": {
+   "main_literal_hits_by_file": {
+    "tools/build_us_fiscal_refresh_release.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "reviewed_exclusion",
+   "native_literal_hits_at_integration": []
+  },
+  "takes_up_eitc": {
+   "main_literal_hits_by_file": {
+    "us_runtime/graph.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/take_up.py": 3
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:152"
+   ]
+  },
+  "takes_up_head_start_if_eligible": {
+   "main_literal_hits_by_file": {
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/sipp_head_start.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:153"
+   ]
+  },
+  "takes_up_housing_assistance_if_eligible": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/housing_inputs.py": 6,
+    "us_runtime/operator_boundary.py": 2,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_housing.py:62",
+    "us_runtime/housing_participation.py:277",
+    "us_runtime/input_coverage_profile.py:154"
+   ]
+  },
+  "takes_up_medicaid_if_eligible": {
+   "main_literal_hits_by_file": {
+    "us_runtime/medicaid_take_up.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:155"
+   ]
+  },
+  "takes_up_medicare_if_eligible": {
+   "main_literal_hits_by_file": {
+    "us_runtime/medicare_take_up.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:156"
+   ]
+  },
+  "takes_up_snap_if_eligible": {
+   "main_literal_hits_by_file": {
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/snap_take_up.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:157"
+   ]
+  },
+  "takes_up_ssi_if_eligible": {
+   "main_literal_hits_by_file": {
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/ssi_take_up.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:158"
+   ]
+  },
+  "takes_up_tanf_if_eligible": {
+   "main_literal_hits_by_file": {
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/take_up.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:159"
+   ]
+  },
+  "takes_up_wic_if_eligible": {
+   "main_literal_hits_by_file": {
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1,
+    "us_runtime/wic_claim.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:160"
+   ]
+  },
+  "tax_exempt_interest_income": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/fiscal_targets.py": 4,
+    "us_runtime/puf_aggregate_records.py": 1,
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/scf_auto_loans.py": 1,
+    "us_runtime/scf_wealth.py": 1,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/sipp_vehicles.py": 1,
+    "us_runtime/ssi_disability_criteria.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 3
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_predictors.py:42",
+    "us_runtime/current_survey_predictors.py:606",
+    "us_runtime/graph_property_tax_leaves.py:48",
+    "us_runtime/input_coverage_profile.py:161",
+    "us_runtime/operator_column_contracts.py:74",
+    "us_runtime/puf_full_source.py:426",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "tax_exempt_ira_distributions": {
+   "main_literal_hits_by_file": {
+    "us_runtime/retirement_distributions.py": 3,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:162"
+   ]
+  },
+  "tax_exempt_private_pension_income": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 2,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/housing_inputs.py": 2,
+    "us_runtime/scf_auto_loans.py": 1,
+    "us_runtime/scf_wealth.py": 1,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:86",
+    "us_runtime/cps_carried_current.py:306",
+    "us_runtime/input_coverage_profile.py:163"
+   ]
+  },
+  "taxable_401k_distributions": {
+   "main_literal_hits_by_file": {
+    "us_runtime/retirement_distributions.py": 4,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:164"
+   ]
+  },
+  "taxable_403b_distributions": {
+   "main_literal_hits_by_file": {
+    "us_runtime/retirement_distributions.py": 4,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:165"
+   ]
+  },
+  "taxable_interest_income": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/fiscal_targets.py": 3,
+    "us_runtime/puf_aggregate_records.py": 1,
+    "us_runtime/puf_capital_gains_tail.py": 1,
+    "us_runtime/puf_support.py": 3,
+    "us_runtime/scf_auto_loans.py": 1,
+    "us_runtime/scf_wealth.py": 1,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/sipp_vehicles.py": 1,
+    "us_runtime/ssi_disability_criteria.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 3
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:87",
+    "us_runtime/cps_carried_current.py:240",
+    "us_runtime/cps_carried_current.py:276",
+    "us_runtime/current_survey_predictors.py:607",
+    "us_runtime/graph_property_tax_leaves.py:47",
+    "us_runtime/input_coverage_profile.py:166",
+    "us_runtime/operator_column_contracts.py:71",
+    "us_runtime/puf55_survey_recipients.py:37",
+    "us_runtime/puf_full_source.py:424",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "taxable_ira_distributions": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/fiscal_targets.py": 1,
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/retirement_distributions.py": 6,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:88",
+    "us_runtime/cps_carried_current.py:307",
+    "us_runtime/input_coverage_profile.py:167",
+    "us_runtime/operator_column_contracts.py:80",
+    "us_runtime/puf55_survey_observed.py:27",
+    "us_runtime/puf_full_source.py:432",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "taxable_private_pension_income": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/housing_inputs.py": 5,
+    "us_runtime/puf_support.py": 4,
+    "us_runtime/scf_auto_loans.py": 1,
+    "us_runtime/scf_wealth.py": 1,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:89",
+    "us_runtime/cps_carried_current.py:305",
+    "us_runtime/input_coverage_profile.py:168",
+    "us_runtime/operator_column_contracts.py:79",
+    "us_runtime/puf55_survey_observed.py:26",
+    "us_runtime/puf_full_source.py:431",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "taxable_sep_distributions": {
+   "main_literal_hits_by_file": {
+    "us_runtime/retirement_distributions.py": 4,
+    "us_runtime/sipp_financial_assets.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:169"
+   ]
+  },
+  "tenure_type": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_inputs.py": 1,
+    "us_runtime/acs_transfer.py": 3,
+    "us_runtime/housing_inputs.py": 12,
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/stacked_spine.py": 4,
+    "us_runtime/us_late_producer_registry.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:170"
+   ]
+  },
+  "tip_income": {
+   "main_literal_hits_by_file": {
+    "us_runtime/fiscal_targets.py": 3,
+    "us_runtime/sipp_tips.py": 10,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:171"
+   ]
+  },
+  "tract_geoid": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_multispine.py": 1,
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/base_pool.py": 4,
+    "us_runtime/geography_ladder.py": 5,
+    "us_runtime/puma_ladder.py": 2
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:172",
+    "us_runtime/input_coverage_profile.py:187"
+   ]
+  },
+  "traditional_401k_contributions_desired": {
+   "main_literal_hits_by_file": {
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/retirement_contributions.py": 3,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:173"
+   ]
+  },
+  "traditional_ira_contributions_desired": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 4,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/retirement_contributions.py": 2,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/us_late_overlap_ownership.py": 1,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:174",
+    "us_runtime/operator_column_contracts.py:103",
+    "us_runtime/puf59_canonical.py:168",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "treasury_tipped_occupation_code": {
+   "main_literal_hits_by_file": {
+    "us_runtime/sipp_tips.py": 8,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:175"
+   ]
+  },
+  "unadjusted_basis_qualified_property": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/qbi_inputs.py": 5,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:176",
+    "us_runtime/operator_column_contracts.py:35",
+    "us_runtime/operator_column_contracts.py:46",
+    "us_runtime/puf_qbi_model.py:312",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "unemployment_compensation": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/cps_carried.py": 2,
+    "us_runtime/fiscal_targets.py": 3,
+    "us_runtime/post_transfer_calibration.py": 1,
+    "us_runtime/puf_aggregate_records.py": 1,
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/stacked_spine.py": 3,
+    "us_runtime/us_late_producer_registry.py": 1,
+    "us_runtime/weeks_unemployed.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/cps_carried_current.py:90",
+    "us_runtime/cps_carried_current.py:310",
+    "us_runtime/current_survey_amounts.py:44",
+    "us_runtime/input_coverage_profile.py:177"
+   ]
+  },
+  "unrecaptured_section_1250_gain": {
+   "main_literal_hits_by_file": {
+    "us_runtime/capital_gain_details.py": 5,
+    "us_runtime/graph.py": 1,
+    "us_runtime/puf_aggregate_records.py": 3,
+    "us_runtime/puf_capital_gains_tail.py": 1,
+    "us_runtime/puf_support.py": 3,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:178",
+    "us_runtime/operator_column_contracts.py:119",
+    "us_runtime/operator_column_contracts.py:139",
+    "us_runtime/puf55_original_placement.py:34",
+    "us_runtime/puf_full_source.py:448",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "unreimbursed_business_employee_expenses": {
+   "main_literal_hits_by_file": {
+    "us_runtime/misc_itemized.py": 3,
+    "us_runtime/puf_aggregate_records.py": 2,
+    "us_runtime/puf_support.py": 2,
+    "us_runtime/release_input_coverage.py": 1,
+    "us_runtime/source_runtime.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/validation_input_coverage.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:179",
+    "us_runtime/operator_column_contracts.py:98",
+    "us_runtime/puf59_canonical.py:176",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "veterans_benefits": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/eligibility_inputs.py": 3,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_asec_amount_donor.py:186",
+    "us_runtime/current_asec_unemployment_source.py:260",
+    "us_runtime/current_asec_unemployment_source.py:359",
+    "us_runtime/current_asec_veterans_source.py:28",
+    "us_runtime/current_asec_veterans_source.py:121",
+    "us_runtime/current_survey_amounts.py:55",
+    "us_runtime/current_survey_amounts.py:99",
+    "us_runtime/current_survey_amounts.py:111",
+    "us_runtime/current_survey_amounts.py:299",
+    "us_runtime/current_survey_amounts.py:330",
+    "us_runtime/current_survey_amounts.py:419",
+    "us_runtime/current_survey_amounts.py:428",
+    "us_runtime/current_survey_amounts.py:560",
+    "us_runtime/graph_us_survey_enrichment.py:580",
+    "us_runtime/graph_us_survey_enrichment.py:1795",
+    "us_runtime/graph_us_survey_enrichment.py:2716",
+    "us_runtime/input_coverage_profile.py:180"
+   ]
+  },
+  "w2_wages_from_qualified_business": {
+   "main_literal_hits_by_file": {
+    "us_runtime/puf_support.py": 1,
+    "us_runtime/qbi_inputs.py": 5,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:181",
+    "us_runtime/operator_column_contracts.py:36",
+    "us_runtime/operator_column_contracts.py:47",
+    "us_runtime/puf_qbi_model.py:311",
+    "us_runtime/puf_target2024_growth.py:18"
+   ]
+  },
+  "weekly_hours_worked_before_lsr": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_inputs.py": 1,
+    "us_runtime/acs_multispine.py": 1,
+    "us_runtime/hours_worked.py": 4,
+    "us_runtime/org_wages.py": 4,
+    "us_runtime/stacked_spine.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_survey_hours.py:22",
+    "us_runtime/input_coverage_profile.py:182"
+   ]
+  },
+  "weeks_unemployed": {
+   "main_literal_hits_by_file": {
+    "us_runtime/acs_transfer.py": 1,
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/post_transfer_calibration.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/weeks_unemployed.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:183"
+   ]
+  },
+  "workers_compensation": {
+   "main_literal_hits_by_file": {
+    "us_runtime/multispine_pool.py": 1,
+    "us_runtime/operator_boundary.py": 1,
+    "us_runtime/post_transfer_calibration.py": 1,
+    "us_runtime/stacked_spine.py": 1,
+    "us_runtime/workers_compensation.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/current_asec_amount_donor.py:185",
+    "us_runtime/current_asec_unemployment_source.py:250",
+    "us_runtime/current_asec_workers_compensation_source.py:69",
+    "us_runtime/current_survey_amounts.py:53",
+    "us_runtime/current_survey_amounts.py:94",
+    "us_runtime/current_survey_amounts.py:107",
+    "us_runtime/current_survey_amounts.py:538",
+    "us_runtime/input_coverage_profile.py:184"
+   ]
+  },
+  "would_file_taxes_voluntarily": {
+   "main_literal_hits_by_file": {
+    "us_runtime/voluntary_filing.py": 1
+   },
+   "main_status": "required",
+   "native_literal_hits_at_integration": [
+    "us_runtime/input_coverage_profile.py:185"
+   ]
+  }
+ },
+ "native_added_module_count": 212,
+ "note": "Mechanical quoted-literal hits only. A hit shows a module names an input; it does not establish production, attachment, source signal or applicability. See classification.json for reviewed judgements.",
+ "protocol": "microcosm.us.native-input-profile-evidence.v1"
+}

@@ -1,0 +1,4929 @@
+{
+ "protocol": "microcosm.us.native-input-profile-inventory.v1",
+ "scope": "Source-code classification of every input in main's release input coverage manifest at the native integration commit and its 2026-09-21 descendants. Not an actual-data missingness count, source-signal check, or scientific qualification.",
+ "commits": {
+  "audit": "fef2cb56a4ca24d74e217a0cbe4abab7079da723",
+  "integration": "47960af430ff7eaec29bfda504a3c814a9a6c264",
+  "main": "4305a7d34ded67009618990f98c5521731d66e73",
+  "native_base": "8c44daa52354b4e28af315a486df0b0c006f26ff",
+  "pr991": "c3456bb10c4722422ffd2c9dab3ae11baec5c3a9"
+ },
+ "descendants": {
+  "native-agi-tail-matching-20260921": "1b35534b549fe17650275a19ca6c0305a049dd36",
+  "native-child-pre-geography-integration-20260921": "050c58a60fa9567692d51c64f2860e59e5b7fbed",
+  "native-household-domain-projection-20260921": "292c268a049b7dde02fa158541ea9fe0e160bc44",
+  "native-other-disability-completion-20260921": "0e073d1275bc2dce011722cc865d90be3973db30",
+  "native-other-disability-context-replay-20260921": "aa2eaab111904125ea9fb5861800a219aaf637b5",
+  "native-ss-beneficiary-core-20260921": "fa72c60f956564aa2eabb1bee35e99786f13c5ea",
+  "native-survey-tail-recipients-20260921": "5067f21a4a0cc7df7a577f63f4c794a1ee8a806d"
+ },
+ "main_manifest_sha256": "0da6097eddd1e2e33ec02ee820d2a125b37bbcb40abaa5b4af7f459b6e13bc4c",
+ "main_manifest_counts": {
+  "required": 167,
+  "reviewed_exclusion": 7,
+  "total": 174
+ },
+ "audit_source": {
+  "root_commit": "fef2cb56a4ca24d74e217a0cbe4abab7079da723",
+  "source": "native159-source-coverage-20260920/COVERAGE.json (local audit artifact, not previously committed)",
+  "source_sha256": "ad28ac917998b9e7026680af89a75627c2697b78bf8e5966bf123bd78afba3cf",
+  "profile": "us_native_national_cd_159_v1"
+ },
+ "source_header_observations_sha256": "3e9b9d56f300cbf045f345b067e00da18c0f2b1eb43b15ce804f3aacdb905e56",
+ "current_development_request": "~/PolicyEngine/_recovered/scratch-backup/893/current-native-composition-20260921/current_request.py (enrichment_arguments: groups=('unemployment','health_costs'), immigration_transfer=None, health_completion=False, demographic_inputs=False, race_hispanic_inputs=False, full_original_amount_donors=False; financial: person_status, household_roles, source_qualified_development_inputs=True)",
+ "counts": {
+  "names": 174,
+  "by_class": {
+   "declared_scope_exclusion": 4,
+   "native_successor_exists": 84,
+   "port_needed": 83,
+   "source_absent": 3
+  },
+  "by_class_and_state": {
+   "declared_scope_exclusion/engine_omission": 2,
+   "declared_scope_exclusion/prior_year_family_excluded": 2,
+   "native_successor_exists/attached_by_default_request": 28,
+   "native_successor_exists/descendant_only_opt_in_partial": 1,
+   "native_successor_exists/opt_in_not_in_current_request": 8,
+   "native_successor_exists/partial_acs_semantic_gap": 7,
+   "native_successor_exists/puf_clone_one_arm_zero_partial": 40,
+   "port_needed/descriptive_spm_amount_only": 2,
+   "port_needed/descriptive_status_not_canonical": 4,
+   "port_needed/main_exclusion_h5_specific_source_in_native_member": 4,
+   "port_needed/native_source_observation_only": 7,
+   "port_needed/no_native_owner": 54,
+   "port_needed/report_basis_only_no_canonical_attachment": 4,
+   "port_needed/reserved_for_downstream_scf_producer": 3,
+   "port_needed/source_literal_read_not_bound": 2,
+   "port_needed/source_literals_available_not_read": 3,
+   "source_absent/main_reviewed_exclusion_concept_absent": 3
+  },
+  "historical_missing76_now": {
+   "native_successor_exists": 6,
+   "port_needed": 70
+  },
+  "historical_missing76_now_by_state": {
+   "native_successor_exists/descendant_only_opt_in_partial": 1,
+   "native_successor_exists/opt_in_not_in_current_request": 5,
+   "port_needed/descriptive_spm_amount_only": 2,
+   "port_needed/descriptive_status_not_canonical": 4,
+   "port_needed/native_source_observation_only": 7,
+   "port_needed/no_native_owner": 54,
+   "port_needed/reserved_for_downstream_scf_producer": 3
+  }
+ },
+ "rows": [
+  {
+   "name": "age",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_source",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/survey_observed_age.py:1@47960af43",
+    "us_runtime/survey_population_preparation.py:1114@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Observed common source age (ASEC A_AGE, ACS AGEP); topcoded, no cohort advance.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 33,
+    "descendant_new_literal_hits": {
+     "native-other-disability-completion-20260921": [
+      "us_runtime/current_survey_other_disability_completion.py:213",
+      "us_runtime/current_survey_other_disability_completion.py:252",
+      "us_runtime/current_survey_other_disability_completion.py:90",
+      "us_runtime/graph_current_survey_other_disability_completion.py:125",
+      "us_runtime/graph_current_survey_other_disability_completion.py:142"
+     ],
+     "native-other-disability-context-replay-20260921": [
+      "us_runtime/current_survey_other_disability_completion.py:213",
+      "us_runtime/current_survey_other_disability_completion.py:252",
+      "us_runtime/current_survey_other_disability_completion.py:90",
+      "us_runtime/graph_current_survey_other_disability_completion.py:125",
+      "us_runtime/graph_current_survey_other_disability_completion.py:142"
+     ]
+    },
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/acs_income_universe.py",
+     "us_runtime/acs_inputs.py",
+     "us_runtime/acs_local_hours.py",
+     "us_runtime/acs_release_predictors.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/adult_care.py",
+     "us_runtime/child_support.py"
+    ]
+   }
+  },
+  {
+   "name": "alimony_expense",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/alimony.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "alimony_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 5,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:63"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/alimony.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "attends_eligible_educational_institution_for_american_opportunity_credit",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/education_inputs.py:103@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "AOC education inputs; main derives them in education_inputs (ASEC enrollment plus modeled attributes).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/education_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "auto_loan_balance",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/scf_auto_loans.py:140@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "SCF auto-loan donor stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/scf_auto_loans.py"
+    ]
+   }
+  },
+  {
+   "name": "auto_loan_interest",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/scf_auto_loans.py:140@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "SCF auto-loan donor stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/scf_auto_loans.py"
+    ]
+   }
+  },
+  {
+   "name": "bank_account_assets",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/scf_wealth.py:276@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "SCF wealth donor stage; SSI countable-resource assets are required with no exclusion on main (#368).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/scf_wealth.py",
+     "us_runtime/sipp_financial_assets.py",
+     "us_runtime/ssi_disability_criteria.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "block_geoid",
+   "main_manifest_status": "required",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "declared_scope_exclusion",
+   "state": "engine_omission",
+   "native": [
+    "us_runtime/input_coverage_profile.py:187@47960af43",
+    "us_runtime/input_coverage_profile.py:199@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "National/CD profiles omit block/tract engine inputs; build-owned census_block_geoid stays independent build state.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_multispine.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/block_ladder_sources.py",
+     "us_runtime/geography_ladder.py"
+    ]
+   }
+  },
+  {
+   "name": "bond_assets",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/scf_wealth.py:276@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "SCF wealth donor stage; SSI countable-resource assets are required with no exclusion on main (#368).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/scf_wealth.py",
+     "us_runtime/sipp_financial_assets.py",
+     "us_runtime/ssi_disability_criteria.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "business_is_sstb",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "casualty_loss",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/casualty_losses.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "charitable_cash_donations",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "charitable_non_cash_donations",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "child_support_expense",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "native_source_observation_only",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_asec_child_support_source.py:24@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/child_support.py:87@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The native child-support source reads CHSP_VAL, but paid support stays observed-only (obligation does not establish payment incidence); no canonical attachment or ACS completion.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/child_support.py",
+     "us_runtime/post_transfer_calibration.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "child_support_received",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "native_successor_exists",
+   "state": "opt_in_not_in_current_request",
+   "native": [
+    "us_runtime/current_survey_amounts.py:53@47960af43",
+    "us_runtime/current_survey_amounts.py:54@47960af43",
+    "us_runtime/current_asec_veterans_source.py:28@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Opt-in amount groups (460addba2, 0042e38e3, 450316171) not selected by the current request; child support and veterans need full-original donors, which the request leaves off.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/child_support.py",
+     "us_runtime/post_transfer_calibration.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "congressional_district_geoid",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_atomic_geography",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/atomic_block_support.py:244@47960af43",
+    "us_runtime/survey_atomic_geography.py:68@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Atomic block geography ladder; source-signal qualification of the ladder is still an open release qualification.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 6,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/acs_multispine.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/base_pool.py",
+     "us_runtime/block_ladder_sources.py",
+     "us_runtime/congressional_district_geography.py",
+     "us_runtime/demographics.py",
+     "us_runtime/fiscal_targets.py"
+    ]
+   }
+  },
+  {
+   "name": "county_fips",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_atomic_geography",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/atomic_block_support.py:244@47960af43",
+    "us_runtime/survey_atomic_geography.py:68@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Atomic block geography ladder; source-signal qualification of the ladder is still an open release qualification.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 5,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_multispine.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/base_pool.py",
+     "us_runtime/geography_ladder.py",
+     "us_runtime/h5_io.py",
+     "us_runtime/puma_ladder.py"
+    ]
+   }
+  },
+  {
+   "name": "cps_race",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "native_successor_exists",
+   "state": "opt_in_not_in_current_request",
+   "native": [
+    "us_runtime/current_survey_race_hispanic_source.py:31@47960af43",
+    "us_runtime/graph_us_survey_enrichment.py:854@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "b64a7c1d9 binds exact survey race/Hispanic origin on originals and clones behind race_hispanic_inputs (False in the current request). Unsupported ACS race categories and unknown allocation stay explicit.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/org_wages.py",
+     "us_runtime/scf_auto_loans.py",
+     "us_runtime/scf_wealth.py"
+    ]
+   }
+  },
+  {
+   "name": "detailed_occupation_recode",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/org_wages.py:322@4305a7d34",
+    "us_runtime/hours_worked.py:84@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry A_DTOCC, A_HRLYWK, A_UNMEM, A_HRS1, PEMLR, A_CLSWKR (source_header_observations.json / header read this session); no native module reads them."
+   ],
+   "note": "Main's CPS-ORG wage/occupation donor stage (org_wages) and hours_worked; the native survey line has no successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/org_wages.py"
+    ]
+   }
+  },
+  {
+   "name": "disability_benefits",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "native_successor_exists",
+   "state": "descendant_only_opt_in_partial",
+   "native": [
+    "us_runtime/current_asec_other_disability_source.py:41@47960af43",
+    "us_runtime/graph_current_survey_other_disability_completion.py:1@aa2eaab11",
+    "us_runtime/graph_us_other_disability_host.py:1@aa2eaab11"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "The source adapter is at 47960af43 (fe4bf263c); completion and opt-in host continuation are only on 09-21 descendants (a5fc3e9f8, 162348849, aa2eaab11). Bounded invented acceptance only; under-15 remains unresolved (no manufactured zero).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/disability_benefits.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/post_transfer_calibration.py",
+     "us_runtime/ssi_disability_criteria.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "domestic_production_ald",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 5,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/domestic_production.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "educational_assistance",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/education_assistance_source.py:4@4305a7d34",
+    "us_runtime/education_inputs.py:76@4305a7d34"
+   ],
+   "evidence": [
+    "ED_VAL is a current-money field (asec_current_money.FIELDS) in the native money recipe, but no native canonical owner maps it."
+   ],
+   "note": "Source amount available natively; canonical attachment and ACS completion missing.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/education_assistance_source.py",
+     "us_runtime/education_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "educator_expense",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/educator_expenses.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "employer_sponsored_insurance_premiums",
+   "main_manifest_status": "reviewed_exclusion",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "port_needed",
+   "state": "main_exclusion_h5_specific_source_in_native_member",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_amounts.py:48@47960af43"
+   ],
+   "port_from": [
+    "us/release_input_coverage_manifest.json:74@4305a7d34"
+   ],
+   "evidence": [
+    "Main excludes it because the three pooled 2022-2024 ASEC H5 files omit the field. The pinned Census person members the native line reads carry it (pppub23/24/25 headers read this session; source_header_observations.json), so the exclusion does not transfer. Port source: the archived policyengine-us-data derivation that main's exclusion cites (commit 42ed5d45c, datasets/cps/cps.py), plus an explicit ACS completion or applicability decision for ACS originals."
+   ],
+   "note": "NOW_OWNGRP/NOW_HIPAID/NOW_GRPFTYP are in the member; PHIP_VAL is already a native amount-group field. has_esi is not a substitute.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 0,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": []
+   }
+  },
+  {
+   "name": "employment_income_before_lsr",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_financial_and_puf55",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_predictors.py:40@47960af43",
+    "us_runtime/puf55_survey_observed.py:24@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Financial graph outputs on originals, fixed survey-arm inputs for the PUF55 arm; the 09-21 AGI-tail branch adds an invented tail-clone contract (not integrated in the development profile).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 13,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:45"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/acs_income_universe.py",
+     "us_runtime/acs_inputs.py",
+     "us_runtime/acs_local_hours.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/adult_care.py",
+     "us_runtime/child_support.py",
+     "us_runtime/childcare.py",
+     "us_runtime/cps_carried.py"
+    ]
+   }
+  },
+  {
+   "name": "estate_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 7,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:62"
+     ]
+    },
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "estate_income_would_be_qualified",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 3,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "farm_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:59"
+     ]
+    },
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "farm_operations_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/puf55_survey_observed.py:25@47960af43",
+    "us_runtime/graph_current_asec_development_inputs.py:45@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Source-qualified development mappings on originals (c8652fbdc; source_qualified_development_inputs=True) plus PUF55 clone-one values; the pension/IRA mappings are the maintained cps_carried_current rules, labelled qualified values rather than observed taxable amounts.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 9,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/cps_carried.py",
+     "us_runtime/farm_business_income.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "farm_operations_income_would_be_qualified",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 3,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "farm_rent_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 6,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:60"
+     ]
+    },
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/farm_business_income.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "farm_rent_income_would_be_qualified",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 3,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "financial_assistance",
+   "main_manifest_status": "reviewed_exclusion",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "port_needed",
+   "state": "main_exclusion_h5_specific_source_in_native_member",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us/release_input_coverage_manifest.json:103@4305a7d34"
+   ],
+   "evidence": [
+    "Main excludes it because the three pooled 2022-2024 ASEC H5 files omit the field. The pinned Census person members the native line reads carry it (pppub23/24/25 headers read this session; source_header_observations.json), so the exclusion does not transfer. Port source: the archived policyengine-us-data derivation that main's exclusion cites (commit 42ed5d45c, datasets/cps/cps.py), plus an explicit ACS completion or applicability decision for ACS originals."
+   ],
+   "note": "FIN_VAL/FIN_YN/I_FINVAL are in the member but not in the native current-money FIELDS registry; a port must extend that pinned registry or add a dedicated source owner.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 0,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": []
+   }
+  },
+  {
+   "name": "first_home_mortgage_balance",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "reserved_for_downstream_scf_producer",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:52@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/puf_support.py:157@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The native PUF enrichment explicitly reserves these tax-unit fields for an independent downstream SCF producer that does not exist natively.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 3,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "first_home_mortgage_interest",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "reserved_for_downstream_scf_producer",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:52@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/puf_support.py:157@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The native PUF enrichment explicitly reserves these tax-unit fields for an independent downstream SCF producer that does not exist natively.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 3,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "first_home_mortgage_origination_year",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "reserved_for_downstream_scf_producer",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:52@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/puf_support.py:157@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The native PUF enrichment explicitly reserves these tax-unit fields for an independent downstream SCF producer that does not exist natively.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 3,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "fsla_overtime_premium",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/org_wages.py:322@4305a7d34",
+    "us_runtime/hours_worked.py:84@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry A_DTOCC, A_HRLYWK, A_UNMEM, A_HRS1, PEMLR, A_CLSWKR (source_header_observations.json / header read this session); no native module reads them."
+   ],
+   "note": "Main's CPS-ORG wage/occupation donor stage (org_wages) and hours_worked; the native survey line has no successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/org_wages.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "has_american_opportunity_credit_1098_t_or_exception",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/education_inputs.py:103@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "AOC education inputs; main derives them in education_inputs (ASEC enrollment plus modeled attributes).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/education_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "has_american_opportunity_credit_institution_ein",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/education_inputs.py:103@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "AOC education inputs; main derives them in education_inputs (ASEC enrollment plus modeled attributes).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/education_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "has_champva_health_coverage_at_interview",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_health_partial",
+   "class": "native_successor_exists",
+   "state": "partial_acs_semantic_gap",
+   "native": [
+    "us_runtime/current_survey_health_coverage.py:35@47960af43",
+    "us_runtime/current_survey_health_completion.py:1@47960af43",
+    "us_runtime/graph_us_survey_enrichment.py:852@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "ASEC originals are recoded from the pinned member (NOW_* read directly, so #720's H5 gap does not apply). The ACS categories are explicit semantic gaps; the opt-in completion transports 2025 ASEC coverage to 2024 ACS recipients with __known=False/__imputed and no temporal-equivalence claim.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "has_esi",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_health",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_health_coverage.py:36@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Basic source recoding is on even with health_completion=False.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/child_support.py",
+     "us_runtime/childcare.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/disability_benefits.py",
+     "us_runtime/energy_subsidy.py",
+     "us_runtime/housing_inputs.py",
+     "us_runtime/other_health_insurance.py"
+    ]
+   }
+  },
+  {
+   "name": "has_indian_health_service_coverage_at_interview",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_health",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_health_coverage.py:36@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Basic source recoding is on even with health_completion=False.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "has_marketplace_health_coverage_at_interview",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_health_partial",
+   "class": "native_successor_exists",
+   "state": "partial_acs_semantic_gap",
+   "native": [
+    "us_runtime/current_survey_health_coverage.py:35@47960af43",
+    "us_runtime/current_survey_health_completion.py:1@47960af43",
+    "us_runtime/graph_us_survey_enrichment.py:852@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "ASEC originals are recoded from the pinned member (NOW_* read directly, so #720's H5 gap does not apply). The ACS categories are explicit semantic gaps; the opt-in completion transports 2025 ASEC coverage to 2024 ACS recipients with __known=False/__imputed and no temporal-equivalence claim.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "has_medicaid_health_coverage_at_interview",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_health_partial",
+   "class": "native_successor_exists",
+   "state": "partial_acs_semantic_gap",
+   "native": [
+    "us_runtime/current_survey_health_coverage.py:35@47960af43",
+    "us_runtime/current_survey_health_completion.py:1@47960af43",
+    "us_runtime/graph_us_survey_enrichment.py:852@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "ASEC originals are recoded from the pinned member (NOW_* read directly, so #720's H5 gap does not apply). The ACS categories are explicit semantic gaps; the opt-in completion transports 2025 ASEC coverage to 2024 ACS recipients with __known=False/__imputed and no temporal-equivalence claim.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/medicaid_take_up.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "has_never_worked",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/org_wages.py:322@4305a7d34",
+    "us_runtime/hours_worked.py:84@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry A_DTOCC, A_HRLYWK, A_UNMEM, A_HRS1, PEMLR, A_CLSWKR (source_header_observations.json / header read this session); no native module reads them."
+   ],
+   "note": "Main's CPS-ORG wage/occupation donor stage (org_wages) and hours_worked; the native survey line has no successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/org_wages.py"
+    ]
+   }
+  },
+  {
+   "name": "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_health_partial",
+   "class": "native_successor_exists",
+   "state": "partial_acs_semantic_gap",
+   "native": [
+    "us_runtime/current_survey_health_coverage.py:35@47960af43",
+    "us_runtime/current_survey_health_completion.py:1@47960af43",
+    "us_runtime/graph_us_survey_enrichment.py:852@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "ASEC originals are recoded from the pinned member (NOW_* read directly, so #720's H5 gap does not apply). The ACS categories are explicit semantic gaps; the opt-in completion transports 2025 ASEC coverage to 2024 ACS recipients with __known=False/__imputed and no temporal-equivalence claim.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "has_other_means_tested_health_coverage_at_interview",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_health_partial",
+   "class": "native_successor_exists",
+   "state": "partial_acs_semantic_gap",
+   "native": [
+    "us_runtime/current_survey_health_coverage.py:35@47960af43",
+    "us_runtime/current_survey_health_completion.py:1@47960af43",
+    "us_runtime/graph_us_survey_enrichment.py:852@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "ASEC originals are recoded from the pinned member (NOW_* read directly, so #720's H5 gap does not apply). The ACS categories are explicit semantic gaps; the opt-in completion transports 2025 ASEC coverage to 2024 ACS recipients with __known=False/__imputed and no temporal-equivalence claim.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "has_tricare_health_coverage_at_interview",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_health_partial",
+   "class": "native_successor_exists",
+   "state": "partial_acs_semantic_gap",
+   "native": [
+    "us_runtime/current_survey_health_coverage.py:35@47960af43",
+    "us_runtime/current_survey_health_completion.py:1@47960af43",
+    "us_runtime/graph_us_survey_enrichment.py:852@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "ASEC originals are recoded from the pinned member (NOW_* read directly, so #720's H5 gap does not apply). The ACS categories are explicit semantic gaps; the opt-in completion transports 2025 ASEC coverage to 2024 ACS recipients with __known=False/__imputed and no temporal-equivalence claim.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "has_va_health_coverage_at_interview",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_health_partial",
+   "class": "native_successor_exists",
+   "state": "partial_acs_semantic_gap",
+   "native": [
+    "us_runtime/current_survey_health_coverage.py:35@47960af43",
+    "us_runtime/current_survey_health_completion.py:1@47960af43",
+    "us_runtime/graph_us_survey_enrichment.py:852@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "ASEC originals are recoded from the pinned member (NOW_* read directly, so #720's H5 gap does not apply). The ACS categories are explicit semantic gaps; the opt-in completion transports 2025 ASEC coverage to 2024 ACS recipients with __known=False/__imputed and no temporal-equivalence claim.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "health_insurance_premiums",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/other_health_insurance.py:185@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Other health insurance premiums stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/other_health_insurance.py",
+     "us_runtime/release_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "health_insurance_premiums_without_medicare_part_b",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_enrichment_amount",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_amounts.py:44@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Amount groups unemployment and health_costs are selected by the current request.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/other_health_insurance.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "health_savings_account_ald",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 5,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "home_mortgage_interest",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "hourly_wage",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/org_wages.py:322@4305a7d34",
+    "us_runtime/hours_worked.py:84@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry A_DTOCC, A_HRLYWK, A_UNMEM, A_HRS1, PEMLR, A_CLSWKR (source_header_observations.json / header read this session); no native module reads them."
+   ],
+   "note": "Main's CPS-ORG wage/occupation donor stage (org_wages) and hours_worked; the native survey line has no successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/org_wages.py"
+    ]
+   }
+  },
+  {
+   "name": "hours_worked_last_week",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/org_wages.py:322@4305a7d34",
+    "us_runtime/hours_worked.py:84@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry A_DTOCC, A_HRLYWK, A_UNMEM, A_HRS1, PEMLR, A_CLSWKR (source_header_observations.json / header read this session); no native module reads them."
+   ],
+   "note": "Main's CPS-ORG wage/occupation donor stage (org_wages) and hours_worked; the native survey line has no successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/hours_worked.py",
+     "us_runtime/org_wages.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "household_vehicles_owned",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/sipp_vehicles.py:169@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "SIPP vehicle donor stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/sipp_vehicles.py"
+    ]
+   }
+  },
+  {
+   "name": "household_vehicles_value",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/sipp_vehicles.py:169@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "SIPP vehicle donor stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/sipp_vehicles.py"
+    ]
+   }
+  },
+  {
+   "name": "household_weight",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "typed_weight",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/native_survey_handoff.py:108@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Typed household weight of the native population; calibration is separate.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 8,
+    "descendant_new_literal_hits": {
+     "native-child-pre-geography-integration-20260921": [
+      "us_runtime/native_survey_handoff.py:124",
+      "us_runtime/native_survey_handoff.py:134"
+     ],
+     "native-household-domain-projection-20260921": [
+      "us_runtime/native_survey_handoff.py:124",
+      "us_runtime/native_survey_handoff.py:134"
+     ],
+     "native-other-disability-context-replay-20260921": [
+      "us_runtime/native_survey_handoff.py:124",
+      "us_runtime/native_survey_handoff.py:134"
+     ],
+     "native-ss-beneficiary-core-20260921": [
+      "us_runtime/native_survey_handoff.py:124",
+      "us_runtime/native_survey_handoff.py:134"
+     ],
+     "native-survey-tail-recipients-20260921": [
+      "us_runtime/native_survey_handoff.py:124",
+      "us_runtime/native_survey_handoff.py:134"
+     ]
+    },
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "tools/build_us_puf_support_base.py",
+     "us_runtime/h5_io.py",
+     "us_runtime/housing_inputs.py",
+     "us_runtime/l0_refit_export.py",
+     "us_runtime/nonzero_shares.py",
+     "us_runtime/puf_donor_io.py",
+     "us_runtime/puf_support.py"
+    ]
+   }
+  },
+  {
+   "name": "immigration_status_str",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "proposed_clone_successor",
+   "class": "native_successor_exists",
+   "state": "opt_in_not_in_current_request",
+   "native": [
+    "us_runtime/current_survey_immigration_transfer.py:36@47960af43",
+    "us_runtime/graph_current_survey_immigration.py:39@47960af43",
+    "us_runtime/graph_us_survey_enrichment.py:851@47960af43",
+    "us_runtime/graph_current_survey_immigration.py:295@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Immigration clone attachment is integrated (d33d71bee, a4ed33447, 15b7befff; all patch-equivalent to the 09-20 clone-successor branches). The host takes it through the immigration_transfer option, which the current request sets to None. The fragment records graph_fit_artifact_qualified=False and national_stock_alignment_qualified=False; enabling it is a request/qualification decision, not a missing port.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/immigration.py",
+     "us_runtime/spine_agreement.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "investment_income_elected_form_4952",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/form_4952.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "investment_interest_expense",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/l0_refit_export.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "is_blind",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "descriptive_status_not_canonical",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_person_status.py:1@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/eligibility_inputs.py:157@4305a7d34",
+    "us_runtime/ssi_disability_criteria.py:305@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The native person-status owner reports survey_status_canonical_eligibility_assigned=False by design; six difficulty items and the student reference period do not establish these consumer-period statuses.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/eligibility_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "is_computer_scientist",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/org_wages.py:322@4305a7d34",
+    "us_runtime/hours_worked.py:84@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry A_DTOCC, A_HRLYWK, A_UNMEM, A_HRS1, PEMLR, A_CLSWKR (source_header_observations.json / header read this session); no native module reads them."
+   ],
+   "note": "Main's CPS-ORG wage/occupation donor stage (org_wages) and hours_worked; the native survey line has no successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/org_wages.py"
+    ]
+   }
+  },
+  {
+   "name": "is_disabled",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "descriptive_status_not_canonical",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_person_status.py:1@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/eligibility_inputs.py:157@4305a7d34",
+    "us_runtime/ssi_disability_criteria.py:305@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The native person-status owner reports survey_status_canonical_eligibility_assigned=False by design; six difficulty items and the student reference period do not establish these consumer-period statuses.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/eligibility_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/education_inputs.py:103@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "AOC education inputs; main derives them in education_inputs (ASEC enrollment plus modeled attributes).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/education_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "is_executive_administrative_professional",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/org_wages.py:322@4305a7d34",
+    "us_runtime/hours_worked.py:84@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry A_DTOCC, A_HRLYWK, A_UNMEM, A_HRS1, PEMLR, A_CLSWKR (source_header_observations.json / header read this session); no native module reads them."
+   ],
+   "note": "Main's CPS-ORG wage/occupation donor stage (org_wages) and hours_worked; the native survey line has no successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/org_wages.py"
+    ]
+   }
+  },
+  {
+   "name": "is_farmer_fisher",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/org_wages.py:322@4305a7d34",
+    "us_runtime/hours_worked.py:84@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry A_DTOCC, A_HRLYWK, A_UNMEM, A_HRS1, PEMLR, A_CLSWKR (source_header_observations.json / header read this session); no native module reads them."
+   ],
+   "note": "Main's CPS-ORG wage/occupation donor stage (org_wages) and hours_worked; the native survey line has no successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/org_wages.py"
+    ]
+   }
+  },
+  {
+   "name": "is_female",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "source_projection_only",
+   "class": "native_successor_exists",
+   "state": "opt_in_not_in_current_request",
+   "native": [
+    "us_runtime/current_survey_sex_source.py:36@47960af43",
+    "us_runtime/graph_current_survey_sex.py:42@47960af43",
+    "us_runtime/graph_us_survey_enrichment.py:853@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Canonical binding on originals and clones exists (5cb3b54c3) behind demographic_inputs, which the current request leaves False; financial conditioning's private survey_predictor_is_female is not the canonical input.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 8,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_inputs.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/child_support.py",
+     "us_runtime/childcare.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/disability_benefits.py",
+     "us_runtime/energy_subsidy.py",
+     "us_runtime/housing_inputs.py"
+    ]
+   }
+  },
+  {
+   "name": "is_full_time_college_student",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "descriptive_status_not_canonical",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_person_status.py:1@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/eligibility_inputs.py:157@4305a7d34",
+    "us_runtime/ssi_disability_criteria.py:305@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The native person-status owner reports survey_status_canonical_eligibility_assigned=False by design; six difficulty items and the student reference period do not establish these consumer-period statuses.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/adult_care.py",
+     "us_runtime/eligibility_inputs.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "is_hispanic",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "native_successor_exists",
+   "state": "opt_in_not_in_current_request",
+   "native": [
+    "us_runtime/current_survey_race_hispanic_source.py:31@47960af43",
+    "us_runtime/graph_us_survey_enrichment.py:854@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "b64a7c1d9 binds exact survey race/Hispanic origin on originals and clones behind race_hispanic_inputs (False in the current request). Unsupported ACS race categories and unknown allocation stay explicit.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/org_wages.py"
+    ]
+   }
+  },
+  {
+   "name": "is_household_head",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_roles",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_household_roles.py:85@47960af43",
+    "us_runtime/graph_current_survey_household_roles.py:185@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Household roles enabled in the current financial request.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 13,
+    "descendant_new_literal_hits": {
+     "native-child-pre-geography-integration-20260921": [
+      "us_runtime/native_survey_handoff.py:716"
+     ],
+     "native-household-domain-projection-20260921": [
+      "us_runtime/native_survey_handoff.py:683"
+     ],
+     "native-other-disability-context-replay-20260921": [
+      "us_runtime/native_survey_handoff.py:683"
+     ],
+     "native-ss-beneficiary-core-20260921": [
+      "us_runtime/native_survey_handoff.py:683"
+     ],
+     "native-survey-tail-recipients-20260921": [
+      "us_runtime/native_survey_handoff.py:683"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/acs_inputs.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/housing_inputs.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/relationship_inputs.py",
+     "us_runtime/spm_composition.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "is_incapable_of_self_care",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/adult_care.py:139@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Adult-care stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/adult_care.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "is_military",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/org_wages.py:322@4305a7d34",
+    "us_runtime/hours_worked.py:84@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry A_DTOCC, A_HRLYWK, A_UNMEM, A_HRS1, PEMLR, A_CLSWKR (source_header_observations.json / header read this session); no native module reads them."
+   ],
+   "note": "Main's CPS-ORG wage/occupation donor stage (org_wages) and hours_worked; the native survey line has no successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/org_wages.py"
+    ]
+   }
+  },
+  {
+   "name": "is_paid_hourly",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/org_wages.py:322@4305a7d34",
+    "us_runtime/hours_worked.py:84@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry A_DTOCC, A_HRLYWK, A_UNMEM, A_HRS1, PEMLR, A_CLSWKR (source_header_observations.json / header read this session); no native module reads them."
+   ],
+   "note": "Main's CPS-ORG wage/occupation donor stage (org_wages) and hours_worked; the native survey line has no successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/org_wages.py"
+    ]
+   }
+  },
+  {
+   "name": "is_pregnant",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/pregnancy.py:100@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Pregnancy stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/pregnancy.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py",
+     "us_runtime/wic_claim.py"
+    ]
+   }
+  },
+  {
+   "name": "is_pursuing_credential_for_american_opportunity_credit",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/education_inputs.py:103@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "AOC education inputs; main derives them in education_inputs (ASEC enrollment plus modeled attributes).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/education_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "is_self_employed",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/other_health_insurance.py:125@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Main materializes it in the other-health-insurance stage (output_self_employed_flag in us/source_stages.json and us/spec/sources.yaml).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/other_health_insurance.py",
+     "us_runtime/release_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "is_separated",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_primary_family.py:22@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/relationship_inputs.py:180@4305a7d34",
+    "us_runtime/eligibility_inputs.py:172@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Marital/relationship derivations; the native primary-family owner already reads A_MARITL, and roles/primary-family sources can supply own-children counts.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/relationship_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "is_spm_independent_minor_role",
+   "main_manifest_status": "required",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_spm_source.py:315@47960af43",
+    "us_runtime/current_survey_spm_projection.py:295@47960af43",
+    "spm_input_contract.py:7@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/spm_independence_role.py:359@4305a7d34",
+    "us_runtime/spm_role_source.py:111@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Main's #959 stage (merged, 4305a7d34) derives the role through spm_role_source.independent_minor_role, whose body is unchanged versus 47960af43 (the spm_role_source diff is zip-archive I/O only). The native SPM owner calls the same function on its own pinned member read and projects the nullable role; OUTSIDE units use the declared placeholder, UNRESOLVED stay unresolved. No port needed.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/spm_composition.py",
+     "us_runtime/spm_role_source.py"
+    ]
+   }
+  },
+  {
+   "name": "is_surviving_spouse",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_primary_family.py:22@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/relationship_inputs.py:180@4305a7d34",
+    "us_runtime/eligibility_inputs.py:172@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Marital/relationship derivations; the native primary-family owner already reads A_MARITL, and roles/primary-family sources can supply own-children counts.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/relationship_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "is_union_member_or_covered",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/org_wages.py:322@4305a7d34",
+    "us_runtime/hours_worked.py:84@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry A_DTOCC, A_HRLYWK, A_UNMEM, A_HRS1, PEMLR, A_CLSWKR (source_header_observations.json / header read this session); no native module reads them."
+   ],
+   "note": "Main's CPS-ORG wage/occupation donor stage (org_wages) and hours_worked; the native survey line has no successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/org_wages.py"
+    ]
+   }
+  },
+  {
+   "name": "is_unmarried_partner_of_household_head",
+   "main_manifest_status": "reviewed_exclusion",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "port_needed",
+   "state": "main_exclusion_h5_specific_source_in_native_member",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_primary_family.py:26@47960af43"
+   ],
+   "port_from": [
+    "us/release_input_coverage_manifest.json:256@4305a7d34"
+   ],
+   "evidence": [
+    "Main excludes it because the three pooled 2022-2024 ASEC H5 files omit the field. The pinned Census person members the native line reads carry it (pppub23/24/25 headers read this session; source_header_observations.json), so the exclusion does not transfer. Port source: the archived policyengine-us-data derivation that main's exclusion cites (commit 42ed5d45c, datasets/cps/cps.py), plus an explicit ACS completion or applicability decision for ACS originals."
+   ],
+   "note": "PERRP and PECOHAB are in the 2025 member the native current source reads (header read this session); the native primary-family owner already reads ACS RELSHIPP. Which codes identify an unmarried partner must be taken from the 2025 ASEC and 2024 PUMS dictionaries during the port; this inventory has not verified those code lists.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 0,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": []
+   }
+  },
+  {
+   "name": "is_wic_at_nutritional_risk",
+   "main_manifest_status": "reviewed_exclusion",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "source_absent",
+   "state": "main_reviewed_exclusion_concept_absent",
+   "native": [],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [
+    "us/release_input_coverage_manifest.json:261@4305a7d34"
+   ],
+   "note": "Main's exclusion reasons rest on the concept being absent from every locked source (no individual nutritional-risk assessment, no DC Schedule H claim indicator, no Early Head Start enrollment item), not on H5 pooling; they hold for the native Census members too.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 0,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py"
+    ]
+   }
+  },
+  {
+   "name": "keogh_distributions",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "native_source_observation_only",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_asec_retirement_detail_source.py:455@47960af43",
+    "us_runtime/current_asec_retirement_basis.py:36@47960af43",
+    "us_runtime/cps_carried_current.py:86@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/retirement_distributions.py:163@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Native retirement-detail source qualification and candidate basis exist without canonical distribution attachment; the ASEC-only five-node slice carries only the pension split.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/retirement_distributions.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "long_term_capital_gains_before_response",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_financial_and_puf55",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_predictors.py:40@47960af43",
+    "us_runtime/puf55_survey_observed.py:24@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Financial graph outputs on originals, fixed survey-arm inputs for the PUF55 arm; the 09-21 AGI-tail branch adds an invented tail-clone contract (not integrated in the development profile).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 10,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:52"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/graph.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/puf_capital_gains_tail.py",
+     "us_runtime/puf_e01000_reconciliation.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "long_term_capital_gains_on_collectibles",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 6,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/capital_gain_details.py",
+     "us_runtime/graph.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_capital_gains_tail.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "meets_ssi_disability_criteria",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "descriptive_status_not_canonical",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_person_status.py:1@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/eligibility_inputs.py:157@4305a7d34",
+    "us_runtime/ssi_disability_criteria.py:305@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The native person-status owner reports survey_status_canonical_eligibility_assigned=False by design; six difficulty items and the student reference period do not establish these consumer-period statuses.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/ssi_disability_criteria.py"
+    ]
+   }
+  },
+  {
+   "name": "miscellaneous_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 5,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:61"
+     ]
+    },
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/alimony.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "net_worth",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/scf_wealth.py:276@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "SCF wealth donor stage; SSI countable-resource assets are required with no exclusion on main (#368).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/scf_wealth.py"
+    ]
+   }
+  },
+  {
+   "name": "non_qualified_dividend_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_financial_and_puf55",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_predictors.py:40@47960af43",
+    "us_runtime/puf55_survey_observed.py:24@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Financial graph outputs on originals, fixed survey-arm inputs for the PUF55 arm; the 09-21 AGI-tail branch adds an invented tail-clone contract (not integrated in the development profile).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 15,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:50"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/graph.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_capital_gains_tail.py",
+     "us_runtime/puf_support.py"
+    ]
+   }
+  },
+  {
+   "name": "non_sch_d_capital_gains",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 6,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:53"
+     ]
+    },
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/graph.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/puf_capital_gains_tail.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/release_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "other_health_insurance_premiums",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/other_health_insurance.py:185@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Other health insurance premiums stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/other_health_insurance.py"
+    ]
+   }
+  },
+  {
+   "name": "other_medical_expenses",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_enrichment_amount",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_amounts.py:44@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Amount groups unemployment and health_costs are selected by the current request.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "over_the_counter_health_expenses",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_enrichment_amount",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_amounts.py:44@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Amount groups unemployment and health_costs are selected by the current request.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "own_children_in_household",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_primary_family.py:22@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/relationship_inputs.py:180@4305a7d34",
+    "us_runtime/eligibility_inputs.py:172@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Marital/relationship derivations; the native primary-family owner already reads A_MARITL, and roles/primary-family sources can supply own-children counts.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/eligibility_inputs.py",
+     "us_runtime/scf_auto_loans.py",
+     "us_runtime/scf_wealth.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py",
+     "us_runtime/wic_claim.py"
+    ]
+   }
+  },
+  {
+   "name": "partnership_s_corp_income_would_be_qualified",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 3,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "pre_subsidy_care_expenses",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/adult_care.py:139@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Adult-care stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/adult_care.py",
+     "us_runtime/post_transfer_calibration.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "pre_subsidy_rent",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [
+    "us_runtime/acs_inputs.py:269@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/housing_inputs.py:107@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "ACS GRNTP/RNTP are read as rent predictors by the maintained ACS reader at 47960af43, but no native canonical pre_subsidy_rent is emitted.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/housing_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "previous_year_income_available",
+   "main_manifest_status": "required",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "declared_scope_exclusion",
+   "state": "prior_year_family_excluded",
+   "native": [
+    "us_runtime/input_coverage_profile.py:215@47960af43",
+    "us_runtime/native_survey_handoff.py:121@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "The whole prior-year income family is outside native scope (Max's prior-wages removal); the handoff inventory labels it excluded_native_scope.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/prior_year_income.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "qualified_bdc_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 5,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "qualified_dividend_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_financial_and_puf55",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_predictors.py:40@47960af43",
+    "us_runtime/puf55_survey_observed.py:24@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Financial graph outputs on originals, fixed survey-arm inputs for the PUF55 arm; the 09-21 AGI-tail branch adds an invented tail-clone contract (not integrated in the development profile).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 10,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:49"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_capital_gains_tail.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/scf_auto_loans.py",
+     "us_runtime/scf_wealth.py"
+    ]
+   }
+  },
+  {
+   "name": "qualified_passenger_vehicle_loan_interest",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/scf_auto_loans.py:140@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "SCF auto-loan donor stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/scf_auto_loans.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "qualified_reit_and_ptp_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 5,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "qualified_tuition_expenses",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/education_inputs.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_overlap_ownership.py",
+     "us_runtime/us_late_producer_registry.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "real_estate_taxes",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_inputs.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/housing_inputs.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/puf_support.py"
+    ]
+   }
+  },
+  {
+   "name": "receives_housing_assistance",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_housing",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_housing.py:62@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "SPM-unit housing receipt/take-up from source literals.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 3,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/housing_inputs.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "receives_snap",
+   "main_manifest_status": "required",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "port_needed",
+   "state": "source_literals_available_not_read",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/cps_carried.py:352@4305a7d34",
+    "us_runtime/cps_carried.py:328@4305a7d34",
+    "us_runtime/cps_carried.py:266@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry WICYN, SPM_SNAPSUB, SPM_WICVAL, PAW_TYP, PAW_YN (header read this session). The pinned 2024 ACS PUMS headers carry household FS (SNAP) and person PAP (all public assistance, not TANF-specific) and no WIC item (header read this session)."
+   ],
+   "note": "New on main (#978 option 1, ACS-transfer donor inputs). Native ASEC originals can take the maintained reported-receipt rules directly; ACS originals need an explicit completion or applicability decision.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 0,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "receives_tanf",
+   "main_manifest_status": "required",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "port_needed",
+   "state": "source_literals_available_not_read",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/cps_carried.py:352@4305a7d34",
+    "us_runtime/cps_carried.py:328@4305a7d34",
+    "us_runtime/cps_carried.py:266@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry WICYN, SPM_SNAPSUB, SPM_WICVAL, PAW_TYP, PAW_YN (header read this session). The pinned 2024 ACS PUMS headers carry household FS (SNAP) and person PAP (all public assistance, not TANF-specific) and no WIC item (header read this session)."
+   ],
+   "note": "New on main (#978 option 1, ACS-transfer donor inputs). Native ASEC originals can take the maintained reported-receipt rules directly; ACS originals need an explicit completion or applicability decision.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 0,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "receives_wic",
+   "main_manifest_status": "required",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "port_needed",
+   "state": "source_literals_available_not_read",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/cps_carried.py:352@4305a7d34",
+    "us_runtime/cps_carried.py:328@4305a7d34",
+    "us_runtime/cps_carried.py:266@4305a7d34"
+   ],
+   "evidence": [
+    "Pinned ASEC person members carry WICYN, SPM_SNAPSUB, SPM_WICVAL, PAW_TYP, PAW_YN (header read this session). The pinned 2024 ACS PUMS headers carry household FS (SNAP) and person PAP (all public assistance, not TANF-specific) and no WIC item (header read this session)."
+   ],
+   "note": "New on main (#978 option 1, ACS-transfer donor inputs). Native ASEC originals can take the maintained reported-receipt rules directly; ACS originals need an explicit completion or applicability decision.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 0,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "rental_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/puf55_survey_observed.py:25@47960af43",
+    "us_runtime/graph_current_asec_development_inputs.py:45@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Source-qualified development mappings on originals (c8652fbdc; source_qualified_development_inputs=True) plus PUF55 clone-one values; the pension/IRA mappings are the maintained cps_carried_current rules, labelled qualified values rather than observed taxable amounts.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 9,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:58"
+     ]
+    },
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/sipp_financial_assets.py",
+     "us_runtime/sipp_vehicles.py",
+     "us_runtime/ssi_disability_criteria.py"
+    ]
+   }
+  },
+  {
+   "name": "rental_income_would_be_qualified",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 3,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "roth_401k_contributions_desired",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/retirement_contributions.py:119@4305a7d34"
+   ],
+   "evidence": [
+    "RETCB_VAL is a native current-money field but no native owner splits it into desired contributions."
+   ],
+   "note": "traditional_ira_contributions_desired and self_employed_pension_contributions_desired come from the PUF arm; these three need the maintained contribution stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/retirement_contributions.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "roth_ira_contributions_desired",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/retirement_contributions.py:119@4305a7d34"
+   ],
+   "evidence": [
+    "RETCB_VAL is a native current-money field but no native owner splits it into desired contributions."
+   ],
+   "note": "traditional_ira_contributions_desired and self_employed_pension_contributions_desired come from the PUF arm; these three need the maintained contribution stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/retirement_contributions.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "salt_refund_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:64"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/salt_refund_income.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "schedule_d_capital_gain_distributions",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/multispine_pool.py:1229@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "#282 route leg (#462); PUF-derived on main.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/graph.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "selected_marketplace_plan_benchmark_ratio",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "tools/build_us_fiscal_refresh_release.py:795@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Set by main's release tool; the native release entry must own it or a reviewed successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/l0_refit_export.py"
+    ]
+   }
+  },
+  {
+   "name": "self_employed_pension_contributions_desired",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/retirement_contributions.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_overlap_ownership.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "self_employment_income_before_lsr",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_financial_and_puf55",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_predictors.py:40@47960af43",
+    "us_runtime/puf55_survey_observed.py:24@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Financial graph outputs on originals, fixed survey-arm inputs for the PUF55 arm; the 09-21 AGI-tail branch adds an invented tail-clone contract (not integrated in the development profile).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 13,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:46"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/acs_income_universe.py",
+     "us_runtime/acs_inputs.py",
+     "us_runtime/acs_local_hours.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/adult_care.py",
+     "us_runtime/child_support.py",
+     "us_runtime/childcare.py",
+     "us_runtime/cps_carried.py"
+    ]
+   }
+  },
+  {
+   "name": "self_employment_income_last_year",
+   "main_manifest_status": "required",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "declared_scope_exclusion",
+   "state": "prior_year_family_excluded",
+   "native": [
+    "us_runtime/input_coverage_profile.py:215@47960af43",
+    "us_runtime/native_survey_handoff.py:121@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "The whole prior-year income family is outside native scope (Max's prior-wages removal); the handoff inventory labels it excluded_native_scope.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/post_transfer_calibration.py",
+     "us_runtime/prior_year_income.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "self_employment_income_would_be_qualified",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "short_term_capital_gains",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_financial_and_puf55",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_predictors.py:40@47960af43",
+    "us_runtime/puf55_survey_observed.py:24@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Financial graph outputs on originals, fixed survey-arm inputs for the PUF55 arm; the 09-21 AGI-tail branch adds an invented tail-clone contract (not integrated in the development profile).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 10,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:51"
+     ]
+    },
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/graph.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_capital_gains_tail.py",
+     "us_runtime/puf_e01000_reconciliation.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "social_security_dependents",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "qualified_partial_projection_no_attachment",
+   "class": "port_needed",
+   "state": "report_basis_only_no_canonical_attachment",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_social_security_source.py:534@47960af43",
+    "us_runtime/survey_social_security.py:48@47960af43",
+    "us_runtime/graph_current_survey_ss_completion.py:204@47960af43",
+    "us_runtime/cps_carried_current.py:142@47960af43",
+    "us_runtime/survey_social_security_beneficiaries.py:23@fa72c60f9"
+   ],
+   "port_from": [
+    "us_runtime/cps_carried.py:388@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The survey line has a report-grain basis and an unwired report-completion fragment, not beneficiary inputs; the enrichment host names no SS node. The ASEC-only five-node slice (cps_carried_current) reuses main's reason-priority/age-62 rule, and the 09-21 core adds a singleton-retirement convention. This lane adds survey_social_security_canonical.py: a pure canonical contract with explicit, recorded conventions and exact two-clone fan-out; host wiring remains.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 8,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/child_support.py",
+     "us_runtime/childcare.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/disability_benefits.py",
+     "us_runtime/energy_subsidy.py",
+     "us_runtime/fiscal_targets.py"
+    ]
+   }
+  },
+  {
+   "name": "social_security_disability",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "qualified_partial_projection_no_attachment",
+   "class": "port_needed",
+   "state": "report_basis_only_no_canonical_attachment",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_social_security_source.py:534@47960af43",
+    "us_runtime/survey_social_security.py:48@47960af43",
+    "us_runtime/graph_current_survey_ss_completion.py:204@47960af43",
+    "us_runtime/cps_carried_current.py:142@47960af43",
+    "us_runtime/survey_social_security_beneficiaries.py:23@fa72c60f9"
+   ],
+   "port_from": [
+    "us_runtime/cps_carried.py:388@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The survey line has a report-grain basis and an unwired report-completion fragment, not beneficiary inputs; the enrichment host names no SS node. The ASEC-only five-node slice (cps_carried_current) reuses main's reason-priority/age-62 rule, and the 09-21 core adds a singleton-retirement convention. This lane adds survey_social_security_canonical.py: a pure canonical contract with explicit, recorded conventions and exact two-clone fan-out; host wiring remains.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 8,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/child_support.py",
+     "us_runtime/childcare.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/disability_benefits.py",
+     "us_runtime/energy_subsidy.py",
+     "us_runtime/fiscal_targets.py"
+    ]
+   }
+  },
+  {
+   "name": "social_security_retirement",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "qualified_partial_projection_no_attachment",
+   "class": "port_needed",
+   "state": "report_basis_only_no_canonical_attachment",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_social_security_source.py:534@47960af43",
+    "us_runtime/survey_social_security.py:48@47960af43",
+    "us_runtime/graph_current_survey_ss_completion.py:204@47960af43",
+    "us_runtime/cps_carried_current.py:142@47960af43",
+    "us_runtime/survey_social_security_beneficiaries.py:23@fa72c60f9"
+   ],
+   "port_from": [
+    "us_runtime/cps_carried.py:388@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The survey line has a report-grain basis and an unwired report-completion fragment, not beneficiary inputs; the enrichment host names no SS node. The ASEC-only five-node slice (cps_carried_current) reuses main's reason-priority/age-62 rule, and the 09-21 core adds a singleton-retirement convention. This lane adds survey_social_security_canonical.py: a pure canonical contract with explicit, recorded conventions and exact two-clone fan-out; host wiring remains.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 10,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/child_support.py",
+     "us_runtime/childcare.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/disability_benefits.py",
+     "us_runtime/energy_subsidy.py",
+     "us_runtime/fiscal_targets.py"
+    ]
+   }
+  },
+  {
+   "name": "social_security_survivors",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "qualified_partial_projection_no_attachment",
+   "class": "port_needed",
+   "state": "report_basis_only_no_canonical_attachment",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_social_security_source.py:534@47960af43",
+    "us_runtime/survey_social_security.py:48@47960af43",
+    "us_runtime/graph_current_survey_ss_completion.py:204@47960af43",
+    "us_runtime/cps_carried_current.py:142@47960af43",
+    "us_runtime/survey_social_security_beneficiaries.py:23@fa72c60f9"
+   ],
+   "port_from": [
+    "us_runtime/cps_carried.py:388@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The survey line has a report-grain basis and an unwired report-completion fragment, not beneficiary inputs; the enrichment host names no SS node. The ASEC-only five-node slice (cps_carried_current) reuses main's reason-priority/age-62 rule, and the 09-21 core adds a singleton-retirement convention. This lane adds survey_social_security_canonical.py: a pure canonical contract with explicit, recorded conventions and exact two-clone fan-out; host wiring remains.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 8,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/child_support.py",
+     "us_runtime/childcare.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/disability_benefits.py",
+     "us_runtime/energy_subsidy.py",
+     "us_runtime/fiscal_targets.py"
+    ]
+   }
+  },
+  {
+   "name": "spm_unit_energy_subsidy",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "descriptive_spm_amount_only",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_spm_amount_source.py:1@47960af43",
+    "us_runtime/cps_carried_current.py:92@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/childcare.py:113@4305a7d34",
+    "us_runtime/energy_subsidy.py:124@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Native SPM_CHILDCAREXPNS/SPM_ENGVAL handling is expressly descriptive at unit grain; ACS completion/applicability undefined. The ASEC-only five-node slice carries the childcare leaf only.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/energy_subsidy.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/post_transfer_calibration.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "spm_unit_pre_subsidy_childcare_expenses",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "descriptive_spm_amount_only",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_spm_amount_source.py:1@47960af43",
+    "us_runtime/cps_carried_current.py:92@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/childcare.py:113@4305a7d34",
+    "us_runtime/energy_subsidy.py:124@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Native SPM_CHILDCAREXPNS/SPM_ENGVAL handling is expressly descriptive at unit grain; ACS completion/applicability undefined. The ASEC-only five-node slice carries the childcare leaf only.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 3,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/adult_care.py",
+     "us_runtime/childcare.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "spm_unit_tenure_type",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "source_projection_only",
+   "class": "port_needed",
+   "state": "source_literal_read_not_bound",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_housing.py:510@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/housing_inputs.py:108@4305a7d34",
+    "us_runtime/acs_inputs.py:328@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The housing owner reads H_TENURE (ASEC) and TEN (ACS) to classify ownership but emits no canonical tenure enum; a small binding is needed (fef2cb56a audit: source_projection_only).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_inputs.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/housing_inputs.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "ssn_card_type",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "proposed_clone_successor",
+   "class": "native_successor_exists",
+   "state": "opt_in_not_in_current_request",
+   "native": [
+    "us_runtime/current_survey_immigration_transfer.py:36@47960af43",
+    "us_runtime/graph_current_survey_immigration.py:39@47960af43",
+    "us_runtime/graph_us_survey_enrichment.py:851@47960af43",
+    "us_runtime/graph_current_survey_immigration.py:295@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Immigration clone attachment is integrated (d33d71bee, a4ed33447, 15b7befff; all patch-equivalent to the 09-20 clone-successor branches). The host takes it through the immigration_transfer option, which the current request sets to None. The fragment records graph_fit_artifact_qualified=False and national_stock_alignment_qualified=False; enabling it is a request/qualification decision, not a missing port.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/immigration.py",
+     "us_runtime/spine_agreement.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "sstb_self_employment_income_before_lsr",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:47"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/adult_care.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/other_health_insurance.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "sstb_self_employment_income_would_be_qualified",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "sstb_unadjusted_basis_qualified_property",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 5,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "sstb_w2_wages_from_qualified_business",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 5,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "state_fips",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "source_or_alias_mapping_required",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/graph_current_survey_state.py:41@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "canonical_state_input=True in the current request; bound after enrichment with an explicit population version.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 29,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/acs_pums.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/asec_pool.py",
+     "us_runtime/base_pool.py",
+     "us_runtime/congressional_district_geography.py",
+     "us_runtime/demographics.py",
+     "us_runtime/fiscal_targets.py"
+    ]
+   }
+  },
+  {
+   "name": "stock_assets",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/scf_wealth.py:276@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "SCF wealth donor stage; SSI countable-resource assets are required with no exclusion on main (#368).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/scf_wealth.py",
+     "us_runtime/sipp_financial_assets.py",
+     "us_runtime/ssi_disability_criteria.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "student_loan_interest",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "survivor_benefits",
+   "main_manifest_status": "reviewed_exclusion",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "port_needed",
+   "state": "main_exclusion_h5_specific_source_in_native_member",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_asec_retirement_detail_source.py:46@47960af43"
+   ],
+   "port_from": [
+    "us/release_input_coverage_manifest.json:431@4305a7d34"
+   ],
+   "evidence": [
+    "Main excludes it because the three pooled 2022-2024 ASEC H5 files omit the field. The pinned Census person members the native line reads carry it (pppub23/24/25 headers read this session; source_header_observations.json), so the exclusion does not transfer. Port source: the archived policyengine-us-data derivation that main's exclusion cites (commit 42ed5d45c, datasets/cps/cps.py), plus an explicit ACS completion or applicability decision for ACS originals."
+   ],
+   "note": "The native retirement-detail owner already qualifies SRVS_VAL and SUR_VAL1/2 literals under SUR_YN; only the canonical person binding and ACS treatment are missing.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 0,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": []
+   }
+  },
+  {
+   "name": "takes_up_aca_if_eligible",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/take_up.py:104@4305a7d34",
+    "us_runtime/medicaid_take_up.py:119@4305a7d34",
+    "us_runtime/medicare_take_up.py:94@4305a7d34",
+    "us_runtime/snap_take_up.py:100@4305a7d34",
+    "us_runtime/ssi_take_up.py:202@4305a7d34",
+    "us_runtime/wic_claim.py:152@4305a7d34",
+    "us_runtime/sipp_head_start.py:182@4305a7d34",
+    "us_runtime/voluntary_filing.py:161@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Take-up and voluntary-filing stages; ACA take-up is set in the release tool on main. None has a native successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/l0_refit_export.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "takes_up_dc_ptc",
+   "main_manifest_status": "reviewed_exclusion",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "source_absent",
+   "state": "main_reviewed_exclusion_concept_absent",
+   "native": [],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [
+    "us/release_input_coverage_manifest.json:261@4305a7d34"
+   ],
+   "note": "Main's exclusion reasons rest on the concept being absent from every locked source (no individual nutritional-risk assessment, no DC Schedule H claim indicator, no Early Head Start enrollment item), not on H5 pooling; they hold for the native Census members too.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 0,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "takes_up_early_head_start_if_eligible",
+   "main_manifest_status": "reviewed_exclusion",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "source_absent",
+   "state": "main_reviewed_exclusion_concept_absent",
+   "native": [],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [
+    "us/release_input_coverage_manifest.json:261@4305a7d34"
+   ],
+   "note": "Main's exclusion reasons rest on the concept being absent from every locked source (no individual nutritional-risk assessment, no DC Schedule H claim indicator, no Early Head Start enrollment item), not on H5 pooling; they hold for the native Census members too.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 0,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "tools/build_us_fiscal_refresh_release.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "takes_up_eitc",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/take_up.py:104@4305a7d34",
+    "us_runtime/medicaid_take_up.py:119@4305a7d34",
+    "us_runtime/medicare_take_up.py:94@4305a7d34",
+    "us_runtime/snap_take_up.py:100@4305a7d34",
+    "us_runtime/ssi_take_up.py:202@4305a7d34",
+    "us_runtime/wic_claim.py:152@4305a7d34",
+    "us_runtime/sipp_head_start.py:182@4305a7d34",
+    "us_runtime/voluntary_filing.py:161@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Take-up and voluntary-filing stages; ACA take-up is set in the release tool on main. None has a native successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/graph.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/take_up.py"
+    ]
+   }
+  },
+  {
+   "name": "takes_up_head_start_if_eligible",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/take_up.py:104@4305a7d34",
+    "us_runtime/medicaid_take_up.py:119@4305a7d34",
+    "us_runtime/medicare_take_up.py:94@4305a7d34",
+    "us_runtime/snap_take_up.py:100@4305a7d34",
+    "us_runtime/ssi_take_up.py:202@4305a7d34",
+    "us_runtime/wic_claim.py:152@4305a7d34",
+    "us_runtime/sipp_head_start.py:182@4305a7d34",
+    "us_runtime/voluntary_filing.py:161@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Take-up and voluntary-filing stages; ACA take-up is set in the release tool on main. None has a native successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/operator_boundary.py",
+     "us_runtime/sipp_head_start.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "takes_up_housing_assistance_if_eligible",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_housing",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_housing.py:62@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "SPM-unit housing receipt/take-up from source literals.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 3,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/housing_inputs.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "takes_up_medicaid_if_eligible",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/take_up.py:104@4305a7d34",
+    "us_runtime/medicaid_take_up.py:119@4305a7d34",
+    "us_runtime/medicare_take_up.py:94@4305a7d34",
+    "us_runtime/snap_take_up.py:100@4305a7d34",
+    "us_runtime/ssi_take_up.py:202@4305a7d34",
+    "us_runtime/wic_claim.py:152@4305a7d34",
+    "us_runtime/sipp_head_start.py:182@4305a7d34",
+    "us_runtime/voluntary_filing.py:161@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Take-up and voluntary-filing stages; ACA take-up is set in the release tool on main. None has a native successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/medicaid_take_up.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "takes_up_medicare_if_eligible",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/take_up.py:104@4305a7d34",
+    "us_runtime/medicaid_take_up.py:119@4305a7d34",
+    "us_runtime/medicare_take_up.py:94@4305a7d34",
+    "us_runtime/snap_take_up.py:100@4305a7d34",
+    "us_runtime/ssi_take_up.py:202@4305a7d34",
+    "us_runtime/wic_claim.py:152@4305a7d34",
+    "us_runtime/sipp_head_start.py:182@4305a7d34",
+    "us_runtime/voluntary_filing.py:161@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Take-up and voluntary-filing stages; ACA take-up is set in the release tool on main. None has a native successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/medicare_take_up.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "takes_up_snap_if_eligible",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/take_up.py:104@4305a7d34",
+    "us_runtime/medicaid_take_up.py:119@4305a7d34",
+    "us_runtime/medicare_take_up.py:94@4305a7d34",
+    "us_runtime/snap_take_up.py:100@4305a7d34",
+    "us_runtime/ssi_take_up.py:202@4305a7d34",
+    "us_runtime/wic_claim.py:152@4305a7d34",
+    "us_runtime/sipp_head_start.py:182@4305a7d34",
+    "us_runtime/voluntary_filing.py:161@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Take-up and voluntary-filing stages; ACA take-up is set in the release tool on main. None has a native successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/operator_boundary.py",
+     "us_runtime/snap_take_up.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "takes_up_ssi_if_eligible",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/take_up.py:104@4305a7d34",
+    "us_runtime/medicaid_take_up.py:119@4305a7d34",
+    "us_runtime/medicare_take_up.py:94@4305a7d34",
+    "us_runtime/snap_take_up.py:100@4305a7d34",
+    "us_runtime/ssi_take_up.py:202@4305a7d34",
+    "us_runtime/wic_claim.py:152@4305a7d34",
+    "us_runtime/sipp_head_start.py:182@4305a7d34",
+    "us_runtime/voluntary_filing.py:161@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Take-up and voluntary-filing stages; ACA take-up is set in the release tool on main. None has a native successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/operator_boundary.py",
+     "us_runtime/ssi_take_up.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "takes_up_tanf_if_eligible",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/take_up.py:104@4305a7d34",
+    "us_runtime/medicaid_take_up.py:119@4305a7d34",
+    "us_runtime/medicare_take_up.py:94@4305a7d34",
+    "us_runtime/snap_take_up.py:100@4305a7d34",
+    "us_runtime/ssi_take_up.py:202@4305a7d34",
+    "us_runtime/wic_claim.py:152@4305a7d34",
+    "us_runtime/sipp_head_start.py:182@4305a7d34",
+    "us_runtime/voluntary_filing.py:161@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Take-up and voluntary-filing stages; ACA take-up is set in the release tool on main. None has a native successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/operator_boundary.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/take_up.py"
+    ]
+   }
+  },
+  {
+   "name": "takes_up_wic_if_eligible",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/take_up.py:104@4305a7d34",
+    "us_runtime/medicaid_take_up.py:119@4305a7d34",
+    "us_runtime/medicare_take_up.py:94@4305a7d34",
+    "us_runtime/snap_take_up.py:100@4305a7d34",
+    "us_runtime/ssi_take_up.py:202@4305a7d34",
+    "us_runtime/wic_claim.py:152@4305a7d34",
+    "us_runtime/sipp_head_start.py:182@4305a7d34",
+    "us_runtime/voluntary_filing.py:161@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Take-up and voluntary-filing stages; ACA take-up is set in the release tool on main. None has a native successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/operator_boundary.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py",
+     "us_runtime/wic_claim.py"
+    ]
+   }
+  },
+  {
+   "name": "tax_exempt_interest_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_financial_and_puf55",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_predictors.py:40@47960af43",
+    "us_runtime/puf55_survey_observed.py:24@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Financial graph outputs on originals, fixed survey-arm inputs for the PUF55 arm; the 09-21 AGI-tail branch adds an invented tail-clone contract (not integrated in the development profile).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 7,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/scf_auto_loans.py",
+     "us_runtime/scf_wealth.py",
+     "us_runtime/sipp_financial_assets.py",
+     "us_runtime/sipp_vehicles.py"
+    ]
+   }
+  },
+  {
+   "name": "tax_exempt_ira_distributions",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "native_source_observation_only",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_asec_retirement_detail_source.py:455@47960af43",
+    "us_runtime/current_asec_retirement_basis.py:36@47960af43",
+    "us_runtime/cps_carried_current.py:86@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/retirement_distributions.py:163@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Native retirement-detail source qualification and candidate basis exist without canonical distribution attachment; the ASEC-only five-node slice carries only the pension split.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/retirement_distributions.py",
+     "us_runtime/sipp_financial_assets.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "tax_exempt_private_pension_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "native_source_observation_only",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_asec_retirement_detail_source.py:455@47960af43",
+    "us_runtime/current_asec_retirement_basis.py:36@47960af43",
+    "us_runtime/cps_carried_current.py:86@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/retirement_distributions.py:163@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Native retirement-detail source qualification and candidate basis exist without canonical distribution attachment; the ASEC-only five-node slice carries only the pension split.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 3,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/housing_inputs.py",
+     "us_runtime/scf_auto_loans.py",
+     "us_runtime/scf_wealth.py",
+     "us_runtime/sipp_financial_assets.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "taxable_401k_distributions",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "native_source_observation_only",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_asec_retirement_detail_source.py:455@47960af43",
+    "us_runtime/current_asec_retirement_basis.py:36@47960af43",
+    "us_runtime/cps_carried_current.py:86@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/retirement_distributions.py:163@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Native retirement-detail source qualification and candidate basis exist without canonical distribution attachment; the ASEC-only five-node slice carries only the pension split.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/retirement_distributions.py",
+     "us_runtime/sipp_financial_assets.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "taxable_403b_distributions",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "native_source_observation_only",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_asec_retirement_detail_source.py:455@47960af43",
+    "us_runtime/current_asec_retirement_basis.py:36@47960af43",
+    "us_runtime/cps_carried_current.py:86@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/retirement_distributions.py:163@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Native retirement-detail source qualification and candidate basis exist without canonical distribution attachment; the ASEC-only five-node slice carries only the pension split.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/retirement_distributions.py",
+     "us_runtime/sipp_financial_assets.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "taxable_interest_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_financial_and_puf55",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_predictors.py:40@47960af43",
+    "us_runtime/puf55_survey_observed.py:24@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Financial graph outputs on originals, fixed survey-arm inputs for the PUF55 arm; the 09-21 AGI-tail branch adds an invented tail-clone contract (not integrated in the development profile).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 10,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:48"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_capital_gains_tail.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/scf_auto_loans.py",
+     "us_runtime/scf_wealth.py"
+    ]
+   }
+  },
+  {
+   "name": "taxable_ira_distributions",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/puf55_survey_observed.py:25@47960af43",
+    "us_runtime/graph_current_asec_development_inputs.py:45@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Source-qualified development mappings on originals (c8652fbdc; source_qualified_development_inputs=True) plus PUF55 clone-one values; the pension/IRA mappings are the maintained cps_carried_current rules, labelled qualified values rather than observed taxable amounts.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 7,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:55"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/retirement_distributions.py",
+     "us_runtime/sipp_financial_assets.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "taxable_private_pension_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/puf55_survey_observed.py:25@47960af43",
+    "us_runtime/graph_current_asec_development_inputs.py:45@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Source-qualified development mappings on originals (c8652fbdc; source_qualified_development_inputs=True) plus PUF55 clone-one values; the pension/IRA mappings are the maintained cps_carried_current rules, labelled qualified values rather than observed taxable amounts.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 7,
+    "descendant_new_literal_hits": {
+     "native-agi-tail-matching-20260921": [
+      "us_runtime/native_puf_tail.py:54"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/housing_inputs.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/scf_auto_loans.py",
+     "us_runtime/scf_wealth.py",
+     "us_runtime/sipp_financial_assets.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "taxable_sep_distributions",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "native_source_observation_only",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_asec_retirement_detail_source.py:455@47960af43",
+    "us_runtime/current_asec_retirement_basis.py:36@47960af43",
+    "us_runtime/cps_carried_current.py:86@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/retirement_distributions.py:163@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Native retirement-detail source qualification and candidate basis exist without canonical distribution attachment; the ASEC-only five-node slice carries only the pension split.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/retirement_distributions.py",
+     "us_runtime/sipp_financial_assets.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "tenure_type",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "source_projection_only",
+   "class": "port_needed",
+   "state": "source_literal_read_not_bound",
+   "native": [],
+   "native_source": [
+    "us_runtime/current_survey_housing.py:510@47960af43"
+   ],
+   "port_from": [
+    "us_runtime/housing_inputs.py:108@4305a7d34",
+    "us_runtime/acs_inputs.py:328@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "The housing owner reads H_TENURE (ASEC) and TEN (ACS) to classify ownership but emits no canonical tenure enum; a small binding is needed (fef2cb56a audit: source_projection_only).",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_inputs.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/housing_inputs.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "tip_income",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/sipp_tips.py:187@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "SIPP tips donor stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/sipp_tips.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "tract_geoid",
+   "main_manifest_status": "required",
+   "in_native159_profile": false,
+   "historical_fef2cb56a_status": null,
+   "class": "declared_scope_exclusion",
+   "state": "engine_omission",
+   "native": [
+    "us_runtime/input_coverage_profile.py:187@47960af43",
+    "us_runtime/input_coverage_profile.py:199@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "National/CD profiles omit block/tract engine inputs; build-owned census_block_geoid stays independent build state.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_multispine.py",
+     "us_runtime/acs_transfer.py",
+     "us_runtime/base_pool.py",
+     "us_runtime/geography_ladder.py",
+     "us_runtime/puma_ladder.py"
+    ]
+   }
+  },
+  {
+   "name": "traditional_401k_contributions_desired",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/retirement_contributions.py:119@4305a7d34"
+   ],
+   "evidence": [
+    "RETCB_VAL is a native current-money field but no native owner splits it into desired contributions."
+   ],
+   "note": "traditional_ira_contributions_desired and self_employed_pension_contributions_desired come from the PUF arm; these three need the maintained contribution stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/retirement_contributions.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "traditional_ira_contributions_desired",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/retirement_contributions.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_overlap_ownership.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "treasury_tipped_occupation_code",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/sipp_tips.py:187@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "SIPP tips donor stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/sipp_tips.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "unadjusted_basis_qualified_property",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 5,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "unemployment_compensation",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_enrichment_amount",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_amounts.py:44@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Amount groups unemployment and health_costs are selected by the current request.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/cps_carried.py",
+     "us_runtime/fiscal_targets.py",
+     "us_runtime/post_transfer_calibration.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/us_late_producer_registry.py"
+    ]
+   }
+  },
+  {
+   "name": "unrecaptured_section_1250_gain",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 6,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/capital_gain_details.py",
+     "us_runtime/graph.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_capital_gains_tail.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "unreimbursed_business_employee_expenses",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 4,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/misc_itemized.py",
+     "us_runtime/puf_aggregate_records.py",
+     "us_runtime/puf_support.py",
+     "us_runtime/release_input_coverage.py",
+     "us_runtime/source_runtime.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/validation_input_coverage.py"
+    ]
+   }
+  },
+  {
+   "name": "veterans_benefits",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "native_successor_exists",
+   "state": "opt_in_not_in_current_request",
+   "native": [
+    "us_runtime/current_survey_amounts.py:53@47960af43",
+    "us_runtime/current_survey_amounts.py:54@47960af43",
+    "us_runtime/current_asec_veterans_source.py:28@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Opt-in amount groups (460addba2, 0042e38e3, 450316171) not selected by the current request; child support and veterans need full-original donors, which the request leaves off.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 17,
+    "descendant_new_literal_hits": {
+     "native-child-pre-geography-integration-20260921": [
+      "us_runtime/graph_us_survey_enrichment.py:2767"
+     ],
+     "native-other-disability-context-replay-20260921": [
+      "us_runtime/graph_us_survey_enrichment.py:2756"
+     ]
+    },
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/eligibility_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "w2_wages_from_qualified_business",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_puf55_clone_one",
+   "class": "native_successor_exists",
+   "state": "puf_clone_one_arm_zero_partial",
+   "native": [
+    "us_runtime/full_puf_enrichment.py:44@47960af43",
+    "us_runtime/puf55_original_placement.py:25@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "PUF55 clone-one (PUF arm) outputs; the original (arm-zero) placement is conservative (3 unit + 5 singleton outputs on fully-known units, 35 person outputs deferred) and mixed-member finalization is the puf-finalization lane.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 5,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/puf_support.py",
+     "us_runtime/qbi_inputs.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "weekly_hours_worked_before_lsr",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "declared_hours",
+   "class": "native_successor_exists",
+   "state": "attached_by_default_request",
+   "native": [
+    "us_runtime/current_survey_hours.py:22@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Source-qualified usual hours; source-signal qualification of usual hours is still listed as an outstanding release qualification.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 2,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_inputs.py",
+     "us_runtime/acs_multispine.py",
+     "us_runtime/hours_worked.py",
+     "us_runtime/org_wages.py",
+     "us_runtime/stacked_spine.py"
+    ]
+   }
+  },
+  {
+   "name": "weeks_unemployed",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/weeks_unemployed.py:209@4305a7d34"
+   ],
+   "evidence": [
+    "LKWEEKS is in the pinned members (header read this session); no native survey module reads it."
+   ],
+   "note": "Weeks-unemployed stage.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/acs_transfer.py",
+     "us_runtime/multispine_pool.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/post_transfer_calibration.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/weeks_unemployed.py"
+    ]
+   }
+  },
+  {
+   "name": "workers_compensation",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "native_successor_exists",
+   "state": "opt_in_not_in_current_request",
+   "native": [
+    "us_runtime/current_survey_amounts.py:53@47960af43",
+    "us_runtime/current_survey_amounts.py:54@47960af43",
+    "us_runtime/current_asec_veterans_source.py:28@47960af43"
+   ],
+   "native_source": [],
+   "port_from": [],
+   "evidence": [],
+   "note": "Opt-in amount groups (460addba2, 0042e38e3, 450316171) not selected by the current request; child support and veterans need full-original donors, which the request leaves off.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 8,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/multispine_pool.py",
+     "us_runtime/operator_boundary.py",
+     "us_runtime/post_transfer_calibration.py",
+     "us_runtime/stacked_spine.py",
+     "us_runtime/workers_compensation.py"
+    ]
+   }
+  },
+  {
+   "name": "would_file_taxes_voluntarily",
+   "main_manifest_status": "required",
+   "in_native159_profile": true,
+   "historical_fef2cb56a_status": "missing_native_successor",
+   "class": "port_needed",
+   "state": "no_native_owner",
+   "native": [],
+   "native_source": [],
+   "port_from": [
+    "us_runtime/take_up.py:104@4305a7d34",
+    "us_runtime/medicaid_take_up.py:119@4305a7d34",
+    "us_runtime/medicare_take_up.py:94@4305a7d34",
+    "us_runtime/snap_take_up.py:100@4305a7d34",
+    "us_runtime/ssi_take_up.py:202@4305a7d34",
+    "us_runtime/wic_claim.py:152@4305a7d34",
+    "us_runtime/sipp_head_start.py:182@4305a7d34",
+    "us_runtime/voluntary_filing.py:161@4305a7d34"
+   ],
+   "evidence": [],
+   "note": "Take-up and voluntary-filing stages; ACA take-up is set in the release tool on main. None has a native successor.",
+   "mechanical": {
+    "native_literal_hits_at_integration": 1,
+    "descendant_new_literal_hits": {},
+    "main_files_naming_it": [
+     "us_runtime/voluntary_filing.py"
+    ]
+   }
+  }
+ ]
+}

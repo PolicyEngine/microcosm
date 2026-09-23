@@ -1,0 +1,2551 @@
+{
+ "profile": "us_native_national_cd_159_v1",
+ "profile_sha256": "47ce05feb6248393ef8d53acef8a0251c63dd4de9320b5109eadb9f0ecc69f14",
+ "puf55_contract_outputs": [
+  "employment_income_before_lsr",
+  "self_employment_income_before_lsr",
+  "taxable_interest_income",
+  "qualified_dividend_income",
+  "non_qualified_dividend_income",
+  "tax_exempt_interest_income",
+  "short_term_capital_gains",
+  "long_term_capital_gains_before_response",
+  "long_term_capital_gains_on_collectibles",
+  "non_sch_d_capital_gains",
+  "taxable_private_pension_income",
+  "taxable_ira_distributions",
+  "alimony_income",
+  "alimony_expense",
+  "salt_refund_income",
+  "charitable_cash_donations",
+  "charitable_non_cash_donations",
+  "real_estate_taxes",
+  "home_mortgage_interest",
+  "investment_interest_expense",
+  "investment_income_elected_form_4952",
+  "student_loan_interest",
+  "educator_expense",
+  "qualified_tuition_expenses",
+  "casualty_loss",
+  "unreimbursed_business_employee_expenses",
+  "traditional_ira_contributions_desired",
+  "self_employed_pension_contributions_desired",
+  "rental_income",
+  "estate_income",
+  "farm_income",
+  "farm_operations_income",
+  "farm_rent_income",
+  "miscellaneous_income",
+  "partnership_income",
+  "s_corp_income",
+  "partnership_self_employment_net_earnings",
+  "estate_income_would_be_qualified",
+  "farm_operations_income_would_be_qualified",
+  "farm_rent_income_would_be_qualified",
+  "partnership_s_corp_income_would_be_qualified",
+  "rental_income_would_be_qualified",
+  "self_employment_income_would_be_qualified",
+  "sstb_self_employment_income_would_be_qualified",
+  "business_is_sstb",
+  "qualified_bdc_income",
+  "qualified_reit_and_ptp_income",
+  "sstb_self_employment_income_before_lsr",
+  "sstb_unadjusted_basis_qualified_property",
+  "sstb_w2_wages_from_qualified_business",
+  "unadjusted_basis_qualified_property",
+  "w2_wages_from_qualified_business",
+  "domestic_production_ald",
+  "unrecaptured_section_1250_gain",
+  "health_savings_account_ald"
+ ],
+ "root_commit": "fef2cb56a4ca24d74e217a0cbe4abab7079da723",
+ "rows": [
+  {
+   "entity": "person",
+   "limitations": "Observed/topcoded source age, not an inferred exact age above a topcode. Target-year aging and comparison policy are separate.",
+   "mapping": "ASEC A_AGE normalized to observed common age without advancing cohort; ACS AGEP identity; selected/stacked source values retained through cloning.",
+   "name": "age",
+   "native_refs": [
+    "survey_population_preparation.py:1101",
+    "survey_observed_age.py:1",
+    "operator_boundary.py:130"
+   ],
+   "reuse_refs": [],
+   "status": "declared_source"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E03500 \u2192 alimony_expense; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "alimony_expense",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E00800 \u2192 alimony_income; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "alimony_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "attends_eligible_educational_institution_for_american_opportunity_credit",
+   "native_refs": [],
+   "reuse_refs": [
+    "education_inputs.py:66",
+    "education_inputs.py:124",
+    "education_inputs.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "household",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "auto_loan_balance",
+   "native_refs": [],
+   "reuse_refs": [
+    "scf_auto_loans.py:95"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "household",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "auto_loan_interest",
+   "native_refs": [],
+   "reuse_refs": [
+    "scf_auto_loans.py:95"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "bank_account_assets",
+   "native_refs": [],
+   "reuse_refs": [
+    "scf_wealth.py:184",
+    "scf_wealth.py:1067"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "bond_assets",
+   "native_refs": [],
+   "reuse_refs": [
+    "scf_wealth.py:184",
+    "scf_wealth.py:1067"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "business_is_sstb",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E20500 \u2192 casualty_loss; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "casualty_loss",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E19800 \u2192 charitable_cash_donations; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "charitable_cash_donations",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E20100 \u2192 charitable_non_cash_donations; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "charitable_non_cash_donations",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "child_support_expense",
+   "native_refs": [],
+   "reuse_refs": [
+    "current_asec_child_support_source.py:1",
+    "child_support.py:85",
+    "child_support.py:186",
+    "child_support.py:492"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "child_support_received",
+   "native_refs": [],
+   "reuse_refs": [
+    "current_asec_child_support_source.py:1",
+    "child_support.py:85",
+    "child_support.py:186",
+    "child_support.py:492"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "household",
+   "limitations": "Atomic support provenance/configuration must be admitted. Assigned geography is modeled, not an observed household location; no actual/CD coverage inspected.",
+   "mapping": "After complete initial clones, assign census_block_geoid under observed state/PUMA constraints; derive congressional_district_geoid from exact support layer (CD119 official tabulation).",
+   "name": "congressional_district_geoid",
+   "native_refs": [
+    "survey_atomic_geography.py:399",
+    "atomic_block_support.py:207",
+    "atomic_block_support.py:238"
+   ],
+   "reuse_refs": [],
+   "status": "declared_atomic_geography"
+  },
+  {
+   "entity": "household",
+   "limitations": "Atomic support provenance/configuration must be admitted. Assigned geography is modeled, not an observed household location; no actual/CD coverage inspected.",
+   "mapping": "After complete initial clones, assign census_block_geoid under observed state/PUMA constraints; derive county_fips from exact support layer (CD119 official tabulation).",
+   "name": "county_fips",
+   "native_refs": [
+    "survey_atomic_geography.py:399",
+    "atomic_block_support.py:207",
+    "atomic_block_support.py:238"
+   ],
+   "reuse_refs": [],
+   "status": "declared_atomic_geography"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "cps_race",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "detailed_occupation_recode",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "disability_benefits",
+   "native_refs": [],
+   "reuse_refs": [
+    "disability_benefits.py:1"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "tax_unit",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E03240 \u2192 domestic_production_ald; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "domestic_production_ald",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "educational_assistance",
+   "native_refs": [],
+   "reuse_refs": [
+    "education_inputs.py:66",
+    "education_inputs.py:124",
+    "education_inputs.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E03220 \u2192 educator_expense; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "educator_expense",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared current-survey and PUF paths, not populated evidence. Complete-property-tax configuration rebases four interest/dividend leaves after property reconciliation/child completion; modeled splits and CAP conditioning are explicit judgments.",
+   "mapping": "WSAL_VAL and ACS WAGP \u00d7 ADJINC/1e6 \u2192 source-aligned current-survey original values copied to both clones; PUF55 may then rewrite clone one with its donor-derived amount.",
+   "name": "employment_income_before_lsr",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49",
+    "current_survey_predictors.py:29",
+    "current_survey_predictors.py:407",
+    "current_survey_predictors.py:610",
+    "graph_current_survey_predictors.py:221",
+    "graph_property_tax_leaves.py:46",
+    "graph_property_tax_leaves.py:106"
+   ],
+   "reuse_refs": [],
+   "status": "declared_financial_and_puf55"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF E26390 \u2212 E26400 \u2192 canonical donor \u2192 PUF55 clone-one attachment.",
+   "name": "estate_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "estate_income_would_be_qualified",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: T27800 \u2192 farm_income; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "farm_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E02100 \u2192 farm_operations_income; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "farm_operations_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "farm_operations_income_would_be_qualified",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E27200 \u2192 farm_rent_income; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "farm_rent_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "farm_rent_income_would_be_qualified",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "tax_unit",
+   "limitations": "PUF55 excludes these detailed fields; home_mortgage_interest is a separate PUF person input. Need independent SCF detail owner/consumer mapping, not aliasing aggregate interest; no standalone native SCF mortgage owner was found in this source.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "first_home_mortgage_balance",
+   "native_refs": [],
+   "reuse_refs": [
+    "full_puf_enrichment.py:50",
+    "puf_support.py:357"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "tax_unit",
+   "limitations": "PUF55 excludes these detailed fields; home_mortgage_interest is a separate PUF person input. Need independent SCF detail owner/consumer mapping, not aliasing aggregate interest; no standalone native SCF mortgage owner was found in this source.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "first_home_mortgage_interest",
+   "native_refs": [],
+   "reuse_refs": [
+    "full_puf_enrichment.py:50",
+    "puf_support.py:357"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "tax_unit",
+   "limitations": "PUF55 excludes these detailed fields; home_mortgage_interest is a separate PUF person input. Need independent SCF detail owner/consumer mapping, not aliasing aggregate interest; no standalone native SCF mortgage owner was found in this source.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "first_home_mortgage_origination_year",
+   "native_refs": [],
+   "reuse_refs": [
+    "full_puf_enrichment.py:50",
+    "puf_support.py:357"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "fsla_overtime_premium",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "has_american_opportunity_credit_1098_t_or_exception",
+   "native_refs": [],
+   "reuse_refs": [
+    "education_inputs.py:66",
+    "education_inputs.py:124",
+    "education_inputs.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "has_american_opportunity_credit_institution_ein",
+   "native_refs": [],
+   "reuse_refs": [
+    "education_inputs.py:66",
+    "education_inputs.py:124",
+    "education_inputs.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Interview-date coverage is not annual statutory eligibility/take-up. ACS narrower program/split remains unknown by design; no false/zero default is admissible.",
+   "mapping": "ASEC NOW_CHAMPVA; ACS no identified equivalent narrower observation; intentionally unknown \u2192 nullable Boolean + __known + __source_status, copied to clones.",
+   "name": "has_champva_health_coverage_at_interview",
+   "native_refs": [
+    "current_survey_health_coverage.py:35",
+    "graph_current_survey_health.py:95",
+    "graph_us_survey_enrichment.py:385"
+   ],
+   "reuse_refs": [],
+   "status": "declared_health_partial"
+  },
+  {
+   "entity": "person",
+   "limitations": "Interview-date coverage is not annual statutory eligibility/take-up. Literal recode declaration only; no populated or applicable-data claim.",
+   "mapping": "ASEC NOW_GRP; ACS HINS1 \u2192 nullable Boolean + __known + __source_status, copied to clones.",
+   "name": "has_esi",
+   "native_refs": [
+    "current_survey_health_coverage.py:35",
+    "graph_current_survey_health.py:95",
+    "graph_us_survey_enrichment.py:385"
+   ],
+   "reuse_refs": [],
+   "status": "declared_health"
+  },
+  {
+   "entity": "person",
+   "limitations": "Interview-date coverage is not annual statutory eligibility/take-up. Literal recode declaration only; no populated or applicable-data claim.",
+   "mapping": "ASEC NOW_IHSFLG; ACS HINS7 \u2192 nullable Boolean + __known + __source_status, copied to clones.",
+   "name": "has_indian_health_service_coverage_at_interview",
+   "native_refs": [
+    "current_survey_health_coverage.py:35",
+    "graph_current_survey_health.py:95",
+    "graph_us_survey_enrichment.py:385"
+   ],
+   "reuse_refs": [],
+   "status": "declared_health"
+  },
+  {
+   "entity": "person",
+   "limitations": "Interview-date coverage is not annual statutory eligibility/take-up. ACS narrower program/split remains unknown by design; no false/zero default is admissible.",
+   "mapping": "ASEC NOW_MRK; ACS no identified equivalent narrower observation; intentionally unknown \u2192 nullable Boolean + __known + __source_status, copied to clones.",
+   "name": "has_marketplace_health_coverage_at_interview",
+   "native_refs": [
+    "current_survey_health_coverage.py:35",
+    "graph_current_survey_health.py:95",
+    "graph_us_survey_enrichment.py:385"
+   ],
+   "reuse_refs": [],
+   "status": "declared_health_partial"
+  },
+  {
+   "entity": "person",
+   "limitations": "Interview-date coverage is not annual statutory eligibility/take-up. ACS narrower program/split remains unknown by design; no false/zero default is admissible.",
+   "mapping": "ASEC NOW_CAID; ACS no identified equivalent narrower observation; intentionally unknown \u2192 nullable Boolean + __known + __source_status, copied to clones.",
+   "name": "has_medicaid_health_coverage_at_interview",
+   "native_refs": [
+    "current_survey_health_coverage.py:35",
+    "graph_current_survey_health.py:95",
+    "graph_us_survey_enrichment.py:385"
+   ],
+   "reuse_refs": [],
+   "status": "declared_health_partial"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "has_never_worked",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Interview-date coverage is not annual statutory eligibility/take-up. ACS narrower program/split remains unknown by design; no false/zero default is admissible.",
+   "mapping": "ASEC NOW_NONM; ACS no identified equivalent narrower observation; intentionally unknown \u2192 nullable Boolean + __known + __source_status, copied to clones.",
+   "name": "has_non_marketplace_direct_purchase_health_coverage_at_interview",
+   "native_refs": [
+    "current_survey_health_coverage.py:35",
+    "graph_current_survey_health.py:95",
+    "graph_us_survey_enrichment.py:385"
+   ],
+   "reuse_refs": [],
+   "status": "declared_health_partial"
+  },
+  {
+   "entity": "person",
+   "limitations": "Interview-date coverage is not annual statutory eligibility/take-up. ACS narrower program/split remains unknown by design; no false/zero default is admissible.",
+   "mapping": "ASEC NOW_OTHMT; ACS no identified equivalent narrower observation; intentionally unknown \u2192 nullable Boolean + __known + __source_status, copied to clones.",
+   "name": "has_other_means_tested_health_coverage_at_interview",
+   "native_refs": [
+    "current_survey_health_coverage.py:35",
+    "graph_current_survey_health.py:95",
+    "graph_us_survey_enrichment.py:385"
+   ],
+   "reuse_refs": [],
+   "status": "declared_health_partial"
+  },
+  {
+   "entity": "person",
+   "limitations": "Interview-date coverage is not annual statutory eligibility/take-up. ACS narrower program/split remains unknown by design; no false/zero default is admissible.",
+   "mapping": "ASEC NOW_MIL; ACS no identified equivalent narrower observation; intentionally unknown \u2192 nullable Boolean + __known + __source_status, copied to clones.",
+   "name": "has_tricare_health_coverage_at_interview",
+   "native_refs": [
+    "current_survey_health_coverage.py:35",
+    "graph_current_survey_health.py:95",
+    "graph_us_survey_enrichment.py:385"
+   ],
+   "reuse_refs": [],
+   "status": "declared_health_partial"
+  },
+  {
+   "entity": "person",
+   "limitations": "Interview-date coverage is not annual statutory eligibility/take-up. ACS narrower program/split remains unknown by design; no false/zero default is admissible.",
+   "mapping": "ASEC NOW_VACARE; ACS no identified equivalent narrower observation; intentionally unknown \u2192 nullable Boolean + __known + __source_status, copied to clones.",
+   "name": "has_va_health_coverage_at_interview",
+   "native_refs": [
+    "current_survey_health_coverage.py:35",
+    "graph_current_survey_health.py:95",
+    "graph_us_survey_enrichment.py:385"
+   ],
+   "reuse_refs": [],
+   "status": "declared_health_partial"
+  },
+  {
+   "entity": "person",
+   "limitations": "Current PHIP_VAL attachment owns only health_insurance_premiums_without_medicare_part_b. Do not alias the total/other-premium names or infer them from interview coverage.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "health_insurance_premiums",
+   "native_refs": [],
+   "reuse_refs": [
+    "other_health_insurance.py:99",
+    "other_health_insurance.py:124"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Requires selected unemployment/health_costs group (both are default groups), authentic donor/status/validity and original design weights. Definition/universe and signal gates remain; not populated evidence.",
+   "mapping": "PHIP_VAL \u2192 source-qualified current ASEC 2024 amount; conditional ASEC\u2192ACS draw; align original person then copy to both retained clones.",
+   "name": "health_insurance_premiums_without_medicare_part_b",
+   "native_refs": [
+    "current_survey_amounts.py:38",
+    "current_survey_amounts.py:394",
+    "graph_us_survey_enrichment.py:232",
+    "graph_us_survey_enrichment.py:1126"
+   ],
+   "reuse_refs": [],
+   "status": "declared_enrichment_amount"
+  },
+  {
+   "entity": "tax_unit",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E03290 \u2192 health_savings_account_ald; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "health_savings_account_ald",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "home_mortgage_interest",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "hourly_wage",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "hours_worked_last_week",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "household",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "household_vehicles_owned",
+   "native_refs": [],
+   "reuse_refs": [
+    "sipp_vehicles.py:131",
+    "sipp_vehicles.py:894"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "household",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "household_vehicles_value",
+   "native_refs": [],
+   "reuse_refs": [
+    "sipp_vehicles.py:131",
+    "sipp_vehicles.py:894"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "household",
+   "limitations": "Not a missing ordinary Frame column. This is no calibrated/release-weight claim; private calibration bridge and retained-frame export contract are separate.",
+   "mapping": "Original DESIGN anchors \u2192 common-support allocation \u2192 two-clone split; stored in Frame typed household Weights. Native projection retains typed weights; consumer Dataset encodes household_weight.",
+   "name": "household_weight",
+   "native_refs": [
+    "asec_2024_native_population.py:1",
+    "graph_survey_population.py:835",
+    "native_survey_handoff.py:105",
+    "native_survey_handoff.py:655"
+   ],
+   "reuse_refs": [],
+   "status": "typed_weight"
+  },
+  {
+   "entity": "person",
+   "limitations": "Not current root source and not treated as accepted/populated. Original observed citizenship/immigration evidence and modeled status pairs are distinct; clone continuation proof is assessed separately.",
+   "mapping": "Proposed abc575: genuine original immigration owner supplies final realized status/SSN pair; original_pairs artifact plus attach node broadcasts same pair to both retained clones without redraw. Optional enrichment integration is present in that proposal.",
+   "name": "immigration_status_str",
+   "native_refs": [
+    "@abc575:graph_current_survey_immigration.py:183",
+    "@abc575:graph_current_survey_immigration.py:235",
+    "@abc575:graph_us_survey_enrichment.py:1"
+   ],
+   "reuse_refs": [
+    "current_survey_immigration_transfer.py:1"
+   ],
+   "status": "proposed_clone_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E58990 \u2192 investment_income_elected_form_4952; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "investment_income_elected_form_4952",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "investment_interest_expense",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Current graph owns survey_* difficulty and differently-windowed student observations; no statutory disability/blindness or annual college-student equivalence is claimed. Missing consumer mapping, not missing raw observations.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_blind",
+   "native_refs": [],
+   "reuse_refs": [
+    "current_survey_person_status.py:1",
+    "graph_current_survey_person_status.py:69"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_computer_scientist",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Current graph owns survey_* difficulty and differently-windowed student observations; no statutory disability/blindness or annual college-student equivalence is claimed. Missing consumer mapping, not missing raw observations.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_disabled",
+   "native_refs": [],
+   "reuse_refs": [
+    "current_survey_person_status.py:1",
+    "graph_current_survey_person_status.py:69"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_enrolled_at_least_half_time_for_american_opportunity_credit",
+   "native_refs": [],
+   "reuse_refs": [
+    "education_inputs.py:66",
+    "education_inputs.py:124",
+    "education_inputs.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_executive_administrative_professional",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_farmer_fisher",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Need exact common-survey demographic attachment or authoritative preserved-source proof for both arms; auxiliary feature use does not establish final consumer leaf coverage.",
+   "mapping": "ACS SEX == 2 is a native source leaf; ASEC literal demographic qualifier produces is_female. Optional financial conditioning uses survey_predictor_is_female internally; financial attachment does not own the canonical is_female leaf.",
+   "name": "is_female",
+   "native_refs": [
+    "operator_boundary.py:131",
+    "current_asec_demographics.py:315",
+    "current_survey_predictors.py:82",
+    "current_survey_predictors.py:125",
+    "graph_current_survey_predictors.py:228"
+   ],
+   "reuse_refs": [],
+   "status": "source_projection_only"
+  },
+  {
+   "entity": "person",
+   "limitations": "Current graph owns survey_* difficulty and differently-windowed student observations; no statutory disability/blindness or annual college-student equivalence is claimed. Missing consumer mapping, not missing raw observations.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_full_time_college_student",
+   "native_refs": [],
+   "reuse_refs": [
+    "current_survey_person_status.py:1",
+    "graph_current_survey_person_status.py:69"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_hispanic",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Requires household-role completion option. Survey reference person is not independently observed tax filing head, spouse, or benefit eligibility.",
+   "mapping": "Literal ASEC A_EXPRRP and ACS RELSHIPP \u2192 nullable canonical reference-person flag on completion receiving version; prepared ASEC flag renamed to legacy_prepared_is_household_head.",
+   "name": "is_household_head",
+   "native_refs": [
+    "survey_population_preparation.py:1105",
+    "current_survey_household_roles.py:85",
+    "graph_current_survey_household_roles.py:14",
+    "graph_current_survey_household_roles.py:242"
+   ],
+   "reuse_refs": [],
+   "status": "declared_roles"
+  },
+  {
+   "entity": "person",
+   "limitations": "Self-care difficulty is not automatically statutory incapacity. Need source-qualified person expense/eligibility mapping; legacy wrapper does not establish native ownership.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_incapable_of_self_care",
+   "native_refs": [],
+   "reuse_refs": [
+    "adult_care.py:95",
+    "adult_care.py:245",
+    "adult_care.py:520"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_military",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_paid_hourly",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_pregnant",
+   "native_refs": [],
+   "reuse_refs": [
+    "pregnancy.py:69",
+    "pregnancy.py:292",
+    "pregnancy.py:347"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_pursuing_credential_for_american_opportunity_credit",
+   "native_refs": [],
+   "reuse_refs": [
+    "education_inputs.py:66",
+    "education_inputs.py:124",
+    "education_inputs.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_self_employed",
+   "native_refs": [],
+   "reuse_refs": [
+    "demographics.py:1",
+    "relationship_inputs.py:61",
+    "relationship_inputs.py:129"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_separated",
+   "native_refs": [],
+   "reuse_refs": [
+    "demographics.py:1",
+    "relationship_inputs.py:61",
+    "relationship_inputs.py:129"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_surviving_spouse",
+   "native_refs": [],
+   "reuse_refs": [
+    "demographics.py:1",
+    "relationship_inputs.py:61",
+    "relationship_inputs.py:129"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "No current native ORG attachment. Usual weekly hours is not hours last week; retain the exact consumer spelling fsla_overtime_premium. Published occupation/status universes and wage model require separate source qualification.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "is_union_member_or_covered",
+   "native_refs": [],
+   "reuse_refs": [
+    "org_wages.py:1",
+    "org_wages.py:124",
+    "org_wages.py:936",
+    "hours_worked.py:186"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "PUF55 has taxable pension and IRA leaves on clone one, not these additional distribution types. Source detail/basis qualification exists separately; native completion/attachment for full original support is absent.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "keogh_distributions",
+   "native_refs": [],
+   "reuse_refs": [
+    "current_asec_retirement_detail_source.py:1",
+    "current_asec_retirement_basis.py:1",
+    "retirement_distributions.py:87",
+    "retirement_distributions.py:298",
+    "cps_carried_current.py:306"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared current-survey and PUF paths, not populated evidence. Complete-property-tax configuration rebases four interest/dividend leaves after property reconciliation/child completion; modeled splits and CAP conditioning are explicit judgments.",
+   "mapping": "CAP_VAL modeled ACS draw and maintained short/long split \u2192 source-aligned current-survey original values copied to both clones; PUF55 may then rewrite clone one with its donor-derived amount.",
+   "name": "long_term_capital_gains_before_response",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49",
+    "current_survey_predictors.py:29",
+    "current_survey_predictors.py:407",
+    "current_survey_predictors.py:610",
+    "graph_current_survey_predictors.py:221",
+    "graph_property_tax_leaves.py:46",
+    "graph_property_tax_leaves.py:106"
+   ],
+   "reuse_refs": [],
+   "status": "declared_financial_and_puf55"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E24518 \u2192 long_term_capital_gains_on_collectibles; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "long_term_capital_gains_on_collectibles",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Survey disability observations and receipt are not statutory SSI criteria; existing helper is a reusable model, not source authority.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "meets_ssi_disability_criteria",
+   "native_refs": [],
+   "reuse_refs": [
+    "ssi_disability_criteria.py:1096"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E01200 \u2192 miscellaneous_income; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "miscellaneous_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "household",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "net_worth",
+   "native_refs": [],
+   "reuse_refs": [
+    "scf_wealth.py:184",
+    "scf_wealth.py:1067"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared current-survey and PUF paths, not populated evidence. Complete-property-tax configuration rebases four interest/dividend leaves after property reconciliation/child completion; modeled splits and CAP conditioning are explicit judgments.",
+   "mapping": "Current property-dividend component minus qualified share \u2192 source-aligned current-survey original values copied to both clones; PUF55 may then rewrite clone one with its donor-derived amount.",
+   "name": "non_qualified_dividend_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49",
+    "current_survey_predictors.py:29",
+    "current_survey_predictors.py:407",
+    "current_survey_predictors.py:610",
+    "graph_current_survey_predictors.py:221",
+    "graph_property_tax_leaves.py:46",
+    "graph_property_tax_leaves.py:106"
+   ],
+   "reuse_refs": [],
+   "status": "declared_financial_and_puf55"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E01100 \u2192 non_sch_d_capital_gains; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "non_sch_d_capital_gains",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Current PHIP_VAL attachment owns only health_insurance_premiums_without_medicare_part_b. Do not alias the total/other-premium names or infer them from interview coverage.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "other_health_insurance_premiums",
+   "native_refs": [],
+   "reuse_refs": [
+    "other_health_insurance.py:99",
+    "other_health_insurance.py:124"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Requires selected unemployment/health_costs group (both are default groups), authentic donor/status/validity and original design weights. Definition/universe and signal gates remain; not populated evidence.",
+   "mapping": "PMED_VAL \u2192 source-qualified current ASEC 2024 amount; conditional ASEC\u2192ACS draw; align original person then copy to both retained clones.",
+   "name": "other_medical_expenses",
+   "native_refs": [
+    "current_survey_amounts.py:38",
+    "current_survey_amounts.py:394",
+    "graph_us_survey_enrichment.py:232",
+    "graph_us_survey_enrichment.py:1126"
+   ],
+   "reuse_refs": [],
+   "status": "declared_enrichment_amount"
+  },
+  {
+   "entity": "person",
+   "limitations": "Requires selected unemployment/health_costs group (both are default groups), authentic donor/status/validity and original design weights. Definition/universe and signal gates remain; not populated evidence.",
+   "mapping": "POTC_VAL \u2192 source-qualified current ASEC 2024 amount; conditional ASEC\u2192ACS draw; align original person then copy to both retained clones.",
+   "name": "over_the_counter_health_expenses",
+   "native_refs": [
+    "current_survey_amounts.py:38",
+    "current_survey_amounts.py:394",
+    "graph_us_survey_enrichment.py:232",
+    "graph_us_survey_enrichment.py:1126"
+   ],
+   "reuse_refs": [],
+   "status": "declared_enrichment_amount"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "own_children_in_household",
+   "native_refs": [],
+   "reuse_refs": [
+    "demographics.py:1",
+    "relationship_inputs.py:61",
+    "relationship_inputs.py:129"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "partnership_s_corp_income_would_be_qualified",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Self-care difficulty is not automatically statutory incapacity. Need source-qualified person expense/eligibility mapping; legacy wrapper does not establish native ownership.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "pre_subsidy_care_expenses",
+   "native_refs": [],
+   "reuse_refs": [
+    "adult_care.py:95",
+    "adult_care.py:245",
+    "adult_care.py:520"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "ACS monthly contract/gross rent and ASEC housing participation are not a complete annual person-grain pre_subsidy_rent mapping. Survey-item instruction and allocation judgment must be retained.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "pre_subsidy_rent",
+   "native_refs": [],
+   "reuse_refs": [
+    "operator_boundary.py:170",
+    "housing_inputs.py:115"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "qualified_bdc_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared current-survey and PUF paths, not populated evidence. Complete-property-tax configuration rebases four interest/dividend leaves after property reconciliation/child completion; modeled splits and CAP conditioning are explicit judgments.",
+   "mapping": "Current property-dividend component \u00d7 maintained qualified fraction \u2192 source-aligned current-survey original values copied to both clones; PUF55 may then rewrite clone one with its donor-derived amount.",
+   "name": "qualified_dividend_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49",
+    "current_survey_predictors.py:29",
+    "current_survey_predictors.py:407",
+    "current_survey_predictors.py:610",
+    "graph_current_survey_predictors.py:221",
+    "graph_property_tax_leaves.py:46",
+    "graph_property_tax_leaves.py:106"
+   ],
+   "reuse_refs": [],
+   "status": "declared_financial_and_puf55"
+  },
+  {
+   "entity": "household",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "qualified_passenger_vehicle_loan_interest",
+   "native_refs": [],
+   "reuse_refs": [
+    "scf_auto_loans.py:95"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "qualified_reit_and_ptp_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "qualified_tuition_expenses",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E18500 \u2192 real_estate_taxes; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "real_estate_taxes",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "spm_unit",
+   "limitations": "Original interview observations remain nullable. Completed participation uses explicit model-family owner exclusion A5, not observed nonreceipt; country owns award amounts. Not rent, tenure completion, or universal uptake evidence.",
+   "mapping": "Source-qualified ASEC HPUBLIC/HLORENT and household tenure/universe; maintained participation model for unresolved recipients; map household result to retained SPM units.",
+   "name": "receives_housing_assistance",
+   "native_refs": [
+    "current_survey_housing.py:43",
+    "current_survey_housing.py:62",
+    "graph_current_survey_housing.py:113",
+    "graph_us_survey_enrichment.py:387"
+   ],
+   "reuse_refs": [],
+   "status": "declared_housing"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF E25850 \u2212 E25860 \u2192 canonical donor \u2192 PUF55 clone-one attachment; broad survey property receipts are not rental income.",
+   "name": "rental_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "rental_income_would_be_qualified",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Desired contributions are explicit persistable inputs, not realized amounts/formulas. PUF desired IRA/Keogh paths do not supply these three leaves.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "roth_401k_contributions_desired",
+   "native_refs": [],
+   "reuse_refs": [
+    "retirement_contributions.py:66",
+    "retirement_contributions.py:196",
+    "retirement_contributions.py:531"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Desired contributions are explicit persistable inputs, not realized amounts/formulas. PUF desired IRA/Keogh paths do not supply these three leaves.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "roth_ira_contributions_desired",
+   "native_refs": [],
+   "reuse_refs": [
+    "retirement_contributions.py:66",
+    "retirement_contributions.py:196",
+    "retirement_contributions.py:531"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E00700 \u2192 salt_refund_income; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "salt_refund_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Maintained legacy ACS transfer declares deterministic derivation; native CAP/PUF55 leaf declarations do not include this separate memo field.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "schedule_d_capital_gain_distributions",
+   "native_refs": [],
+   "reuse_refs": [
+    "operator_column_contracts.py:59",
+    "acs_transfer.py:1",
+    "multispine_pool.py:1237"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "tax_unit",
+   "limitations": "Tax-unit plan selection input; no native owner found. Do not replace with a default ratio or infer from interview marketplace coverage.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "selected_marketplace_plan_benchmark_ratio",
+   "native_refs": [],
+   "reuse_refs": [
+    "l0_refit_export.py:153",
+    "fiscal_targets.py:508"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "self_employed_pension_contributions_desired",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared current-survey and PUF paths, not populated evidence. Complete-property-tax configuration rebases four interest/dividend leaves after property reconciliation/child completion; modeled splits and CAP conditioning are explicit judgments.",
+   "mapping": "SEMP_VAL and ACS SEMP \u00d7 ADJINC/1e6 \u2192 source-aligned current-survey original values copied to both clones; PUF55 may then rewrite clone one with its donor-derived amount.",
+   "name": "self_employment_income_before_lsr",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49",
+    "current_survey_predictors.py:29",
+    "current_survey_predictors.py:407",
+    "current_survey_predictors.py:610",
+    "graph_current_survey_predictors.py:221",
+    "graph_property_tax_leaves.py:46",
+    "graph_property_tax_leaves.py:106"
+   ],
+   "reuse_refs": [],
+   "status": "declared_financial_and_puf55"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "self_employment_income_would_be_qualified",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared current-survey and PUF paths, not populated evidence. Complete-property-tax configuration rebases four interest/dividend leaves after property reconciliation/child completion; modeled splits and CAP conditioning are explicit judgments.",
+   "mapping": "CAP_VAL modeled ACS draw and maintained short/long split \u2192 source-aligned current-survey original values copied to both clones; PUF55 may then rewrite clone one with its donor-derived amount.",
+   "name": "short_term_capital_gains",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49",
+    "current_survey_predictors.py:29",
+    "current_survey_predictors.py:407",
+    "current_survey_predictors.py:610",
+    "graph_current_survey_predictors.py:221",
+    "graph_property_tax_leaves.py:46",
+    "graph_property_tax_leaves.py:106"
+   ],
+   "reuse_refs": [],
+   "status": "declared_financial_and_puf55"
+  },
+  {
+   "entity": "person",
+   "limitations": "Four components are expressly excluded from PUF55. Multiple reasons, codes7/8, positive ACS totals and under15 reporting scope remain unresolved; report-record amounts may combine family payments and do not prove individual beneficiary incidence. No age fallback, equal shares, or default-zero completion.",
+   "mapping": "ASEC SS_VAL + SS_YN + RESNSS1/2 \u2192 unique reason component allocation or explicit unknown; ACS SSP \u00d7 ADJINC \u2192 total, zero components only for eligible known-zero totals. PUF recipient projection fans reports/masks to both clone arms; current graph does not attach canonical component cells.",
+   "name": "social_security_dependents",
+   "native_refs": [
+    "survey_social_security.py:35",
+    "survey_social_security.py:87",
+    "current_social_security_source.py:185",
+    "current_social_security_source.py:304",
+    "puf55_survey_recipients.py:1",
+    "puf55_survey_recipients.py:474",
+    "graph_puf55_survey_recipients.py:137",
+    "full_puf_enrichment.py:45"
+   ],
+   "reuse_refs": [],
+   "status": "qualified_partial_projection_no_attachment"
+  },
+  {
+   "entity": "person",
+   "limitations": "Four components are expressly excluded from PUF55. Multiple reasons, codes7/8, positive ACS totals and under15 reporting scope remain unresolved; report-record amounts may combine family payments and do not prove individual beneficiary incidence. No age fallback, equal shares, or default-zero completion.",
+   "mapping": "ASEC SS_VAL + SS_YN + RESNSS1/2 \u2192 unique reason component allocation or explicit unknown; ACS SSP \u00d7 ADJINC \u2192 total, zero components only for eligible known-zero totals. PUF recipient projection fans reports/masks to both clone arms; current graph does not attach canonical component cells.",
+   "name": "social_security_disability",
+   "native_refs": [
+    "survey_social_security.py:35",
+    "survey_social_security.py:87",
+    "current_social_security_source.py:185",
+    "current_social_security_source.py:304",
+    "puf55_survey_recipients.py:1",
+    "puf55_survey_recipients.py:474",
+    "graph_puf55_survey_recipients.py:137",
+    "full_puf_enrichment.py:45"
+   ],
+   "reuse_refs": [],
+   "status": "qualified_partial_projection_no_attachment"
+  },
+  {
+   "entity": "person",
+   "limitations": "Four components are expressly excluded from PUF55. Multiple reasons, codes7/8, positive ACS totals and under15 reporting scope remain unresolved; report-record amounts may combine family payments and do not prove individual beneficiary incidence. No age fallback, equal shares, or default-zero completion.",
+   "mapping": "ASEC SS_VAL + SS_YN + RESNSS1/2 \u2192 unique reason component allocation or explicit unknown; ACS SSP \u00d7 ADJINC \u2192 total, zero components only for eligible known-zero totals. PUF recipient projection fans reports/masks to both clone arms; current graph does not attach canonical component cells.",
+   "name": "social_security_retirement",
+   "native_refs": [
+    "survey_social_security.py:35",
+    "survey_social_security.py:87",
+    "current_social_security_source.py:185",
+    "current_social_security_source.py:304",
+    "puf55_survey_recipients.py:1",
+    "puf55_survey_recipients.py:474",
+    "graph_puf55_survey_recipients.py:137",
+    "full_puf_enrichment.py:45"
+   ],
+   "reuse_refs": [],
+   "status": "qualified_partial_projection_no_attachment"
+  },
+  {
+   "entity": "person",
+   "limitations": "Four components are expressly excluded from PUF55. Multiple reasons, codes7/8, positive ACS totals and under15 reporting scope remain unresolved; report-record amounts may combine family payments and do not prove individual beneficiary incidence. No age fallback, equal shares, or default-zero completion.",
+   "mapping": "ASEC SS_VAL + SS_YN + RESNSS1/2 \u2192 unique reason component allocation or explicit unknown; ACS SSP \u00d7 ADJINC \u2192 total, zero components only for eligible known-zero totals. PUF recipient projection fans reports/masks to both clone arms; current graph does not attach canonical component cells.",
+   "name": "social_security_survivors",
+   "native_refs": [
+    "survey_social_security.py:35",
+    "survey_social_security.py:87",
+    "current_social_security_source.py:185",
+    "current_social_security_source.py:304",
+    "puf55_survey_recipients.py:1",
+    "puf55_survey_recipients.py:474",
+    "graph_puf55_survey_recipients.py:137",
+    "full_puf_enrichment.py:45"
+   ],
+   "reuse_refs": [],
+   "status": "qualified_partial_projection_no_attachment"
+  },
+  {
+   "entity": "spm_unit",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "spm_unit_energy_subsidy",
+   "native_refs": [],
+   "reuse_refs": [
+    "energy_subsidy.py:75",
+    "energy_subsidy.py:169",
+    "energy_subsidy.py:486"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "spm_unit",
+   "limitations": "SPM_CHILDCAREXPNS/source childcare receipt differs from a complete SPM-unit completion and new SPM universe assignment; native SPM role projection does not produce expenses.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "spm_unit_pre_subsidy_childcare_expenses",
+   "native_refs": [],
+   "reuse_refs": [
+    "childcare.py:1"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "spm_unit",
+   "limitations": "ACS declaration alone does not establish a complete ASEC+ACS consumer mapping or SPM entity applicability; inherited ASEC values remain unqualified in this audit.",
+   "mapping": "ACS TEN \u2192 native enum recode (SPM version through SPM membership). Current housing owner reads ASEC H_TENURE/ACS TEN but owns assistance outputs, not these canonical tenure leaves.",
+   "name": "spm_unit_tenure_type",
+   "native_refs": [
+    "operator_boundary.py:163",
+    "current_survey_housing.py:43",
+    "current_survey_housing.py:62"
+   ],
+   "reuse_refs": [],
+   "status": "source_projection_only"
+  },
+  {
+   "entity": "person",
+   "limitations": "Not current root source and not treated as accepted/populated. Original observed citizenship/immigration evidence and modeled status pairs are distinct; clone continuation proof is assessed separately.",
+   "mapping": "Proposed abc575: genuine original immigration owner supplies final realized status/SSN pair; original_pairs artifact plus attach node broadcasts same pair to both retained clones without redraw. Optional enrichment integration is present in that proposal.",
+   "name": "ssn_card_type",
+   "native_refs": [
+    "@abc575:graph_current_survey_immigration.py:183",
+    "@abc575:graph_current_survey_immigration.py:235",
+    "@abc575:graph_us_survey_enrichment.py:1"
+   ],
+   "reuse_refs": [
+    "current_survey_immigration_transfer.py:1"
+   ],
+   "status": "proposed_clone_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "sstb_self_employment_income_before_lsr",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "sstb_self_employment_income_would_be_qualified",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "sstb_unadjusted_basis_qualified_property",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "sstb_w2_wages_from_qualified_business",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "household",
+   "limitations": "Closed engine projection selects names and preserves values; it does not rename assigned_state_fips. Do not silently substitute an inherited legacy column. Source equality plus physical dtype and consumer enum/ID compatibility remain.",
+   "mapping": "Current source projection qualifies observed state; atomic derivation emits assigned_state_fips, not state_fips. Existing source state_fips may be carried; exact canonical consumer alias/equality needs a declared mapping.",
+   "name": "state_fips",
+   "native_refs": [
+    "current_survey_geography.py:99",
+    "current_survey_geography.py:167",
+    "atomic_block_support.py:238",
+    "native_survey_handoff.py:553"
+   ],
+   "reuse_refs": [],
+   "status": "source_or_alias_mapping_required"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "stock_assets",
+   "native_refs": [],
+   "reuse_refs": [
+    "scf_wealth.py:184",
+    "scf_wealth.py:1067"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E03210 \u2192 student_loan_interest; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "student_loan_interest",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "tax_unit",
+   "limitations": "Country input declarations do not supply data-source authority. Preserve program/entity-specific eligibility and take-up models; existing housing take-up only covers housing. No broad default-True/False completion.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "takes_up_aca_if_eligible",
+   "native_refs": [],
+   "reuse_refs": [
+    "operator_boundary.py:200",
+    "operator_boundary.py:213",
+    "operator_boundary.py:223",
+    "medicaid_take_up.py:103"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "tax_unit",
+   "limitations": "Country input declarations do not supply data-source authority. Preserve program/entity-specific eligibility and take-up models; existing housing take-up only covers housing. No broad default-True/False completion.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "takes_up_eitc",
+   "native_refs": [],
+   "reuse_refs": [
+    "operator_boundary.py:200",
+    "operator_boundary.py:213",
+    "operator_boundary.py:223",
+    "medicaid_take_up.py:103"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Country input declarations do not supply data-source authority. Preserve program/entity-specific eligibility and take-up models; existing housing take-up only covers housing. No broad default-True/False completion.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "takes_up_head_start_if_eligible",
+   "native_refs": [],
+   "reuse_refs": [
+    "operator_boundary.py:200",
+    "operator_boundary.py:213",
+    "operator_boundary.py:223",
+    "medicaid_take_up.py:103"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "spm_unit",
+   "limitations": "Original interview observations remain nullable. Completed participation uses explicit model-family owner exclusion A5, not observed nonreceipt; country owns award amounts. Not rent, tenure completion, or universal uptake evidence.",
+   "mapping": "Source-qualified ASEC HPUBLIC/HLORENT and household tenure/universe; maintained participation model for unresolved recipients; map household result to retained SPM units.",
+   "name": "takes_up_housing_assistance_if_eligible",
+   "native_refs": [
+    "current_survey_housing.py:43",
+    "current_survey_housing.py:62",
+    "graph_current_survey_housing.py:113",
+    "graph_us_survey_enrichment.py:387"
+   ],
+   "reuse_refs": [],
+   "status": "declared_housing"
+  },
+  {
+   "entity": "person",
+   "limitations": "Country input declarations do not supply data-source authority. Preserve program/entity-specific eligibility and take-up models; existing housing take-up only covers housing. No broad default-True/False completion.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "takes_up_medicaid_if_eligible",
+   "native_refs": [],
+   "reuse_refs": [
+    "operator_boundary.py:200",
+    "operator_boundary.py:213",
+    "operator_boundary.py:223",
+    "medicaid_take_up.py:103"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Country input declarations do not supply data-source authority. Preserve program/entity-specific eligibility and take-up models; existing housing take-up only covers housing. No broad default-True/False completion.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "takes_up_medicare_if_eligible",
+   "native_refs": [],
+   "reuse_refs": [
+    "operator_boundary.py:200",
+    "operator_boundary.py:213",
+    "operator_boundary.py:223",
+    "medicaid_take_up.py:103"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "spm_unit",
+   "limitations": "Country input declarations do not supply data-source authority. Preserve program/entity-specific eligibility and take-up models; existing housing take-up only covers housing. No broad default-True/False completion.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "takes_up_snap_if_eligible",
+   "native_refs": [],
+   "reuse_refs": [
+    "operator_boundary.py:200",
+    "operator_boundary.py:213",
+    "operator_boundary.py:223",
+    "medicaid_take_up.py:103"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Country input declarations do not supply data-source authority. Preserve program/entity-specific eligibility and take-up models; existing housing take-up only covers housing. No broad default-True/False completion.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "takes_up_ssi_if_eligible",
+   "native_refs": [],
+   "reuse_refs": [
+    "operator_boundary.py:200",
+    "operator_boundary.py:213",
+    "operator_boundary.py:223",
+    "medicaid_take_up.py:103"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "spm_unit",
+   "limitations": "Country input declarations do not supply data-source authority. Preserve program/entity-specific eligibility and take-up models; existing housing take-up only covers housing. No broad default-True/False completion.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "takes_up_tanf_if_eligible",
+   "native_refs": [],
+   "reuse_refs": [
+    "operator_boundary.py:200",
+    "operator_boundary.py:213",
+    "operator_boundary.py:223",
+    "medicaid_take_up.py:103"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Country input declarations do not supply data-source authority. Preserve program/entity-specific eligibility and take-up models; existing housing take-up only covers housing. No broad default-True/False completion.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "takes_up_wic_if_eligible",
+   "native_refs": [],
+   "reuse_refs": [
+    "operator_boundary.py:200",
+    "operator_boundary.py:213",
+    "operator_boundary.py:223",
+    "medicaid_take_up.py:103"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared current-survey and PUF paths, not populated evidence. Complete-property-tax configuration rebases four interest/dividend leaves after property reconciliation/child completion; modeled splits and CAP conditioning are explicit judgments.",
+   "mapping": "Current ordinary property-interest component minus taxable share \u2192 source-aligned current-survey original values copied to both clones; PUF55 may then rewrite clone one with its donor-derived amount.",
+   "name": "tax_exempt_interest_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49",
+    "current_survey_predictors.py:29",
+    "current_survey_predictors.py:407",
+    "current_survey_predictors.py:610",
+    "graph_current_survey_predictors.py:221",
+    "graph_property_tax_leaves.py:46",
+    "graph_property_tax_leaves.py:106"
+   ],
+   "reuse_refs": [],
+   "status": "declared_financial_and_puf55"
+  },
+  {
+   "entity": "person",
+   "limitations": "PUF55 has taxable pension and IRA leaves on clone one, not these additional distribution types. Source detail/basis qualification exists separately; native completion/attachment for full original support is absent.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "tax_exempt_ira_distributions",
+   "native_refs": [],
+   "reuse_refs": [
+    "current_asec_retirement_detail_source.py:1",
+    "current_asec_retirement_basis.py:1",
+    "retirement_distributions.py:87",
+    "retirement_distributions.py:298",
+    "cps_carried_current.py:306"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "PUF55 has taxable pension and IRA leaves on clone one, not these additional distribution types. Source detail/basis qualification exists separately; native completion/attachment for full original support is absent.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "tax_exempt_private_pension_income",
+   "native_refs": [],
+   "reuse_refs": [
+    "current_asec_retirement_detail_source.py:1",
+    "current_asec_retirement_basis.py:1",
+    "retirement_distributions.py:87",
+    "retirement_distributions.py:298",
+    "cps_carried_current.py:306"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "PUF55 has taxable pension and IRA leaves on clone one, not these additional distribution types. Source detail/basis qualification exists separately; native completion/attachment for full original support is absent.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "taxable_401k_distributions",
+   "native_refs": [],
+   "reuse_refs": [
+    "current_asec_retirement_detail_source.py:1",
+    "current_asec_retirement_basis.py:1",
+    "retirement_distributions.py:87",
+    "retirement_distributions.py:298",
+    "cps_carried_current.py:306"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "PUF55 has taxable pension and IRA leaves on clone one, not these additional distribution types. Source detail/basis qualification exists separately; native completion/attachment for full original support is absent.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "taxable_403b_distributions",
+   "native_refs": [],
+   "reuse_refs": [
+    "current_asec_retirement_detail_source.py:1",
+    "current_asec_retirement_basis.py:1",
+    "retirement_distributions.py:87",
+    "retirement_distributions.py:298",
+    "cps_carried_current.py:306"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared current-survey and PUF paths, not populated evidence. Complete-property-tax configuration rebases four interest/dividend leaves after property reconciliation/child completion; modeled splits and CAP conditioning are explicit judgments.",
+   "mapping": "Current ordinary property-interest component \u00d7 maintained taxable fraction \u2192 source-aligned current-survey original values copied to both clones; PUF55 may then rewrite clone one with its donor-derived amount.",
+   "name": "taxable_interest_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49",
+    "current_survey_predictors.py:29",
+    "current_survey_predictors.py:407",
+    "current_survey_predictors.py:610",
+    "graph_current_survey_predictors.py:221",
+    "graph_property_tax_leaves.py:46",
+    "graph_property_tax_leaves.py:106"
+   ],
+   "reuse_refs": [],
+   "status": "declared_financial_and_puf55"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E01400 \u2192 taxable_ira_distributions; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "taxable_ira_distributions",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E01700 \u2192 taxable_private_pension_income; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "taxable_private_pension_income",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "PUF55 has taxable pension and IRA leaves on clone one, not these additional distribution types. Source detail/basis qualification exists separately; native completion/attachment for full original support is absent.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "taxable_sep_distributions",
+   "native_refs": [],
+   "reuse_refs": [
+    "current_asec_retirement_detail_source.py:1",
+    "current_asec_retirement_basis.py:1",
+    "retirement_distributions.py:87",
+    "retirement_distributions.py:298",
+    "cps_carried_current.py:306"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "household",
+   "limitations": "ACS declaration alone does not establish a complete ASEC+ACS consumer mapping or SPM entity applicability; inherited ASEC values remain unqualified in this audit.",
+   "mapping": "ACS TEN \u2192 native enum recode (SPM version through SPM membership). Current housing owner reads ASEC H_TENURE/ACS TEN but owns assistance outputs, not these canonical tenure leaves.",
+   "name": "tenure_type",
+   "native_refs": [
+    "operator_boundary.py:163",
+    "current_survey_housing.py:43",
+    "current_survey_housing.py:62"
+   ],
+   "reuse_refs": [],
+   "status": "source_projection_only"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "tip_income",
+   "native_refs": [],
+   "reuse_refs": [
+    "sipp_tips.py:85",
+    "sipp_tips.py:249",
+    "sipp_tips.py:450"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Desired contributions are explicit persistable inputs, not realized amounts/formulas. PUF desired IRA/Keogh paths do not supply these three leaves.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "traditional_401k_contributions_desired",
+   "native_refs": [],
+   "reuse_refs": [
+    "retirement_contributions.py:66",
+    "retirement_contributions.py:196",
+    "retirement_contributions.py:531"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "traditional_ira_contributions_desired",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Parent Frames may carry old same-named columns; physical presence and source applicability were not inspected and are not established by inheritance.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "treasury_tipped_occupation_code",
+   "native_refs": [],
+   "reuse_refs": [
+    "sipp_tips.py:85",
+    "sipp_tips.py:249",
+    "sipp_tips.py:450"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "unadjusted_basis_qualified_property",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Requires selected unemployment/health_costs group (both are default groups), authentic donor/status/validity and original design weights. Definition/universe and signal gates remain; not populated evidence.",
+   "mapping": "UC_VAL \u2192 source-qualified current ASEC 2024 amount; conditional ASEC\u2192ACS draw; align original person then copy to both retained clones.",
+   "name": "unemployment_compensation",
+   "native_refs": [
+    "current_survey_amounts.py:38",
+    "current_survey_amounts.py:394",
+    "graph_us_survey_enrichment.py:232",
+    "graph_us_survey_enrichment.py:1126"
+   ],
+   "reuse_refs": [],
+   "status": "declared_enrichment_amount"
+  },
+  {
+   "entity": "tax_unit",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "PUF canonical donor: E24515 \u2192 unrecaptured_section_1250_gain; modeled monetary transport and two-route chained QRF \u2192 clone-one attachment.",
+   "name": "unrecaptured_section_1250_gain",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "unreimbursed_business_employee_expenses",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "VET_VAL current-money source exists, but no authenticated native common-survey consumer attachment found. Do not infer benefits from VA health coverage.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "veterans_benefits",
+   "native_refs": [],
+   "reuse_refs": [
+    "asec_current_money.py:37",
+    "cps_carried_current.py:1"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "Declared only. PUF detail updates clone one; absent base-arm cells are explicitly preserved as null. This does not supply or qualify missing clone-zero inputs. QBI/other canonical modeled values are not direct observations.",
+   "mapping": "Canonical PUF derived/model input \u2192 PUF55 chained QRF \u2192 clone-one attachment; canonical59 retains explicit source-versus-model declarations.",
+   "name": "w2_wages_from_qualified_business",
+   "native_refs": [
+    "operator_column_contracts.py:68",
+    "full_puf_enrichment.py:31",
+    "full_puf_enrichment.py:50",
+    "full_puf_enrichment.py:747",
+    "puf_full_source.py:421",
+    "puf59_canonical.py:71",
+    "puf59_canonical.py:211",
+    "puf55_canonical_donor.py:26",
+    "graph_puf55_route_attachment.py:49"
+   ],
+   "reuse_refs": [],
+   "status": "declared_puf55_clone_one"
+  },
+  {
+   "entity": "person",
+   "limitations": "Current usual-hours producer exists. Does not produce hours_worked_last_week, hourly wage, or ORG wage/status fields; source signal/applicability still need actual gates.",
+   "mapping": "ASEC HRSWK/WKSWORK/WORKYN/WTEMP/WRK_CK and ACS WKHP/WKL, allocation flags, age \u2192 usual weekly hours; explicit age-15 donor and under-15 completion policies; copied to both clones.",
+   "name": "weekly_hours_worked_before_lsr",
+   "native_refs": [
+    "current_survey_hours.py:23",
+    "graph_current_survey_hours.py:118",
+    "graph_us_survey_enrichment.py:389"
+   ],
+   "reuse_refs": [],
+   "status": "declared_hours"
+  },
+  {
+   "entity": "person",
+   "limitations": "An unemployment compensation attachment does not establish unemployment duration or source weeks universe.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "weeks_unemployed",
+   "native_refs": [],
+   "reuse_refs": [
+    "weeks_unemployed.py:1"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "person",
+   "limitations": "WC_VAL current-money source and strict numerical direct mapping exist; native source-universe qualifier and ACS completion/both-clone attachment are missing. Existing legacy wrapper transfers to PUF support and is not a drop-in native owner.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "workers_compensation",
+   "native_refs": [],
+   "reuse_refs": [
+    "asec_current_money.py:37",
+    "workers_compensation.py:79",
+    "workers_compensation.py:172",
+    "workers_compensation.py:468"
+   ],
+   "status": "missing_native_successor"
+  },
+  {
+   "entity": "tax_unit",
+   "limitations": "Existing synthetic demographic-rate model can be reused only through an explicit native owner and dependency contract; retained modeled filing roles are not voluntary filing behavior.",
+   "mapping": "No current authenticated common-survey producer/attachment identified in the audited lifecycle.",
+   "name": "would_file_taxes_voluntarily",
+   "native_refs": [],
+   "reuse_refs": [
+    "voluntary_filing.py:102",
+    "voluntary_filing.py:948"
+   ],
+   "status": "missing_native_successor"
+  }
+ ],
+ "source": "native159-source-coverage-20260920/COVERAGE.json (local audit artifact, not previously committed)",
+ "source_sha256": "ad28ac917998b9e7026680af89a75627c2697b78bf8e5966bf123bd78afba3cf",
+ "status_counts": {
+  "declared_atomic_geography": 2,
+  "declared_enrichment_amount": 4,
+  "declared_financial_and_puf55": 8,
+  "declared_health": 2,
+  "declared_health_partial": 7,
+  "declared_hours": 1,
+  "declared_housing": 2,
+  "declared_puf55_clone_one": 44,
+  "declared_roles": 1,
+  "declared_source": 1,
+  "missing_native_successor": 76,
+  "proposed_clone_successor": 2,
+  "qualified_partial_projection_no_attachment": 4,
+  "source_or_alias_mapping_required": 1,
+  "source_projection_only": 3,
+  "typed_weight": 1
+ }
+}
