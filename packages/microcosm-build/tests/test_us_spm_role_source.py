@@ -1,6 +1,7 @@
 """Pinned source roles must explain complete, unchanged native SPM units."""
 
 import hashlib
+import zipfile
 from dataclasses import replace
 
 import numpy as np
@@ -202,6 +203,50 @@ def test_rejects_wrong_parent_identity(population):
             expected_parent_sha256="0" * 64,
             source_pins={2024: pin},
         )
+
+
+def _archive(population, *, member="pppub25.csv", extra=()):
+    """The fixture CSV inside a Census-style archive, with pins updated."""
+
+    parent, source, pin = population
+    archive = source.parent / "asecpub25csv.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as out:
+        out.write(source, arcname=member)
+        for name in extra:
+            out.writestr(name, "x")
+    return parent, archive, replace(pin, archive_sha256=_digest(archive))
+
+
+def test_archive_source_derives_the_same_role_as_its_extracted_csv(population):
+    """``--asec-education-source`` names the official archive in production."""
+
+    parent, archive, pin = _archive(population)
+    _, source, _ = population
+    # Same pins either way; only the path form differs.
+    from_csv = _derive((parent, source, pin))
+    from_archive = _derive((parent, archive, pin))
+    np.testing.assert_array_equal(from_archive.role, from_csv.role)
+    pd.testing.assert_frame_equal(from_archive.evidence, from_csv.evidence)
+    assert from_archive.provenance == from_csv.provenance
+
+
+def test_rejects_unpinned_archive(population):
+    parent, archive, pin = _archive(population)
+    with pytest.raises(ValueError, match="archive SHA-256"):
+        _derive((parent, archive, replace(pin, archive_sha256="0" * 64)))
+
+
+def test_rejects_archive_without_exactly_one_pinned_member(population):
+    with pytest.raises(ValueError, match="exactly one"):
+        _derive(_archive(population, member="other.csv"))
+
+
+def test_rejects_archive_member_that_is_not_the_pinned_csv(population):
+    parent, archive, pin = _archive(population)
+    with pytest.raises(ValueError, match="CSV SHA-256"):
+        _derive((parent, archive, replace(pin, csv_sha256="0" * 64)))
+    with pytest.raises(ValueError, match="CSV byte length"):
+        _derive((parent, archive, replace(pin, csv_size_bytes=pin.csv_size_bytes + 1)))
 
 
 def test_rejects_unpinned_csv(population):

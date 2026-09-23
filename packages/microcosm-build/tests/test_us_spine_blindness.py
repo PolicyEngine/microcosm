@@ -305,6 +305,12 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "spine_assembly.py",
         # Data-only live battery authority extraction; never reads or mutates Frames.
         "stacked_battery_contract.py",
+        # Pure SPM measurement composition check over frame columns (age and the
+        # role); no population treatment. Re-exported by release_gate_preflight.
+        "spm_composition.py",
+        # Measured SPM independence role restored by exact pinned Census identity
+        # through spm_role_source; a manifest stage shaped like relationship_inputs.
+        "spm_independence_role.py",
         "spm_resources.py",
         # Pinned ASEC role reconstruction and exact parent join; no population
         # treatment. Remains subject to the all-runtime source-identity scan.
@@ -3458,8 +3464,13 @@ def test_pool_build_tool_import_graph_is_source_spine_blind() -> None:
 
     for tool in _SPINE_BLIND_BUILD_TOOLS:
         runtime_graph, missing_modules = _us_runtime_import_graph(tool)
-        assert len(runtime_graph) == 70, (
-            f"{tool.name} must reach the pinned 70-module runtime graph; "
+        # 73 = main's 70 plus spm_independence_role.py, spm_role_source.py and
+        # spm_composition.py, reached because the pool's engine-input
+        # projection names the SPM role as a required source input (#893).
+        # All three are classified in _OTHER_US_RUNTIME_MODULES and scanned
+        # below like every other reached module.
+        assert len(runtime_graph) == 73, (
+            f"{tool.name} must reach the pinned 73-module runtime graph; "
             f"reached {len(runtime_graph)}"
         )
         assert not missing_modules, (
