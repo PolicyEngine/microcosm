@@ -3511,7 +3511,14 @@ def build_native_survey_release(
     owner = native_owner.check_survey_enrichment_run(run)
     options = _parse_native_release_args(argv)
     args = options.args
-    release_dir = args.out.resolve() / NATIVE_RELEASE_DIRECTORY / args.release_id
+    native_root = args.out.resolve() / NATIVE_RELEASE_DIRECTORY
+    release_dir = native_root / args.release_id
+    # A symlinked or non-directory native root would move outputs outside --out.
+    _native_release_require(
+        not native_root.is_symlink()
+        and (not native_root.exists() or native_root.is_dir()),
+        "NATIVE_RELEASE_DIRECTORY",
+    )
     _native_release_require(
         not release_dir.exists() and not release_dir.is_symlink(),
         "NATIVE_RELEASE_DIRECTORY_EXISTS",

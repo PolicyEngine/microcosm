@@ -57,7 +57,8 @@ Diagnostics carry codes, declared names, counts and digests only.
    output location and release ID, the Ledger feed and its pins, the
    congressional-district crosswalk and gating, the dense/L0 solve settings,
    target-family loss multipliers and the microsimulation batch size.
-3. **Output directory.** `<out>/native-releases/<release-id>` must not exist.
+3. **Output directory.** `<out>/native-releases/<release-id>` must not exist,
+   and `<out>/native-releases` must not be a symlink or a file.
 4. **Consumer.** `engine` must be exactly `PolicyEngineUSEngine`, with no
    defaults, the declaration's closed export contract and an explicit SPM
    selection equal to the declaration's. The declaration's period must be the

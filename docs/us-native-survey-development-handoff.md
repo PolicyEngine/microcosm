@@ -147,8 +147,9 @@ Step 4 now has an in-process consumer:
 owner, a closed projection declaration and an exactly identified consumer, and
 writes a verified H5 candidate that is never release-eligible. It covers the
 projection half of step 3 (root admission of the runtime is still separate)
-and the target-fit and export-readback parts of step 5. Steps 1 and 2 and the
-rest of step 5 remain outstanding; that entry's manifest lists them.
+and the target-parity, target-fit and export-readback parts of step 5. Steps 1
+and 2 and the rest of step 5 remain outstanding; that entry's manifest lists
+them.
 
 ## Development base and verification
 

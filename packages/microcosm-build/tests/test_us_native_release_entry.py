@@ -1157,6 +1157,33 @@ def test_existing_release_directory_refuses_before_consumer(
     assert reached == [] and (existing / "prior.json").read_text() == "{}"
 
 
+@pytest.mark.parametrize("kind", ["symlink", "file"])
+def test_redirected_native_root_refuses_before_consumer(
+    builder, monkeypatch, tmp_path, kind
+):
+    run, spec, engine, manifest, _ = _stand_in(builder, monkeypatch, tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    native_root = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY
+    native_root.parent.mkdir()
+    if kind == "symlink":
+        native_root.symlink_to(elsewhere, target_is_directory=True)
+    else:
+        native_root.write_text("not a directory")
+    reached = []
+    _forbid(monkeypatch, builder, ("_admit_native_release_consumer",), reached)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder.build_native_survey_release(
+            run,
+            argv=_argv(tmp_path),
+            declaration=spec,
+            engine=engine,
+            consumer_manifest=manifest,
+        )
+    assert refused.value.code == "NATIVE_RELEASE_DIRECTORY"
+    assert reached == [] and not any(elsewhere.iterdir())
+
+
 def test_consumer_mismatch_refuses_before_projection(builder, monkeypatch, tmp_path):
     events = []
     run, spec, engine, manifest, _ = _stand_in(
