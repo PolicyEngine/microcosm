@@ -1036,7 +1036,7 @@ def test_native_json_writer_is_create_only(builder, tmp_path):
     assert not (tmp_path / "nan.json").exists()
 
 
-def _final_case():
+def _final_case(builder, monkeypatch):
     source = _parent()
     spec = _declaration(source)
     projection = handoff._project_native_survey_frame(source, spec)
@@ -1050,7 +1050,12 @@ def _final_case():
         "c" * 64,
     )
     final = SimpleNamespace(digest="invented-owner", population=population)
-    return final, owner, projection, spec, expected
+    engine = _engine(spec)
+    constructors = _invented_consumer(builder, monkeypatch)
+    consumer = builder._AdmittedNativeReleaseConsumer(
+        constructors, {}, "c" * 64, dict(SPM)
+    )
+    return final, owner, projection, spec, engine, consumer, expected
 
 
 @pytest.mark.parametrize(
@@ -1063,15 +1068,35 @@ def _final_case():
         ("projection_cell", "NATIVE_RELEASE_PROJECTION_CHANGED"),
         ("report", "NATIVE_RELEASE_PROJECTION_CHANGED"),
         ("consumer", "NATIVE_RELEASE_CONSUMER_CHANGED"),
+        ("admitted_digest", "NATIVE_RELEASE_CONSUMER_CHANGED"),
+        ("defaults", "NATIVE_RELEASE_CONSUMER_CHANGED"),
+        ("spm", "NATIVE_RELEASE_CONSUMER_CHANGED"),
+        ("contract", "NATIVE_RELEASE_CONSUMER_CHANGED"),
+        ("constructor", "NATIVE_RELEASE_CONSUMER_CHANGED"),
+        ("constructors_unresolvable", "NATIVE_RELEASE_CONSUMER_CHANGED"),
     ],
 )
-def test_final_owner_io_cannot_change_retained_inputs(builder, change, code):
+def test_final_owner_io_cannot_change_retained_inputs(
+    builder, monkeypatch, change, code
+):
     from dataclasses import replace
 
-    final, owner, projection, spec, expected = _final_case()
-    builder._validate_native_release_after_owner_io(
-        final, owner=owner, projection=projection, declaration=spec, expected=expected
+    final, owner, projection, spec, engine, consumer, expected = _final_case(
+        builder, monkeypatch
     )
+
+    def validate():
+        builder._validate_native_release_after_owner_io(
+            final,
+            owner=owner,
+            projection=projection,
+            declaration=spec,
+            engine=engine,
+            consumer=consumer,
+            expected=expected,
+        )
+
+    validate()
     if change == "digest":
         final.digest = "changed"
     elif change == "population":
@@ -1086,17 +1111,35 @@ def test_final_owner_io_cannot_change_retained_inputs(builder, change, code):
         )
     elif change == "report":
         projection.report["release_eligible"] = True
-    else:
+    elif change == "consumer":
         expected = (*expected[:4], "d" * 64)
-    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
-        builder._validate_native_release_after_owner_io(
-            final,
-            owner=owner,
-            projection=projection,
-            declaration=spec,
-            expected=expected,
+    elif change == "admitted_digest":
+        consumer = consumer._replace(identity_sha256="d" * 64)
+    elif change == "defaults":
+        engine._defaults["invented_default"] = 0
+    elif change == "spm":
+        engine._spm = {"geography_kind": "state"}
+    elif change == "contract":
+        engine._contract = replace(spec.export_contract, closed=False)
+    elif change == "constructor":
+        monkeypatch.setattr(
+            builder,
+            "_native_release_consumer_constructors",
+            lambda engine: consumer.constructors._replace(dataset_cls=object),
         )
+    else:
+
+        def unresolvable(engine):
+            raise ImportError("invented consumer removed")
+
+        monkeypatch.setattr(
+            builder, "_native_release_consumer_constructors", unresolvable
+        )
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        validate()
     assert refused.value.code == code
+    if change in {"defaults", "spm", "contract", "constructor"}:
+        assert refused.value.diagnostics == {"cause": "NATIVE_RELEASE_CONSUMER_STATE"}
 
 
 class StandInOwner:
@@ -1272,14 +1315,20 @@ def test_input_gate_refuses_before_output_directory_and_model_construction(
 def test_public_entry_call_order_with_stand_in_owner_is_wiring_only(
     builder, monkeypatch, tmp_path, dense
 ):
-    """Wiring only: a stand-in owner and invented roster, never a positive build."""
+    """Wiring only: a stand-in owner and invented roster, never a positive build.
+
+    Materialization is stubbed and the country engine is never imported, so
+    the network guard shows only that the entry's own wiring opens nothing.
+    """
     import socket
 
     def no_network(*args, **kwargs):
         raise AssertionError("network reached")
 
-    monkeypatch.setattr(socket.socket, "connect", no_network)
-    monkeypatch.setattr(socket, "create_connection", no_network)
+    for name in ("connect", "connect_ex", "sendto", "sendall", "send"):
+        monkeypatch.setattr(socket.socket, name, no_network)
+    for name in ("create_connection", "getaddrinfo", "gethostbyname"):
+        monkeypatch.setattr(socket, name, no_network)
     events = []
     run, spec, engine, manifest, owner = _stand_in(
         builder, monkeypatch, tmp_path, events=events
@@ -1309,9 +1358,10 @@ def test_public_entry_call_order_with_stand_in_owner_is_wiring_only(
     monkeypatch.setattr(builder, "_release_gate_failures", lambda *a, **k: [])
     original_json = builder._write_native_release_json
 
-    def record_manifest(path, payload):
+    def record_manifest(path, payload, **kwargs):
         events.append("manifest")
-        return original_json(path, payload)
+        assert set(kwargs) == {"directory_fd"}
+        return original_json(path, payload, **kwargs)
 
     monkeypatch.setattr(builder, "_write_native_release_json", record_manifest)
     result = builder.build_native_survey_release(
@@ -1900,3 +1950,373 @@ def test_full_distribution_roster_verifies_every_installed_consumer_file(builder
     for name in builder.NATIVE_RELEASE_CONSUMER_DISTRIBUTIONS:
         identity = builder._native_release_distribution_identity(name)
         assert identity is None or identity["verified_files"] > 0
+
+
+# --- Second review follow-ups: descriptor-relative outputs, write-once manifest,
+# consumer import origin and in-memory consumer state after the final owner I/O.
+
+
+def _run_to_directory(builder, monkeypatch, tmp_path):
+    """Stand-in owner through the input gate; the solve must not be reached."""
+    run, spec, engine, manifest, _ = _stand_in(builder, monkeypatch, tmp_path)
+    _complete_inventory(monkeypatch)
+    reached = []
+    _forbid(monkeypatch, builder, ("_run_prepared_native_fiscal_release",), reached)
+
+    def build():
+        return builder.build_native_survey_release(
+            run,
+            argv=_argv(tmp_path),
+            declaration=spec,
+            engine=engine,
+            consumer_manifest=manifest,
+        )
+
+    return build, reached
+
+
+def test_platform_without_descriptor_calls_refuses_before_consumer(
+    builder, monkeypatch, tmp_path
+):
+    build, reached = _run_to_directory(builder, monkeypatch, tmp_path)
+    _forbid(monkeypatch, builder, ("_admit_native_release_consumer",), reached)
+    monkeypatch.setattr(builder, "_native_release_descriptor_support", lambda: False)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        build()
+    assert refused.value.code == "NATIVE_RELEASE_PLATFORM"
+    assert reached == [] and not (tmp_path / "out").exists()
+
+
+def test_descriptor_calls_are_supported_where_the_suite_runs(builder):
+    assert builder._native_release_descriptor_support()
+
+
+@pytest.mark.parametrize("swapped", ["native_root", "out"])
+def test_component_swapped_while_the_release_directory_is_created_refuses(
+    builder, monkeypatch, tmp_path, swapped
+):
+    """A symlink swapped in after mkdir cannot redirect or strand the directory."""
+    import os
+
+    build, reached = _run_to_directory(builder, monkeypatch, tmp_path)
+    out = tmp_path / "out"
+    victim = out if swapped == "out" else out / builder.NATIVE_RELEASE_DIRECTORY
+    moved = victim.with_name(victim.name + "-moved")
+    elsewhere = tmp_path / "elsewhere"
+    (elsewhere / builder.NATIVE_RELEASE_DIRECTORY / RELEASE_ID).mkdir(parents=True)
+    target = elsewhere if swapped == "out" else elsewhere / "native-releases"
+    mkdir = os.mkdir
+
+    def swapping_mkdir(path, *args, **kwargs):
+        mkdir(path, *args, **kwargs)
+        if path == RELEASE_ID and kwargs.get("dir_fd") is not None:
+            victim.rename(moved)
+            victim.symlink_to(target, target_is_directory=True)
+
+    # Wrapped os functions are not in os.supports_dir_fd; the real ones are.
+    monkeypatch.setattr(builder, "_native_release_descriptor_support", lambda: True)
+    monkeypatch.setattr(os, "mkdir", swapping_mkdir)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        build()
+    assert refused.value.code == "NATIVE_RELEASE_DIRECTORY"
+    assert reached == []
+    created_root = moved if swapped == "native_root" else moved / "native-releases"
+    assert list(created_root.iterdir()) == []
+    assert list((elsewhere / "native-releases" / RELEASE_ID).iterdir()) == []
+
+
+def test_release_directory_created_concurrently_refuses_and_is_kept(
+    builder, monkeypatch, tmp_path
+):
+    build, reached = _run_to_directory(builder, monkeypatch, tmp_path)
+    other = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY / RELEASE_ID
+    compile_targets = builder._compile_fiscal_release_target_registry
+
+    def create_concurrently(args, *, congressional_district_vintage_crosswalk):
+        other.mkdir(parents=True)
+        (other / "other.json").write_text("{}")
+        return compile_targets(
+            args,
+            congressional_district_vintage_crosswalk=(
+                congressional_district_vintage_crosswalk
+            ),
+        )
+
+    monkeypatch.setattr(
+        builder, "_compile_fiscal_release_target_registry", create_concurrently
+    )
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        build()
+    assert refused.value.code == "NATIVE_RELEASE_DIRECTORY_EXISTS"
+    assert reached == [] and (other / "other.json").read_text() == "{}"
+
+
+def test_unwritable_native_root_refuses_with_a_code(builder, monkeypatch, tmp_path):
+    import os
+
+    if os.geteuid() == 0:
+        pytest.skip("permission bits do not bind the superuser")
+    build, reached = _run_to_directory(builder, monkeypatch, tmp_path)
+    native_root = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY
+    native_root.mkdir(parents=True)
+    native_root.chmod(0o500)
+    try:
+        with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+            build()
+    finally:
+        native_root.chmod(0o700)
+    assert refused.value.code == "NATIVE_RELEASE_DIRECTORY"
+    assert reached == [] and list(native_root.iterdir()) == []
+
+
+def test_output_without_hard_links_refuses_before_the_solve(
+    builder, monkeypatch, tmp_path
+):
+    import errno
+    import os
+
+    build, reached = _run_to_directory(builder, monkeypatch, tmp_path)
+
+    def no_links(*args, **kwargs):
+        raise OSError(errno.ENOTSUP, "hard links unsupported")
+
+    monkeypatch.setattr(builder, "_native_release_descriptor_support", lambda: True)
+    monkeypatch.setattr(os, "link", no_links)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        build()
+    assert refused.value.code == "NATIVE_RELEASE_OUTPUT_FILESYSTEM"
+    native_root = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY
+    assert reached == [] and list(native_root.iterdir()) == []
+
+
+@pytest.mark.parametrize("swap", ["replaced", "symlink"])
+def test_release_directory_swapped_before_the_manifest_leaves_no_manifest(
+    builder, monkeypatch, tmp_path, swap
+):
+    """Wiring only: the manifest goes only into the directory this build made."""
+    run, spec, engine, manifest, owner = _stand_in(builder, monkeypatch, tmp_path)
+    _wire_invented_export(builder, monkeypatch)
+    release_dir = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY / RELEASE_ID
+    moved = release_dir.with_name(RELEASE_ID + "-moved")
+    original = owner.check
+
+    def swap_directory(candidate):
+        result = original(candidate)
+        if owner.calls == 2:
+            release_dir.rename(moved)
+            if swap == "replaced":
+                release_dir.mkdir()
+            else:
+                release_dir.symlink_to(moved, target_is_directory=True)
+        return result
+
+    monkeypatch.setattr(native_owner, "check_survey_enrichment_run", swap_directory)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder.build_native_survey_release(
+            run,
+            argv=_argv(tmp_path),
+            declaration=spec,
+            engine=engine,
+            consumer_manifest=manifest,
+        )
+    assert refused.value.code == "NATIVE_RELEASE_DIRECTORY_CHANGED"
+    for directory in (release_dir, moved):
+        assert not (directory / builder.NATIVE_RELEASE_MANIFEST_FILENAME).exists()
+    assert (moved / builder.NATIVE_RELEASE_DATASET_FILENAME).exists()
+
+
+def test_native_json_writer_keeps_a_stale_temporary_file(builder, tmp_path):
+    path = tmp_path / "manifest.json"
+    stale = tmp_path / "manifest.json.tmp"
+    stale.write_text("stale")
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._write_native_release_json(path, {"release_eligible": False})
+    assert refused.value.code == "NATIVE_RELEASE_OUTPUT_EXISTS"
+    assert stale.read_text() == "stale" and not path.exists()
+
+
+@pytest.mark.parametrize("failure", ["fsync", "link"])
+def test_native_json_writer_failures_are_coded_and_leave_nothing(
+    builder, monkeypatch, tmp_path, failure
+):
+    import errno
+    import os
+
+    def fail(*args, **kwargs):
+        raise OSError(errno.EIO, "invented I/O failure")
+
+    monkeypatch.setattr(os, failure, fail)
+    path = tmp_path / "manifest.json"
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._write_native_release_json(path, {"release_eligible": False})
+    assert refused.value.code == "NATIVE_RELEASE_OUTPUT_WRITE"
+    assert refused.value.__cause__ is None
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_native_json_writer_keeps_a_linked_manifest_if_cleanup_fails(
+    builder, monkeypatch, tmp_path
+):
+    import os
+
+    unlink = os.unlink
+
+    def refuse_temporary(path, *args, **kwargs):
+        if path == "manifest.json.tmp":
+            raise PermissionError("invented cleanup failure")
+        return unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "unlink", refuse_temporary)
+    path = tmp_path / "manifest.json"
+    digest = builder._write_native_release_json(path, {"release_eligible": False})
+    assert json.loads(path.read_text()) == {"release_eligible": False}
+    assert digest == builder._sha256(path)
+
+
+@pytest.mark.parametrize("change", ["effective_spm", "unresolvable"])
+def test_consumer_changed_during_export_keeps_its_cause(
+    builder, monkeypatch, tmp_path, change
+):
+    run, spec, engine, manifest, _ = _stand_in(builder, monkeypatch, tmp_path)
+    _wire_invented_export(builder, monkeypatch)
+    resolved = []
+
+    def effective_spm(candidate):
+        resolved.append(candidate)
+        if len(resolved) == 1:
+            return dict(EFFECTIVE_SPM)
+        if change == "unresolvable":
+            raise ImportError("invented consumer removed")
+        return {**EFFECTIVE_SPM, "scenario": "replaced"}
+
+    monkeypatch.setattr(builder, "_native_release_effective_spm", effective_spm)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder.build_native_survey_release(
+            run,
+            argv=_argv(tmp_path),
+            declaration=spec,
+            engine=engine,
+            consumer_manifest=manifest,
+        )
+    assert refused.value.code == "NATIVE_RELEASE_CONSUMER_CHANGED"
+    assert refused.value.diagnostics["cause"] == (
+        "NATIVE_RELEASE_CONSUMER_UNRESOLVED"
+        if change == "unresolvable"
+        else "NATIVE_RELEASE_CONSUMER_IDENTITY"
+    )
+
+
+def test_installed_file_edited_during_export_keeps_its_cause(
+    builder, monkeypatch, tmp_path
+):
+    """Wiring only: an installed consumer file edited after admission."""
+    distribution, module = _invented_distribution(tmp_path / "installed")
+    _serve(monkeypatch, distribution)
+    monkeypatch.setattr(
+        builder, "NATIVE_RELEASE_CONSUMER_DISTRIBUTIONS", ("invented-consumer",)
+    )
+    run, spec, engine, manifest, _ = _stand_in(builder, monkeypatch, tmp_path)
+    writer = _wire_invented_export(builder, monkeypatch)
+
+    def write_and_edit(self, bundle, path, period):
+        writer.write_dataset(bundle, path, period=period)
+        module.write_bytes(b"VALUE = 2\n")
+
+    monkeypatch.setattr(PolicyEngineUSEngine, "write_dataset", write_and_edit)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder.build_native_survey_release(
+            run,
+            argv=_argv(tmp_path),
+            declaration=spec,
+            engine=engine,
+            consumer_manifest=manifest,
+        )
+    assert refused.value.code == "NATIVE_RELEASE_CONSUMER_CHANGED"
+    assert refused.value.diagnostics == {
+        "cause": "NATIVE_RELEASE_CONSUMER_FILES",
+        "cause_diagnostics": {
+            "distribution": "invented-consumer",
+            "mismatched_count": 1,
+            "mismatched_examples": ["invented_consumer/__init__.py"],
+        },
+    }
+    release_dir = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY / RELEASE_ID
+    assert not (release_dir / builder.NATIVE_RELEASE_MANIFEST_FILENAME).exists()
+
+
+def test_distribution_identity_refuses_non_object_direct_url(
+    builder, monkeypatch, tmp_path
+):
+    distribution, _ = _invented_distribution(tmp_path, direct_url="[]")
+    _serve(monkeypatch, distribution)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._native_release_distribution_identity("invented-consumer")
+    assert refused.value.code == "NATIVE_RELEASE_CONSUMER_EDITABLE"
+
+
+def test_distribution_identity_codes_unparseable_record(builder, monkeypatch, tmp_path):
+    distribution, _ = _invented_distribution(tmp_path)
+    record = Path(distribution.locate_file("invented_consumer-1.0.dist-info/RECORD"))
+    record.write_text("x" * 200_000 + ",sha256=abc,1\n")
+    _serve(monkeypatch, distribution)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._native_release_distribution_identity("invented-consumer")
+    assert refused.value.code == "NATIVE_RELEASE_CONSUMER_RECORD"
+    assert refused.value.__cause__ is None
+
+
+@pytest.mark.parametrize("origin", ["verified", "checkout", "no_file"])
+def test_loaded_consumer_modules_must_come_from_verified_files(
+    builder, monkeypatch, tmp_path, origin
+):
+    import types
+
+    distribution, module_path = _invented_distribution(tmp_path / "installed")
+    _serve(monkeypatch, distribution)
+    module = types.ModuleType("invented_consumer")
+    if origin == "verified":
+        module.__file__ = str(module_path)
+    elif origin == "checkout":
+        checkout = tmp_path / "checkout" / "invented_consumer"
+        checkout.mkdir(parents=True)
+        (checkout / "__init__.py").write_bytes(module_path.read_bytes())
+        module.__file__ = str(checkout / "__init__.py")
+    monkeypatch.setitem(sys.modules, "invented_consumer", module)
+    if origin == "verified":
+        identity = builder._native_release_distribution_identity("invented-consumer")
+        assert identity["verified_files"] == 2
+        return
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._native_release_distribution_identity("invented-consumer")
+    assert refused.value.code == "NATIVE_RELEASE_CONSUMER_IMPORT_ORIGIN"
+    assert refused.value.diagnostics == {
+        "distribution": "invented-consumer",
+        "unverified_module_count": 1,
+        "unverified_module_examples": ["invented_consumer"],
+    }
+
+
+def test_absent_distribution_refuses_while_its_package_is_loaded(builder, monkeypatch):
+    import types
+
+    monkeypatch.setitem(
+        builder.NATIVE_RELEASE_CONSUMER_IMPORT_PACKAGES,
+        "invented-absent",
+        ("invented_absent",),
+    )
+    assert builder._native_release_distribution_identity("invented-absent") is None
+    module = types.ModuleType("invented_absent.core")
+    module.__file__ = "/invented/checkout/invented_absent/core.py"
+    monkeypatch.setitem(sys.modules, "invented_absent.core", module)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._native_release_distribution_identity("invented-absent")
+    assert refused.value.code == "NATIVE_RELEASE_CONSUMER_IMPORT_ORIGIN"
+    assert refused.value.diagnostics["unverified_module_examples"] == [
+        "invented_absent.core"
+    ]
+
+
+def test_full_distribution_roster_names_every_import_package(builder):
+    assert set(builder.NATIVE_RELEASE_CONSUMER_IMPORT_PACKAGES) == set(
+        builder.NATIVE_RELEASE_CONSUMER_DISTRIBUTIONS
+    )

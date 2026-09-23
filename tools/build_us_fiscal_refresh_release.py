@@ -2663,6 +2663,17 @@ NATIVE_RELEASE_CONSUMER_DISTRIBUTIONS = (
     "pandas",
     "tables",
 )
+# Top-level import packages of each roster distribution. Every loaded module
+# under them must come from a verified RECORD file of that distribution, and
+# an absent distribution is accepted only while none of them is loaded.
+NATIVE_RELEASE_CONSUMER_IMPORT_PACKAGES = {
+    "policyengine-us": ("policyengine_us",),
+    "policyengine-core": ("policyengine_core",),
+    "spm-calculator": ("spm_calculator",),
+    "numpy": ("numpy",),
+    "pandas": ("pandas",),
+    "tables": ("tables",),
+}
 # Options the native entry actually consumes. Every other option must keep the
 # legacy parser's default: an accepted option this entry ignores would make the
 # command line misdescribe the build. New legacy options are refused by default.
@@ -2745,8 +2756,10 @@ NATIVE_RELEASE_OUTSTANDING_QUALIFICATIONS = (
 class NativeSurveyReleaseRefusalError(ValueError):
     """A native release refusal with a code and JSON-safe declared diagnostics.
 
-    Diagnostics carry codes, declared names, counts and digests only: never
-    private row identifiers, cell values or raw exception text from Frames.
+    Diagnostics carry codes, declared names, counts and digests, plus installed
+    consumer file paths (as listed in RECORD) and loaded module names for the
+    consumer file and import-origin refusals: never private row identifiers,
+    cell values or raw exception text from Frames.
     """
 
     def __init__(self, code: str, diagnostics: Mapping[str, object] | None = None):
@@ -2886,10 +2899,6 @@ def _parse_native_release_args(argv: Sequence[str]) -> _NativeReleaseOptions:
     solve = argparse.Namespace(
         **{name: getattr(args, name) for name in _NATIVE_RELEASE_SOLVE_OPTIONS}
     )
-    try:
-        _strict_json_bytes(vars(solve))
-    except (TypeError, ValueError):
-        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_SOLVE_OPTIONS") from None
     return _NativeReleaseOptions(args, solve)
 
 
@@ -2942,6 +2951,29 @@ def _native_release_code_identity(value) -> dict:
     }
 
 
+def _native_release_unverified_modules(
+    packages: Iterable[str], verified_files: set[Path]
+) -> list[str]:
+    """Loaded modules under ``packages`` whose file is not a verified file.
+
+    A module without a file (for example one inserted into ``sys.modules``)
+    counts as unverified. Only module names are returned.
+    """
+    packages = set(packages)
+    unverified = []
+    for module_name, module in list(sys.modules.items()):
+        if module_name.partition(".")[0] not in packages:
+            continue
+        source = getattr(module, "__file__", None)
+        try:
+            located = None if source is None else Path(source).resolve()
+        except (OSError, RuntimeError, TypeError, ValueError):
+            located = None
+        if located is None or located not in verified_files:
+            unverified.append(module_name)
+    return sorted(unverified)
+
+
 def _native_release_distribution_identity(name: str) -> dict | None:
     """RECORD digest of one installed distribution, after checking its files.
 
@@ -2950,15 +2982,36 @@ def _native_release_distribution_identity(name: str) -> dict | None:
     installation refuses instead of hiding behind an unchanged RECORD. RECORD
     is parsed directly because ``Distribution.files`` drops missing files.
     Editable installs refuse because their RECORD lists a path hook, not the
-    consumer's files. Rows without a hash (RECORD itself, installer files) are
-    only counted. An absent distribution is recorded as ``None``.
+    consumer's files; a legacy install without RECORD refuses too. Rows
+    without a hash (RECORD itself, installer files) are only counted.
+
+    Every module already loaded under the distribution's import packages must
+    have been loaded from one of the verified files, so a checkout earlier on
+    ``sys.path`` cannot run while a clean installed copy is verified. An absent
+    distribution is recorded as ``None`` only while none of its import
+    packages is loaded.
     """
     import base64
     import csv
 
+    packages = set(NATIVE_RELEASE_CONSUMER_IMPORT_PACKAGES.get(name, ()))
+
+    def require_verified_imports(verified_files: set[Path]) -> None:
+        unverified = _native_release_unverified_modules(packages, verified_files)
+        _native_release_require(
+            not unverified,
+            "NATIVE_RELEASE_CONSUMER_IMPORT_ORIGIN",
+            {
+                "distribution": name,
+                "unverified_module_count": len(unverified),
+                "unverified_module_examples": unverified[:5],
+            },
+        )
+
     try:
         distribution = importlib.metadata.distribution(name)
     except importlib.metadata.PackageNotFoundError:
+        require_verified_imports(set())
         return None
     record = distribution.read_text("RECORD")
     _native_release_require(
@@ -2974,25 +3027,35 @@ def _native_release_distribution_identity(name: str) -> dict | None:
         _native_release_require(
             not editable, "NATIVE_RELEASE_CONSUMER_EDITABLE", {"distribution": name}
         )
+    try:
+        rows = [row for row in csv.reader(record.splitlines()) if row]
+    except csv.Error:
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_CONSUMER_RECORD", {"distribution": name}
+        ) from None
     verified = unhashed = 0
     mismatched = []
-    for row in csv.reader(record.splitlines()):
-        if not row:
-            continue
+    verified_files: set[Path] = set()
+    for row in rows:
         path, recorded_hash, recorded_size = (row + ["", ""])[:3]
+        top = path.split("/", 1)[0]
+        if not top.startswith("..") and not top.endswith((".dist-info", ".data")):
+            packages.add(top.removesuffix(".py"))
         if not recorded_hash:
             unhashed += 1
             continue
         algorithm, _, expected = recorded_hash.partition("=")
         digest = hashlib.sha256() if algorithm == "sha256" and expected else None
         size = 0
+        located = Path(distribution.locate_file(path))
         try:
-            with Path(distribution.locate_file(path)).open("rb") as stream:
+            with located.open("rb") as stream:
                 for block in iter(lambda: stream.read(1024 * 1024), b""):
                     size += len(block)
                     if digest is not None:
                         digest.update(block)
-        except OSError:
+            located = located.resolve()
+        except (OSError, RuntimeError):
             digest = None
         if (
             digest is None
@@ -3003,6 +3066,7 @@ def _native_release_distribution_identity(name: str) -> dict | None:
             mismatched.append(path)
         else:
             verified += 1
+            verified_files.add(located)
     _native_release_require(
         not mismatched,
         "NATIVE_RELEASE_CONSUMER_FILES",
@@ -3012,6 +3076,7 @@ def _native_release_distribution_identity(name: str) -> dict | None:
             "mismatched_examples": sorted(mismatched)[:5],
         },
     )
+    require_verified_imports(verified_files)
     return {
         "version": distribution.version,
         "record_sha256": hashlib.sha256(record.encode("utf-8")).hexdigest(),
@@ -3563,32 +3628,266 @@ def _native_release_manifest_payload(
     )
 
 
-def _write_native_release_json(path: Path, payload: Mapping[str, object]) -> str:
+# Output files are created relative to directory descriptors opened without
+# following links, so a path component swapped for a symlink during the build
+# cannot redirect an output.
+_NATIVE_RELEASE_DIRECTORY_FLAGS = (
+    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+)
+_NATIVE_RELEASE_LINK_PROBE = ".native-release-link-probe"
+
+
+def _native_release_descriptor_support() -> bool:
+    """Whether this platform has the descriptor-relative calls the writer uses."""
+    return (
+        hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and {os.open, os.mkdir, os.rmdir, os.unlink, os.link} <= os.supports_dir_fd
+        and os.link in os.supports_follow_symlinks
+    )
+
+
+class _NativeReleaseDirectory(NamedTuple):
+    """The release directory this build created, by path and inode."""
+
+    path: Path
+    device: int
+    inode: int
+
+
+def _native_release_directory_at(path: Path, descriptor: int) -> bool:
+    """True when ``path`` is canonical and names the directory ``descriptor`` holds."""
+    import stat
+
+    try:
+        status = os.stat(path, follow_symlinks=False)
+        held = os.fstat(descriptor)
+        canonical = os.path.realpath(path)
+    except (OSError, ValueError):
+        return False
+    return (
+        canonical == str(path)
+        and stat.S_ISDIR(status.st_mode)
+        and (status.st_dev, status.st_ino) == (held.st_dev, held.st_ino)
+    )
+
+
+def _probe_native_release_links(directory_fd: int) -> None:
+    """Refuse now, not after the solve, when the output cannot hold hard links.
+
+    The manifest is published by hard-linking a complete temporary file, which
+    fails instead of replacing an existing manifest. Filesystems without hard
+    links (some network and FUSE mounts) refuse before any expensive step.
+    """
+    probe, linked = _NATIVE_RELEASE_LINK_PROBE, _NATIVE_RELEASE_LINK_PROBE + ".link"
+    try:
+        os.close(
+            os.open(
+                probe,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o600,
+                dir_fd=directory_fd,
+            )
+        )
+        try:
+            os.link(
+                probe,
+                linked,
+                src_dir_fd=directory_fd,
+                dst_dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+            os.unlink(linked, dir_fd=directory_fd)
+        finally:
+            os.unlink(probe, dir_fd=directory_fd)
+    except OSError:
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_OUTPUT_FILESYSTEM"
+        ) from None
+
+
+def _create_native_release_directory(
+    native_root: Path, release_id: str
+) -> _NativeReleaseDirectory:
+    """Create ``<out>/native-releases/<release-id>`` without following links.
+
+    ``native_root`` is ``<resolved out>/native-releases``. The output directory
+    is opened without following a final symlink and must still be canonical;
+    ``native-releases`` and the release directory are then created and opened
+    relative to those descriptors, so a symlink swapped in at any of those
+    components refuses rather than redirects the build. The new directory must
+    still be reachable at its canonical path and must accept hard links. If
+    either check fails, the empty directory this call created is removed
+    through its parent descriptor and the build refuses.
+    """
+    out = native_root.parent
+    release_dir = native_root / release_id
+    try:
+        out.mkdir(parents=True, exist_ok=True)
+        out_fd = os.open(out, _NATIVE_RELEASE_DIRECTORY_FLAGS)
+    except OSError:
+        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_DIRECTORY") from None
+    try:
+        _native_release_require(
+            _native_release_directory_at(out, out_fd), "NATIVE_RELEASE_DIRECTORY"
+        )
+        try:
+            os.mkdir(NATIVE_RELEASE_DIRECTORY, dir_fd=out_fd)
+        except FileExistsError:
+            pass
+        try:
+            root_fd = os.open(
+                NATIVE_RELEASE_DIRECTORY, _NATIVE_RELEASE_DIRECTORY_FLAGS, dir_fd=out_fd
+            )
+        except OSError:
+            # A symlinked or non-directory root would move outputs outside --out.
+            raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_DIRECTORY") from None
+        try:
+            try:
+                os.mkdir(release_id, dir_fd=root_fd)
+            except FileExistsError:
+                raise NativeSurveyReleaseRefusalError(
+                    "NATIVE_RELEASE_DIRECTORY_EXISTS"
+                ) from None
+            try:
+                release_fd = os.open(
+                    release_id, _NATIVE_RELEASE_DIRECTORY_FLAGS, dir_fd=root_fd
+                )
+                try:
+                    _native_release_require(
+                        _native_release_directory_at(native_root, root_fd)
+                        and _native_release_directory_at(release_dir, release_fd),
+                        "NATIVE_RELEASE_DIRECTORY",
+                    )
+                    _probe_native_release_links(release_fd)
+                    held = os.fstat(release_fd)
+                finally:
+                    os.close(release_fd)
+            except BaseException:
+                # Only the empty directory created above; never its contents.
+                try:
+                    os.rmdir(release_id, dir_fd=root_fd)
+                except OSError:
+                    pass
+                raise
+        finally:
+            os.close(root_fd)
+    except NativeSurveyReleaseRefusalError:
+        raise
+    except OSError:
+        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_DIRECTORY") from None
+    finally:
+        os.close(out_fd)
+    return _NativeReleaseDirectory(release_dir, held.st_dev, held.st_ino)
+
+
+def _open_native_release_directory(directory: _NativeReleaseDirectory) -> int:
+    """Reopen the created directory, refusing if its path now names another."""
+    try:
+        descriptor = os.open(directory.path, _NATIVE_RELEASE_DIRECTORY_FLAGS)
+    except OSError:
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_DIRECTORY_CHANGED"
+        ) from None
+    try:
+        held = os.fstat(descriptor)
+        _native_release_require(
+            (held.st_dev, held.st_ino) == (directory.device, directory.inode)
+            and _native_release_directory_at(directory.path, descriptor),
+            "NATIVE_RELEASE_DIRECTORY_CHANGED",
+        )
+    except BaseException:
+        os.close(descriptor)
+        raise
+    return descriptor
+
+
+def _native_release_sha256_at(directory_fd: int, name: str) -> str | None:
+    """SHA-256 of a regular file inside a held directory, or None if unreadable."""
+    try:
+        descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+    except OSError:
+        return None
+    digest = hashlib.sha256()
+    try:
+        with os.fdopen(descriptor, "rb") as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(block)
+    except OSError:
+        return None
+    return digest.hexdigest()
+
+
+def _write_native_release_json(
+    path: Path, payload: Mapping[str, object], *, directory_fd: int | None = None
+) -> str:
     """Write strict JSON once through a same-directory temporary file.
 
-    The complete temporary file is hard-linked to its final name, which fails
-    rather than replaces when that name already exists, so a concurrent writer
-    cannot be overwritten and readers never see a partial manifest.
+    The payload is serialized before any file is created. The temporary file
+    is created exclusively, written, synced and hard-linked to its final name,
+    which fails rather than replaces when that name already exists, so a
+    concurrent writer is never overwritten and readers never see a partial
+    manifest. The temporary name is removed on every path; if that removal
+    fails after a successful link, the complete manifest stands. With
+    ``directory_fd`` every call is relative to that held directory.
     """
-    _native_release_require(
-        not path.exists() and not path.is_symlink(), "NATIVE_RELEASE_OUTPUT_EXISTS"
-    )
     data = _strict_json_text(payload, indent=1).encode("utf-8") + b"\n"
-    temporary = path.with_name(path.name + ".tmp")
-    _native_release_require(
-        not temporary.exists() and not temporary.is_symlink(),
-        "NATIVE_RELEASE_OUTPUT_EXISTS",
-    )
-    with temporary.open("xb") as stream:
-        stream.write(data)
-        stream.flush()
-        os.fsync(stream.fileno())
+    owned_fd = None
+    if directory_fd is None:
+        try:
+            owned_fd = directory_fd = os.open(
+                path.parent, _NATIVE_RELEASE_DIRECTORY_FLAGS
+            )
+        except OSError:
+            raise NativeSurveyReleaseRefusalError(
+                "NATIVE_RELEASE_OUTPUT_WRITE"
+            ) from None
+    temporary = path.name + ".tmp"
     try:
-        os.link(temporary, path)
-    except FileExistsError:
-        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_OUTPUT_EXISTS") from None
+        try:
+            descriptor = os.open(
+                temporary,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                0o644,
+                dir_fd=directory_fd,
+            )
+        except FileExistsError:
+            # A stale or concurrent temporary file is someone else's; keep it.
+            raise NativeSurveyReleaseRefusalError(
+                "NATIVE_RELEASE_OUTPUT_EXISTS"
+            ) from None
+        except OSError:
+            raise NativeSurveyReleaseRefusalError(
+                "NATIVE_RELEASE_OUTPUT_WRITE"
+            ) from None
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.link(
+                temporary,
+                path.name,
+                src_dir_fd=directory_fd,
+                dst_dir_fd=directory_fd,
+                follow_symlinks=False,
+            )
+        except FileExistsError:
+            raise NativeSurveyReleaseRefusalError(
+                "NATIVE_RELEASE_OUTPUT_EXISTS"
+            ) from None
+        except OSError:
+            raise NativeSurveyReleaseRefusalError(
+                "NATIVE_RELEASE_OUTPUT_WRITE"
+            ) from None
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=directory_fd)
+            except OSError:
+                pass
     finally:
-        temporary.unlink()
+        if owned_fd is not None:
+            os.close(owned_fd)
     return hashlib.sha256(data).hexdigest()
 
 
@@ -3602,9 +3901,15 @@ def _require_native_release_root(native_root: Path) -> None:
 
 
 def _validate_native_release_after_owner_io(
-    final, *, owner, projection, declaration, expected
+    final, *, owner, projection, declaration, engine, consumer, expected
 ) -> None:
-    """Pure last-fence comparisons after the final owner check; issues nothing."""
+    """Pure last-fence comparisons after the final owner check; issues nothing.
+
+    The file-level consumer identity was re-derived before the owner check
+    (``expected`` carries both digests). The consumer's in-memory state is
+    compared here, after the owner I/O: no defaults, the admitted SPM
+    selection and export contract, and the same constructor objects.
+    """
     from microcosm.build.us_runtime import native_survey_handoff as handoff
 
     try:
@@ -3627,7 +3932,27 @@ def _validate_native_release_after_owner_io(
             "NATIVE_RELEASE_PROJECTION_CHANGED",
         )
         _native_release_require(
-            identity_sha256 == actual, "NATIVE_RELEASE_CONSUMER_CHANGED"
+            identity_sha256 == actual == consumer.identity_sha256,
+            "NATIVE_RELEASE_CONSUMER_CHANGED",
+            {"cause": "NATIVE_RELEASE_CONSUMER_IDENTITY"},
+        )
+        try:
+            constructors = _native_release_consumer_constructors(engine)
+        except ImportError:
+            constructors = None
+        _native_release_require(
+            not engine._defaults
+            and engine._spm == consumer.spm
+            and engine.export_contract() == declaration.export_contract
+            and constructors is not None
+            and all(
+                live is admitted
+                for live, admitted in zip(
+                    constructors, consumer.constructors, strict=True
+                )
+            ),
+            "NATIVE_RELEASE_CONSUMER_CHANGED",
+            {"cause": "NATIVE_RELEASE_CONSUMER_STATE"},
         )
         handoff._compare_engine_projection(
             projection.source_frame, projection.frame, declaration
@@ -3674,6 +3999,9 @@ def build_native_survey_release(
     owner = native_owner.check_survey_enrichment_run(run)
     options = _parse_native_release_args(argv)
     args = options.args
+    _native_release_require(
+        _native_release_descriptor_support(), "NATIVE_RELEASE_PLATFORM"
+    )
     native_root = args.out.resolve() / NATIVE_RELEASE_DIRECTORY
     release_dir = native_root / args.release_id
     _require_native_release_root(native_root)
@@ -3749,21 +4077,9 @@ def build_native_survey_release(
             ),
         }
     )
-    # First output side effect: a fresh directory owned by this build. The
-    # root is checked again around creation, since admission took time.
-    _require_native_release_root(native_root)
-    try:
-        release_dir.mkdir(parents=True, exist_ok=False)
-    except FileExistsError:
-        raise NativeSurveyReleaseRefusalError(
-            "NATIVE_RELEASE_DIRECTORY_EXISTS"
-        ) from None
-    except OSError:
-        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_DIRECTORY") from None
-    _require_native_release_root(native_root)
-    _native_release_require(
-        release_dir.resolve() == release_dir, "NATIVE_RELEASE_DIRECTORY"
-    )
+    # First output side effect: a fresh directory owned by this build, created
+    # relative to descriptors that follow no links, since admission took time.
+    created = _create_native_release_directory(native_root, args.release_id)
     prepared = _run_prepared_native_fiscal_release(
         projection.frame,
         target_specs=target_specs,
@@ -3779,6 +4095,8 @@ def build_native_survey_release(
     source_identity = _native_release_source_identity()
     # Re-derive the consumer identity after the foreign writer/readback I/O:
     # a runtime replaced mid-build must not be recorded as the admitted one.
+    # This reads installed files, so it precedes the final owner check; the
+    # consumer's in-memory state is compared again after that check.
     try:
         rechecked_identity_sha256 = hashlib.sha256(
             _strict_json_bytes(
@@ -3792,9 +4110,15 @@ def build_native_survey_release(
                 }
             )
         ).hexdigest()
+    except NativeSurveyReleaseRefusalError as error:
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_CONSUMER_CHANGED",
+            {"cause": error.code, "cause_diagnostics": error.diagnostics},
+        ) from None
     except (AttributeError, ImportError, OSError, TypeError, ValueError):
         raise NativeSurveyReleaseRefusalError(
-            "NATIVE_RELEASE_CONSUMER_CHANGED"
+            "NATIVE_RELEASE_CONSUMER_CHANGED",
+            {"cause": "NATIVE_RELEASE_CONSUMER_UNRESOLVED"},
         ) from None
     manifest_payload = _native_release_manifest_payload(
         release_id=args.release_id,
@@ -3821,6 +4145,8 @@ def build_native_survey_release(
         owner=owner,
         projection=projection,
         declaration=declaration,
+        engine=engine,
+        consumer=consumer,
         expected=(
             declaration_bytes,
             projection_stamp,
@@ -3829,16 +4155,26 @@ def build_native_survey_release(
             rechecked_identity_sha256,
         ),
     )
-    _native_release_require(
-        _sha256(prepared.dataset_path) == prepared.h5_receipt.sha256,
-        "NATIVE_RELEASE_DATASET_CHANGED",
-    )
-    _native_release_require(
-        _sha256(prepared.diagnostics_path) == manifest_payload["diagnostics"]["sha256"],
-        "NATIVE_RELEASE_DIAGNOSTICS_CHANGED",
-    )
+    # The directory must still be the one this build created; its files are
+    # hashed and the manifest written relative to that held directory.
     manifest_path = release_dir / NATIVE_RELEASE_MANIFEST_FILENAME
-    manifest_sha256 = _write_native_release_json(manifest_path, manifest_payload)
+    directory_fd = _open_native_release_directory(created)
+    try:
+        _native_release_require(
+            _native_release_sha256_at(directory_fd, prepared.dataset_path.name)
+            == prepared.h5_receipt.sha256,
+            "NATIVE_RELEASE_DATASET_CHANGED",
+        )
+        _native_release_require(
+            _native_release_sha256_at(directory_fd, prepared.diagnostics_path.name)
+            == manifest_payload["diagnostics"]["sha256"],
+            "NATIVE_RELEASE_DIAGNOSTICS_CHANGED",
+        )
+        manifest_sha256 = _write_native_release_json(
+            manifest_path, manifest_payload, directory_fd=directory_fd
+        )
+    finally:
+        os.close(directory_fd)
     return NativeSurveyReleaseResult(
         release_dir=release_dir,
         dataset_path=prepared.dataset_path,

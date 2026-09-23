@@ -29,9 +29,11 @@ legacy source block: base or pool loading, frozen-support selection, value
 repairs, donor/QRF stages, take-up and benefit assignment, or the ACS join. Its
 own code calls no download path, never starts staging telemetry and never
 writes the legacy `release_manifest.json`. Whether the consumer's own runtime
-fetches anything is part of that runtime's qualification; the engine-free
-wiring test runs with sockets disabled. Its output is a candidate with measured
-results. It is **never release-eligible**, and publication stays a separate,
+fetches anything is part of that runtime's qualification. The engine-free
+wiring test makes socket connects, sends and name lookups fail, but it stubs
+materialization and never imports the country engine, so it shows only that
+the entry's own wiring opens no connection. Its output is a candidate with
+measured results. It is **never release-eligible**, and publication stays a separate,
 human, preflight-gated step.
 
 ## Order of checks
@@ -45,8 +47,9 @@ the calibration attachment (`NATIVE_CALIBRATION_*`) and the H5 comparison
 target-parity gate keep their existing errors; the parity gate raises
 `RuntimeError`. Writer and HDF library errors become
 `NATIVE_RELEASE_EXPORT_WRITE`, since they can quote cells. No error is followed
-by a manifest. Diagnostics carry codes, declared names, counts and digests
-only.
+by a manifest. Diagnostics carry codes, declared names, counts and digests.
+The consumer file and import-origin refusals also name installed file paths
+as `RECORD` lists them and loaded module names; none carries a cell value.
 
 1. **Owner.** `check_survey_enrichment_run(run)` runs first. A Frame, a
    development checkpoint or its report, a projection, a descriptive checked
@@ -73,8 +76,9 @@ only.
    initial value), finite non-negative L2 penalties and L0 share, and a
    non-negative seed.
 3. **Output directory.** `<out>/native-releases/<release-id>` must not exist,
-   and `<out>/native-releases` must not be a symlink or a file. The root is
-   checked again immediately before and after the directory is created.
+   and `<out>/native-releases` must not be a symlink or a file. A platform
+   without descriptor-relative file calls (`O_NOFOLLOW`, `dir_fd`) refuses
+   with `NATIVE_RELEASE_PLATFORM`. The directory is created later (step 8).
 4. **Consumer.** `engine` must be exactly `PolicyEngineUSEngine`, with no
    defaults, the declaration's closed export contract and an explicit SPM
    selection equal to the declaration's. The declaration's period must be the
@@ -85,9 +89,18 @@ only.
    export contract; the (empty) input defaults; the explicit SPM selection;
    and the effective SPM settings. Each hashed `RECORD` row is re-hashed on
    disk, so an edited, resized or removed installed file refuses with
-   `NATIVE_RELEASE_CONSUMER_FILES`, and an editable install refuses with
-   `NATIVE_RELEASE_CONSUMER_EDITABLE`. Files not listed in `RECORD` are not
-   covered. The static part is
+   `NATIVE_RELEASE_CONSUMER_FILES`. An editable install refuses with
+   `NATIVE_RELEASE_CONSUMER_EDITABLE`, and a legacy install without `RECORD`
+   (for example an egg link) with `NATIVE_RELEASE_CONSUMER_RECORD`. Files not
+   listed in `RECORD` are not covered. The check fails closed: if a tool
+   rewrites installed files after installation (as relocating an environment
+   can do to script shebangs), the runtime refuses. Every module already loaded under a listed
+   distribution's import packages must come from one of its verified files,
+   so a checkout earlier on `sys.path` refuses with
+   `NATIVE_RELEASE_CONSUMER_IMPORT_ORIGIN`. A distribution that is not
+   installed is recorded as `null`, and only while none of its import
+   packages is loaded. Expected identities must be recorded against this
+   schema, including `input_defaults`; none is checked in. The static part is
    compared before the country system is built. The effective settings come
    from `policyengine_us.spm.spm_config` on the adapter's own system, so a
    partial caller mapping is not enough. A match describes this process's
@@ -108,7 +121,16 @@ only.
    is not a source-signal or applicability qualification. A
    `--target-family-loss-multiplier` that names no compiled family also
    refuses here, before any output.
-8. **Materialization.** Only now is the output directory created. Targets are
+8. **Materialization.** Only now is the output directory created. The output
+   directory is opened without following a final symlink and must still be
+   canonical; `native-releases` and the release directory are created and
+   opened relative to those descriptors, so a symlink swapped in at one of
+   those components refuses (`NATIVE_RELEASE_DIRECTORY`) instead of
+   redirecting the build, and a directory created concurrently refuses with
+   `NATIVE_RELEASE_DIRECTORY_EXISTS` and is left alone. The new directory must
+   still be reachable at its canonical path and must accept hard links
+   (`NATIVE_RELEASE_OUTPUT_FILESYSTEM` otherwise); if either check fails, the
+   empty directory this build just created is removed. Targets are
    materialized from the projected Frame with the admitted consumer's dataset,
    simulation and system constructors, a copy of the explicit SPM selection,
    the adapter as formula-ownership metadata, and target caches disabled.
@@ -119,17 +141,30 @@ only.
     target fit, national SOI Table 1.4 dollar fit and loss. The legacy
     source-stage gate arguments stay at their `None` defaults because their
     inputs come from legacy stages; the manifest lists their native successors
-    as outstanding, never as passed. `native_calibration_diagnostics.json` is always
-    written. A failure writes no H5.
+    as outstanding, never as passed. `native_calibration_diagnostics.json` is
+    written whenever the solve returns, including when a fit gate fails; a
+    failure writes no H5. A refusal inside the solve itself
+    (`NATIVE_CALIBRATION_*`) leaves the release directory without
+    diagnostics. Any refusal after step 8 keeps the directory, so a rerun
+    needs a new release ID or the directory removed.
 11. **Export.** `write_verified_policyengine_h5_export` writes
     `native_candidate_populace_us_2024.h5` once with the adapter and compares
     the logical readback. Its binding must equal the calibration attachment's.
-12. **Final checks.** The consumer identity, including installed files and
-    input defaults, is derived again; the owner is checked again; and the
-    declaration, projection, report, owner population, dataset bytes and
-    diagnostics bytes are compared after that last owner I/O. Only then is
-    `native_release_manifest.json` written. It is linked into place from a
-    complete temporary file, so an existing manifest is never replaced.
+12. **Final checks.** The consumer identity, including installed files,
+    loaded-module origins and input defaults, is derived again; a refusal
+    there becomes `NATIVE_RELEASE_CONSUMER_CHANGED` with the original code as
+    its `cause`. The owner is then checked again. After that last owner I/O
+    the declaration, projection, report and owner population are compared,
+    and so is the consumer's in-memory state: no defaults, the admitted SPM
+    selection and export contract, and the same constructor objects. The
+    release directory is reopened and must be the one this build created
+    (`NATIVE_RELEASE_DIRECTORY_CHANGED` otherwise); the dataset and
+    diagnostics bytes are hashed through it. Only then is
+    `native_release_manifest.json` written in that directory. It is linked
+    into place from a complete, synced temporary file, so an existing
+    manifest is never replaced; a stale temporary file refuses with
+    `NATIVE_RELEASE_OUTPUT_EXISTS` and other write errors with
+    `NATIVE_RELEASE_OUTPUT_WRITE`.
 
 ## Manifest
 
@@ -168,7 +203,8 @@ engine-free. It shows that:
 - each unconsumed option and each unusable solve setting refuses at parsing;
 - consumer admission orders its refusals, and the installed-file check
   refuses edited, resized, removed and editable installs of an invented
-  distribution;
+  distribution, an unparseable `RECORD`, and loaded modules that come from a
+  checkout, have no file, or belong to a distribution that is not installed;
 - the input gate reports codes and name-only counts, including unknown
   values, and a projection report that does not bind the owner and consumer
   refuses;
@@ -177,11 +213,16 @@ engine-free. It shows that:
   on the real fit gate, on an unknown loss family, on a mismatched export
   binding and on writer errors, and writes only after a verified logical
   readback;
-- the public wiring runs for dense and L0 solves with sockets disabled; and a
-  redirected output root, a failed final owner check, replaced dataset or
-  diagnostics bytes, or a consumer whose SPM settings or input defaults
-  changed during export each leave no manifest, which is never replaced once
-  written.
+- the public wiring runs for dense and L0 solves with socket connects, sends
+  and lookups failing; a redirected output root, a symlink swapped in while
+  the release directory is created, a concurrent creation, an unwritable
+  root and an output without hard links each refuse before the solve, leaving
+  no release directory of this build behind; and a failed final owner check, replaced
+  dataset or diagnostics bytes, a release directory replaced before the
+  manifest, or a consumer whose SPM settings, input defaults, installed files
+  or in-memory state changed each leave no manifest, which is never replaced
+  once written. Manifest write failures are coded and leave no temporary
+  file.
 
 The composition and wiring tests use invented constructors, a byte writer and a
 stand-in owner. They do not show that a genuine public native build succeeds.
