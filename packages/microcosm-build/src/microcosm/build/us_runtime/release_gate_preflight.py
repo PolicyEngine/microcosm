@@ -60,6 +60,21 @@ Five checks, each mirroring a live release gate but evaluated pre-solve:
    (``adult = (age >= 18) | ((age >= 15) & role)``) over frame columns and names
    the offending units and the remedy in seconds.
 
+**New lineage** (``run_preflight(new_lineage=True)``, CLI ``--new-lineage``). A
+release built on a fresh base with no selection source is a new lineage
+(``docs/us-release-build-rule.md`` section 3): the release tool reduces the base
+to a frozen support only when a selection source is supplied, so it calibrates
+the whole base, and there is no prior selection to carry over. In that mode
+check 1 is recorded as ``SKIPPED`` with reason ``new_lineage`` instead of being
+run, and nothing else about it is dropped: the one refusal inside check 1 that
+is a property of the base rather than of a selection — the base must carry the
+materialized PUF capital-gains own-tail, which the release tool requires on
+every arm right after the base loads — runs as its own check,
+``capital_gains_tail_presence``. Checks 2-5 run unchanged, graded on the whole
+base (the population a no-selection release calibrates) instead of a frozen
+subset. The mode is opt-in and mutually exclusive with a selection-source
+manifest; without it a manifest is required, as before.
+
 The pure check functions take frames and already-loaded registry material so they
 unit-test on tiny synthetic fixtures with no policyengine-us and no large H5.
 :func:`run_preflight` is the runbook entry point that loads the real artifacts
@@ -102,14 +117,17 @@ from microcosm.frame import Frame
 
 __all__ = [
     "MAX_REPORTED_SPM_UNITS_HARD_CAP",
+    "NEW_LINEAGE_SKIP_REASON",
     "SPM_COMPOSITION_REMEDY",
     "CheckResult",
     "PreflightReport",
+    "check_capital_gains_tail_presence",
     "check_export_mass_parity_risk",
     "check_selection_carryover",
     "check_smoke_probe_support",
     "check_spm_composition",
     "check_zero_support_preview",
+    "new_lineage_selection_carryover_skip",
     "run_preflight",
     "selected_household_ids",
     "spm_independence_role",
@@ -175,6 +193,18 @@ _DEFAULT_RELATIVE_TOLERANCE = 0.5
 _DEFAULT_MINIMUM_REFERENCE_TOTAL = 1e9
 
 _STATUS_RANK = {"PASS": 0, "SKIPPED": 0, "AT_RISK": 1, "FAIL": 2}
+
+#: The machine-readable reason a new-lineage preflight records on its SKIPPED
+#: ``selection_carryover`` result.
+NEW_LINEAGE_SKIP_REASON = "new_lineage"
+
+#: Why that check is skipped, recorded verbatim beside the reason.
+_NEW_LINEAGE_SKIP_EXPLANATION = (
+    "new lineage: no prior selection to carry over. The release is built on a "
+    "fresh base without a selection source, so the release tool performs no "
+    "frozen-support reduction and calibrates the whole base; there is no "
+    "selection to map onto it."
+)
 
 
 @dataclass(frozen=True)
@@ -283,6 +313,11 @@ class PreflightReport:
             "SKIPPED": "SKIPPED",
         }
         lines.append("US release-gate preflight (no calibration solve)")
+        if self.inputs.get("new_lineage") is True:
+            lines.append(
+                "Lineage: NEW (no selection source) — selection_carryover "
+                "SKIPPED; the other checks are graded on the whole base pool"
+            )
         lines.append("=" * 72)
         for check in self.checks:
             lines.append(f"[{badge[check.status]}] {check.name}")
@@ -434,6 +469,78 @@ def check_selection_carryover(
             },
         ),
         mask,
+    )
+
+
+def new_lineage_selection_carryover_skip() -> CheckResult:
+    """Check 1's result for a new lineage: SKIPPED, with the reason recorded.
+
+    Not a PASS: nothing was mapped. The details say what the skipped check
+    would have graded and where its base-level refusal went, so a reader of the
+    report never has to infer why check 1 did not run.
+    """
+    return CheckResult(
+        name="selection_carryover",
+        status="SKIPPED",
+        summary=_NEW_LINEAGE_SKIP_EXPLANATION,
+        details={
+            "reason": NEW_LINEAGE_SKIP_REASON,
+            "explanation": _NEW_LINEAGE_SKIP_EXPLANATION,
+            "skipped_protections": [
+                "every frozen selection identity maps onto exactly one base "
+                "household under a unique stable join key (no unmapped, "
+                "ambiguous or duplicated identity)",
+                "the frozen selection keeps every materialized PUF "
+                "capital-gains own-tail donor, with its design weight unchanged",
+            ],
+            "retained_as": {
+                "check": "capital_gains_tail_presence",
+                "protection": (
+                    "the base carries the materialized PUF capital-gains "
+                    "own-tail provenance"
+                ),
+            },
+            "graded_population": "base_pool",
+        },
+    )
+
+
+def check_capital_gains_tail_presence(base_frame: Frame) -> CheckResult:
+    """Does the base carry a well-formed materialized PUF capital-gains own-tail?
+
+    The release tool makes this exact call on the base it loads, on every arm
+    and before calibration
+    (``assert_puf_capital_gains_tail_survives_selection(base, base,
+    require_present=True)``), and refuses the base when it raises. Check 1 covers
+    the same refusal as a by-product of grading a selection (it calls the helper
+    with ``require_present=True``); a new-lineage preflight skips check 1, so
+    this keeps the base half of it rather than dropping it with the selection
+    half.
+    """
+    try:
+        receipt = assert_puf_capital_gains_tail_survives_selection(
+            base_frame,
+            base_frame,
+            require_present=True,
+        )
+    except ValueError as exc:
+        return CheckResult(
+            name="capital_gains_tail_presence",
+            status="FAIL",
+            summary=(
+                "the base carries no usable PUF capital-gains own-tail (the "
+                "release would refuse this base before calibration)"
+            ),
+            failures=(str(exc),),
+        )
+    return CheckResult(
+        name="capital_gains_tail_presence",
+        status="PASS",
+        summary=(
+            f"{int(receipt['base_tail_record_count']):,} materialized PUF "
+            "capital-gains own-tail donor(s) in the base"
+        ),
+        details=dict(receipt),
     )
 
 
@@ -1242,7 +1349,8 @@ def _load_ledger_target_specs(
 def run_preflight(
     *,
     base_h5: str | Path,
-    selection_source_manifest: str | Path,
+    selection_source_manifest: str | Path | None = None,
+    new_lineage: bool = False,
     export_input_mass_reference_h5: str | Path | None = None,
     ledger_facts: str | Path | None = None,
     ledger_facts_sha256: str | None = None,
@@ -1260,29 +1368,65 @@ def run_preflight(
     Read-only against ``base_h5`` / ``export_input_mass_reference_h5``. The
     export-mass register and engine input-variable surface default to the
     release tool's own definitions (single-sourced, never re-declared here).
+
+    Exactly one of ``selection_source_manifest`` and ``new_lineage`` must be
+    given. ``new_lineage=True`` is the explicit opt-in for a release built on a
+    fresh base with no selection source: check 1 is recorded as SKIPPED (reason
+    :data:`NEW_LINEAGE_SKIP_REASON`), its base-level refusal runs as
+    :func:`check_capital_gains_tail_presence`, and checks 2-5 run unchanged on
+    the whole base, which is what a no-selection release calibrates.
     """
     from microcosm.build.us_runtime.l0_refit_export import load_us_frame
+
+    if new_lineage and selection_source_manifest is not None:
+        raise ValueError(
+            "new_lineage and selection_source_manifest are mutually exclusive: a "
+            "new lineage has no prior selection to carry over, and a release "
+            "built with a frozen selection must have that selection preflighted."
+        )
+    if not new_lineage and selection_source_manifest is None:
+        raise ValueError(
+            "selection_source_manifest is required: the selection-carryover "
+            "check grades the frozen selection the release will apply. Only a "
+            "release built on a fresh base with no selection source may skip it, "
+            "and it must say so explicitly with new_lineage=True."
+        )
 
     base_h5 = Path(base_h5)
     base_frame, base_pool, base_pool_manifest = _load_preflight_base(
         base_h5,
         allow_gate_failed_base_pool=allow_gate_failed_base_pool,
     )
-    selection_source = load_selection_source_from_manifest(selection_source_manifest)
 
     checks: list[CheckResult] = []
 
-    carryover, mask = check_selection_carryover(base_frame, selection_source)
-    checks.append(carryover)
+    if new_lineage:
+        # No selection source: the release calibrates the whole base, so the
+        # whole base is the "selection" checks 2-5 grade. Check 1 has nothing to
+        # map and is recorded as skipped; its base-level refusal still runs.
+        checks.append(new_lineage_selection_carryover_skip())
+        checks.append(check_capital_gains_tail_presence(base_frame))
+        mask: np.ndarray | None = np.ones(base_frame.n("household"), dtype=bool)
+        selected = selected_household_ids(base_frame, mask)
+        selected_frame: Frame | None = base_frame
+    else:
+        selection_source = load_selection_source_from_manifest(
+            selection_source_manifest
+        )
 
-    selected = (
-        selected_household_ids(base_frame, mask) if mask is not None else np.array([])
-    )
-    selected_frame = (
-        base_frame.select(_household_person_mask(base_frame, mask))
-        if mask is not None
-        else None
-    )
+        carryover, mask = check_selection_carryover(base_frame, selection_source)
+        checks.append(carryover)
+
+        selected = (
+            selected_household_ids(base_frame, mask)
+            if mask is not None
+            else np.array([])
+        )
+        selected_frame = (
+            base_frame.select(_household_person_mask(base_frame, mask))
+            if mask is not None
+            else None
+        )
 
     # Check 2: zero-support preview (requires the compiled fiscal-target surface).
     if ledger_facts is not None and selected_frame is not None:
@@ -1360,11 +1504,12 @@ def run_preflight(
     # Graded on the selected pool when the selection mapped, because that is the
     # population the release calibrates, exports and measures; on the base pool
     # otherwise, which is still the right answer about the pool's own validity.
+    # A new lineage has no selection: the base pool is the calibrated population.
     try:
         checks.append(
             check_spm_composition(
                 base_frame,
-                selected_frame,
+                None if new_lineage else selected_frame,
                 max_reported=max_reported_spm_units,
             )
         )
@@ -1387,7 +1532,20 @@ def run_preflight(
             str(base_pool_manifest) if base_pool_manifest is not None else None
         ),
         "allow_gate_failed_base_pool": bool(allow_gate_failed_base_pool),
-        "selection_source_manifest": str(selection_source_manifest),
+        "selection_source_manifest": (
+            str(selection_source_manifest)
+            if selection_source_manifest is not None
+            else None
+        ),
+        # Present only in the opt-in mode, so a default report is unchanged.
+        **(
+            {
+                "new_lineage": True,
+                "graded_population": "base_pool",
+            }
+            if new_lineage
+            else {}
+        ),
         "export_input_mass_reference_h5": (
             str(export_input_mass_reference_h5)
             if export_input_mass_reference_h5 is not None
