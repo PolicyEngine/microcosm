@@ -303,6 +303,16 @@ def _fact_for_reference(
 
 def _facts_for_reference(reference: LedgerTargetReference, value: float) -> list[dict]:
     """Expand the paid headline into its declared synthetic month/cell grid."""
+    if reference.value_operation == "calendar_year_window":
+        # A windowed row composes the fiscal years opening in Y-1 and Y from
+        # one series; two equal annual facts resolve to the headline value.
+        facts = []
+        for year in (reference.period - 1, reference.period):
+            fact = _fact_for_reference(reference, value)
+            fact["aggregate_fact_key"] += f":fy{year}"
+            fact["period"] = {"type": "fiscal_year", "value": year}
+            facts.append(fact)
+        return facts
     if reference.name != "dwp.uc.households":
         return [_fact_for_reference(reference, value)]
 
@@ -610,11 +620,18 @@ def test_chronicle_184_uc_and_obr_references_compile_fail_closed() -> None:
     )
     registry = compile_ledger_target_references(
         [
-            _fact(
-                concept="obr.universal_credit_in_cap",
-                source_name="obr",
-                value=40_000_000_000,
-            ),
+            # The OBR row binds at the calendar-2025 window, so the series
+            # needs the fiscal years opening in 2024 and 2025.
+            {
+                **_fact(
+                    concept="obr.universal_credit_in_cap",
+                    source_name="obr",
+                    value=40_000_000_000,
+                ),
+                "aggregate_fact_key": f"ledger.aggregate_fact.v2:obr-fixture-fy{year}",
+                "period": {"type": "fiscal_year", "value": year},
+            }
+            for year in (2024, 2025)
         ],
         references,
         country="uk",

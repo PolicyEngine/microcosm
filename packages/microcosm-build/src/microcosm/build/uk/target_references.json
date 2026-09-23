@@ -796,7 +796,8 @@
         "contract_target_id": "obr.income_tax",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.ni",
@@ -815,7 +816,8 @@
         "contract_target_id": "obr.ni",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.ni_employee",
@@ -834,7 +836,8 @@
         "contract_target_id": "obr.ni_employee",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.ni_employer",
@@ -853,7 +856,8 @@
         "contract_target_id": "obr.ni_employer",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.ni_self_employed",
@@ -872,7 +876,8 @@
         "contract_target_id": "obr.ni_self_employed",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.vat",
@@ -891,7 +896,8 @@
         "contract_target_id": "obr.vat",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "hmrc.cgt.liability_total",
@@ -937,7 +943,8 @@
         "contract_target_id": "obr.sdlt",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.attendance_allowance",
@@ -956,7 +963,8 @@
         "contract_target_id": "obr.attendance_allowance",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.carers_allowance",
@@ -975,7 +983,8 @@
         "contract_target_id": "obr.carers_allowance",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.child_benefit",
@@ -994,7 +1003,8 @@
         "contract_target_id": "obr.child_benefit",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.council_tax",
@@ -1012,7 +1022,8 @@
         "contract_target_id": "obr.council_tax",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.esa",
@@ -1032,7 +1043,7 @@
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
-      "value_operation": "sum"
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.housing_benefit",
@@ -1051,7 +1062,8 @@
         "contract_target_id": "obr.housing_benefit",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.jobseekers_allowance",
@@ -1070,7 +1082,8 @@
         "contract_target_id": "obr.jobseekers_allowance",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.pension_credit",
@@ -1089,7 +1102,8 @@
         "contract_target_id": "obr.pension_credit",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.pip",
@@ -1108,7 +1122,8 @@
         "contract_target_id": "obr.pip",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.state_pension",
@@ -1127,7 +1142,8 @@
         "contract_target_id": "obr.state_pension",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.statutory_maternity_pay",
@@ -1146,7 +1162,8 @@
         "contract_target_id": "obr.statutory_maternity_pay",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.tv_licence_fee",
@@ -1165,7 +1182,8 @@
         "contract_target_id": "obr.tv_licence_fee",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.universal_credit_in_cap",
@@ -1184,7 +1202,8 @@
         "contract_target_id": "obr.universal_credit_in_cap",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.universal_credit_outside_cap",
@@ -1203,7 +1222,8 @@
         "contract_target_id": "obr.universal_credit_outside_cap",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "obr.winter_fuel_allowance",
@@ -1222,7 +1242,8 @@
         "contract_target_id": "obr.winter_fuel_allowance",
         "measure_kind": "prepared_column"
       },
-      "assertion_policy": "allow_source_projection"
+      "assertion_policy": "allow_source_projection",
+      "value_operation": "calendar_year_window"
     },
     {
       "name": "isc.private_school_students",

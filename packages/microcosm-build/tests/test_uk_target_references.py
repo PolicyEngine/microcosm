@@ -956,7 +956,11 @@ def test_uk_target_references_compile_from_real_staged_feed_rows() -> None:
     assert set(targets) == FIXTURE_REFERENCE_NAMES
 
     income_tax = targets["obr.income_tax"]
-    assert income_tax.value == pytest.approx(331_437_583_074.4429)
+    # The calendar-2025 window of the FY2024-25 outturn (305.905bn) and the
+    # FY2025-26 forecast (331.438bn): three twelfths and nine twelfths.
+    assert income_tax.value == pytest.approx(
+        0.25 * 305_905_000_000 + 0.75 * 331_437_583_074.4429
+    )
     assert income_tax.period == 2025
     assert income_tax.metadata["ledger_assertion"] == "source_projection"
     assert income_tax.metadata["ledger_assertion_policy"] == ("allow_source_projection")

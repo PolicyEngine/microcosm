@@ -87,6 +87,15 @@ _SPI_REGION_LEDGER_ONLY_RATIONALE = (
     "registry has no regional SPI band metric (chronicle#282)."
 )
 
+_OBR_WINDOW_DRIFT_RATIONALE = (
+    "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that "
+    "fiscal-year facts take only the months to the end of the calibration "
+    "calendar year): ours binds the OBR March 2026 line at the calendar-2025 "
+    "window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on "
+    "the same series; the frozen incumbent fixture holds the FY2025-26 value "
+    "alone."
+)
+
 _ESA_CUBE_DRIFT_RATIONALE = (
     "Source class (microcosm#280 lane): ours binds DWP's Stat-Xplore ESA "
     "caseload by payment type as the mean of the four quarterly points inside "
@@ -596,6 +605,12 @@ def _add_signed_rationale_notes(
             row["reason"] = _ESA_CUBE_DRIFT_RATIONALE
         elif name.startswith("hmrc.spi_region.") and row.get("kind") == "ledger_only":
             row["reason"] = _SPI_REGION_LEDGER_ONLY_RATIONALE
+        elif (
+            name.startswith("obr.")
+            and row.get("kind") == "calibration_drift"
+            and name not in _CGT_OBSERVED_RATIONALES
+        ):
+            row["reason"] = _OBR_WINDOW_DRIFT_RATIONALE
         elif (
             name.startswith(_CGT_BAND_INCUMBENT_PREFIXES)
             and row.get("kind") == "calibration_drift"

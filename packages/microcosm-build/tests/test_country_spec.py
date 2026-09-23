@@ -1124,7 +1124,7 @@ class TestExistingPackagesGeneralize:
         # cells and Wales gains ten country rows (bands A-I + total);
         # microcosm#725/#467: 24 CGT age-band rows, 24 region-tier cells and
         # 24 size-of-gain rows
-        assert references["obr.esa"].value_operation == "sum"
+        assert references["obr.esa"].value_operation == "calendar_year_window"
         assert references["dwp.uc.households"].value_operation == (
             "monthly_window_sum_average"
         )

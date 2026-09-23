@@ -1639,7 +1639,8 @@
           "metric_name": "obr/income_tax",
           "value_variable": "income_tax",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/income_tax",
@@ -1654,7 +1655,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "Income tax"
+      "label": "Income tax",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.ni",
@@ -1673,7 +1675,7 @@
           "value_variable": "total_national_insurance",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "The EFO line is total NICs receipts; binds total_national_insurance (class 1 employee + employer + classes 2-4). The prior ni_employee-only binding was the uk-data defect carried for parity — final estimate bit-identical to obr.ni_employee — fixed under the microcosm#757 audit partition (2026-08-26). Nearly redundant with the three separately-calibrated component lines by construction; kept so the published total binds honestly. Residual gap is Class 1A/1B on benefits in kind, which the model does not carry."
+          "notes": "The EFO line is total NICs receipts; binds total_national_insurance (class 1 employee + employer + classes 2-4). The prior ni_employee-only binding was the uk-data defect carried for parity — final estimate bit-identical to obr.ni_employee — fixed under the microcosm#757 audit partition (2026-08-26). Nearly redundant with the three separately-calibrated component lines by construction; kept so the published total binds honestly. Residual gap is Class 1A/1B on benefits in kind, which the model does not carry. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/ni",
@@ -1688,7 +1690,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "National Insurance contributions"
+      "label": "National Insurance contributions",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.ni_employee",
@@ -1706,7 +1709,8 @@
           "metric_name": "obr/ni_employee",
           "value_variable": "ni_employee",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/ni_employee",
@@ -1721,7 +1725,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "Employee National Insurance contributions"
+      "label": "Employee National Insurance contributions",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.ni_employer",
@@ -1739,7 +1744,8 @@
           "metric_name": "obr/ni_employer",
           "value_variable": "ni_employer",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/ni_employer",
@@ -1754,7 +1760,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "Employer National Insurance contributions"
+      "label": "Employer National Insurance contributions",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.ni_self_employed",
@@ -1772,7 +1779,8 @@
           "metric_name": "obr/ni_self_employed",
           "value_variable": "ni_self_employed",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/ni_self_employed",
@@ -1787,7 +1795,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "Self-employed National Insurance contributions"
+      "label": "Self-employed National Insurance contributions",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.vat",
@@ -1802,7 +1811,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/vat",
-          "value_variable": "vat"
+          "value_variable": "vat",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/vat",
@@ -1817,7 +1827,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "VAT"
+      "label": "VAT",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.fuel_duties",
@@ -1832,7 +1843,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/fuel_duties",
-          "value_variable": "fuel_duty"
+          "value_variable": "fuel_duty",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/fuel_duties",
@@ -1847,7 +1859,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "Fuel duties"
+      "label": "Fuel duties",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "hmrc.cgt.liability_total",
@@ -1902,7 +1915,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/sdlt",
-          "value_variable": "stamp_duty_land_tax"
+          "value_variable": "stamp_duty_land_tax",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/sdlt",
@@ -1917,7 +1931,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_receipts",
-      "label": "Stamp Duty Land Tax"
+      "label": "Stamp Duty Land Tax",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.attendance_allowance",
@@ -1935,7 +1950,8 @@
           "metric_name": "obr/attendance_allowance",
           "value_variable": "attendance_allowance",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/attendance_allowance",
@@ -1950,7 +1966,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Attendance allowance"
+      "label": "Attendance allowance",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.carers_allowance",
@@ -1968,7 +1985,8 @@
           "metric_name": "obr/carers_allowance",
           "value_variable": "carers_allowance",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/carers_allowance",
@@ -1983,7 +2001,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Carers allowance"
+      "label": "Carers allowance",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.child_benefit",
@@ -2001,7 +2020,8 @@
           "metric_name": "obr/child_benefit",
           "value_variable": "child_benefit",
           "from_entity": "benunit",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/child_benefit",
@@ -2016,7 +2036,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Child benefit"
+      "label": "Child benefit",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.council_tax",
@@ -2032,7 +2053,7 @@
         "policyengine": {
           "metric_name": "obr/council_tax",
           "value_variable": "council_tax_less_benefit",
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax",
@@ -2046,7 +2067,8 @@
         "source_concept": "obr.council_tax_total"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Council tax"
+      "label": "Council tax",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.council_tax_england",
@@ -2074,7 +2096,7 @@
               "equals": "ENGLAND"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_england",
@@ -2088,7 +2110,8 @@
         "source_concept": "obr.council_tax_england"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Council tax england"
+      "label": "Council tax england",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.council_tax_scotland",
@@ -2116,7 +2139,7 @@
               "equals": "SCOTLAND"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_scotland",
@@ -2130,7 +2153,8 @@
         "source_concept": "obr.council_tax_scotland"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Council tax scotland"
+      "label": "Council tax scotland",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.council_tax_wales",
@@ -2158,7 +2182,7 @@
               "equals": "WALES"
             }
           ],
-          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43)."
+          "notes": "OBR Table 4.1 reports net council tax receipts (net of council tax reduction), so the binding is council_tax_less_benefit, not gross council_tax (compute/council_tax.py:21-43). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/council_tax_wales",
@@ -2172,7 +2196,8 @@
         "source_concept": "obr.council_tax_wales"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Council tax wales"
+      "label": "Council tax wales",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.domestic_rates",
@@ -2187,7 +2212,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/domestic_rates",
-          "value_variable": "domestic_rates"
+          "value_variable": "domestic_rates",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/domestic_rates",
@@ -2202,7 +2228,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Domestic rates"
+      "label": "Domestic rates",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.esa",
@@ -2219,7 +2246,7 @@
           "metric_name": "obr/esa",
           "value_expression": "esa_income + esa_contrib",
           "map_to": "household",
-          "notes": "EFO incapacity-benefits line; uk-data sums benunit-level esa_income and person-level esa_contrib to household (compute/income.py:98-102)."
+          "notes": "EFO incapacity-benefits line; uk-data sums benunit-level esa_income and person-level esa_contrib to household (compute/income.py:98-102). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/esa",
@@ -2234,7 +2261,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Employment and Support Allowance"
+      "label": "Employment and Support Allowance",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.housing_benefit",
@@ -2252,7 +2280,8 @@
           "metric_name": "obr/housing_benefit",
           "value_variable": "housing_benefit",
           "from_entity": "benunit",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/housing_benefit",
@@ -2267,7 +2296,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Housing benefit"
+      "label": "Housing benefit",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.jobseekers_allowance",
@@ -2285,7 +2315,8 @@
           "metric_name": "obr/jobseekers_allowance",
           "value_variable": "jsa",
           "from_entity": "benunit",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/jobseekers_allowance",
@@ -2300,7 +2331,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Jobseekers allowance"
+      "label": "Jobseekers allowance",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.pension_credit",
@@ -2318,7 +2350,8 @@
           "metric_name": "obr/pension_credit",
           "value_variable": "pension_credit",
           "from_entity": "benunit",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/pension_credit",
@@ -2333,7 +2366,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Pension credit"
+      "label": "Pension credit",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.pip",
@@ -2352,7 +2386,7 @@
           "value_variable": "pip",
           "from_entity": "person",
           "map_to": "household",
-          "notes": "EFO line covers DLA and PIP combined; uk-data binds pip only - carried as-is for parity; adjudicate in microcosm#622."
+          "notes": "EFO line covers DLA and PIP combined; uk-data binds pip only - carried as-is for parity; adjudicate in microcosm#622. Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/pip",
@@ -2367,7 +2401,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Personal Independence Payment"
+      "label": "Personal Independence Payment",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.state_pension",
@@ -2385,7 +2420,8 @@
           "metric_name": "obr/state_pension",
           "value_variable": "state_pension",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/state_pension",
@@ -2400,7 +2436,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "State pension"
+      "label": "State pension",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.statutory_maternity_pay",
@@ -2418,7 +2455,8 @@
           "metric_name": "obr/statutory_maternity_pay",
           "value_variable": "statutory_maternity_pay",
           "from_entity": "person",
-          "map_to": "household"
+          "map_to": "household",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/statutory_maternity_pay",
@@ -2433,7 +2471,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Statutory maternity pay"
+      "label": "Statutory maternity pay",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.tv_licence_fee",
@@ -2448,7 +2487,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/tv_licence_fee",
-          "value_variable": "tv_licence"
+          "value_variable": "tv_licence",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/tv_licence_fee",
@@ -2463,7 +2503,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "TV licence fee"
+      "label": "TV licence fee",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.universal_credit_in_cap",
@@ -2496,7 +2537,7 @@
               "value": 0
             }
           ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127)."
+          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit_in_cap",
@@ -2511,7 +2552,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Universal Credit inside the benefit cap"
+      "label": "Universal Credit inside the benefit cap",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.universal_credit_outside_cap",
@@ -2544,7 +2586,7 @@
               "value": 0
             }
           ],
-          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127)."
+          "notes": "Split of UC spend by benefit-cap status (compute/benefits.py:119-127). Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/universal_credit_outside_cap",
@@ -2559,7 +2601,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Universal Credit outside the benefit cap"
+      "label": "Universal Credit outside the benefit cap",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "obr.winter_fuel_allowance",
@@ -2574,7 +2617,8 @@
       "bindings": {
         "policyengine": {
           "metric_name": "obr/winter_fuel_allowance",
-          "value_variable": "winter_fuel_allowance"
+          "value_variable": "winter_fuel_allowance",
+          "notes": "Bound at the calendar-2025 window of the OBR fiscal years (three twelfths of FY2024-25, nine twelfths of FY2025-26; calendar_year_window), María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year (microcosm#280 lane)."
         },
         "axiom": {
           "metric_name": "obr/winter_fuel_allowance",
@@ -2589,7 +2633,8 @@
         "entity_name": "person"
       },
       "category_id": "obr.efo_expenditure",
-      "label": "Winter fuel allowance"
+      "label": "Winter fuel allowance",
+      "value_operation": "calendar_year_window"
     },
     {
       "target_id": "isc.private_school_students",

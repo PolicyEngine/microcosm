@@ -1,11 +1,11 @@
 {
  "compiled_count": 1124,
  "counts_by_kind": {
-  "calibration_drift": 533,
+  "calibration_drift": 555,
   "fixture_only": 53,
   "ledger_only": 540
  },
- "difference_count": 1126,
+ "difference_count": 1148,
  "differences": [
   {
    "fixture_value": 1608000.0,
@@ -7069,6 +7069,182 @@
    "name": "mhclg.council_tax_stock.total@E12000009",
    "period": 2025,
    "reason": "Signed basis translation (microcosm#929): the incumbent's voa/council_tax/<REGION>/<band> row is the VOA valuation-list stock, all banded dwellings; Microcosm's region cell is composed from the 296 billing authorities' MHCLG Council Taxbase rows (CTB line 7 plus A- for band A, minus lines 11 and 15: occupied chargeable dwellings, chronicle#264) and sums to the publisher's England row to the unit. The valuation list runs 6.3 % over England's household rows, so the taxbase cell sits below the VOA value (North East band A 667,540 VOA against 621,096 taxbase). Ruled by María 2026-09-11 / 2026-09-15; receipts experiments/929-council-tax-taxbase-receipts.md."
+  },
+  {
+   "fixture_value": 8492497075.074617,
+   "kind": "calibration_drift",
+   "ledger_value": 8309942303.358463,
+   "name": "obr.attendance_allowance",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 4569403813.760573,
+   "kind": "calibration_drift",
+   "ledger_value": 4487029829.347929,
+   "name": "obr.carers_allowance",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 13389272724.45089,
+   "kind": "calibration_drift",
+   "ledger_value": 13368730968.878168,
+   "name": "obr.child_benefit",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 50925163826.30539,
+   "kind": "calibration_drift",
+   "ledger_value": 50116358662.27284,
+   "name": "obr.council_tax",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 7206287181.538654,
+   "kind": "calibration_drift",
+   "ledger_value": 8507979735.87899,
+   "name": "obr.esa",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 12103254163.788864,
+   "kind": "calibration_drift",
+   "ledger_value": 12725786027.543839,
+   "name": "obr.housing_benefit",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 331437583074.4429,
+   "kind": "calibration_drift",
+   "ledger_value": 325054437305.83215,
+   "name": "obr.income_tax",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 280558748.04472804,
+   "kind": "calibration_drift",
+   "ledger_value": 288407204.431046,
+   "name": "obr.jobseekers_allowance",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 200081395082.7125,
+   "kind": "calibration_drift",
+   "ledger_value": 193190546312.03436,
+   "name": "obr.ni",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 49544363784.26465,
+   "kind": "calibration_drift",
+   "ledger_value": 49002029830.141045,
+   "name": "obr.ni_employee",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 145324007512.71753,
+   "kind": "calibration_drift",
+   "ledger_value": 137854706939.8949,
+   "name": "obr.ni_employer",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 2902816090.4147716,
+   "kind": "calibration_drift",
+   "ledger_value": 2876506585.4950743,
+   "name": "obr.ni_self_employed",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 6146422389.476461,
+   "kind": "calibration_drift",
+   "ledger_value": 6112217133.109846,
+   "name": "obr.pension_credit",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 36910059270.5278,
+   "kind": "calibration_drift",
+   "ledger_value": 36103194307.639694,
+   "name": "obr.pip",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 15406516698.785578,
+   "kind": "calibration_drift",
+   "ledger_value": 15026137524.089184,
+   "name": "obr.sdlt",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 146185954351.57382,
+   "kind": "calibration_drift",
+   "ledger_value": 144133374882.29138,
+   "name": "obr.state_pension",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 3194800881.520547,
+   "kind": "calibration_drift",
+   "ledger_value": 3179100661.1404104,
+   "name": "obr.statutory_maternity_pay",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 3872000000.0,
+   "kind": "calibration_drift",
+   "ledger_value": 3858750000.0,
+   "name": "obr.tv_licence_fee",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 66410800011.47837,
+   "kind": "calibration_drift",
+   "ledger_value": 63016849758.31539,
+   "name": "obr.universal_credit_in_cap",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 12875549128.065746,
+   "kind": "calibration_drift",
+   "ledger_value": 13037904629.457691,
+   "name": "obr.universal_credit_outside_cap",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 180168938685.41794,
+   "kind": "calibration_drift",
+   "ledger_value": 177875204014.06345,
+   "name": "obr.vat",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
+  },
+  {
+   "fixture_value": 1911040880.4619167,
+   "kind": "calibration_drift",
+   "ledger_value": 1508660934.2839375,
+   "name": "obr.winter_fuel_allowance",
+   "period": 2025,
+   "reason": "Period basis (microcosm#280 lane, María's rule of 2026-09-22 that fiscal-year facts take only the months to the end of the calibration calendar year): ours binds the OBR March 2026 line at the calendar-2025 window, three twelfths of FY2024-25 and nine twelfths of FY2025-26, on the same series; the frozen incumbent fixture holds the FY2025-26 value alone."
   },
   {
    "fixture_value": 2057128451236.5015,

@@ -106,6 +106,20 @@ Credit (income based 499k in February to 30k in November), so a single point
 would misstate the year; the calendar mean is what the FRS 2024-25 base can be
 asked to represent.
 
+## The OBR rows at the window
+
+The 27 OBR receipts and expenditure rows that resolved by latest-not-after to
+FY2025-26 now bind at the calendar-2025 window too (three twelfths of the
+FY2024-25 outturn, nine twelfths of the FY2025-26 forecast, from the March
+2026 EFO series), the same rule as the HMRC liabilities anchors. Income tax
+moves from £331.4bn to £325.1bn, the window of the £305.9bn outturn and the
+£331.4bn forecast, and sits 0.7 percent above the HMRC liabilities window
+(£322.7bn): the two anchors now share a basis. Two OBR rows keep their
+declaration: the Universal
+Credit total is the sum of its two capped-and-uncapped rows (each of which
+takes the window on its own), and the cars share of fuel duty is pinned to the
+FY2024-25 outturn where the vehicle split is published.
+
 ## The region tier
 
 The SPI Table 3.11 rows (income and tax by region and country, all taxpayers)
@@ -127,8 +141,6 @@ and is not bound.
 
 ## Not done here
 
-- The OBR fiscal-year rows still bind FY2025-26 alone; moving them to the
-  calendar window is a separate ruling on 35 targets.
 - The property-income amount rows stay signed out: the spine's
   `property_income` is the FRS rent received (sub-lets, lodgers, royalties)
   while the SPI concept is landlords' net income after expenses.
