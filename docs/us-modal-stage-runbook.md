@@ -33,8 +33,8 @@ release directory onto the runs volume. Publication stays the human step in
    input paths, checkpoints and outputs, and a plan cannot pass them. It
    also cannot pass `--allow-dirty`: every run builds from a clean clone.
 2. **The image is the commit.** It starts from `debian_slim` with Python
-   3.14, the version the local US builds record (`runtime.python` 3.14.4 in
-   the #974 build manifest). It adds git and uv 0.11.7, makes a shallow
+   3.14, the minor version the local US builds record (`runtime.python`
+   3.14.4 in the #974 build manifest; Modal served 3.14.2). It adds git and uv 0.11.7, makes a shallow
    clone of the plan's commit from GitHub, checks out the plan's branch name,
    and asserts `HEAD` equals the commit. It then runs
    `uv sync --all-packages --extra us --frozen` against that tree's own
@@ -134,15 +134,25 @@ python3 tools/modal_us_stage_plan.py validate plan.json
 MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 
 # 4. Run the stage. --detach keeps it running if this terminal goes away;
-#    the receipt lands on the runs volume either way.
+#    the receipt lands on the runs volume either way. Set "max_wall_seconds"
+#    in the plan to cap the cost below the class's hard timeout: the runner
+#    stops the tool then, and the receipt says FAILED, stopped_at_budget.
 MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run
 
 # 5. Fetch the state and verify it against the receipt.
+mkdir -p modal-runs
 modal volume get microcosm-us-stage-runs runs/<run_id> ./modal-runs/
 python3 tools/modal_us_stage_plan.py verify-receipt \
   ./modal-runs/<run_id>/receipts/<stage>-<utc>.json \
   --state-root ./modal-runs/<run_id>/state
 ```
+
+To prove the run path on a new commit or workspace for well under a cent,
+run `docs/us-modal-stage-smoke-plan.json` (tool `runner-smoke`). It is an
+inline script, so it needs no file in the pinned tree. It imports the synced
+environment, reads every staged input (two volume files and one Hub file)
+and writes one state file, which goes through the same staging, mirroring
+and receipt code as a real stage.
 
 Next stage: copy the plan, change `stage`, keep the `run_id`, and drop `feed`
 if you like, since only materialize reads it. Run steps 3 and 4 again. Run
@@ -173,6 +183,48 @@ with
 `experiments/us-acs-local-hours-rebuild-20260922/build_manifest.json`. A
 match shows that the Modal image and platform reproduce the local target
 compile.
+
+## Verified on Modal, 22 September 2026
+
+These runs were in the `policyengine` workspace. The main checkout, the
+overnight build and the Hub were not touched.
+
+- **Volumes.** `microcosm-us-stage-inputs` and `microcosm-us-stage-runs`
+  were created. Three small inputs of the #974 build went to `cas/sha256/`:
+  the PUMA ladder (446,791 bytes), the staging summary (498,113 bytes) and
+  the `chronicle_us_b571381` feed (164,624,488 bytes). The 10.7 GB staging
+  H5 was not uploaded.
+- **Check of the #974 replay plan, which reported one problem, as
+  intended.** The image built from `cadaf418`. `HEAD` matched, the tree was
+  clean, and the branch was checked out. The environment synced from that
+  tree's lock: policyengine-us 2.2.1 and policyengine-core 3.32.5, the
+  versions #974 records. The pinned tool's `_parse_args` accepted the built
+  argv and returned `["materialize"]`. The three uploaded inputs were
+  verified by sha256 on the volume. The only problem reported was
+  `staging_h5` not being on the volume, which is the correct refusal.
+- **Smoke run (`--run`).** `runner-smoke-cadaf418` completed in 7 seconds.
+  It staged and verified the two volume inputs and the public Hub file
+  `policyengine/populace-us@85a1ccb0…/latest.json`, and wrote
+  `smoke/inputs.json`. The receipt is
+  `runs/runner-smoke-cadaf418/receipts/smoke-2026-09-23T032440Z.json`. After
+  `modal volume get`, `verify-receipt --strict` passed locally with 2
+  outputs and 0 problems. Modal served Python 3.14.2. The local builds
+  recorded 3.14.4.
+
+The heavy materialize replay has not been run. It needs the staging H5 on
+the inputs volume, which is about 10.7 GB to upload, plus one heavy run at
+about $1.71 list price for the measured wall time. That run is the next
+step:
+
+```bash
+# On the build machine, the #974 staging H5 is under
+# _recovered/scratch-backup/893/local-hours-rebuild-20260921/full-staging-a3/.
+python3 tools/modal_us_stage_plan.py digest <that dir>/acs_multispine_staging.h5
+# expect f335f573…; then run the printed `modal volume put …` line
+MICROCOSM_MODAL_PLAN=docs/us-modal-stage-example-plan.json modal run tools/modal_us_stage.py
+MICROCOSM_MODAL_PLAN=docs/us-modal-stage-example-plan.json \
+  modal run --detach tools/modal_us_stage.py --run
+```
 
 ## Data placement
 
