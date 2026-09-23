@@ -233,6 +233,8 @@ from microcosm.build.us_runtime.exact_k_ladder import (
     exact_k_ladder_manifest_payload,
 )
 from microcosm.build.us_runtime.fiscal_targets import (
+    AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS,
+    AGE_BOUND_STAMP_SOURCE_KEY,
     SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
 )
 from microcosm.build.us_runtime.h5_io import (
@@ -674,6 +676,7 @@ IDENTITY_LEDGER_FILTER_METADATA_KEYS = frozenset(
 RESTATED_LEDGER_FILTER_CONCEPTS = {
     "us:statutes/26/62#adjusted_gross_income": "agi_band",
     "us.tax.earned_income_credit_qualifying_children": "eitc_child_count",
+    "age": "age_band",
 }
 
 #: Bound-side suffixes a restated constraint key may carry. A key with no
@@ -716,6 +719,63 @@ RESTATED_EITC_CHILD_COUNT_PROBE_MAX = 16
 #: reading is guessed until the Ledger confirms one (Max, 2026-09-22). Lower
 #: and exact restatements stay under the agreement rule.
 RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES = frozenset({"upper"})
+
+#: Compiled metadata the materializer slices a person-age band on, by bound
+#: side. Both age paths in :func:`_materialize_target_frame` read these
+#: through :func:`_as_bound` into one half-open mask ``lower <= age < upper``
+#: — the ``population_age`` loop in :func:`_population_age_household_values`
+#: and the age-banded ``policyengine_variable`` branch (the SSA SSI
+#: recipients-by-age counts) — so a restated age bound is judged, like an AGI
+#: bound, against its own side only.
+#:
+#: Numeric equality of the edges is equality of populations only for a
+#: restated key whose operator is the mask's: ``age < 10`` and ``age <= 10``
+#: differ by everyone aged exactly ten, so the operator decides.
+#: :func:`microcosm.build.ledger_targets._constraint_bound_filters` writes
+#: ``age_lower_bound`` only for a ``>=`` row and ``age_upper_bound`` only for
+#: a ``<`` row, the two operators of the materializer's mask. A ``>`` or
+#: ``<=`` row is stamped ``age_lower_bound_exclusive`` /
+#: ``age_upper_bound_inclusive``, which no restated concept names, so it stays
+#: refused by bare key — as it must, because the compiled bound comes from
+#: ``us_runtime.fiscal_targets._age_bounds``, which drops the operator: a
+#: ``<= 4`` row compiles to ``age_upper_bound=4`` and the materializer's
+#: ``age < 4`` would leave out the four-year-olds the published cell counts.
+#: But the same ``ledger_filter_age_{lower,upper}_bound`` key can also be a
+#: dimension's, which carries no operator (the ambiguity that keeps restated
+#: qualifying-child upper bounds refused), so the key name alone does not
+#: settle it; the compile's attestation does
+#: (:data:`microcosm.build.us_runtime.fiscal_targets.AGE_BOUND_STAMP_SOURCE_KEY`).
+RESTATED_AGE_BAND_COMPILED_KEYS = {
+    "lower": "age_lower_bound",
+    "upper": "age_upper_bound",
+}
+
+#: Materializers that apply the compiled age band, and so the only ones for
+#: which ignoring an agreeing age restatement changes nothing. Both are read
+#: in :func:`_materialize_target_frame`: ``population_age`` through
+#: :func:`_population_age_household_values`, and ``policyengine_variable``
+#: through its age-banded branch, entered whenever either compiled age key is
+#: present. Every other materializer (the ``irs_soi`` slice, the direct
+#: household-variable measures) never reads an age bound, so a restated age
+#: bound there would be silently ignored however well it agreed with metadata
+#: the materializer also ignores; it is refused instead.
+RESTATED_AGE_BAND_MATERIALIZERS = frozenset({"population_age", "policyengine_variable"})
+
+#: The exact-value age key the dimension stamp writes when ``age`` is itself
+#: a dimension of the fact.
+#: :func:`microcosm.build.ledger_targets._constraint_bound_filters` skips
+#: every constraint row whose variable is already a dimension key, so on
+#: such a fact an ``age_{lower,upper}_bound`` restatement cannot have come
+#: from an operator-checked ``>=``/``<`` row — only from a dimension of that
+#: name, which carries no operator at all. A restated age bound on a spec
+#: carrying this key is refused, whatever its value, including ``all``.
+#: ``_ledger_metadata`` stamps a dimension only when its value is not
+#: ``None`` and then drops empty values, so an ``age`` dimension valued
+#: ``None`` or ``""`` leaves no key here; the compile's attestation
+#: (:data:`AGE_BOUND_STAMP_SOURCE_KEY`, which checks dimension keys whatever
+#: their value) is what refuses that case. The pinned feeds have no age
+#: dimension of any kind.
+RESTATED_AGE_DIMENSION_KEY = "ledger_filter_age"
 
 FISCAL_TARGET_SOURCE_KEYS = {
     "cbo": "Congressional Budget Office revenue projections",
@@ -4529,6 +4589,33 @@ def _restated_count_value(value: str) -> float | None:
     return count
 
 
+def _restated_band_edge_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    compiled_key: str,
+) -> str | None:
+    """Judge one restated half-open band edge against the edge it restates.
+
+    Shared by the AGI and age rules, whose materializers both slice
+    ``lower <= x < upper`` on the compiled edge read through
+    :func:`_as_bound`, so a restated edge is ignorable exactly when it parses
+    to the same number. A missing compiled edge refuses: the age paths would
+    read it as the open end and the ``irs_soi`` loop indexes it directly, and
+    neither is the restated edge being checked.
+    """
+
+    compiled = metadata.get(compiled_key)
+    if compiled is None:
+        return f"{key}={value} restates a bound the spec does not compile: no {compiled_key}"
+    restated = _restated_bound_value(value)
+    applied = _restated_bound_value(str(compiled))
+    if restated is None or applied is None or restated != applied:
+        return f"{key}={value} disagrees with {compiled_key}={compiled}"
+    return None
+
+
 def _restated_agi_band_refusal(
     key: str,
     value: str,
@@ -4541,15 +4628,47 @@ def _restated_agi_band_refusal(
             f"{key}={value} restates an exact AGI, but the materializer "
             "slices a half-open AGI band and applies no exact-value AGI filter"
         )
-    compiled_key = RESTATED_AGI_BAND_COMPILED_KEYS[side]
-    compiled = metadata.get(compiled_key)
-    if compiled is None:
-        return f"{key}={value} restates a bound the spec does not compile: no {compiled_key}"
-    restated = _restated_bound_value(value)
-    applied = _restated_bound_value(str(compiled))
-    if restated is None or applied is None or restated != applied:
-        return f"{key}={value} disagrees with {compiled_key}={compiled}"
-    return None
+    return _restated_band_edge_refusal(
+        key, value, metadata, compiled_key=RESTATED_AGI_BAND_COMPILED_KEYS[side]
+    )
+
+
+def _restated_age_band_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side is None:
+        return (
+            f"{key}={value} restates an exact age, but the materializer "
+            "slices a half-open age band and applies no exact-age filter"
+        )
+    if RESTATED_AGE_DIMENSION_KEY in metadata:
+        return (
+            f"{key}={value} restates an age bound on a fact whose dimensions "
+            f"include age ({RESTATED_AGE_DIMENSION_KEY}="
+            f"{metadata[RESTATED_AGE_DIMENSION_KEY]}), so the bound came from "
+            "the dimension stamp, which carries no operator"
+        )
+    materializer = metadata.get("materializer")
+    if materializer not in RESTATED_AGE_BAND_MATERIALIZERS:
+        return (
+            f"{key}={value} restates an age bound on a spec whose materializer "
+            f"({materializer!r}) applies no age band"
+        )
+    stamp_source = metadata.get(AGE_BOUND_STAMP_SOURCE_KEY)
+    if stamp_source != AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS:
+        return (
+            f"{key}={value} restates an age bound whose operator is ambiguous: "
+            f"{AGE_BOUND_STAMP_SOURCE_KEY}={stamp_source} does not attest it "
+            "was stamped from a constraint row (>= or <), and a dimension of "
+            "that name carries no operator"
+        )
+    return _restated_band_edge_refusal(
+        key, value, metadata, compiled_key=RESTATED_AGE_BAND_COMPILED_KEYS[side]
+    )
 
 
 def _restated_eitc_child_count_refusal(
@@ -4615,12 +4734,13 @@ def _restated_ledger_filter_refusal(
     changes nothing. Every other key returns the entry to refuse with: the
     bare key for a filter the materializer does not model (unchanged from
     before this rule existed), or the key with both values when a restatement
-    disagrees with its compiled counterpart, or has none, or — for a
+    disagrees with its compiled counterpart, or has none, or is applied by
+    no materializer for this spec, or — for a
     qualifying-child upper bound, whose operator is unconfirmed (see
     :data:`RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES`) — the key with that
     reason, whatever the spec compiles.
 
-    Both compiled counterparts — the AGI band in
+    Two compiled counterparts — the AGI band in
     :data:`RESTATED_AGI_BAND_COMPILED_KEYS` and
     :func:`_soi_eitc_child_count_filter` — are the ``irs_soi`` slice's, read
     in the loop :func:`_materialize_target_frame` runs over ``irs_soi``
@@ -4629,6 +4749,17 @@ def _restated_ledger_filter_refusal(
     ``ledger_filter_eitc_child_count`` is likewise a blanket supported key. A
     spec of another family carries neither counterpart, so it refuses on the
     "does not compile" arm rather than being accepted by accident.
+
+    The third, the person-age band in :data:`RESTATED_AGE_BAND_COMPILED_KEYS`,
+    is read by two materializers (``population_age`` and the age-banded
+    ``policyengine_variable`` branch), so that rule is family-blind too but
+    names the materializers that apply the band
+    (:data:`RESTATED_AGE_BAND_MATERIALIZERS`) and refuses on every other; it
+    also refuses a bound on a fact whose dimensions include ``age``
+    (:data:`RESTATED_AGE_DIMENSION_KEY`), and any bound the compile does not
+    attest was stamped from a ``>=`` / ``<`` constraint row
+    (:data:`AGE_BOUND_STAMP_SOURCE_KEY`): a dimension-stamped bound carries no
+    operator, and ``age < 10`` and ``age <= 10`` select different people.
     """
 
     concept, side = _restated_ledger_filter_concept(key)
@@ -4639,6 +4770,8 @@ def _restated_ledger_filter_refusal(
         return _restated_agi_band_refusal(key, value, metadata, side=side)
     if rule == "eitc_child_count":
         return _restated_eitc_child_count_refusal(key, value, metadata, side=side)
+    if rule == "age_band":
+        return _restated_age_band_refusal(key, value, metadata, side=side)
     raise ValueError(
         f"RESTATED_LEDGER_FILTER_CONCEPTS maps {concept!r} to rule {rule!r}, "
         "which has no comparison implemented."

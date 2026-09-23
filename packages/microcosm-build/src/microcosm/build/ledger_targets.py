@@ -3512,6 +3512,34 @@ def _constraint_bound_filters(
     return bounds
 
 
+def constraint_bound_shadowing_dimensions(
+    fact: object, variable: str
+) -> tuple[str, ...]:
+    """Dimensions that can put an operator-less value under *variable*'s bound keys.
+
+    :func:`_constraint_bound_filters` keeps the operator in the key it stamps
+    (``>=`` as ``<variable>_lower_bound``, ``<`` as ``<variable>_upper_bound``,
+    and so on through ``_CONSTRAINT_BOUND_SUFFIXES``), but
+    :func:`_ledger_metadata` stamps the fact's dimensions first and the
+    constraint edges only through ``setdefault``. So a dimension named for one
+    of those keys is what ``ledger_filter_<that key>`` carries, with no
+    operator at all; and a dimension named *variable* makes
+    :func:`_constraint_bound_filters` skip every one of its rows, so any bound
+    key for it in the metadata is a dimension's. Returns the names of such
+    dimensions present on *fact*, by key whatever their value, sorted. Empty
+    means every ``ledger_filter_<variable>_*bound*`` key the fact's metadata
+    carries was stamped from a constraint row, with the operator its suffix
+    names.
+    """
+
+    dimensions = _dimensions(fact)
+    names = (
+        variable,
+        *(f"{variable}{suffix}" for suffix in _CONSTRAINT_BOUND_SUFFIXES.values()),
+    )
+    return tuple(sorted(name for name in names if name in dimensions))
+
+
 def _diagnostic_target_label_metadata(
     facts: tuple[object, ...],
     *,

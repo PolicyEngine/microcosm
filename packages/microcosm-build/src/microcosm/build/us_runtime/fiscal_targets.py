@@ -21,6 +21,7 @@ from microcosm.build.ledger_targets import (
     LedgerTargetReference,
     apply_ledger_target_profile,
     compile_ledger_target_references,
+    constraint_bound_shadowing_dimensions,
     hierarchy_seed_from_catalog,
 )
 from microcosm.build.us_runtime.congressional_district_vintage import (
@@ -2634,6 +2635,7 @@ def _population_age_reference_from_fact(
         "geography_scope": geography_scope,
         "age_lower_bound": lower,
         "age_upper_bound": upper,
+        AGE_BOUND_STAMP_SOURCE_KEY: _age_bound_stamp_source(fact),
     }
     groupby_value_id = _str_at(fact, "layout", "groupby_value_id")
     if groupby_value_id:
@@ -2834,6 +2836,7 @@ def _ssa_ssi_reference_from_fact(
                 "target_period": str(target_period),
                 "age_lower_bound": lower,
                 "age_upper_bound": upper,
+                AGE_BOUND_STAMP_SOURCE_KEY: _age_bound_stamp_source(fact),
             },
         )
 
@@ -3194,6 +3197,30 @@ def _agi_bounds(fact: object) -> tuple[str, str]:
         elif operator in {"<", "<="}:
             upper = str(float(value))
     return lower, upper
+
+
+#: Compiled metadata key, on every age-banded spec, that says where the
+#: ``ledger_filter_age_{lower,upper}_bound`` keys ``ledger_targets`` stamps on
+#: the same spec came from. Those keys restate the band :func:`_age_bounds`
+#: compiles, but only a key stamped from a constraint row carries a known
+#: operator (``_lower_bound`` is ``>=``, ``_upper_bound`` is ``<``); a
+#: dimension of the same name, or an ``age`` dimension, can put an
+#: operator-less value there instead (see
+#: :func:`microcosm.build.ledger_targets.constraint_bound_shadowing_dimensions`).
+#: The builder's fatal Ledger-filter guard accepts a restated age bound only
+#: where this key reads :data:`AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS`.
+AGE_BOUND_STAMP_SOURCE_KEY = "age_bound_stamp_source"
+#: :data:`AGE_BOUND_STAMP_SOURCE_KEY` value for a fact with no dimension that
+#: could shadow its age constraint rows. Any other value is
+#: ``dimensions:<names>``, naming the dimensions that could.
+AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS = "constraint_rows"
+
+
+def _age_bound_stamp_source(fact: object) -> str:
+    shadowing = constraint_bound_shadowing_dimensions(fact, "age")
+    if shadowing:
+        return "dimensions:" + ",".join(shadowing)
+    return AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS
 
 
 def _age_bounds(fact: object) -> tuple[str, str]:

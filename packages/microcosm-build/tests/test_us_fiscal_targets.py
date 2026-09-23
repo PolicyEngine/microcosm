@@ -4382,6 +4382,8 @@ def test_ssa_ssi_age_band_counts_bind_as_person_age_indicator_targets() -> None:
     assert spec.metadata["target_role"] == "ssa_ssi_age_band_recipients"
     assert spec.metadata["age_lower_bound"] == "0"
     assert spec.metadata["age_upper_bound"] == "18"
+    # No dimension of the fact can shadow its age rows' Ledger stamp.
+    assert spec.metadata["age_bound_stamp_source"] == "constraint_rows"
     assert spec.value == 1_001_922
     assert all_ages_id not in specs
 
@@ -4936,6 +4938,7 @@ def test_census_pep_population_age_facts_compile_to_count_targets() -> None:
     assert national.metadata["geography_scope"] == "national"
     assert national.metadata["age_lower_bound"] == "0"
     assert national.metadata["age_upper_bound"] == "5"
+    assert national.metadata["age_bound_stamp_source"] == "constraint_rows"
     assert national.value == 18_000_000
 
     state = specs[state_source_record_id]
