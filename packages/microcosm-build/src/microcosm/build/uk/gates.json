@@ -356,7 +356,7 @@
       "notes": "Stage-time support-clip health gate over the ETB services receipt. Allowances pinned at the receipted spine-e baseline (2026-08-26): zero rows clipped on every non-exempt column, so any clipping is a real signal against a clean baseline; a missing allowance fails closed rather than skipping the comparison. Bus support is exempt since microcosm#890: the declared rake to the published net support sets its level."
     },
     {
-      "id": "uk_stage_etb_services_support_rake",
+      "id": "uk_stage_etb_services_support_pricing",
       "gate": "stage_health",
       "phase": "transferred",
       "criticality": "release_blocking",
@@ -364,17 +364,10 @@
       "population_fact_check": true,
       "parameters": {
         "stage": "etb_services",
-        "check": "fact_rake",
-        "receipt_key": "bus_support_rake",
-        "maximum_relative_deviation": 1e-06,
-        "allowed_resources": [
-          "orr_rail_facts.json",
-          "dft_bus_value_anchors.json",
-          "devolved_bus_finance.json",
-          "dft_bus_journeys.json"
-        ]
+        "check": "bus_support_pricing",
+        "maximum_relative_deviation": 1e-09
       },
-      "notes": "Stage-time fact check on the ETB bus-support rake receipt (microcosm#930 C7; the #890 rake had no fence): every cell's published net support (DfT BUS05bi for London and England outside London, Scottish Transport Statistics, StatsWales, and the NITHC bus-plus-rail joint cell) is recomputed from the vendored rows through the stage's own declaration and must equal the receipt's, and each cell's design-weighted total after the rake must equal its published value (a joint cell over the sum of its columns); a skipped cell fails closed. A population fact check: the synthetic smoke records it without blocking. The stage also records, unfenced, what pricing support from the frame's journeys would give (support_per_journey), for María's ruling on retiring this rake."
+      "notes": "Stage-time fact check on the ETB bus-support pricing receipt (microcosm#930; the #890 rake to the published net support retired on María's ruling of 2026-09-23): every declared support area's concessionary travel reimbursement, net support, boardings and concessionary boardings (DfT BUS05bi and BUS01 for London and England outside London, Scottish Transport Statistics for Scotland) and the per-boarding rates derived from them are recomputed from the vendored rows through the stage's own declaration and must equal the receipt's; the raw-draw regions (Wales, Northern Ireland) must be the declared ones and the pricing must be applied on the chain's raw draw. The priced support against the published net support is reported, not fenced: the calibration targets act on it. A population fact check: the synthetic smoke records it without blocking."
     },
     {
       "id": "uk_stage_frs_hmrc_spine_leaves_signal",

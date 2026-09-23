@@ -930,115 +930,92 @@ def test_bus_pricing_gate_recomputes_every_price_from_the_vendored_rows() -> Non
         run(None)
 
 
-def test_fact_rake_gate_fact_checks_the_etb_support_rake_receipt() -> None:
-    """The ETB bus-support rake receipt is fenced at stage time (microcosm#930 C7)."""
+def test_bus_support_pricing_gate_recomputes_the_factors_from_the_vendored_rows() -> (
+    None
+):
+    """The ETB bus-support pricing receipt is fenced at stage time (microcosm#930)."""
 
     import copy
 
     import pandas as pd
 
     from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.bus_support_pricing import (
+        bus_support_pricing_operation,
+        price_bus_support,
+    )
     from microcosm.build.uk_runtime.etb_services import (
         UK_ETB_SERVICES_VENDORED_RESOURCES,
     )
-    from microcosm.build.uk_runtime.fact_raking import (
-        rake_operations,
-        rake_to_facts,
-        resolve_cells,
-    )
 
-    parameters = _gate_parameters("uk_stage_etb_services_support_rake")
-    assert parameters["check"] == "fact_rake"
-    assert parameters["receipt_key"] == "bus_support_rake"
-    assert set(parameters["allowed_resources"]) == set(
-        UK_ETB_SERVICES_VENDORED_RESOURCES
+    parameters = _gate_parameters("uk_stage_etb_services_support_pricing")
+    assert parameters["check"] == "bus_support_pricing"
+    declared = bus_support_pricing_operation(
+        load_country_spec("uk").sources.stage_map()["etb_services"]
     )
-    stage = load_country_spec("uk").sources.stage_map()["etb_services"]
-    (declaration,) = rake_operations(stage)
-    cells = resolve_cells(
-        declaration, allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES
-    )
-    regions = [
-        "LONDON",
-        "NORTH_EAST",
-        "NORTH_WEST",
-        "YORKSHIRE",
-        "EAST_MIDLANDS",
-        "WEST_MIDLANDS",
-        "EAST_OF_ENGLAND",
-        "SOUTH_EAST",
-        "SOUTH_WEST",
-        "SCOTLAND",
-        "WALES",
-        "NORTHERN_IRELAND",
-    ]
-    draws = pd.DataFrame(
+    household = pd.DataFrame(
         {
-            "bus_subsidy_spending": np.linspace(100.0, 320.0, len(regions)),
-            "rail_subsidy_spending": np.linspace(50.0, 160.0, len(regions)),
+            "household_id": [1, 2, 3, 4, 5],
+            "region": ["LONDON", "SOUTH_EAST", "WALES", "SCOTLAND", "NORTHERN_IRELAND"],
         }
     )
-    _, receipt = rake_to_facts(
-        draws,
-        columns=["bus_subsidy_spending"],
-        cells=cells,
-        region=regions,
-        weights=np.linspace(1000.0, 12000.0, len(regions)),
-        scope=str(declaration["scope"]),
-        iterations=int(declaration.get("iterations", 1)),
+    person = pd.DataFrame(
+        {
+            "person_id": [11, 12, 21, 31, 41, 51],
+            "person_household_id": [1, 1, 2, 3, 4, 5],
+            "bus_in_london_trips": [100.0, 50.0, 0.0, 0.0, 0.0, 0.0],
+            "other_local_bus_trips": [0.0, 10.0, 40.0, 30.0, 20.0, 25.0],
+            "bus_pass_eligible": [False, True, False, False, True, True],
+        }
     )
-    assert receipt["skipped_cells"] == []
+    _, _, receipt = price_bus_support(
+        declared,
+        person=person,
+        household=household,
+        household_weights=np.array([1.0, 2.0, 3.0, 4.0, 5.0]),
+        raw_support=np.array([50.0, 60.0, 70.0, 80.0, 90.0]),
+        allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES,
+    )
 
-    def run(ev, params=parameters):
+    def run(ev):
         return uk_stage_health_gate(
-            evidence={"stage": "etb_services", "bus_support_rake": ev},
+            evidence={"stage": "etb_services", "bus_support_pricing": ev},
             stage="etb_services",
-            check="fact_rake",
-            parameters=params,
+            check="bus_support_pricing",
+            parameters=parameters,
         )
 
     passed = run(receipt)
     assert passed.passed, passed.failures
-    assert passed.details["cells_fact_checked"] == len(cells) == 5
-    assert set(passed.details["achieved"]) == {
+    assert passed.details["areas_fact_checked"] == 3
+    assert set(passed.details["priced_over_published"]) == {
         "london",
         "england_outside_london",
         "scotland",
-        "wales",
-        "northern_ireland",
     }
-    for label, block in passed.details["achieved"].items():
-        assert block["achieved"] == pytest.approx(block["published"], rel=1e-9), label
     tampered = copy.deepcopy(receipt)
-    tampered["cells"][0]["value"] *= 1.01
-    result = run(tampered)
-    assert not result.passed and any("not the vendored" in f for f in result.failures)
-    tampered = copy.deepcopy(receipt)
-    for fit in tampered["fits"]:
-        if fit["label"] == "scotland":
-            fit["weighted_total_after"]["bus_subsidy_spending"] *= 1.01
+    tampered["by_area"]["scotland"]["other_support_per_boarding"] *= 1.01
     result = run(tampered)
     assert not result.passed and any(
-        "'scotland' totals" in f for f in result.failures
+        "scotland other_support_per_boarding" in f for f in result.failures
     ), result.failures
     tampered = copy.deepcopy(receipt)
-    for fit in tampered["joint_fits"]:
-        fit["weighted_total_after"]["rail_subsidy_spending"] *= 1.01
+    tampered["by_area"]["london"]["net_support"]["value"] *= 1.01
+    result = run(tampered)
+    assert not result.passed and any("london net_support" in f for f in result.failures)
+    tampered = copy.deepcopy(receipt)
+    tampered["raw_draw_regions"] = ["WALES"]
+    result = run(tampered)
+    assert not result.passed and any("raw-draw regions" in f for f in result.failures)
+    tampered = copy.deepcopy(receipt)
+    tampered["applied"] = False
+    result = run(tampered)
+    assert not result.passed and any("applied pricing" in f for f in result.failures)
+    tampered = copy.deepcopy(receipt)
+    del tampered["by_area"]["scotland"]
     result = run(tampered)
     assert not result.passed and any(
-        "'northern_ireland' totals" in f for f in result.failures
-    ), result.failures
-    tampered = copy.deepcopy(receipt)
-    tampered["skipped_cells"] = [{"cell": "wales", "reason": "no households"}]
-    result = run(tampered)
-    assert not result.passed and any("were skipped" in f for f in result.failures)
-    tampered = copy.deepcopy(receipt)
-    tampered["cells"] = [c for c in tampered["cells"] if c["label"] != "wales"]
-    result = run(tampered)
-    assert not result.passed and any(
-        "carries no cell 'wales'" in f for f in result.failures
+        "no support area 'scotland'" in f for f in result.failures
     )
-    with pytest.raises(ValueError, match="declares no receipt_key"):
-        run(receipt, {**parameters, "receipt_key": ""})
-    with pytest.raises(ValueError, match="bus_support_rake must be an object"):
+    with pytest.raises(ValueError, match="bus_support_pricing must be an object"):
         run(None)

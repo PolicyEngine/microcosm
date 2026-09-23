@@ -161,7 +161,7 @@ UK_GATE_BATTERY_ENTRIES = {
     "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred", None),
     "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
     "uk_stage_etb_services_support": ("stage_health", "transferred", None),
-    "uk_stage_etb_services_support_rake": ("stage_health", "transferred", None),
+    "uk_stage_etb_services_support_pricing": ("stage_health", "transferred", None),
     "uk_stage_frs_hmrc_spine_leaves_signal": (
         "stage_health",
         "transferred",
@@ -1187,7 +1187,7 @@ def _gate_battery_payload(
         "uk_stage_nts_bus_travel_facts": "nts_bus_travel",
         "uk_stage_etb_vat_support": "etb_vat",
         "uk_stage_etb_services_support": "etb_services",
-        "uk_stage_etb_services_support_rake": "etb_services",
+        "uk_stage_etb_services_support_pricing": "etb_services",
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",

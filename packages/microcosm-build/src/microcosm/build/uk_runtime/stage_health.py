@@ -67,8 +67,8 @@ def uk_stage_health_gate(
         return _bus_travel_facts_gate(stage, evidence, parameters)
     if check == "bus_pricing":
         return _bus_pricing_gate(stage, evidence, parameters)
-    if check == "fact_rake":
-        return _fact_rake_gate(stage, evidence, parameters)
+    if check == "bus_support_pricing":
+        return _bus_support_pricing_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -1521,100 +1521,107 @@ def _bus_pricing_gate(
     )
 
 
-def _fact_rake_gate(
+def _bus_support_pricing_gate(
     stage: str,
     evidence: Mapping[str, object],
     parameters: Mapping[str, object],
 ) -> GateResult:
-    """A declared rake to vendored facts hit every published cell it declares.
+    """The ETB bus-support pricing used the published components per boarding.
 
-    Fact checks on a stage's ``rake_to_vendored_facts`` receipt (the ETB
-    bus-support rake, microcosm#930 C7): every cell's published value is
-    recomputed from the vendored rows through the stage's own declaration
-    (never taken from the receipt) and must equal the receipt's; each cell's
-    design-weighted total after the rake must equal its published value to
-    ``maximum_relative_deviation`` (a joint cell over the sum of its columns);
-    a skipped cell fails closed. The receipt key is ``receipt_key``
-    (``bus_support_rake`` for the ETB stage).
+    Fact checks on the ``bus_support_pricing`` receipt (microcosm#930): every
+    declared support area's reimbursement, net support, boardings and
+    concessionary boardings, and the per-boarding rates derived from them,
+    are recomputed here from the vendored rows through the stage's own
+    declaration (never taken from the receipt) and must equal the receipt's
+    to ``maximum_relative_deviation``; the raw-draw regions must be the
+    declared ones and the receipt must state that the pricing was applied on
+    the chain's raw draw. The priced support against the published net
+    support is reported, not fenced: the calibration targets act on it.
     """
 
     from microcosm.build.country_spec import load_country_spec
-    from microcosm.build.uk_runtime.fact_raking import rake_operations, resolve_cells
+    from microcosm.build.uk_runtime.bus_support_pricing import (
+        bus_support_factors,
+        bus_support_pricing_operation,
+    )
+    from microcosm.build.uk_runtime.etb_services import (
+        UK_ETB_SERVICES_VENDORED_RESOURCES,
+    )
 
-    check = "fact_rake"
-    key = str(parameters.get("receipt_key") or "")
-    if not key:
-        raise ValueError(f"{stage}: fact_rake declares no receipt_key.")
-    receipt = _mapping(evidence.get(key), label=f"{stage}.{key}")
+    check = "bus_support_pricing"
+    receipt = _mapping(
+        evidence.get("bus_support_pricing"), label=f"{stage}.bus_support_pricing"
+    )
     tolerance = _finite_number(
         parameters.get("maximum_relative_deviation"),
         label=f"{stage}.maximum_relative_deviation",
     )
-    allowed = tuple(str(r) for r in parameters.get("allowed_resources", ()))
-    if not allowed:
-        raise ValueError(f"{stage}: fact_rake declares no allowed_resources.")
-    spec_stage = load_country_spec("uk").sources.stage_map()[stage]
-    operations = rake_operations(spec_stage)
-    if len(operations) != 1:
-        raise ValueError(
-            f"{stage}: fact_rake expects one rake_to_vendored_facts operation, "
-            f"found {len(operations)}."
-        )
-    cells = {
-        cell.label: cell
-        for cell in resolve_cells(operations[0], allowed_resources=allowed)
-    }
+    declared = bus_support_pricing_operation(
+        load_country_spec("uk").sources.stage_map()[stage]
+    )
+    if declared is None:
+        raise ValueError(f"{stage}: declares no price_bus_support operation.")
+    factors = bus_support_factors(
+        declared, allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES
+    )
     failures: list[str] = []
     details: dict[str, object] = {
-        "receipt_key": key,
         "maximum_relative_deviation": tolerance,
-        "cells_fact_checked": 0,
-        "achieved": {},
+        "areas_fact_checked": 0,
+        "priced_over_published": {},
     }
-    skipped = receipt.get("skipped_cells") or ()
-    if skipped:
+    if receipt.get("applied") is not True or receipt.get("chain_conditioned_on") != (
+        "raw_draw"
+    ):
         failures.append(
-            f"{stage}: {len(skipped)} rake cell(s) were skipped: {skipped!r}."
+            f"{stage}: the receipt does not state an applied pricing on the raw draw."
         )
-    recorded_cells = {
-        str(c.get("label")): c
-        for c in receipt.get("cells", ())
-        if isinstance(c, Mapping)
-    }
-    fits = [f for f in receipt.get("fits", ()) if isinstance(f, Mapping)]
-    joint_fits = [f for f in receipt.get("joint_fits", ()) if isinstance(f, Mapping)]
-    for label, cell in cells.items():
-        recorded = recorded_cells.get(label)
-        if recorded is None:
-            failures.append(f"{stage}: the receipt carries no cell {label!r}.")
+    declared_raw = sorted(str(r) for r in declared.get("raw_draw_regions", ()))
+    if sorted(str(r) for r in receipt.get("raw_draw_regions", ())) != declared_raw:
+        failures.append(
+            f"{stage}: raw-draw regions {receipt.get('raw_draw_regions')!r} are not "
+            f"the declared {declared_raw}."
+        )
+    recorded = _mapping(
+        receipt.get("by_area"), label=f"{stage}.bus_support_pricing.by_area"
+    )
+
+    def _close(observed: object, value: float) -> bool:
+        return isinstance(observed, int | float) and abs(float(observed) - value) <= (
+            tolerance * max(1.0, abs(value))
+        )
+
+    for label, block in factors.items():
+        entry = recorded.get(label)
+        if not isinstance(entry, Mapping):
+            failures.append(f"{stage}: the receipt prices no support area {label!r}.")
             continue
-        value = recorded.get("value")
-        if not isinstance(value, int | float) or abs(float(value) - cell.value) > (
-            1e-9 * max(1.0, cell.value)
+        for key in (
+            "reimbursement_per_concessionary_boarding",
+            "other_support_per_boarding",
+            "published_concessionary_boarding_share",
         ):
-            failures.append(
-                f"{stage}: cell {label!r} was raked to {value!r}, not the vendored "
-                f"{cell.value}."
-            )
-        if cell.joint_columns:
-            achieved = sum(
-                float(sum(dict(f.get("weighted_total_after") or {}).values()))
-                for f in joint_fits
-                if str(f.get("label")) == label
-            )
-        else:
-            achieved = sum(
-                float(sum(dict(f.get("weighted_total_after") or {}).values()))
-                for f in fits
-                if str(f.get("label")) == label
-            )
-        details["achieved"][label] = {"published": cell.value, "achieved": achieved}
-        details["cells_fact_checked"] = int(details["cells_fact_checked"]) + 1
-        if abs(achieved - cell.value) > tolerance * max(1.0, cell.value):
-            failures.append(
-                f"{stage}: cell {label!r} totals {achieved:.2f} after the rake against "
-                f"the published {cell.value:.2f} (tolerance {tolerance})."
-            )
+            if not _close(entry.get(key), float(block[key])):
+                failures.append(
+                    f"{stage}: {label} {key} {entry.get(key)!r} is not the vendored "
+                    f"{block[key]}."
+                )
+        for key in ("reimbursement", "net_support", "boardings", "concessionary"):
+            inner = entry.get(key)
+            observed = inner.get("value") if isinstance(inner, Mapping) else None
+            if not _close(observed, float(block[key]["value"])):
+                failures.append(
+                    f"{stage}: {label} {key} {observed!r} is not the vendored "
+                    f"{block[key]['value']}."
+                )
+        ratio = entry.get("priced_over_published")
+        details["priced_over_published"][label] = (
+            float(ratio) if isinstance(ratio, int | float) else None
+        )
+        details["areas_fact_checked"] = int(details["areas_fact_checked"]) + 1
+    missing = sorted(set(recorded) - set(factors))
+    if missing:
+        failures.append(f"{stage}: the receipt prices undeclared areas {missing}.")
     return (
         _fail(stage, check, failures, details)
         if failures

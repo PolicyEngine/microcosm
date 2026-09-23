@@ -1631,9 +1631,6 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "trip_rates_period_value",
                 "maximum_user_share_deviation",
                 "maximum_trip_rate_deviation",
-                # #930 fact_rake check on a declared rake receipt.
-                "receipt_key",
-                "allowed_resources",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),

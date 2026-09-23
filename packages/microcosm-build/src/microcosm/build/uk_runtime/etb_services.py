@@ -12,19 +12,15 @@ import pandas as pd
 
 from microcosm.build.gates import FitWeightRecord
 from microcosm.build.source_manifest import SourceStageSpec
-from microcosm.build.uk_runtime.bus_support_per_journey import (
-    RECORD_SUPPORT_PER_JOURNEY_KIND,
-    support_per_journey_diagnostic,
+from microcosm.build.uk_runtime.bus_support_pricing import (
+    PRICE_BUS_SUPPORT_KIND,
+    bus_support_pricing_operation,
+    price_bus_support,
 )
 from microcosm.build.uk_runtime.donor_uprating import (
     apply_donor_uprating,
     donor_uprating_factors,
     uprating_operation,
-)
-from microcosm.build.uk_runtime.fact_raking import (
-    rake_operations,
-    rake_to_facts,
-    resolve_cells,
 )
 from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
 from microcosm.build.uk_runtime.national_frame import (
@@ -118,8 +114,7 @@ class UKETBServicesResult:
     support_clip: UKSupportClipReceipt
     nhs_cells: dict[str, object] = field(default_factory=dict)
     donor_uprating: dict[str, object] | None = None
-    bus_support_rake: dict[str, object] | None = None
-    support_per_journey: dict[str, object] | None = None
+    bus_support_pricing: dict[str, object] | None = None
 
     def evidence(self) -> dict[str, object]:
         evidence: dict[str, object] = {
@@ -129,10 +124,8 @@ class UKETBServicesResult:
         }
         if self.donor_uprating is not None:
             evidence["donor_uprating"] = dict(self.donor_uprating)
-        if self.bus_support_rake is not None:
-            evidence["bus_support_rake"] = dict(self.bus_support_rake)
-        if self.support_per_journey is not None:
-            evidence["support_per_journey"] = dict(self.support_per_journey)
+        if self.bus_support_pricing is not None:
+            evidence["bus_support_pricing"] = dict(self.bus_support_pricing)
         return evidence
 
 
@@ -188,13 +181,7 @@ class UKETBServicesStageTransform:
         )
         draws = clip_result.clipped
         household = frame.table("household").copy()
-        draws, rake_receipt = etb_bus_support_rake(
-            self.stage,
-            draws,
-            household=household,
-            weights=frame.weights_for("household").values,
-        )
-        support_receipt = etb_support_per_journey(
+        draws, pricing_receipt = etb_bus_support_pricing(
             self.stage,
             draws,
             frame=frame,
@@ -236,8 +223,7 @@ class UKETBServicesStageTransform:
             support_clip=clip_result.receipt,
             nhs_cells=nhs_cells,
             donor_uprating=uprating_receipt,
-            bus_support_rake=rake_receipt,
-            support_per_journey=support_receipt,
+            bus_support_pricing=pricing_receipt,
         )
         return result
 
@@ -476,7 +462,7 @@ def support_clip_to_donor(
 
 
 def support_clip_exempt(stage: SourceStageSpec) -> set[str]:
-    """Columns the declared ``support_clip`` exempts (a raked column keeps its level)."""
+    """Columns the declared ``support_clip`` exempts (none since microcosm#930)."""
 
     for operation in stage.operations:
         if operation.kind == "support_clip":
@@ -486,86 +472,54 @@ def support_clip_exempt(stage: SourceStageSpec) -> set[str]:
     return set()
 
 
-def etb_bus_support_rake(
-    stage: SourceStageSpec,
-    draws: pd.DataFrame,
-    *,
-    household: pd.DataFrame,
-    weights: np.ndarray,
-) -> tuple[pd.DataFrame, dict[str, object] | None]:
-    """Apply every declared ``rake_to_vendored_facts`` operation on the stage."""
-
-    operations = rake_operations(stage)
-    if not operations:
-        return draws, None
-    if "region" not in household:
-        raise KeyError("etb_services rake needs the household 'region' column.")
-    region = household["region"].map(_enum_name).to_numpy()
-    receipts = []
-    raked = draws
-    for parameters in operations:
-        cells = resolve_cells(
-            parameters, allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES
-        )
-        raked, receipt = rake_to_facts(
-            raked,
-            columns=[str(column) for column in parameters["columns"]],
-            cells=cells,
-            region=np.asarray(region).astype(str),
-            weights=weights if bool(parameters.get("weighted", True)) else None,
-            scope=str(parameters["scope"]),
-            iterations=int(parameters.get("iterations", 1)),
-        )
-        receipts.append(receipt)
-    return raked, receipts[0] if len(receipts) == 1 else {"operations": receipts}
-
-
-def etb_support_per_journey(
+def etb_bus_support_pricing(
     stage: SourceStageSpec,
     draws: pd.DataFrame,
     *,
     frame: Frame,
     household: pd.DataFrame,
     weights: np.ndarray,
-) -> dict[str, object] | None:
-    """Record what pricing support from journeys would give (microcosm#930)."""
+) -> tuple[pd.DataFrame, dict[str, object] | None]:
+    """Price bus support from the frame's journeys where declared (microcosm#930).
 
-    parameters = next(
-        (
-            dict(operation.parameters)
-            for operation in stage.operations
-            if operation.kind == RECORD_SUPPORT_PER_JOURNEY_KIND
-        ),
-        None,
-    )
+    The chain's clipped raw draw stands in the declared ``raw_draw_regions``
+    (Wales, Northern Ireland); every other household's ``bus_subsidy_spending``
+    is the published support per boarding times its persons' boardings. The
+    chain drew the column last, so nothing downstream conditioned on it.
+    """
+
+    parameters = bus_support_pricing_operation(stage)
     if parameters is None:
-        return None
+        return draws, None
     column = str(parameters["support_column"])
     if column not in draws:
         raise KeyError(
-            f"record_support_per_journey names {column!r}, not a drawn column."
+            f"{PRICE_BUS_SUPPORT_KIND} names {column!r}, not a drawn column."
         )
-    return support_per_journey_diagnostic(
+    values, _priced, receipt = price_bus_support(
         parameters,
         person=frame.table("person"),
         household=household,
         household_weights=np.asarray(weights, dtype=float),
-        raked_support=draws[column].to_numpy(dtype=float),
+        raw_support=draws[column].to_numpy(dtype=float),
         allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES,
     )
+    priced = draws.copy()
+    priced[column] = values
+    return priced, receipt
 
 
-#: The declared rake levels bus support; the support clip and the committed
-#: support bounds leave it alone.
-UK_ETB_SERVICES_RAKED_COLUMNS = frozenset({"bus_subsidy_spending"})
+#: The declared pricing sets bus support from journeys; the committed support
+#: bounds leave the column alone (the clip still bounds the raw draw first).
+UK_ETB_SERVICES_PRICED_COLUMNS = frozenset({"bus_subsidy_spending"})
 
 
 def donor_realized_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
-    """Donor support per clipped column; the raked column carries no bounds."""
+    """Donor support per clipped column; the priced column carries no bounds."""
 
     ranges = {}
     for column in UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS[:3]:
-        if column in UK_ETB_SERVICES_RAKED_COLUMNS:
+        if column in UK_ETB_SERVICES_PRICED_COLUMNS:
             continue
         values = donor[column]
         finite = values[np.isfinite(values)]

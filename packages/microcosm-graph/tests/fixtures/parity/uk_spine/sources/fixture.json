@@ -360,7 +360,7 @@
         "nhs_admitted_patient_spending",
         "nhs_outpatient_spending"
       ],
-      "notes": "Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the support rake levels away in every nation and which therefore only positions the donor before the QRF), rakes bus support so each area's design-weighted total equals the FY2024-25 published net support (DfT BUS05bi for London and England outside London, Scottish Transport Statistics all government support, the StatsWales local-authority gross expenditure on concessionary fares plus support to operators for Wales, and for Northern Ireland the NITHC accounts' PSO plus concessionary compensation bound jointly on bus plus rail support since the accounts carry no split; microcosm#890 D), with the raked column exempt from the support clip, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage.",
+      "notes": "Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the pricing overrides outside Wales and Northern Ireland and which therefore only positions the donor before the QRF), prices bus support from the frame's journeys (microcosm#930; the",
       "operations": [
         {
           "annualization_weeks": 52,
@@ -434,122 +434,14 @@
           "weights": "explicit"
         },
         {
-          "exempt": [
-            "bus_subsidy_spending"
-          ],
           "kind": "support_clip",
           "range": "donor_realized"
         },
         {
-          "cells": [
-            {
-              "allocation": "uniform",
-              "label": "london",
-              "regions": [
-                "LONDON"
-              ],
-              "resource": "dft_bus_value_anchors.json",
-              "selector": {
-                "concept": "dft.local_bus_total_estimated_net_support",
-                "fiscal_start": "2024-04-01",
-                "geography_id": "E12000007"
-              }
-            },
-            {
-              "allocation": "uniform",
-              "label": "england_outside_london",
-              "regions": [
-                "NORTH_EAST",
-                "NORTH_WEST",
-                "YORKSHIRE",
-                "EAST_MIDLANDS",
-                "WEST_MIDLANDS",
-                "EAST_OF_ENGLAND",
-                "SOUTH_EAST",
-                "SOUTH_WEST"
-              ],
-              "resource": "dft_bus_value_anchors.json",
-              "selector": {
-                "concept": "dft.local_bus_total_estimated_net_support",
-                "fiscal_start": "2024-04-01",
-                "geography_id": "dft:england_outside_london"
-              }
-            },
-            {
-              "allocation": "uniform",
-              "label": "scotland",
-              "regions": [
-                "SCOTLAND"
-              ],
-              "resource": "devolved_bus_finance.json",
-              "selector": {
-                "concept": "scotgov.bus.government_support",
-                "dimension_values": {
-                  "funding_component": "all_government_support"
-                },
-                "fiscal_start": "2024-04-01"
-              }
-            },
-            {
-              "allocation": "uniform",
-              "label": "wales",
-              "regions": [
-                "WALES"
-              ],
-              "resource": "devolved_bus_finance.json",
-              "selector": {
-                "concept": "welshgov.local_transport.gross_expenditure",
-                "dimension_values": {
-                  "expenditure_component": "Gross expenditure"
-                },
-                "fiscal_start": "2024-04-01",
-                "sum_over": {
-                  "service_line": [
-                    "Concessionary fares",
-                    "Support to operators"
-                  ]
-                }
-              }
-            },
-            {
-              "allocation": "uniform",
-              "joint_columns": [
-                "bus_subsidy_spending",
-                "rail_subsidy_spending"
-              ],
-              "label": "northern_ireland",
-              "regions": [
-                "NORTHERN_IRELAND"
-              ],
-              "resource": "devolved_bus_finance.json",
-              "selector": {
-                "concept": "nithc.dfi_transaction_value",
-                "dimension_values": {
-                  "mode_scope": "all_public_transport"
-                },
-                "fiscal_start": "2024-04-01",
-                "sum_over": {
-                  "funding_component": [
-                    "Public Service Obligation compensation",
-                    "Concessionary fare compensation for a range of groups"
-                  ]
-                }
-              }
-            }
-          ],
-          "columns": [
-            "bus_subsidy_spending"
-          ],
-          "iterations": 1,
-          "kind": "rake_to_vendored_facts",
-          "scope": "all",
-          "weighted": true
-        },
-        {
-          "basis": "value-side alternative recorded beside the raked column, never applied (microcosm#930, Mar\u00eda's ruling pending); England only, where DfT publishes the reimbursement and net support by area",
+          "basis": "bus support priced from the frame's journeys at the published support per boarding where the publisher gives the components and the boardings (DfT BUS05bi and BUS01 for London and England outside London, Scottish Transport Statistics for Scotland); Wales (no published boardings) and Northern Ireland (the NITHC accounts carry bus and rail jointly) keep the chain's raw draw clipped to donor support, as Wales fares do (microcosm#930; Mar\u00eda's ruling of 2026-09-23 retiring the support rake)",
           "eligibility_column": "bus_pass_eligible",
           "fiscal_start": "2024-04-01",
-          "kind": "record_support_per_journey",
+          "kind": "price_bus_support",
           "population_period_value": 2024,
           "population_resource": "dft_bus_journeys.json",
           "pricing_areas": [
@@ -633,7 +525,44 @@
               "series": "other_local_bus",
               "trips_basis": "published_series_rate",
               "trips_concept": "dft.other_local_bus_trips_per_person"
+            },
+            {
+              "boardings": {
+                "concept": "scotgov.bus.passenger_journeys",
+                "groupby_value_id": "all_passenger_journeys",
+                "resource": "devolved_bus_finance.json"
+              },
+              "concessionary": {
+                "concept": "scotgov.bus.passenger_journeys",
+                "dimension_values": {
+                  "journey_category": "concessionary"
+                },
+                "groupby_value_id": "concessionary_passenger_journeys",
+                "resource": "devolved_bus_finance.json"
+              },
+              "label": "scotland",
+              "population_geography_ids": [
+                "S92000003"
+              ],
+              "receipts": {
+                "concept": "scotgov.bus.operator_revenue",
+                "dimension_values": {
+                  "revenue_component": "passenger_revenue"
+                },
+                "groupby_value_id": "passenger_revenue",
+                "resource": "devolved_bus_finance.json"
+              },
+              "regions": [
+                "SCOTLAND"
+              ],
+              "series": "other_local_bus",
+              "trips_basis": "england_other_local_bus_rate_as_proxy",
+              "trips_concept": "dft.other_local_bus_trips_per_person"
             }
+          ],
+          "raw_draw_regions": [
+            "WALES",
+            "NORTHERN_IRELAND"
           ],
           "support_areas": [
             {
@@ -700,6 +629,39 @@
                 "geography_id": "dft:england_outside_london",
                 "resource": "dft_bus_journeys.json"
               }
+            },
+            {
+              "boardings": {
+                "concept": "scotgov.bus.passenger_journeys",
+                "groupby_value_id": "all_passenger_journeys",
+                "resource": "devolved_bus_finance.json"
+              },
+              "concessionary": {
+                "concept": "scotgov.bus.passenger_journeys",
+                "dimension_values": {
+                  "journey_category": "concessionary"
+                },
+                "groupby_value_id": "concessionary_passenger_journeys",
+                "resource": "devolved_bus_finance.json"
+              },
+              "label": "scotland",
+              "net_support": {
+                "concept": "scotgov.bus.government_support",
+                "dimension_values": {
+                  "funding_component": "all_government_support"
+                },
+                "resource": "devolved_bus_finance.json"
+              },
+              "regions": [
+                "SCOTLAND"
+              ],
+              "reimbursement": {
+                "concept": "scotgov.bus.government_support",
+                "dimension_values": {
+                  "funding_component": "concessionary_fares"
+                },
+                "resource": "devolved_bus_finance.json"
+              }
             }
           ],
           "support_column": "bus_subsidy_spending",
@@ -710,7 +672,6 @@
             "other_local_bus": "other_local_bus_trips"
           },
           "unpriced_regions": [
-            "SCOTLAND",
             "WALES",
             "NORTHERN_IRELAND"
           ]

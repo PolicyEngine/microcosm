@@ -8596,133 +8596,6 @@
      "additionalProperties": false,
      "required": [
       "kind",
-      "columns",
-      "cells",
-      "iterations",
-      "weighted",
-      "scope"
-     ],
-     "properties": {
-      "kind": {
-       "const": "rake_to_vendored_facts"
-      },
-      "columns": {
-       "type": "array",
-       "items": {
-        "type": "string"
-       }
-      },
-      "iterations": {
-       "type": "integer",
-       "minimum": 1
-      },
-      "weighted": {
-       "type": "boolean"
-      },
-      "scope": {
-       "enum": [
-        "users_only",
-        "all"
-       ]
-      },
-      "quintile_income": {
-       "type": "string"
-      },
-      "cells": {
-       "type": "array",
-       "minItems": 1,
-       "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": [
-         "label",
-         "regions",
-         "resource",
-         "selector",
-         "allocation"
-        ],
-        "properties": {
-         "label": {
-          "type": "string"
-         },
-         "regions": {
-          "type": "array",
-          "items": {
-           "type": "string"
-          }
-         },
-         "resource": {
-          "type": "string"
-         },
-         "selector": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-           "concept",
-           "fiscal_start"
-          ],
-          "properties": {
-           "concept": {
-            "type": "string"
-           },
-           "fiscal_start": {
-            "type": "string"
-           },
-           "geography_id": {
-            "type": "string"
-           },
-           "groupby_value_id": {
-            "type": "string"
-           },
-           "dimension_values": {
-            "type": "object",
-            "additionalProperties": {
-             "type": "string"
-            }
-           },
-           "sum_over": {
-            "type": "object",
-            "additionalProperties": {
-             "type": "array",
-             "items": {
-              "type": "string"
-             }
-            }
-           }
-          }
-         },
-         "allocation": {
-          "enum": [
-           "uniform",
-           "income_quintile_trips"
-          ]
-         },
-         "allocation_resource": {
-          "type": "string"
-         },
-         "allocation_concept": {
-          "type": "string"
-         },
-         "allocation_period_value": {
-          "type": "integer"
-         },
-         "joint_columns": {
-          "type": "array",
-          "minItems": 2,
-          "items": {
-           "type": "string"
-          }
-         }
-        }
-       }
-      }
-     }
-    },
-    {
-     "type": "object",
-     "additionalProperties": false,
-     "required": [
-      "kind",
       "resource",
       "crosswalk_resource",
       "period_type",
@@ -9505,11 +9378,12 @@
       "pricing_areas",
       "unpriced_regions",
       "support_areas",
+      "raw_draw_regions",
       "basis"
      ],
      "properties": {
       "kind": {
-       "const": "record_support_per_journey"
+       "const": "price_bus_support"
       },
       "support_column": {
        "type": "string"
@@ -9893,6 +9767,12 @@
       },
       "basis": {
        "type": "string"
+      },
+      "raw_draw_regions": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
       }
      }
     }

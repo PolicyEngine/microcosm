@@ -139,7 +139,7 @@ UK_SPINE_GATE_SCOPE = (
     "uk_stage_lcfs_consumption_bus_pricing",
     "uk_stage_etb_vat_support",
     "uk_stage_etb_services_support",
-    "uk_stage_etb_services_support_rake",
+    "uk_stage_etb_services_support_pricing",
     "uk_stage_frs_hmrc_spine_leaves_signal",
     "uk_stage_spi_support_channel_mass",
     "uk_stage_hmrc_spi_income_spine_identity",

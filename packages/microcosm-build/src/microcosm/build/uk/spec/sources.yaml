@@ -1975,82 +1975,7 @@ stages:
     n_estimators: 100
   - kind: support_clip
     range: donor_realized
-    exempt:
-    - bus_subsidy_spending
-  - kind: rake_to_vendored_facts
-    columns:
-    - bus_subsidy_spending
-    scope: all
-    iterations: 1
-    weighted: true
-    cells:
-    - label: london
-      regions:
-      - LONDON
-      resource: dft_bus_value_anchors.json
-      selector:
-        concept: dft.local_bus_total_estimated_net_support
-        fiscal_start: '2024-04-01'
-        geography_id: E12000007
-      allocation: uniform
-    - label: england_outside_london
-      regions:
-      - NORTH_EAST
-      - NORTH_WEST
-      - YORKSHIRE
-      - EAST_MIDLANDS
-      - WEST_MIDLANDS
-      - EAST_OF_ENGLAND
-      - SOUTH_EAST
-      - SOUTH_WEST
-      resource: dft_bus_value_anchors.json
-      selector:
-        concept: dft.local_bus_total_estimated_net_support
-        fiscal_start: '2024-04-01'
-        geography_id: dft:england_outside_london
-      allocation: uniform
-    - label: scotland
-      regions:
-      - SCOTLAND
-      resource: devolved_bus_finance.json
-      selector:
-        concept: scotgov.bus.government_support
-        fiscal_start: '2024-04-01'
-        dimension_values:
-          funding_component: all_government_support
-      allocation: uniform
-    - label: wales
-      regions:
-      - WALES
-      resource: devolved_bus_finance.json
-      selector:
-        concept: welshgov.local_transport.gross_expenditure
-        fiscal_start: '2024-04-01'
-        dimension_values:
-          expenditure_component: Gross expenditure
-        sum_over:
-          service_line:
-          - Concessionary fares
-          - Support to operators
-      allocation: uniform
-    - label: northern_ireland
-      regions:
-      - NORTHERN_IRELAND
-      resource: devolved_bus_finance.json
-      selector:
-        concept: nithc.dfi_transaction_value
-        fiscal_start: '2024-04-01'
-        dimension_values:
-          mode_scope: all_public_transport
-        sum_over:
-          funding_component:
-          - Public Service Obligation compensation
-          - Concessionary fare compensation for a range of groups
-      allocation: uniform
-      joint_columns:
-      - bus_subsidy_spending
-      - rail_subsidy_spending
-  - kind: record_support_per_journey
+  - kind: price_bus_support
     support_column: bus_subsidy_spending
     trips_columns:
       bus_in_london: bus_in_london_trips
@@ -2128,8 +2053,31 @@ stages:
       - E12000007
       - E12000008
       - E12000009
+    - label: scotland
+      series: other_local_bus
+      regions:
+      - SCOTLAND
+      receipts:
+        resource: devolved_bus_finance.json
+        concept: scotgov.bus.operator_revenue
+        groupby_value_id: passenger_revenue
+        dimension_values:
+          revenue_component: passenger_revenue
+      boardings:
+        resource: devolved_bus_finance.json
+        concept: scotgov.bus.passenger_journeys
+        groupby_value_id: all_passenger_journeys
+      concessionary:
+        resource: devolved_bus_finance.json
+        concept: scotgov.bus.passenger_journeys
+        groupby_value_id: concessionary_passenger_journeys
+        dimension_values:
+          journey_category: concessionary
+      trips_concept: dft.other_local_bus_trips_per_person
+      trips_basis: england_other_local_bus_rate_as_proxy
+      population_geography_ids:
+      - S92000003
     unpriced_regions:
-    - SCOTLAND
     - WALES
     - NORTHERN_IRELAND
     support_areas:
@@ -2182,7 +2130,33 @@ stages:
         geography_id: dft:england_outside_london
         dimension_values:
           journey_category: total_concessionary
-    basis: value-side alternative recorded beside the raked column, never applied (microcosm#930, María's ruling pending); England only, where DfT publishes the reimbursement and net support by area
+    - label: scotland
+      regions:
+      - SCOTLAND
+      reimbursement:
+        resource: devolved_bus_finance.json
+        concept: scotgov.bus.government_support
+        dimension_values:
+          funding_component: concessionary_fares
+      net_support:
+        resource: devolved_bus_finance.json
+        concept: scotgov.bus.government_support
+        dimension_values:
+          funding_component: all_government_support
+      boardings:
+        resource: devolved_bus_finance.json
+        concept: scotgov.bus.passenger_journeys
+        groupby_value_id: all_passenger_journeys
+      concessionary:
+        resource: devolved_bus_finance.json
+        concept: scotgov.bus.passenger_journeys
+        groupby_value_id: concessionary_passenger_journeys
+        dimension_values:
+          journey_category: concessionary
+    raw_draw_regions:
+    - WALES
+    - NORTHERN_IRELAND
+    basis: bus support priced from the frame's journeys at the published support per boarding where the publisher gives the components and the boardings (DfT BUS05bi and BUS01 for London and England outside London, Scottish Transport Statistics for Scotland); Wales (no published boardings) and Northern Ireland (the NITHC accounts carry bus and rail jointly) keep the chain's raw draw clipped to donor support, as Wales fares do (microcosm#930; María's ruling of 2026-09-23 retiring the support rake)
   - kind: compute_ratio
     output: rail_usage
     numerator: rail_subsidy_spending
@@ -2220,7 +2194,7 @@ stages:
   - nhs_a_and_e_spending
   - nhs_admitted_patient_spending
   - nhs_outpatient_spending
-  notes: Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the support rake levels away in every nation and which therefore only positions the donor before the QRF), rakes bus support so each area's design-weighted total equals the FY2024-25 published net support (DfT BUS05bi for London and England outside London, Scottish Transport Statistics all government support, the StatsWales local-authority gross expenditure on concessionary fares plus support to operators for Wales, and for Northern Ireland the NITHC accounts' PSO plus concessionary compensation bound jointly on bus plus rail support since the accounts carry no split; microcosm#890 D), with the raked column exempt from the support clip, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage.
+  notes: Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the pricing overrides outside Wales and Northern Ireland and which therefore only positions the donor before the QRF), prices bus support from the frame's journeys (microcosm#930; the #890 rake to the published net support retired on María's ruling of 2026-09-23): per household, the published concessionary travel reimbursement per concessionary boarding times its eligible persons' boardings plus the rest of the published net support per boarding times every boarding, boardings being the nts_bus_travel trips times the fare pricing's boardings per resident trip, for London and England outside London (DfT BUS05bi and BUS01) and Scotland (Scottish Transport Statistics components and journeys); Wales (no published boardings) and Northern Ireland (the NITHC accounts carry bus and rail jointly) keep the chain's raw draw, clipped to donor support; the published totals stay bound as calibration targets and now measure the priced quantity, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage.
 - stage: frs_hmrc_spine_leaves
   survey: Family Resources Survey 2024-25
   source: Department for Work and Pensions Family Resources Survey 2024-25 raw adult.tab and benefits.tab, caller-supplied local input
