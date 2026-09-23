@@ -14,9 +14,9 @@ package; each is separately resumable):
                 Ledger feed exactly like the production path
                 (``compile_us_fiscal_target_registry`` -> RI Medicaid
                 substitution -> state {usda_snap, cms_medicaid[enrollment],
-                irs_soi}; ``--soi-mode totals`` by default, the
-                ``soi_fiscal_distribution`` role only with ``--soi-mode
-                full``), run the household-chunked engine pass under the
+                irs_soi}; ``--soi-mode state`` by default -- Build O's
+                state-geography SOI contract -- with ``totals`` and ``full``
+                as explicit opt-ins), run the household-chunked engine pass under the
                 nullable-artifact contract (input-schema projection +
                 reviewed-null fill), add PUMA-ladder population marginals
                 (state + congressional district), and write a lean float32
@@ -86,16 +86,32 @@ LEGACY_STAGING_REFRESH_RECIPE = (
     "--puma-ladder build/us/us_puma_ladder_2020.npz"
 )
 
-#: ``--soi-mode`` values for the state-level ``irs_soi`` surface. ``totals``
-#: keeps the specs whose ``target_role`` is not ``soi_fiscal_distribution``;
-#: ``full`` also keeps that role, which is most of the state SOI surface and
-#: so most of the dense admin measure matrix. Totals is the default and full
-#: is an explicit opt-in. docs/us-acs-local-soi-target-surface.md has the
-#: measured surfaces, including what the role holds beyond AGI-band slices.
+#: ``--soi-mode`` values for the state-level ``irs_soi`` surface.
+#:
+#: ``state`` (the default; Max's ruling of 2026-09-22) is the SOI contract every
+#: earlier ACS local-area release was calibrated to, Build O's and Build P's:
+#: every ``irs_soi`` spec at state geography whose Ledger record set is not a
+#: congressional-district file -- on the pinned feed, the three TY2022 Historic
+#: Table 2 state tables (broad totals, AGI bands, EITC by qualifying
+#: children). Build O selected it as ``full`` with congressional-district
+#: targets switched off (``include_congressional_district_targets=False`` at
+#: populace@77e2061); commit b7922b089 removed that switch, so no mode
+#: reproduced it until this one.
+#:
+#: ``totals`` keeps only the specs whose ``target_role`` is not
+#: ``soi_fiscal_distribution`` -- on the pinned feed, ACA premium tax credit
+#: rows and no state AGI, income-tax or EITC total. ``full`` keeps every
+#: state-bearing spec, including the TY2023 congressional-district file, which
+#: needs a dense matrix too large for one 128 GB machine. Both are explicit
+#: opt-ins. docs/us-acs-local-soi-target-surface.md has the measured surfaces.
+SOI_MODE_STATE = "state"
 SOI_MODE_TOTALS = "totals"
 SOI_MODE_FULL = "full"
-SOI_MODES = (SOI_MODE_TOTALS, SOI_MODE_FULL)
-DEFAULT_SOI_MODE = SOI_MODE_TOTALS
+SOI_MODES = (SOI_MODE_STATE, SOI_MODE_TOTALS, SOI_MODE_FULL)
+DEFAULT_SOI_MODE = SOI_MODE_STATE
+#: Ledger record-set specs from a congressional-district file start with this;
+#: ``state`` mode excludes them, which is what Build O's switch did.
+CONGRESSIONAL_DISTRICT_RECORD_SET_SPEC_PREFIX = "irs_soi.congressional_district_"
 
 
 def _require_soi_mode(soi_mode: str) -> str:
@@ -182,22 +198,40 @@ def _load_json(path: Path) -> dict:
 def soi_surface_predicate(soi_mode: str):
     """The ``irs_soi`` spec filter for one ``--soi-mode``.
 
-    Both modes keep only specs carrying ``state_fips`` (state rows, and the
-    congressional-district rows that also carry their state). ``totals``
-    then drops every ``soi_fiscal_distribution`` spec (the jetsam-safe
-    Option B of the Build L runbook); ``full`` keeps them. That role is not
-    only AGI-band slices: every SOI fact without a named role gets it, which
-    at state level includes the all-income-range state and district rows.
+    Every mode keeps only specs carrying ``state_fips`` (state rows, and the
+    congressional-district rows that also carry their state).
+
+    - ``state`` then keeps a spec only at ``ledger_geography_level ==
+      "state"`` whose ``ledger_layout_record_set_spec_id`` is not a
+      congressional-district file, of any ``target_role`` (AGI-band rows
+      included). A spec missing either key is not selected: the mode cannot
+      tell which contract it belongs to.
+    - ``totals`` drops every ``soi_fiscal_distribution`` spec (the
+      jetsam-safe Option B of the Build L runbook). That role is not only
+      AGI-band slices: every SOI fact without a named role gets it, which at
+      state level includes the all-income-range state and district rows.
+    - ``full`` keeps them all.
     """
 
     _require_soi_mode(soi_mode)
 
     def selected(spec) -> bool:
-        if "state_fips" not in spec.metadata:
+        metadata = spec.metadata
+        if "state_fips" not in metadata:
             return False
+        if soi_mode == SOI_MODE_STATE:
+            record_set_spec = metadata.get("ledger_layout_record_set_spec_id")
+            return (
+                metadata.get("ledger_geography_level") == "state"
+                and isinstance(record_set_spec, str)
+                and bool(record_set_spec)
+                and not record_set_spec.startswith(
+                    CONGRESSIONAL_DISTRICT_RECORD_SET_SPEC_PREFIX
+                )
+            )
         return (
             soi_mode == SOI_MODE_FULL
-            or spec.metadata.get("target_role") != "soi_fiscal_distribution"
+            or metadata.get("target_role") != "soi_fiscal_distribution"
         )
 
     return selected
@@ -211,7 +245,8 @@ def state_admin_specs(
     feed -> ``compile_us_fiscal_target_registry(age_targets=True)`` ->
     ``apply_us_medicaid_enrollment_substitutions`` (RI FIPS-44) -> state-level
     {usda_snap, cms_medicaid[enrollment], irs_soi}. The SOI slice follows
-    :func:`soi_surface_predicate`: ``totals`` (the default) or ``full``.
+    :func:`soi_surface_predicate`: ``state`` (the default), ``totals`` or
+    ``full``.
     """
 
     # Refuse an unknown mode before loading the feed and compiling the registry.
@@ -2161,12 +2196,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         choices=SOI_MODES,
         default=DEFAULT_SOI_MODE,
         help=(
-            "State SOI target surface for --stage materialize. 'totals' "
-            "(default) drops every soi_fiscal_distribution spec; 'full' is "
-            "the explicit opt-in that keeps them and needs a much larger "
-            "dense admin matrix (contents and sizes in "
-            "docs/us-acs-local-soi-target-surface.md). Later stages use the "
-            "mode the checkpoint recorded."
+            "State SOI target surface for --stage materialize. 'state' "
+            "(default) is Build O's contract: every state-geography SOI spec "
+            "outside the congressional-district file. 'totals' drops every "
+            "soi_fiscal_distribution spec (no state AGI, income-tax or EITC "
+            "total); 'full' keeps every state-bearing spec, including the "
+            "district file, and needs a much larger dense admin matrix "
+            "(contents and sizes in docs/us-acs-local-soi-target-surface.md). "
+            "Later stages use the mode the checkpoint recorded."
         ),
     )
     parser.add_argument("--epochs", type=int, default=800)

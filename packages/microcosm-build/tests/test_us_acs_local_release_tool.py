@@ -592,7 +592,7 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# SOI target surface: totals by default, full (soi_fiscal_distribution) opt-in
+# SOI target surface: state (Build O contract) by default; totals and full opt-in
 # ---------------------------------------------------------------------------
 
 
@@ -610,34 +610,76 @@ def _materialize_argv(tmp_path: Path, *extra: str) -> list[str]:
     ]
 
 
-def test_soi_mode_defaults_to_totals_and_full_is_an_explicit_opt_in(
+def test_soi_mode_defaults_to_state_and_totals_and_full_are_explicit_opt_ins(
     tmp_path: Path,
 ) -> None:
-    """The 2026-09-22 ruling on #969: SOI totals are the ACS local default;
-    ``full`` (adds every ``soi_fiscal_distribution`` spec) is reachable only
-    by asking for it."""
+    """Max's ruling of 2026-09-22: the ACS local default is Build O's
+    state-geography SOI contract; ``totals`` and ``full`` are reachable only by
+    asking for them."""
 
     module = _load_tool_module()
-    assert module.SOI_MODES == ("totals", "full")
-    assert module.DEFAULT_SOI_MODE == module.SOI_MODE_TOTALS == "totals"
-    assert module._parse_args(_materialize_argv(tmp_path)).soi_mode == "totals"
-    assert (
-        module._parse_args(_materialize_argv(tmp_path, "--soi-mode", "full")).soi_mode
-        == "full"
-    )
+    assert module.SOI_MODES == ("state", "totals", "full")
+    assert module.DEFAULT_SOI_MODE == module.SOI_MODE_STATE == "state"
+    assert module._parse_args(_materialize_argv(tmp_path)).soi_mode == "state"
+    for mode in ("totals", "full"):
+        assert (
+            module._parse_args(_materialize_argv(tmp_path, "--soi-mode", mode)).soi_mode
+            == mode
+        )
     signature = inspect.signature(module.state_admin_specs)
-    assert signature.parameters["soi_mode"].default == "totals"
+    assert signature.parameters["soi_mode"].default == "state"
     with pytest.raises(SystemExit):
         module._parse_args(_materialize_argv(tmp_path, "--soi-mode", "ful"))
 
 
-def _spec(role: str | None, *, state: bool = True) -> SimpleNamespace:
+_HT2_BROAD = "irs_soi.historic_table_2.state_broad_totals.v1"
+_HT2_AGI = "irs_soi.historic_table_2.state_agi_counts_and_amounts.v1"
+_CD_FILE = "irs_soi.congressional_district_2022.all_returns.v1"
+
+
+def _spec(
+    role: str | None,
+    *,
+    state: bool = True,
+    geography: str | None = "state",
+    record_set: str | None = _HT2_BROAD,
+) -> SimpleNamespace:
     metadata: dict[str, str] = {}
     if state:
         metadata["state_fips"] = "06"
     if role is not None:
         metadata["target_role"] = role
+    if geography is not None:
+        metadata["ledger_geography_level"] = geography
+    if record_set is not None:
+        metadata["ledger_layout_record_set_spec_id"] = record_set
     return SimpleNamespace(metadata=metadata)
+
+
+def test_state_soi_surface_is_build_o_contract_by_record_set_and_geography() -> None:
+    """``state`` keeps state-geography specs outside the district file, of any
+    role (AGI-band rows included), and refuses to guess on missing metadata."""
+
+    module = _load_tool_module()
+    state = module.soi_surface_predicate("state")
+
+    for role in ("soi_fiscal_distribution", "aca_ptc_returns", "aca_spending", None):
+        assert state(_spec(role)), role
+        assert state(_spec(role, record_set=_HT2_AGI)), role
+    # The TY2023 congressional-district file is excluded even at state geography
+    # (its <st>_total rows restate the Historic Table 2 totals a year later).
+    assert not state(_spec("soi_fiscal_distribution", record_set=_CD_FILE))
+    assert not state(_spec("aca_ptc_returns", record_set=_CD_FILE))
+    # District geography is excluded even from Historic Table 2.
+    assert not state(
+        _spec("soi_fiscal_distribution", geography="congressional_district")
+    )
+    # No state_fips: never on the state surface.
+    assert not state(_spec("soi_fiscal_distribution", state=False))
+    # Missing either key: the mode cannot tell which contract the spec is in.
+    assert not state(_spec("soi_fiscal_distribution", geography=None))
+    assert not state(_spec("soi_fiscal_distribution", record_set=None))
+    assert not state(_spec("soi_fiscal_distribution", record_set=""))
 
 
 def test_soi_surface_predicate_drops_soi_fiscal_distribution_only_in_totals() -> None:
@@ -671,7 +713,7 @@ def test_unknown_soi_mode_is_refused_before_the_feed_is_read(tmp_path: Path) -> 
             call()
 
 
-@pytest.mark.parametrize("soi_mode", ["totals", "full"])
+@pytest.mark.parametrize("soi_mode", ["state", "totals", "full"])
 def test_release_refresh_recipe_reproduces_its_soi_mode(
     tmp_path: Path, soi_mode: str
 ) -> None:
@@ -707,12 +749,12 @@ def test_package_refuses_a_checkpoint_without_a_known_soi_mode(
     assert not (args.out / "releases").exists(), "a refusal leaves no release"
 
 
-@pytest.mark.parametrize("recorded", ["totals", "full"])
+@pytest.mark.parametrize("recorded", ["state", "totals", "full"])
 def test_package_records_the_materialized_soi_mode_not_the_parser_default(
     tmp_path: Path, monkeypatch, recorded: str
 ) -> None:
     """The package invocation passes no ``--soi-mode`` (so the parser says
-    ``totals``); the manifest and recipe must carry what materialize used."""
+    ``state``); the manifest and recipe must carry what materialize used."""
 
     module = _load_tool_module()
     args = _package_evidence_args(
@@ -721,7 +763,7 @@ def test_package_records_the_materialized_soi_mode_not_the_parser_default(
         monkeypatch,
         hours_report={"passed": True, "failures": [], "detail": {}},
     )
-    assert args.soi_mode == "totals"
+    assert args.soi_mode == "state"
     (args.checkpoint_dir / "materialize_rss.json").write_text(
         json.dumps({"soi_mode": recorded, "hh_chunk": 1})
     )
@@ -737,14 +779,17 @@ def test_package_records_the_materialized_soi_mode_not_the_parser_default(
         assert recipe[recipe.index("--soi-mode") + 1] == recorded
 
 
-def test_pinned_feed_default_state_surface_carries_no_soi_fiscal_distribution() -> None:
-    """On the real feed, the default call selects SOI totals and ``full``
-    adds exactly the ``soi_fiscal_distribution`` specs, nothing else.
+def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
+    """On the real feed: the default ``state`` surface is Build O/P's
+    3,972-spec admin contract, built only from the three Historic Table 2
+    state tables at state geography; ``totals`` holds no
+    ``soi_fiscal_distribution`` spec; ``full`` adds exactly those specs to
+    ``totals`` and contains ``state``.
 
     The pinned consumer-facts feed is a 164 MB public aggregate export that
     no CI lane carries, so this runs only when ``MICROCOSM_US_CHRONICLE_FACTS``
-    points at it (the convention of the #969 state-surface arm). Two registry
-    compiles; about 3 GB peak RSS.
+    points at it (the convention of the #969 state-surface arm). Three
+    registry compiles; about 3 GB peak RSS.
     """
 
     feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
@@ -755,19 +800,40 @@ def test_pinned_feed_default_state_surface_carries_no_soi_fiscal_distribution() 
 
     module = _load_tool_module()
     families = ["snap", "medicaid", "soi"]
-    default_registry, _ = module.state_admin_specs(feed, families)
+    state_registry, _ = module.state_admin_specs(feed, families)
+    totals_registry, _ = module.state_admin_specs(feed, families, soi_mode="totals")
     full_registry, _ = module.state_admin_specs(feed, families, soi_mode="full")
-    default_names = {spec.name for spec in default_registry.specs}
+    state_specs = state_registry.specs
+    totals_names = {spec.name for spec in totals_registry.specs}
     full_by_name = {spec.name: spec for spec in full_registry.specs}
 
-    assert default_names
+    # Build P's ACS local contract: 102 SNAP + 51 Medicaid + 3,819 SOI admin
+    # specs (4,459 with the 487 population marginals); Build O's 4,461 plus the
+    # Vermont under-$1 taxable-interest pair the compiler now excludes.
+    families_count = {}
+    for spec in state_specs:
+        families_count[spec.family] = families_count.get(spec.family, 0) + 1
+    assert families_count == {"usda_snap": 102, "cms_medicaid": 51, "irs_soi": 3819}
+    soi = [spec for spec in state_specs if spec.family == "irs_soi"]
+    record_sets = {}
+    for spec in soi:
+        key = spec.metadata["ledger_layout_record_set_spec_id"]
+        record_sets[key] = record_sets.get(key, 0) + 1
+    assert record_sets == {
+        "irs_soi.historic_table_2.state_broad_totals.v1": 2397,
+        "irs_soi.historic_table_2.state_agi_counts_and_amounts.v1": 912,
+        "irs_soi.historic_table_2.state_eitc.v1": 510,
+    }
+    assert {spec.metadata["ledger_geography_level"] for spec in soi} == {"state"}
+    assert {spec.name for spec in state_specs} <= set(full_by_name)
+
     assert not [
         spec
-        for spec in default_registry.specs
+        for spec in totals_registry.specs
         if spec.metadata.get("target_role") == "soi_fiscal_distribution"
     ]
-    assert default_names < set(full_by_name)
-    added = [full_by_name[name] for name in set(full_by_name) - default_names]
+    assert totals_names < set(full_by_name)
+    added = [full_by_name[name] for name in set(full_by_name) - totals_names]
     assert added
     assert {(spec.family, spec.metadata.get("target_role")) for spec in added} == {
         ("irs_soi", "soi_fiscal_distribution")

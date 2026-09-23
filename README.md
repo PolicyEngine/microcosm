@@ -131,8 +131,9 @@ compatibility checks. It has a local candidate builder and uses the regular
 publisher's contract with `--parent-h5` and `--preflight-only`.
 
 The non-default ACS local-area chain (`tools/build_us_acs_local_release.py`)
-calibrates to the SOI `totals` surface by default; `--soi-mode full` is the
-explicit opt-in for the much larger `soi_fiscal_distribution` surface. See
+calibrates to the SOI `state` surface by default, the 4,459-target contract of
+Build O and Build P; `--soi-mode totals` and `--soi-mode full` are explicit
+opt-ins. See
 [the ACS local-area SOI target surface](docs/us-acs-local-soi-target-surface.md)
 for what each mode contains and where the build records it.
 
