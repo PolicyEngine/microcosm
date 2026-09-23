@@ -812,8 +812,21 @@ def build_receipt(
     runner: Mapping[str, object],
     prior_receipts: Sequence[Mapping[str, object]] = (),
     stopped_at_budget: bool = False,
+    container_wall_seconds: float | None = None,
 ) -> dict[str, object]:
     resources = plan.resources
+    # The tool's wall leaves out staging the inputs, hashing the state tree
+    # and mirroring it to the volume; the container's wall is what is billed.
+    container = (
+        {
+            "container_wall_seconds": round(container_wall_seconds, 1),
+            "estimated_usd_container_at_list_price": resources.estimated_usd(
+                container_wall_seconds
+            ),
+        }
+        if container_wall_seconds is not None
+        else {}
+    )
     return {
         "schema": RECEIPT_SCHEMA,
         "status": "COMPLETED"
@@ -846,6 +859,7 @@ def build_receipt(
         "wall_seconds": round(wall_seconds, 1),
         "peak_rss_bytes": peak_rss_bytes,
         "estimated_usd_at_list_price": resources.estimated_usd(wall_seconds),
+        **container,
         "inputs": [dict(item) for item in inputs_verified],
         "prior_receipts": [dict(item) for item in prior_receipts],
         "outputs": [dict(item) for item in outputs],

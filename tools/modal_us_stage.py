@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import resource
 import shutil
 import subprocess
@@ -144,7 +145,22 @@ def _git_state(plan: plan_lib.Plan) -> dict[str, object]:
 
 
 def _runner_identity() -> dict[str, object]:
-    identity: dict[str, object] = {"python": sys.version.split()[0]}
+    identity: dict[str, object] = {
+        "python": sys.version.split()[0],
+        # Platform and CPU visibility, for comparing a Modal run with a local
+        # one: BLAS and OpenMP size their thread pools from what they see.
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "os_cpu_count": os.cpu_count(),
+        "cpu_affinity": len(os.sched_getaffinity(0))
+        if hasattr(os, "sched_getaffinity")
+        else None,
+        "thread_env": {
+            key: value
+            for key, value in sorted(os.environ.items())
+            if key.endswith("_NUM_THREADS")
+        },
+    }
     for name, path in {
         "modal_us_stage_plan.py": PLAN_MODULE_REMOTE,
         "modal_us_stage.py": __file__,
@@ -379,6 +395,7 @@ def check_stage(plan_data: dict) -> dict:
 
 
 def _run_stage(plan_data: dict) -> dict:
+    container_started = time.time()
     plan = plan_lib.parse_plan(plan_data)
     git = _git_state(plan)
     if not (git["head_matches_plan"] and git["tree_clean"] and git["tool_present"]):
@@ -450,6 +467,7 @@ def _run_stage(plan_data: dict) -> dict:
         runner={**_runner_identity(), "state_pulled": pulled, "state_pushed": pushed},
         prior_receipts=prior,
         stopped_at_budget=budget.fired,
+        container_wall_seconds=time.time() - container_started,
     )
     receipts_dir.mkdir(parents=True, exist_ok=True)
     name = f"{plan.stage}-{started_at.replace(':', '')}.json"
@@ -534,6 +552,8 @@ def main(run: bool = False) -> None:
             "receipt_path",
         )
     }
+    for key in ("container_wall_seconds", "estimated_usd_container_at_list_price"):
+        brief[key] = receipt.get(key)
     brief["outputs"] = len(receipt["outputs"])
     print(json.dumps(brief, indent=2))
     if receipt["returncode"] != 0:

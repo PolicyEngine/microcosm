@@ -379,6 +379,33 @@ def test_receipt_records_plan_source_outputs_and_cost(tmp_path: Path) -> None:
     assert plan_lib.verify_receipt(receipt, state) == []
 
 
+def test_receipt_prices_the_whole_container_when_given(tmp_path: Path) -> None:
+    receipt, _ = _receipt(tmp_path)
+    assert "container_wall_seconds" not in receipt
+    data = _plan_data()
+    plan = plan_lib.parse_plan(data)
+    priced = plan_lib.build_receipt(
+        plan,
+        data,
+        argv=plan_lib.planned_argv(plan),
+        returncode=0,
+        started_at="2026-09-23T03:00:00Z",
+        finished_at="2026-09-23T04:24:27Z",
+        wall_seconds=5067.1,
+        peak_rss_bytes=None,
+        inputs_verified=[],
+        outputs=[],
+        git={"head": COMMIT, "tree_clean": True},
+        runner={},
+        container_wall_seconds=5067.1 + 3600,
+    )
+    assert priced["container_wall_seconds"] == pytest.approx(8667.1)
+    # One more hour of the heavy class at list price: about $1.21.
+    assert priced["estimated_usd_container_at_list_price"] - priced[
+        "estimated_usd_at_list_price"
+    ] == pytest.approx(1.21, abs=0.01)
+
+
 def test_failed_stage_receipt_is_marked_failed(tmp_path: Path) -> None:
     receipt, _ = _receipt(tmp_path, returncode=1)
     assert receipt["status"] == "FAILED"
