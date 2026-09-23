@@ -50,6 +50,11 @@ def app(monkeypatch):
 
     stub = MagicMock(name="modal")
     stub.is_local.return_value = False
+    # @app.function(...) keeps the function and records its Modal options.
+    stub.App.return_value.function.side_effect = lambda **options: (
+        lambda function: setattr(function, "modal_options", options) or function
+    )
+    stub.App.return_value.local_entrypoint.side_effect = lambda **_: lambda f: f
     stub.current_input_id.return_value = "in-test"
     stub.current_function_call_id.return_value = "fc-test"
     monkeypatch.setitem(sys.modules, "modal", stub)
@@ -1295,3 +1300,69 @@ def test_app_reads_receipts_even_when_one_is_truncated(app, tmp_path: Path) -> N
         ("calibrate-2026-09-23T100000Z.json", {}),
         ("materialize-2026-09-23T090000Z.json", {"schema": "x"}),
     ]
+
+
+# --------------------------------------------------------------------------- #
+# Non-preemptible placement                                                    #
+# --------------------------------------------------------------------------- #
+
+
+def test_nonpreemptible_is_refused_for_the_check_class() -> None:
+    data = _smoke_plan_data()
+    data["nonpreemptible"] = True
+    with pytest.raises(plan_lib.PlanError, match="always runs preemptible"):
+        plan_lib.parse_plan(data)
+
+
+def test_every_valid_plan_has_a_runner_with_its_class_and_placement(app) -> None:
+    keys = {
+        (plan.resources.name, plan.nonpreemptible)
+        for plan in [
+            plan_lib.parse_plan(_plan_data(stage, nonpreemptible=flag))
+            for stage in plan_lib.US_ACS_LOCAL_RELEASE.stages
+            for flag in (False, True)
+        ]
+        + [plan_lib.parse_plan(_smoke_plan_data())]
+    }
+    assert keys <= set(app.RUNNERS)
+    for (name, nonpreemptible), runner in app.RUNNERS.items():
+        resources = plan_lib.RESOURCE_CLASSES[name]
+        options = runner.modal_options
+        assert (options["cpu"], options["memory"], options["timeout"]) == (
+            resources.cpu,
+            resources.memory_mib,
+            resources.timeout_s,
+        )
+        assert options.get("nonpreemptible", False) is nonpreemptible
+        assert options["retries"] == 0
+    # The check never asks for non-preemptible placement.
+    assert "nonpreemptible" not in app.check_stage.modal_options
+
+
+def test_nonpreemptible_prices_every_attempt_at_three_times_list() -> None:
+    data = _plan_data(max_wall_seconds=20_000, nonpreemptible=True)
+    plan = plan_lib.parse_plan(data)
+    preempted = _attempt("a1", seen=3_600.0, plan_data=data)
+    receipt = plan_lib.build_receipt(
+        plan,
+        data,
+        argv=["python"],
+        returncode=0,
+        started_at="t0",
+        finished_at="t1",
+        wall_seconds=3_600.0,
+        peak_rss_bytes=None,
+        inputs_verified=[],
+        outputs=[],
+        git={},
+        runner={},
+        container_wall_seconds=3_600.0,
+        prior_attempts=[preempted],
+    )
+    # One heavy container-hour is $1.21 at list; x3, and two hours in all.
+    assert receipt["estimated_usd_container_at_list_price"] == pytest.approx(3.63)
+    assert receipt["estimated_usd_all_attempts_at_list_price"] == pytest.approx(7.27)
+    # The flag is part of the plan, so switching it is a new plan digest.
+    assert plan_lib.plan_digest(data) != plan_lib.plan_digest(
+        _plan_data(max_wall_seconds=20_000)
+    )
