@@ -485,6 +485,7 @@ def test_receipt_records_plan_source_outputs_and_cost(tmp_path: Path) -> None:
         "cpu": 4.0,
         "memory_mib": 131072,
         "timeout_s": 28800,
+        "nonpreemptible": False,
     }
     paths = [item["path"] for item in receipt["outputs"]]
     assert paths == ["checkpoints/run_identity.json", "populace_us_2024_acs_local.h5"]
@@ -866,3 +867,78 @@ def test_branch_verdict_needs_a_proven_ancestry() -> None:
         {"fetch_returncode": 0, "tip": None, "ancestor_returncode": None},
     ):
         assert verdict("b", COMMIT, **kwargs)["branch_verified"] is False
+
+
+def test_nonpreemptible_placement_is_opt_in_and_priced_at_three_times_list() -> None:
+    plain = plan_lib.parse_plan(_plan_data(max_wall_seconds=3600))
+    assert plain.nonpreemptible is False
+    assert plain.price_multiplier == 1.0
+    data = _plan_data(max_wall_seconds=3600, nonpreemptible=True)
+    plan = plan_lib.parse_plan(data)
+    assert plan.nonpreemptible is True
+    summary = plan_lib.summarize(plan)
+    assert summary["resources"]["nonpreemptible"] is True
+    # The heavy class for the #974 materialize wall: $1.71 at list, x3.
+    assert summary["estimated_usd_at_measured_wall"] == pytest.approx(5.12, abs=0.01)
+    # The budget plus the runner's 15 minutes of staging and mirroring.
+    assert plan_lib.summarize(plain)["estimated_usd_at_max_wall"] == pytest.approx(
+        1.51, abs=0.01
+    )
+    assert summary["estimated_usd_at_max_wall"] == pytest.approx(4.54, abs=0.01)
+    receipt = plan_lib.build_receipt(
+        plan,
+        data,
+        argv=plan_lib.planned_argv(plan),
+        returncode=0,
+        started_at="2026-09-23T07:00:00Z",
+        finished_at="2026-09-23T08:00:00Z",
+        wall_seconds=3_600.0,
+        peak_rss_bytes=None,
+        inputs_verified=[],
+        outputs=[],
+        git={"head": COMMIT, "tree_clean": True},
+        runner={},
+        container_wall_seconds=3_600.0,
+    )
+    assert receipt["resources"]["nonpreemptible"] is True
+    assert receipt["estimated_usd_at_list_price"] == pytest.approx(3.63, abs=0.01)
+    with pytest.raises(plan_lib.PlanError, match="true or false"):
+        plan_lib.parse_plan(_plan_data(nonpreemptible="yes"))
+
+
+# --------------------------------------------------------------------------- #
+# The tool's environment                                                       #
+# --------------------------------------------------------------------------- #
+
+
+def test_tool_environment_strips_credentials_and_stays_offline() -> None:
+    base = {
+        "PATH": "/usr/bin",
+        "HOME": "/root",
+        "HF_TOKEN": "hf_secret",
+        "HUGGING_FACE_HUB_TOKEN": "hf_secret",
+        "HF_HUB_OFFLINE": "0",
+        "AWS_SECRET_ACCESS_KEY": "x",
+        "MODAL_IDENTITY_TOKEN": "x",
+        "OMP_NUM_THREADS": "8",
+    }
+    plan_env = {"OMP_NUM_THREADS": "4", "MICROCOSM_ACS_POOL_PEAK_LIMIT_BYTES": "1"}
+    env, removed = plan_lib.tool_environment(base, plan_env)
+    assert removed == [
+        "AWS_SECRET_ACCESS_KEY",
+        "HF_TOKEN",
+        "HUGGING_FACE_HUB_TOKEN",
+        "MODAL_IDENTITY_TOKEN",
+    ]
+    assert not set(removed) & set(env)
+    assert "hf_secret" not in env.values()
+    assert env["HF_HUB_OFFLINE"] == "1"
+    assert env["OMP_NUM_THREADS"] == "4"  # the plan's override wins
+    assert env["PATH"] == "/usr/bin"
+    assert env["MICROCOSM_ACS_POOL_PEAK_LIMIT_BYTES"] == "1"
+
+
+@pytest.mark.parametrize("key", ["HF_HUB_OFFLINE", "HF_TOKEN", "POPULACE_LEDGER_KEY"])
+def test_tool_environment_refuses_an_unvalidated_plan_env(key: str) -> None:
+    with pytest.raises(plan_lib.PlanError, match="may not be passed"):
+        plan_lib.tool_environment({}, {key: "x"})

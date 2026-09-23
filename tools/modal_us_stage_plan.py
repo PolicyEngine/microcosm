@@ -812,6 +812,29 @@ def planned_argv(plan: Plan, work_root: str = WORK_ROOT) -> list[str]:
     )
 
 
+def tool_environment(
+    base: Mapping[str, str], plan_env: Mapping[str, str]
+) -> tuple[dict[str, str], list[str]]:
+    """The stage tool's environment, and the names removed from ``base``.
+
+    The container's environment without any credential-looking variable
+    (``HF_TOKEN`` from an attached Hub secret, Modal's own tokens), with
+    ``HF_HUB_OFFLINE=1`` so the tool cannot reach the Hub, and with the
+    plan's allowlisted overrides last. Only names are returned, for the
+    receipt; never values.
+    """
+
+    for key in plan_env:
+        if not _ENV_KEY.fullmatch(key) or is_credential_env_key(key):
+            raise PlanError(f"env {key!r} may not be passed to the tool")
+    removed = sorted(key for key in base if is_credential_env_key(key))
+    dropped = set(removed)
+    env = {key: value for key, value in base.items() if key not in dropped}
+    env["HF_HUB_OFFLINE"] = "1"
+    env.update(plan_env)
+    return env, removed
+
+
 # --------------------------------------------------------------------------- #
 # Hashing, mirroring and receipts                                              #
 # --------------------------------------------------------------------------- #

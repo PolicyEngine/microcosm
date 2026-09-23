@@ -171,8 +171,12 @@ same state directory.
 
 For a gated or private Hub input, set `MICROCOSM_MODAL_HF_SECRET` to the name
 of a Modal secret that holds `HF_TOKEN`, for example `huggingface-token` in
-the `policyengine` workspace. Otherwise no secret is attached, and the tool
-runs with `HF_HUB_OFFLINE=1`.
+the `policyengine` workspace. Otherwise no secret is attached. Only the
+runner uses the token, to download inputs. The tool always runs with
+`HF_HUB_OFFLINE=1` (huggingface_hub then refuses every request) and without
+any variable whose name looks like a credential (`KEY`, `TOKEN`, `SECRET`,
+`PASSW`, `SIGNING`, `CREDENTIAL`); the receipt lists the names removed,
+never their values. A plan cannot set such a variable either.
 
 ## First acceptance: replay #974 materialize
 

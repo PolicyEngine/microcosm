@@ -317,7 +317,9 @@ print(json.dumps({"stages": list(getattr(args, "stages", [])) or None}))
 """
 
 
-def _parse_check(plan: plan_lib.Plan, argv: list[str]) -> dict[str, object]:
+def _parse_check(
+    plan: plan_lib.Plan, argv: list[str], env: dict[str, str]
+) -> dict[str, object]:
     """Run the pinned tool's own argument parser on the built argv."""
 
     if plan.tool.script is None:
@@ -329,7 +331,12 @@ def _parse_check(plan: plan_lib.Plan, argv: list[str]) -> dict[str, object]:
         cmd = [python, "-B", "-c", _PARSE_SNIPPET, script, plan.tool.parse_function]
         cmd += tool_argv
     proc = subprocess.run(
-        cmd, cwd=plan_lib.IMAGE_REPO_ROOT, text=True, capture_output=True, timeout=900
+        cmd,
+        cwd=plan_lib.IMAGE_REPO_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=900,
     )
     return {
         "returncode": proc.returncode,
@@ -456,6 +463,9 @@ def check_stage(plan_data: dict) -> dict:
     if not git["tool_present"]:
         problems.append(f"{plan.tool.script} is not in commit {plan.commit}")
 
+    # The probe and the parser run in the environment the stage would get.
+    tool_env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
+    report["tool_env_removed"] = env_removed
     env_probe = subprocess.run(
         [
             f"{plan_lib.IMAGE_VENV}/bin/python",
@@ -465,6 +475,7 @@ def check_stage(plan_data: dict) -> dict:
             "('policyengine-us', 'policyengine-core', 'microcosm-build')}))",
         ],
         cwd=plan_lib.IMAGE_REPO_ROOT,
+        env=tool_env,
         text=True,
         capture_output=True,
         timeout=600,
@@ -478,7 +489,11 @@ def check_stage(plan_data: dict) -> dict:
         problems.append("the synced environment does not import microcosm.build")
 
     argv = plan_lib.planned_argv(plan)
-    parse = _parse_check(plan, argv) if git["tool_present"] else {"returncode": None}
+    parse = (
+        _parse_check(plan, argv, tool_env)
+        if git["tool_present"]
+        else {"returncode": None}
+    )
     report["tool_argument_parse"] = parse
     if parse["returncode"] != 0:
         problems.append("the pinned tool's parser refuses the built argv")
@@ -570,7 +585,7 @@ def _run_stage(plan_data: dict) -> dict:
     started_at, started = _now(), time.time()
     log_path = state / "logs" / f"{plan.stage}-{started_at.replace(':', '')}.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, "HF_HUB_OFFLINE": "1", **plan.env}
+    env, env_removed = plan_lib.tool_environment(os.environ, plan.env)
     print(f"$ {' '.join(argv)}", flush=True)
     with open(log_path, "w") as log:
         proc = subprocess.Popen(
@@ -611,7 +626,12 @@ def _run_stage(plan_data: dict) -> dict:
         inputs_verified=inputs_verified,
         outputs=outputs,
         git=git,
-        runner={**_runner_identity(), "state_pulled": pulled, "state_pushed": pushed},
+        runner={
+            **_runner_identity(),
+            "state_pulled": pulled,
+            "state_pushed": pushed,
+            "tool_env_removed": env_removed,
+        },
         prior_receipts=prior,
         stopped_at_budget=budget.fired,
         container_wall_seconds=time.time() - container_started,
