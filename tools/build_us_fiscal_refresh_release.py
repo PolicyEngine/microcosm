@@ -8511,9 +8511,7 @@ def _build_manifests(
                 "failures": gate_failures,
                 "initial_loss": _finite_or_none(result.initial_loss),
                 "final_loss": _finite_or_none(result.final_loss),
-                "fraction_within_10pct": _finite_or_none(
-                    result.fraction_within_10pct
-                ),
+                "fraction_within_10pct": _finite_or_none(result.fraction_within_10pct),
             },
             **(
                 {
