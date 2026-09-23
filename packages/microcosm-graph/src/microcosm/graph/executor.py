@@ -9,7 +9,7 @@ import socket
 import stat
 import struct
 import time
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping, MutableMapping
 from copy import deepcopy
 from dataclasses import dataclass, fields, replace
 from datetime import UTC, datetime
@@ -73,6 +73,13 @@ from .population import (
     patch,
     restore_cached_expand,
     weight_cap_receipt,
+)
+from .scheduling import (
+    KernelOutcome,
+    PreparedKernel,
+    Speculation,
+    invoke_kernel,
+    resolve_max_workers,
 )
 from .store import (
     ContentStore,
@@ -2363,6 +2370,121 @@ def _unreached_node(
     )
 
 
+def _node_incumbent(
+    compiled: CompiledGraph,
+    node: Node,
+    populations: Mapping[str, Population],
+) -> Population | None:
+    """The population a node's context is projected from, as admitted so far."""
+
+    if node.structural is StructuralDelta.CREATE:
+        return None
+    if node.structural is StructuralDelta.NONE:
+        return populations[compiled.versions[node.id]]
+    assert node.base is not None
+    return populations[node.base]
+
+
+def _authenticate_artifact_inputs(
+    node: Node,
+    typed: Mapping[str, object],
+    receipts: Mapping[str, NodeReceipt],
+) -> None:
+    """Check every declared byte edge against its producer's admitted receipt.
+
+    Identity is all this needs, so no payload is read: a node that hits its
+    cached record never runs a kernel, and its inputs' bytes would be read for
+    nothing (a fitted model is not small).
+    """
+
+    for binding in node.artifact_inputs:
+        entry = typed["inputs"][binding.name]  # type: ignore[index]
+        producer_receipt = receipts[binding.producer]
+        if producer_receipt.opaque_artifacts.get(binding.artifact) != entry["key"]:
+            # Generated receipts cannot reach this branch: a producer that
+            # hit its record had this identity checked by
+            # `_require_record_shape`, and one that ran got it from
+            # `_write_node` under the same derivation. It stands so the
+            # consumer's read is guarded by its own check rather than by
+            # the producer's, should those two paths ever diverge.
+            raise StoreCorrupt(
+                f"Node {node.id!r} artifact producer receipt disagrees with its "
+                "declaration."
+            )
+        value_from_descriptor(b"", entry)
+
+
+def _artifact_values(
+    store: ContentStore,
+    node: Node,
+    typed: Mapping[str, object],
+) -> dict[str, ArtifactValue]:
+    """Read and authenticate every declared byte input a cold kernel receives."""
+
+    return {
+        binding.name: value_from_descriptor(
+            store.load_bytes(typed["inputs"][binding.name]["key"]),  # type: ignore[index]
+            typed["inputs"][binding.name],  # type: ignore[index]
+        )
+        for binding in node.artifact_inputs
+    }
+
+
+def _cached_record_expected(
+    store: ContentStore,
+    node: Node,
+    *,
+    key: str,
+    implementation: str,
+    capabilities: Capabilities,
+    typed: Mapping[str, object],
+    input_writers: Mapping[tuple[str, str], tuple[str, ...]],
+) -> bool:
+    """Whether a node's canonical turn will restore, or refuse, its record.
+
+    Only a scheduling hint: it decides whether to project a context early, and
+    never whether the turn hits. A record that exists and names this node's
+    writer provenance is assumed to restore; a record that is absent or stale
+    is a miss, exactly as the turn will find it. Anything this raises other
+    than a miss declines the early projection, and the turn raises it itself.
+    """
+
+    try:
+        record = _load_record(
+            store,
+            node,
+            key=key,
+            kernel_impl_hash=implementation,
+            capabilities=capabilities,
+            typed_artifacts=typed,
+        )
+        if execution_state(record["receipt"]) == "unreached":  # type: ignore[arg-type]
+            return True  # the turn refuses it; nothing to run early
+        _require_tolerance_writer_receipt(node, record, input_writers, exact=True)
+    except StoreMiss:
+        return False
+    return True
+
+
+def _run_inline(
+    kernel: object,
+    context: KernelContext,
+    node_id: str,
+    timings: dict[str, dict[str, object]] | None,
+) -> KernelOutcome:
+    """The sequential executor's kernel call, on the coordinator thread."""
+
+    outcome = invoke_kernel(kernel, context, _context_digest)
+    if timings is not None:
+        timings[node_id] = {
+            "path": "inline",
+            "thread": outcome.thread,
+            "started": outcome.started,
+            "finished": outcome.finished,
+        }
+    return outcome
+
+
 def _preflight_require(
     compiled: CompiledGraph,
     store: ContentStore,
@@ -2469,6 +2591,13 @@ class _RunSources:
     keys: Mapping[str, str] | None = None
     identities: _SourceIdentities | None = None
     settled: bool = False
+    #: The run's kernel workers, joined before a failed run is settled so no
+    #: kernel still reads a source while it is re-derived (amendment 26).
+    speculation: Speculation | None = None
+
+    def join_workers(self) -> None:
+        if self.speculation is not None:
+            self.speculation.close()
 
 
 def _settle_failed_run(
@@ -2543,10 +2672,39 @@ def run_graph(
     kernels: KernelRegistry,
     resume: ResumePolicy = "auto",
     decisions: tuple[Decision, ...] = (),
+    max_workers: int | None = None,
     _population_observer: Callable[[str, Population], None] | None = None,
     _verification_epoch: Mapping[str, object] | None = None,
+    _concurrency_record: MutableMapping[str, object] | None = None,
 ) -> RunManifest:
     """Execute a compiled graph with content-addressed reuse and receipts.
+
+    ``max_workers`` bounds how many kernel calls may run at once
+    (amendment 26). 1 is the sequential executor. ``None`` reads
+    ``MICROCOSM_GRAPH_MAX_WORKERS`` and falls back to 1, so a country runtime
+    can opt its nested graphs in without editing pinned modules. With more
+    than one worker, a node whose declared predecessors have all been admitted
+    has its context projected and its kernel called on a worker thread, ahead
+    of its canonical turn; admission -- validation, patching, the observer,
+    every store write and every receipt -- stays on this thread, in
+    ``compiled.order``, through the same code as the sequential run. A turn
+    uses a precomputed call only when its own projection is the one that call
+    received (the same incumbent object and numeric scopes, or an equal
+    context digest); otherwise it calls the kernel itself. Node keys,
+    receipts, cache records, stored bytes and the manifest key are therefore
+    those of the sequential run, and so is a failure: the exception a run
+    raises, and what it has written by then, are the sequential run's, since
+    a worker's result is only ever read at its node's turn. That holds for
+    kernels honouring their declared contract -- output a function of the
+    projected context, declared sources and node seed -- and it asks one more
+    thing of the caller: every registered kernel must be safe to call from a
+    worker thread while others run. ``resume="require"`` runs sequentially:
+    every node restores a record. Workers are joined before the run settles a
+    failure or re-derives its sources.
+
+    The private concurrency record, when given, is filled with this run's
+    scheduling counts and per-node kernel timings. It is operational only and
+    enters no key, receipt, cache record or manifest.
 
     The private population observer exposes a detached snapshot of each node's
     admitted population, design anchors included, to an integrating verifier.
@@ -2577,6 +2735,11 @@ def run_graph(
     persisted stay in the store under the pre-rewrite identity.
     """
 
+    workers = resolve_max_workers(max_workers)
+    if _concurrency_record is not None and not isinstance(
+        _concurrency_record, MutableMapping
+    ):
+        raise TypeError("_concurrency_record must be a mutable mapping or None.")
     run_sources = _RunSources()
     with store.recording_writes() as written:
         try:
@@ -2589,11 +2752,16 @@ def run_graph(
                 decisions=decisions,
                 written=written,
                 run_sources=run_sources,
+                max_workers=workers,
+                concurrency_record=_concurrency_record,
                 _population_observer=_population_observer,
                 _verification_epoch=_verification_epoch,
             )
         except BaseException as error:
-            _settle_failed_run(store, written, run_sources, error)
+            try:
+                run_sources.join_workers()
+            finally:
+                _settle_failed_run(store, written, run_sources, error)
             raise
 
 
@@ -2607,6 +2775,8 @@ def _execute_graph(
     decisions: tuple[Decision, ...],
     written: set[str],
     run_sources: _RunSources,
+    max_workers: int = 1,
+    concurrency_record: MutableMapping[str, object] | None = None,
     _population_observer: Callable[[str, Population], None] | None,
     _verification_epoch: Mapping[str, object] | None,
 ) -> RunManifest:
@@ -2652,8 +2822,90 @@ def _execute_graph(
     populations: dict[str, Population] = {}
     receipts: dict[str, NodeReceipt] = {}
     receipt_payloads: dict[str, Mapping[str, object]] = {}
-    for node_id in compiled.order:
+    record_timings: dict[str, dict[str, object]] | None = None
+    if concurrency_record is not None:
+        concurrency_record["max_workers"] = max_workers
+        record_timings = concurrency_record.setdefault("kernels", {})  # type: ignore[assignment]
+
+    def prepare(node_id: str) -> PreparedKernel | None:
+        """Project a ready node's context ahead of its turn, or decline.
+
+        The same checks, in the same order, that the node's turn makes before
+        its kernel call, against the same admitted receipts -- all of its
+        predecessors have been admitted. Nothing here writes: an unreached
+        node and a probable cache hit decline, and anything that raises
+        declines, leaving the turn to raise it at the sequential point.
+        """
+
+        node = compiled.graph.node(node_id)
+        kernel = kernels.get(node.kernel)
+        if kernel.capabilities.structural is not node.structural:
+            return None
+        if _blocked_by(compiled, node, keys, receipt_payloads):
+            return None
+        incumbent = _node_incumbent(compiled, node, populations)
+        _validate_population_declaration(node, incumbent)
+        _validate_materialized_expand_outputs(compiled, node, incumbent, receipts)
+        input_writers = _input_writers(compiled, node_id, receipts=receipts)
+        input_numerics = _input_numerics(
+            compiled, node_id, kernels, writers=input_writers
+        )
+        input_tolerances = _input_tolerances(
+            compiled,
+            node_id,
+            kernels,
+            writers=input_writers,
+            numerics=input_numerics,
+        )
+        typed = contracts[node_id]
+        _authenticate_artifact_inputs(node, typed, receipts)
+        if resume == "auto" and _cached_record_expected(
+            store,
+            node,
+            key=keys[node_id],
+            implementation=implementations[node_id],
+            capabilities=kernel.capabilities,
+            typed=typed,
+            input_writers=input_writers,
+        ):
+            return None
+        context = _project_context(
+            node,
+            incumbent,
+            key=keys[node_id],
+            sources=source_paths,
+            tolerances=input_tolerances,
+            numerics=input_numerics,
+            artifacts=_artifact_values(store, node, typed),
+        )
+        return PreparedKernel(
+            node_id=node_id,
+            kernel=kernel,
+            context=context,
+            before=_context_digest(context),
+            incumbent=incumbent,
+            tolerances=input_tolerances,
+            numerics=input_numerics,
+        )
+
+    speculation: Speculation | None = None
+    if max_workers > 1 and resume != "require":
+        speculation = Speculation(
+            max_workers,
+            order=compiled.order,
+            predecessors=compiled.predecessors,
+            admitted=receipts,
+            prepare=prepare,
+            digest=_context_digest,
+            record={} if concurrency_record is None else concurrency_record,
+        )
+        # run_graph joins these workers before it settles a failed run.
+        run_sources.speculation = speculation
+
+    for position, node_id in enumerate(compiled.order):
         node_started = time.perf_counter()
+        if speculation is not None:
+            speculation.fill(position)
         node = compiled.graph.node(node_id)
         key = keys[node_id]
         implementation = implementations[node_id]
@@ -2679,15 +2931,11 @@ def _execute_graph(
                 resume=resume,
             )
             receipt_payloads[node_id] = receipts[node_id].receipt
+            if speculation is not None:
+                speculation.retire(node_id)
             continue
 
-        if node.structural is StructuralDelta.CREATE:
-            incumbent: Population | None = None
-        elif node.structural is StructuralDelta.NONE:
-            incumbent = populations[compiled.versions[node_id]]
-        else:
-            assert node.base is not None
-            incumbent = populations[node.base]
+        incumbent = _node_incumbent(compiled, node, populations)
         _validate_population_declaration(node, incumbent)
         _validate_materialized_expand_outputs(compiled, node, incumbent, receipts)
         input_writers = _input_writers(compiled, node_id, receipts=receipts)
@@ -2705,25 +2953,8 @@ def _execute_graph(
 
         typed = contracts[node_id]
         # Authenticate every declared byte edge against the producer's receipt
-        # and its descriptor now, without reading a payload: identity is all
-        # this check needs, and a node that hits its cached record never runs a
-        # kernel, so its inputs' bytes would be read for nothing (a fitted
-        # model is not small).
-        for binding in node.artifact_inputs:
-            entry = typed["inputs"][binding.name]
-            producer_receipt = receipts[binding.producer]
-            if producer_receipt.opaque_artifacts.get(binding.artifact) != entry["key"]:
-                # Generated receipts cannot reach this branch: a producer that
-                # hit its record had this identity checked by
-                # `_require_record_shape`, and one that ran got it from
-                # `_write_node` under the same derivation. It stands so the
-                # consumer's read is guarded by its own check rather than by
-                # the producer's, should those two paths ever diverge.
-                raise StoreCorrupt(
-                    f"Node {node.id!r} artifact producer receipt disagrees with its "
-                    "declaration."
-                )
-            value_from_descriptor(b"", entry)
+        # and its descriptor now, without reading a payload.
+        _authenticate_artifact_inputs(node, typed, receipts)
 
         hit = False
         replace_stale_record = False
@@ -2763,25 +2994,45 @@ def _execute_graph(
                     raise
 
         if result is None:
-            artifact_values: dict[str, ArtifactValue] = {
-                binding.name: value_from_descriptor(
-                    store.load_bytes(typed["inputs"][binding.name]["key"]),
-                    typed["inputs"][binding.name],
+            prepared = None if speculation is None else speculation.claim(node_id)
+            if (
+                prepared is not None
+                and prepared.incumbent is incumbent
+                and dict(prepared.tolerances) == dict(input_tolerances)
+                and dict(prepared.numerics) == dict(input_numerics)
+            ):
+                # Nothing the projection reads has moved since it was taken:
+                # admitted populations are immutable, so the same incumbent
+                # object, scopes, key, sources and byte edges project this
+                # very context.
+                assert speculation is not None
+                context, before = prepared.context, prepared.before
+                outcome = speculation.outcome(prepared, reused=True)
+            else:
+                context = _project_context(
+                    node,
+                    incumbent,
+                    key=key,
+                    sources=source_paths,
+                    tolerances=input_tolerances,
+                    numerics=input_numerics,
+                    artifacts=_artifact_values(store, node, typed),
                 )
-                for binding in node.artifact_inputs
-            }
-            context = _project_context(
-                node,
-                incumbent,
-                key=key,
-                sources=source_paths,
-                tolerances=input_tolerances,
-                numerics=input_numerics,
-                artifacts=artifact_values,
-            )
-            before = _context_digest(context)
+                before = _context_digest(context)
+                if speculation is None:
+                    outcome = _run_inline(kernel, context, node_id, record_timings)
+                elif prepared is not None and prepared.before == before:
+                    # A sibling admitted since the early projection moved the
+                    # incumbent, but not one byte of this node's context.
+                    outcome = speculation.outcome(prepared, reused=False)
+                else:
+                    if prepared is not None:
+                        speculation.discard(prepared)
+                    outcome = speculation.run(node_id, kernel, context)
             try:
-                result = kernel.run(context)
+                if outcome.error is not None:
+                    raise outcome.error
+                result = outcome.result
             except Exception as error:
                 if kernel.capabilities.role is KernelRole.GATE:
                     result = _failed_gate_result(node, incumbent, error)
@@ -2805,8 +3056,11 @@ def _execute_graph(
                         f"Node {node.id!r} kernel receipt may not author executor "
                         "execution metadata."
                     )
-            after = _context_digest(context)
-            if before != after:
+            # Taken on the context object the kernel received, right after
+            # the call, wherever that call ran.
+            if outcome.after_error is not None:
+                raise outcome.after_error
+            if before != outcome.after:
                 raise NodeRejected(f"Node {node.id!r} mutated its input context.")
             for name in node.sources:
                 # A stat signature that still matches the one taken across this
@@ -2990,6 +3244,13 @@ def _execute_graph(
             opaque_artifacts=MappingProxyType(receipt_opaque),
         )
         receipt_payloads[node_id] = receipts[node_id].receipt
+        if speculation is not None:
+            speculation.retire(node_id)
+
+    if speculation is not None:
+        # Every call was claimed or discarded; join any discarded call still
+        # running before the sources are re-derived below.
+        speculation.close()
 
     # Every source is re-derived in full, cache bypassed, before any caller
     # receives a manifest. This closes the two cases a stat signature cannot
