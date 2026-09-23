@@ -83,6 +83,7 @@ and reuses the release tool's own register and engine input-variable surface.
 
 from __future__ import annotations
 
+import hashlib
 import sys
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -1323,13 +1324,36 @@ def _release_tool_module() -> Any:
     )
 
 
+def _resolve_congressional_district_vintage_crosswalk(
+    path: str | Path | None,
+) -> Path:
+    """The crosswalk the release tool would translate CD facts through.
+
+    ``tools/build_us_fiscal_refresh_release.py`` defaults
+    ``--congressional-district-vintage-crosswalk`` to the canonical packaged
+    crosswalk, so every release compiles its congressional-district targets
+    in the current vintage. The preview resolves the same default.
+    """
+    from microcosm.build.us_runtime.congressional_district_vintage import (
+        default_congressional_district_vintage_crosswalk_path,
+    )
+
+    if path is None:
+        return default_congressional_district_vintage_crosswalk_path()
+    return Path(path)
+
+
 def _load_ledger_target_specs(
     ledger_facts: Path,
     *,
     target_period: int | str,
     ledger_facts_sha256: str | None,
+    congressional_district_vintage_crosswalk: Path,
 ) -> tuple[TargetSpec, ...]:
     from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.us_runtime.congressional_district_vintage import (
+        load_congressional_district_vintage_crosswalk,
+    )
     from microcosm.build.us_runtime.fiscal_targets import (
         compile_us_fiscal_target_registry,
     )
@@ -1337,11 +1361,21 @@ def _load_ledger_target_specs(
     artifact = load_ledger_consumer_artifact(
         ledger_facts, expected_facts_sha256=ledger_facts_sha256
     )
-    # age_targets mirrors the release tool's default (--age-targets on): the
-    # feed's cross-period dollar facts fail the period contract un-aged, and
+    # age_targets and the vintage crosswalk mirror the release tool's defaults
+    # (--age-targets on; the packaged crosswalk unless replaced): the feed's
+    # cross-period dollar facts fail the period contract un-aged, its
+    # congressional-district facts can arrive in an earlier district vintage
+    # (TY2023 SOI still lists West Virginia's three pre-2022 districts), and
     # the preview must compile the registry the release run will calibrate.
     registry = compile_us_fiscal_target_registry(
-        artifact.facts, target_period=target_period, age_targets=True
+        artifact.facts,
+        target_period=target_period,
+        congressional_district_vintage_crosswalk=(
+            load_congressional_district_vintage_crosswalk(
+                congressional_district_vintage_crosswalk
+            )
+        ),
+        age_targets=True,
     )
     return registry.specs
 
@@ -1354,6 +1388,7 @@ def run_preflight(
     export_input_mass_reference_h5: str | Path | None = None,
     ledger_facts: str | Path | None = None,
     ledger_facts_sha256: str | None = None,
+    congressional_district_vintage_crosswalk: str | Path | None = None,
     target_period: int | str = 2024,
     relative_tolerance: float = _DEFAULT_RELATIVE_TOLERANCE,
     minimum_reference_total: float = _DEFAULT_MINIMUM_REFERENCE_TOTAL,
@@ -1429,11 +1464,15 @@ def run_preflight(
         )
 
     # Check 2: zero-support preview (requires the compiled fiscal-target surface).
+    crosswalk_path = _resolve_congressional_district_vintage_crosswalk(
+        congressional_district_vintage_crosswalk
+    )
     if ledger_facts is not None and selected_frame is not None:
         target_specs = _load_ledger_target_specs(
             Path(ledger_facts),
             target_period=target_period,
             ledger_facts_sha256=ledger_facts_sha256,
+            congressional_district_vintage_crosswalk=crosswalk_path,
         )
         checks.append(check_zero_support_preview(selected_frame, target_specs))
     else:
@@ -1552,6 +1591,18 @@ def run_preflight(
             else None
         ),
         "ledger_facts": str(ledger_facts) if ledger_facts is not None else None,
+        # Recorded only when the feed was compiled, so a report without one is
+        # unchanged.
+        **(
+            {
+                "congressional_district_vintage_crosswalk": {
+                    "path": str(crosswalk_path),
+                    "sha256": hashlib.sha256(crosswalk_path.read_bytes()).hexdigest(),
+                }
+            }
+            if ledger_facts is not None and selected_frame is not None
+            else {}
+        ),
         "target_period": target_period,
         "relative_tolerance": float(relative_tolerance),
         "minimum_reference_total": float(minimum_reference_total),
