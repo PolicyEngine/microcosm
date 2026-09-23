@@ -12,7 +12,8 @@
 set -eu
 TREE=${TREE:?set TREE to the detached measurement worktree}
 MEASURE_DIR="$TREE/.measure"
-VENV=${MEASURE_VENV:?set MEASURE_VENV to the measured tree's venv}/bin/python  # byte-transport lane: this tree's lock moved
+# Byte-transport lane: this tree's lock moved, so the venv is an argument.
+VENV=${MEASURE_VENV:?set MEASURE_VENV to the measured venv}/bin/python
 export MEASURE_VENV
 NEED_GB=${NEED_GB:-45}
 DEADLINE=$((SECONDS + 21600))
