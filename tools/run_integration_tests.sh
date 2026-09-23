@@ -4,8 +4,8 @@ set -euo pipefail
 
 uv sync --all-packages --locked --extra uk
 uv run --no-sync pytest \
-  packages/microcosm-build/tests/test_uk_staging_integration.py \
-  -q -s -p no:cacheprovider
+  packages/microcosm-build/tests/integration/uk/test_uk_staging_integration.py \
+  --run-integration -q -s -p no:cacheprovider
 
 if [[ -z "${HF_STAGING_READ_TOKEN:-}" ]]; then
   echo \

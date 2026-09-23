@@ -1,0 +1,16434 @@
+import dataclasses
+import hashlib
+import importlib.util
+import inspect
+import json
+import os
+import sys
+from dataclasses import replace
+from pathlib import Path
+from types import SimpleNamespace
+
+import h5py
+import numpy as np
+import pandas as pd
+import pytest
+
+from microcosm.build.us_runtime import h5_io as builder_h5_io
+from microcosm.calibrate import (
+    CalibrationHierarchy,
+    HierarchyCategory,
+    HierarchyGeography,
+    HierarchyNode,
+    TargetRegistry,
+    TargetSpec,
+    calibrate,
+)
+from microcosm.frame import EntitySchema, Frame, WeightKind, Weights
+from test_support.paths import paths_for
+
+_TEST_PATHS = paths_for("microcosm-build")
+
+
+def _load_builder_module():
+    root = _TEST_PATHS.repository
+    path = root / "tools" / "build_us_fiscal_refresh_release.py"
+    spec = importlib.util.spec_from_file_location(
+        "build_us_fiscal_refresh_release", path
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _installed_variable_metadata_index(builder):
+    try:
+        return builder.PolicyEngineUSVariableMetadataIndex()
+    except ImportError:
+        pytest.skip("requires the policyengine-us [us] extra")
+
+
+def _load_acs_local_release_module():
+    root = _TEST_PATHS.repository
+    tools_path = str(root / "tools")
+    if tools_path not in sys.path:
+        sys.path.insert(0, tools_path)
+    path = root / "tools" / "build_us_acs_local_release.py"
+    spec = importlib.util.spec_from_file_location("build_us_acs_local_release", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_scorer_module():
+    root = _TEST_PATHS.repository
+    tools_path = str(root / "tools")
+    if tools_path not in sys.path:
+        sys.path.insert(0, tools_path)
+    path = root / "tools" / "score_us_fiscal_targets.py"
+    spec = importlib.util.spec_from_file_location("score_us_fiscal_targets", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_release_and_fiscal_scorer_signatures_have_no_membership_switches() -> None:
+    builder = _load_builder_module()
+    scorer = _load_scorer_module()
+
+    assert set(inspect.signature(builder._main).parameters) == {"argv"}
+    assert set(inspect.signature(scorer.score_frame).parameters) == {
+        "h5",
+        "ledger_facts",
+        "age_targets",
+        "allow_unaged_dollar_targets",
+        "maximum_microsim_batch_size",
+        "allow_legacy_formula_owned_inputs",
+        "allow_legacy_cd_provenance",
+        "congressional_district_vintage_crosswalk",
+        "target_materialization_cache_dir",
+        "legacy_pe_flat_h5",
+    }
+
+
+@pytest.mark.parametrize(
+    "removed_option",
+    (
+        "--include-congressional-district-targets",
+        "--diagnostic-skip-tax-expenditure-targets",
+        "--zero-support-exclusions",
+    ),
+)
+def test_release_parser_rejects_removed_membership_options(
+    removed_option: str,
+) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            [
+                "--ledger-facts",
+                "facts.jsonl",
+                "--out",
+                "release",
+                removed_option,
+            ]
+        )
+
+
+def test__given_matching_warm_start_npz__then_builder_loads_household_weights(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    path = tmp_path / "populace_us_2024_calibration.npz"
+    initial = np.asarray([10.0, 20.0, 30.0])
+    weights = np.asarray([12.0, 18.0, 35.0])
+    np.savez_compressed(
+        path,
+        household_weight=weights,
+        initial_household_weight=initial,
+    )
+
+    loaded, payload = builder._load_warm_start_calibration_npz(
+        path,
+        expected_initial_weights=initial.copy(),
+    )
+
+    np.testing.assert_allclose(loaded, weights)
+    assert payload["enabled"] is True
+    assert payload["n_households"] == 3
+    assert payload["sha256"] == builder._sha256(path)
+
+
+def test_final_household_weight_evidence_round_trips_exact_vector(tmp_path) -> None:
+    builder = _load_builder_module()
+    import hashlib as _hashlib
+
+    import pandas as _pd
+
+    weights = Weights(
+        np.asarray([0.0, 12.0, 35.0]),
+        WeightKind.CALIBRATED,
+    )
+    ids = np.asarray([101, 202, 303], dtype="int64")
+    frame = SimpleNamespace(
+        n=lambda entity: 3 if entity == "household" else None,
+        weights_for=lambda entity: weights if entity == "household" else None,
+        table=lambda entity: _pd.DataFrame({"household_id": ids}),
+    )
+    identity = {"base_dataset_sha256": "probe-base", "seed": 0}
+
+    metadata = builder._write_final_household_weight_evidence(
+        tmp_path, frame, identity=identity
+    )
+
+    values_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHTS_FILENAME
+    ids_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME
+    metadata_path = tmp_path / builder.FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME
+    np.testing.assert_array_equal(
+        np.load(values_path, allow_pickle=False),
+        np.asarray([0.0, 12.0, 35.0]),
+    )
+    np.testing.assert_array_equal(np.load(ids_path, allow_pickle=False), ids)
+    assert json.loads(metadata_path.read_text()) == metadata
+    assert metadata == {
+        "artifact_kind": "populace_final_household_weight_evidence",
+        "schema_version": 1,
+        "measurement_phase": "release_final",
+        "entity": "household",
+        "weight_kind": "calibrated",
+        "identity": {"base_dataset_sha256": "probe-base", "seed": 0},
+        "values": {
+            "file": "final_household_weights.npy",
+            "dtype": "float64",
+            "shape": [3],
+            "sha256": builder._sha256(values_path),
+        },
+        "household_ids": {
+            "file": "final_household_weight_ids.npy",
+            "dtype": "int64",
+            "shape": [3],
+            "sha256": builder._sha256(ids_path),
+            "ordering_sha256": _hashlib.sha256(ids.tobytes()).hexdigest(),
+        },
+        "summary": {
+            "n_households": 3,
+            "household_weight_sum": 47.0,
+            "minimum": 0.0,
+            "maximum": 35.0,
+            "nonzero_count": 2,
+            "zero_count": 1,
+        },
+    }
+    assert not list(tmp_path.glob("*.tmp"))
+    assert not list(tmp_path.glob(".*.tmp"))
+
+
+def test_certified_release_dir_refusal_precedes_all_side_effects() -> None:
+    """microcosm#568 round 4: refusal placement is part of the contract —
+    one refusal call must precede the base download (the --release-id
+    path), and one must precede every output-directory mkdir (the
+    auto-generated-id path)."""
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_main"
+    )
+    refusals = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "id", "") == "_refuse_certified_release_dir_reuse"
+    ]
+    downloads = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_download_base_h5"
+    ]
+    mkdirs = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "attr", "") == "mkdir"
+    ]
+    assert len(refusals) == 2
+    assert downloads and min(r.lineno for r in refusals) < min(
+        d.lineno for d in downloads
+    ), "the known-id refusal must precede the base download"
+    assert mkdirs and sorted(r.lineno for r in refusals)[1] < min(
+        m.lineno for m in mkdirs
+    ), "the unconditional refusal must precede every output mkdir"
+
+
+def test_certified_release_dir_reuse_is_refused(tmp_path) -> None:
+    """microcosm#568 round 3: a run pointed at a directory already carrying
+    release_manifest.json must refuse before writing anything — a failed
+    retry would otherwise mix its weight evidence with the prior certified
+    release."""
+    builder = _load_builder_module()
+    release_dir = tmp_path / "releases" / "some-id"
+    release_dir.mkdir(parents=True)
+    builder._refuse_certified_release_dir_reuse(release_dir)  # absent: fine
+    (release_dir / "release_manifest.json").write_text("{}")
+    with pytest.raises(RuntimeError, match="already carries a certified"):
+        builder._refuse_certified_release_dir_reuse(release_dir)
+
+
+def test_dense_ssi_fences_cover_the_enforced_bands_and_cite_the_adjudication() -> None:
+    """microcosm#566/#567: the dense-arm fence table must cover exactly the
+    normally-enforced bands, and every fence must carry the recompute
+    adjudication, its re-adjudication trigger, and the sparse contrast —
+    a fence without its documented reason is forbidden."""
+    from microcosm.build.us_runtime.ssi_take_up import (
+        US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
+    )
+
+    builder = _load_builder_module()
+    fences = builder.US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES
+    assert set(fences) == set(US_SSI_TAKE_UP_ENFORCED_BAND_KEYS)
+    for band, text in fences.items():
+        assert "microcosm#566/#567" in text, band
+        assert "microcosm#508" in text, band
+        assert "Re-adjudicates" in text, band
+        assert "sparse certified" in text, band
+        # The adjudication must claim only what the artifacts support:
+        # recomputes failed to land the pair in band — NOT a proven
+        # periodic map (sol round-1 blocker 3). The refusal scans the
+        # WHOLE production sources, not just the constant, so a stray
+        # comment cannot reintroduce the overclaim (sol round 2).
+        assert "oscillat" not in text.lower(), band
+    import microcosm.build.us_runtime.ssi_take_up as ssi_module
+
+    for source_path in (Path(builder.__file__), Path(ssi_module.__file__)):
+        assert "oscillat" not in source_path.read_text().lower(), source_path
+
+
+def test_ssi_delivery_fences_are_passed_on_the_dense_arm_only() -> None:
+    """The sparse certified arm must keep hard enforcement: structurally,
+    main()'s single _enforce_ssi_take_up_delivery call may pass the fence
+    table only under args.dense_default_dataset, with None otherwise (the
+    #443 AST-guard pattern)."""
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_main"
+    )
+    calls = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "id", "") == "_enforce_ssi_take_up_delivery"
+    ]
+    assert len(calls) == 1, "exactly one delivery-enforcement call site"
+    fence_kwargs = [kw for kw in calls[0].keywords if kw.arg == "enforcement_fences"]
+    assert len(fence_kwargs) == 1, "the call site must pass enforcement_fences"
+    value = fence_kwargs[0].value
+    assert isinstance(value, ast.IfExp), "fences must be arm-conditional"
+    assert isinstance(value.test, ast.Attribute)
+    assert getattr(value.test.value, "id", "") == "args"
+    assert value.test.attr == "dense_default_dataset"
+    assert getattr(value.body, "id", "") == "US_DENSE_SSI_TAKE_UP_ENFORCEMENT_FENCES"
+    assert isinstance(value.orelse, ast.Constant) and value.orelse.value is None
+
+
+def test_delivery_gate_result_reaches_the_manifest_gates_block() -> None:
+    """A release built with fences must be distinguishable from one whose
+    bands passed enforcement: the delivery gate result (effective enforced
+    set + fenced rows with adjudication text) must ride the manifest gates
+    block, and main() must thread it into _build_manifests."""
+    import ast
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_main"
+    )
+    manifest_calls = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call) and getattr(n.func, "id", "") == "_build_manifests"
+    ]
+    assert manifest_calls, "main() must call _build_manifests"
+    assert all(
+        any(kw.arg == "ssi_take_up_delivery_gate_result" for kw in call.keywords)
+        for call in manifest_calls
+    ), "every _build_manifests call must thread the delivery gate result"
+    build_fn = next(
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef) and n.name == "_build_manifests"
+    )
+    carrier_dicts = [
+        node
+        for node in ast.walk(build_fn)
+        if isinstance(node, ast.Dict)
+        and any(
+            isinstance(key, ast.Constant) and key.value == "ssi_take_up_delivery"
+            for key in node.keys
+        )
+    ]
+    assert len(carrier_dicts) >= 2, (
+        "BOTH manifest writers (build_manifest.json gates block AND "
+        "release_manifest.json build section) must record the "
+        "ssi_take_up_delivery receipt — release_manifest.json alone has "
+        f"to distinguish fenced from enforced delivery; found "
+        f"{len(carrier_dicts)} carrier dict(s)"
+    )
+
+
+def test_final_household_weight_evidence_writes_only_on_gate_failure_path() -> None:
+    """microcosm#568 review blocker 2: the evidence pair must be written on
+    the batched gate-failure path ONLY — green runs carry weights in the
+    certified H5. Enforced structurally (the #443 AST-guard pattern): the
+    sole main() call site must sit inside the ``if terminal_gate_failures:``
+    branch, before its raise."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    calls: list[tuple[ast.Call, list[ast.AST]]] = []
+
+    class Visitor(ast.NodeVisitor):
+        def __init__(self):
+            self.stack: list[ast.AST] = []
+
+        def generic_visit(self, node):
+            self.stack.append(node)
+            super().generic_visit(node)
+            self.stack.pop()
+
+        def visit_Call(self, node):
+            name = getattr(node.func, "id", getattr(node.func, "attr", ""))
+            if name == "_write_final_household_weight_evidence":
+                calls.append((node, list(self.stack)))
+            self.generic_visit(node)
+
+    Visitor().visit(tree)
+    main_calls = [
+        (node, stack)
+        for node, stack in calls
+        if any(
+            isinstance(anc, ast.FunctionDef) and anc.name == "_main" for anc in stack
+        )
+    ]
+    assert len(main_calls) == 1
+    call_node, stack = main_calls[0]
+    guarding_ifs = [
+        anc
+        for anc in stack
+        if isinstance(anc, ast.If)
+        and isinstance(anc.test, ast.Name)
+        and anc.test.id == "terminal_gate_failures"
+    ]
+    assert guarding_ifs, (
+        "final-household-weight evidence must be written inside the "
+        "terminal_gate_failures branch only"
+    )
+    guard = guarding_ifs[-1]
+    # The call must sit in the IF BODY (an else-branch call would run on
+    # green runs) and strictly before the branch's raise.
+    body_nodes = [n for stmt in guard.body for n in ast.walk(stmt)]
+    assert call_node in body_nodes, (
+        "evidence call must be in the terminal_gate_failures if-body, "
+        "not its else branch"
+    )
+    raises = [n for n in body_nodes if isinstance(n, ast.Raise)]
+    assert raises and call_node.lineno < min(r.lineno for r in raises), (
+        "evidence must be persisted before the batched raise"
+    )
+    # The green continuation must clean up a prior failed attempt's
+    # evidence (release-dir reuse, microcosm#568 round 2) before the
+    # certified dataset write.
+    main_fn = next(
+        anc for anc in stack if isinstance(anc, ast.FunctionDef) and anc.name == "_main"
+    )
+
+    def _is_bound_cleanup_for(node):
+        if not isinstance(node, ast.For) or node.lineno <= guard.end_lineno:
+            return False
+        # The iterable must BE a tuple (no slicing/subscript tricks) whose
+        # elements name all three evidence filename constants.
+        if not isinstance(node.iter, ast.Tuple):
+            return False
+        iter_names = {
+            name.id for name in ast.walk(node.iter) if isinstance(name, ast.Name)
+        }
+        if not iter_names >= {
+            "FINAL_HOUSEHOLD_WEIGHTS_FILENAME",
+            "FINAL_HOUSEHOLD_WEIGHT_IDS_FILENAME",
+            "FINAL_HOUSEHOLD_WEIGHTS_METADATA_FILENAME",
+        }:
+            return False
+        # The unlink must be called ON THE LOOP TARGET, not a decoy.
+        target = node.target.id if isinstance(node.target, ast.Name) else None
+        return target is not None and any(
+            isinstance(c, ast.Call)
+            and getattr(c.func, "attr", "") == "unlink"
+            and isinstance(getattr(c.func, "value", None), ast.Name)
+            and c.func.value.id == target
+            for stmt in node.body
+            for c in ast.walk(stmt)
+        )
+
+    cleanup_unlinks = [n for n in ast.walk(main_fn) if _is_bound_cleanup_for(n)]
+    dataset_writes = [
+        n
+        for n in ast.walk(main_fn)
+        if isinstance(n, ast.Call)
+        and getattr(n.func, "attr", "") == "write_dataset"
+        and n.lineno > guard.end_lineno
+    ]
+    assert cleanup_unlinks and dataset_writes, (
+        "green path must unlink ALL THREE stale evidence files (bound by "
+        "constant name) and write the dataset"
+    )
+    assert min(n.lineno for n in cleanup_unlinks) < min(
+        n.lineno for n in dataset_writes
+    ), "stale-evidence cleanup must precede the certified dataset write"
+
+
+def test__given_mismatched_warm_start_initial_weights__then_builder_rejects_npz(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    path = tmp_path / "populace_us_2024_calibration.npz"
+    np.savez_compressed(
+        path,
+        household_weight=np.asarray([12.0, 18.0, 35.0]),
+        initial_household_weight=np.asarray([10.0, 20.0, 30.0]),
+    )
+
+    with pytest.raises(ValueError, match="different initial household weights"):
+        builder._load_warm_start_calibration_npz(
+            path,
+            expected_initial_weights=np.asarray([10.0, 20.0, 31.0]),
+        )
+
+
+def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    tables = {
+        entity: small_frame.table(entity).copy() for entity in small_frame.entities
+    }
+    tables["household"]["mock_measure"] = np.asarray([1.5, 2.5])
+    tables["household"]["mock_filter"] = np.asarray([1, 0], dtype=np.int64)
+    frame = Frame(
+        tables,
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+        small_frame.strata,
+    )
+    target = TargetSpec(
+        name="mock.measure",
+        entity="household",
+        measure="mock_measure",
+        filter="mock_filter",
+        value=1500.0,
+        source="Mock source",
+    )
+    identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256="base-sha",
+        policyengine_us_version="1.2.3",
+        seed=0,
+        target_period=builder.PERIOD,
+        target_registry_version="registry-sha",
+        weeks_unemployed_source_sha256="weeks-source-sha",
+        congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
+        ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
+    )
+    # 12 = the identity carries the staged-frame digest (microcosm#956); 13 =
+    # the batched base pass. Schema 2 distinguishes the values+mask codec from
+    # schema-1 checkpoints.
+    assert identity["schema_version"] == 2
+    assert (
+        identity["materializer_version"]
+        == builder.TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION
+    )
+    assert identity["staged_frame_sha256"] == "staged-frame-sha"
+    # The SSI prior-weight basis is identity-bearing (microcosm#543 instance
+    # 2): unflagged runs carry the key as None.
+    assert identity["ssi_take_up_prior_weight_basis_sha256"] is None
+    assert identity["weeks_unemployed_source_sha256"] == "weeks-source-sha"
+    path = tmp_path / "target_frame_checkpoint.h5"
+
+    payload = builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity=identity,
+        compilation={"declared_targets": 1},
+        build_commit="fixture-commit",
+    )
+    loaded = builder._read_target_frame_checkpoint(
+        path,
+        identity=identity,
+        target_specs=(target,),
+    )
+
+    assert payload["status"] == "miss_written"
+    assert loaded is not None
+    loaded_frame, loaded_registry, loaded_compilation = loaded
+    assert np.array_equal(
+        loaded_frame.table("household")["mock_measure"].to_numpy(),
+        np.asarray([1.5, 2.5]),
+    )
+    assert np.array_equal(
+        loaded_frame.table("household")["mock_filter"].to_numpy(),
+        np.asarray([1, 0], dtype=np.int64),
+    )
+    assert np.array_equal(
+        loaded_frame.weights_for("household").values,
+        small_frame.weights_for("household").values,
+    )
+    assert loaded_frame.weights_for("household").kind is WeightKind.DESIGN
+    pd.testing.assert_series_equal(
+        loaded_frame.strata,
+        small_frame.strata,
+        check_dtype=False,
+    )
+    assert len(loaded_registry) == 1
+    assert loaded_compilation["compiled_candidate_targets"] == 1
+    assert loaded_compilation["target_frame_checkpoint"]["status"] == "hit"
+    assert (
+        loaded_compilation["target_frame_checkpoint"]["stored_compilation"][
+            "declared_targets"
+        ]
+        == 1
+    )
+
+
+def test_target_frame_checkpoint_nullable_boolean_storage_is_explicit(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    tables = {
+        entity: small_frame.table(entity).copy() for entity in small_frame.entities
+    }
+    tables["person"]["native_boolean"] = np.asarray(
+        [False, True, False, True], dtype=np.bool_
+    )
+    tables["person"]["complete_nullable_boolean"] = pd.Series(
+        [True, False, True, False], dtype="boolean"
+    )
+    tables["person"]["missing_nullable_boolean"] = pd.Series(
+        [True, pd.NA, False, pd.NA], dtype="boolean"
+    )
+    frame = Frame(
+        tables,
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+        small_frame.strata,
+    )
+    identity = {
+        "schema_version": builder.TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+        "materializer_version": builder.TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION,
+    }
+    path = tmp_path / "nullable-booleans.h5"
+
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity=identity,
+        compilation={},
+        build_commit="fixture-commit",
+    )
+    loaded = builder._read_target_frame_checkpoint(
+        path,
+        identity=identity,
+        target_specs=(),
+    )
+
+    assert loaded is not None
+    observed = loaded[0].table("person")
+    assert observed["native_boolean"].dtype == np.dtype(np.bool_)
+    assert observed["complete_nullable_boolean"].dtype == pd.BooleanDtype()
+    assert observed["missing_nullable_boolean"].dtype == pd.BooleanDtype()
+    pd.testing.assert_series_equal(
+        observed["missing_nullable_boolean"],
+        tables["person"]["missing_nullable_boolean"],
+    )
+    with h5py.File(path, mode="r") as h5:
+        person = h5["tables"]["person"]
+        columns = json.loads(str(person.attrs["columns_json"]))
+        groups = {
+            column: person["columns"][f"{columns.index(column):05d}"]
+            for column in (
+                "native_boolean",
+                "complete_nullable_boolean",
+                "missing_nullable_boolean",
+            )
+        }
+        assert bool(groups["native_boolean"].attrs["nullable"]) is False
+        assert bool(groups["complete_nullable_boolean"].attrs["nullable"]) is True
+        assert bool(groups["complete_nullable_boolean"].attrs["has_null_mask"]) is False
+        missing = groups["missing_nullable_boolean"]
+        assert bool(missing.attrs["nullable"]) is True
+        assert bool(missing.attrs["has_null_mask"]) is True
+        assert (
+            np.asarray(missing["values"]).tobytes()
+            == np.asarray([True, False, False, False], dtype=np.bool_).tobytes()
+        )
+        assert np.asarray(missing["null_mask"]).dtype == np.dtype(np.uint8)
+        np.testing.assert_array_equal(
+            np.asarray(missing["null_mask"]),
+            np.asarray([0, 1, 0, 1], dtype=np.uint8),
+        )
+
+
+@pytest.mark.parametrize(
+    "corrupt",
+    (
+        "missing_mask",
+        "noncanonical_hidden_bit",
+        "nonbinary_mask",
+        "unexpected_mask",
+        "missing_metadata",
+    ),
+)
+def test_target_frame_checkpoint_rejects_malformed_boolean_storage(
+    tmp_path,
+    small_frame,
+    corrupt,
+) -> None:
+    builder = _load_builder_module()
+    tables = {
+        entity: small_frame.table(entity).copy() for entity in small_frame.entities
+    }
+    tables["person"]["flag"] = pd.Series([True, pd.NA, False, pd.NA], dtype="boolean")
+    frame = Frame(
+        tables,
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+        small_frame.strata,
+    )
+    path = tmp_path / f"malformed-{corrupt}.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity={},
+        compilation={},
+        build_commit="fixture-commit",
+    )
+
+    with h5py.File(path, mode="r+") as h5:
+        person = h5["tables"]["person"]
+        columns = json.loads(str(person.attrs["columns_json"]))
+        group = person["columns"][f"{columns.index('flag'):05d}"]
+        if corrupt == "missing_mask":
+            del group["null_mask"]
+        elif corrupt == "noncanonical_hidden_bit":
+            group["values"][1] = True
+        elif corrupt == "nonbinary_mask":
+            group["null_mask"][1] = 2
+        elif corrupt == "unexpected_mask":
+            group.attrs["has_null_mask"] = False
+        else:
+            del group.attrs["nullable"]
+
+    with h5py.File(path, mode="r") as h5, pytest.raises(RuntimeError):
+        builder._read_checkpoint_dataframe(h5["tables"]["person"])
+
+
+def test_target_frame_checkpoint_rejects_schema_one(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    path = tmp_path / "schema-one.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=small_frame,
+        identity={},
+        compilation={},
+        build_commit="fixture-commit",
+    )
+    with h5py.File(path, mode="r+") as h5:
+        h5.attrs["schema_version"] = 1
+
+    with pytest.raises(RuntimeError, match="schema mismatch.*got 1, expected 2"):
+        builder._read_target_frame_checkpoint(path, identity={}, target_specs=())
+
+
+def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    """A checkpoint stored under a superseded materializer version must not load.
+
+    Version 12 adds the staged-frame digest to the identity (microcosm#956)
+    and 13 the batched base pass. The version constant participates in the
+    identity comparison; this pins rejection of the immediately preceding
+    version and the one before it, derived from the current constant so every
+    bump moves the test with it.
+    """
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    tables = {
+        entity: small_frame.table(entity).copy() for entity in small_frame.entities
+    }
+    tables["household"]["mock_measure"] = np.asarray([1.5, 2.5])
+    tables["household"]["mock_filter"] = np.asarray([1, 0], dtype=np.int64)
+    frame = Frame(
+        tables,
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+        small_frame.strata,
+    )
+    target = TargetSpec(
+        name="mock.measure",
+        entity="household",
+        measure="mock_measure",
+        filter="mock_filter",
+        value=1500.0,
+        source="Mock source",
+    )
+    identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256="base-sha",
+        policyengine_us_version="1.2.3",
+        seed=0,
+        target_period=builder.PERIOD,
+        target_registry_version="registry-sha",
+        weeks_unemployed_source_sha256="weeks-source-sha",
+        congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
+        ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
+    )
+    current = builder.TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION
+    assert current >= 13  # microcosm#1018 uses version 12.
+    assert identity["materializer_version"] == current
+    # The two preceding versions must both miss against the current version.
+    stale_identity = {**dict(identity), "materializer_version": current - 1}
+    older_identity = {**dict(identity), "materializer_version": current - 2}
+    path = tmp_path / "target_frame_checkpoint.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity=stale_identity,
+        compilation={"declared_targets": 1},
+        build_commit="fixture-commit",
+    )
+
+    loaded = builder._read_target_frame_checkpoint(
+        path,
+        identity=identity,
+        target_specs=(target,),
+    )
+
+    assert loaded is None
+
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=frame,
+        identity=older_identity,
+        compilation={"declared_targets": 1},
+        build_commit="fixture-commit",
+    )
+    assert (
+        builder._read_target_frame_checkpoint(
+            path,
+            identity=identity,
+            target_specs=(target,),
+        )
+        is None
+    )
+
+    # Instance 2 of the same class (microcosm#543): a checkpoint written by a
+    # run without --ssi-take-up-prior-weight-basis must not serve a run that
+    # passes it (O attempt 3 warm-hit attempt 2's checkpoint and solved on
+    # the other basis's SSI rows).
+    basis_identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256="base-sha",
+        policyengine_us_version="1.2.3",
+        seed=0,
+        target_period=builder.PERIOD,
+        target_registry_version="registry-sha",
+        weeks_unemployed_source_sha256="weeks-source-sha",
+        congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
+        # Held equal to the writing run's digest so this case still isolates
+        # the basis-artifact key (microcosm#543 instance 2). The broader
+        # frozen-assignment digest is covered separately below.
+        ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
+        ssi_take_up_prior_weight_basis_sha256="basis-artifact-sha",
+    )
+    basis_path = tmp_path / "target_frame_checkpoint_basis.h5"
+    builder._write_target_frame_checkpoint(
+        basis_path,
+        frame=frame,
+        identity=identity,
+        compilation={"declared_targets": 1},
+        build_commit="fixture-commit",
+    )
+
+    loaded_with_basis = builder._read_target_frame_checkpoint(
+        basis_path,
+        identity=basis_identity,
+        target_specs=(target,),
+    )
+
+    assert loaded_with_basis is None
+
+
+def test_ssi_candidate_amount_uses_december_person_values() -> None:
+    builder = _load_builder_module()
+
+    class FakeSimulation:
+        def calculate(self, variable, *, period, map_to):
+            assert variable == "uncapped_ssi"
+            assert period == "2024-12"
+            assert map_to == "person"
+            return np.asarray([0.0, 125.0, -2.0])
+
+    values = builder._ssi_person_uncapped_amount(
+        SimpleNamespace(),
+        simulation=FakeSimulation(),
+    )
+
+    np.testing.assert_array_equal(values, np.asarray([0.0, 125.0, -2.0]))
+
+
+def _band_spec(value, lower, upper, name, *, role=None, extra=None):
+    """A minimal registry target spec carrying first-class age bounds."""
+    metadata = {
+        "target_role": role,
+        "age_lower_bound": lower,
+        "age_upper_bound": upper,
+        **(extra or {}),
+    }
+    return SimpleNamespace(value=value, metadata=metadata, name=name)
+
+
+def test_ssi_band_targets_from_registry_read_the_ledger_band_specs() -> None:
+    builder = _load_builder_module()
+    role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
+    # The real feed's under-18 fact carries an explicit "age >= 0"
+    # constraint, so its lower bound compiles as "0", not "-inf"; ages are
+    # nonnegative, so both mean the same stratum (PR #477 review finding 1).
+    specs = (
+        _band_spec(1_001_922.0, "0", "18", "under-18", role=role),
+        _band_spec(3_905_779.0, "18", "65", "18-64", role=role),
+        _band_spec(2_382_142.0, "65", "inf", "65-plus", role=role),
+        SimpleNamespace(value=9.0, metadata={"target_role": "other"}, name="unrelated"),
+    )
+    assert builder._ssi_take_up_band_targets_from_registry(specs) == {
+        "under_18": pytest.approx(1_001_922.0),
+        "18_64": pytest.approx(3_905_779.0),
+        "65_plus": pytest.approx(2_382_142.0),
+    }
+
+
+def test_ssi_band_targets_accept_unbounded_lower_edge_spelling() -> None:
+    builder = _load_builder_module()
+    role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
+    specs = (
+        _band_spec(1_001_922.0, "-inf", "18", "under-18", role=role),
+        _band_spec(3_905_779.0, "18", "65", "18-64", role=role),
+        _band_spec(2_382_142.0, "65", "inf", "65-plus", role=role),
+    )
+    assert builder._ssi_take_up_band_targets_from_registry(specs)[
+        "under_18"
+    ] == pytest.approx(1_001_922.0)
+
+
+def test_ssi_band_targets_fail_closed_when_a_band_is_missing() -> None:
+    builder = _load_builder_module()
+    role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
+    specs = (
+        _band_spec(1_001_922.0, "-inf", "18", "under-18", role=role),
+        _band_spec(2_382_142.0, "65", "inf", "65-plus", role=role),
+    )
+    with pytest.raises(RuntimeError, match=r"missing band\(s\) \['18_64'\]"):
+        builder._ssi_take_up_band_targets_from_registry(specs)
+
+
+def test_ssi_band_targets_reject_unrecognized_bounds() -> None:
+    builder = _load_builder_module()
+    role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
+    specs = (_band_spec(1_001_922.0, "-inf", "19", "off-by-one", role=role),)
+    with pytest.raises(RuntimeError, match="unrecognized age bounds"):
+        builder._ssi_take_up_band_targets_from_registry(specs)
+
+
+def test_ssi_band_targets_reject_duplicate_bands() -> None:
+    builder = _load_builder_module()
+    role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
+    specs = (
+        _band_spec(1_001_922.0, "-inf", "18", "under-18", role=role),
+        _band_spec(999_999.0, "-inf", "18", "under-18-again", role=role),
+    )
+    with pytest.raises(RuntimeError, match="duplicate registry targets"):
+        builder._ssi_take_up_band_targets_from_registry(specs)
+
+
+def test_ssi_band_targets_reject_nonpositive_values() -> None:
+    builder = _load_builder_module()
+    role = builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE
+    specs = (_band_spec(0.0, "-inf", "18", "under-18", role=role),)
+    with pytest.raises(RuntimeError, match="finite and positive"):
+        builder._ssi_take_up_band_targets_from_registry(specs)
+
+
+def test__given_stale_target_frame_checkpoint__then_builder_ignores_it(
+    tmp_path,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    fresh_identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256="base-sha",
+        policyengine_us_version="1.2.3",
+        seed=0,
+        target_period=builder.PERIOD,
+        target_registry_version="registry-sha",
+        weeks_unemployed_source_sha256="weeks-source-sha",
+        congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
+        ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
+    )
+    stale_identity = {
+        **fresh_identity,
+        "weeks_unemployed_source_sha256": "old-weeks-source-sha",
+    }
+    path = tmp_path / "target_frame_checkpoint.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=small_frame,
+        identity=stale_identity,
+        compilation={},
+        build_commit="fixture-commit",
+    )
+
+    loaded = builder._read_target_frame_checkpoint(
+        path,
+        identity=fresh_identity,
+        target_specs=(),
+    )
+
+    assert loaded is None
+
+
+def test__given_matching_target_frame_checkpoint__then_builder_skips_materialization(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    target = TargetSpec(
+        name="mock.measure",
+        entity="household",
+        measure="household_id",
+        value=1.0,
+        source="Mock source",
+    )
+    registry = TargetRegistry((target,), country="us")
+    identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256="base-sha",
+        policyengine_us_version="1.2.3",
+        seed=0,
+        target_period=builder.PERIOD,
+        target_registry_version=registry.version,
+        weeks_unemployed_source_sha256="weeks-source-sha",
+        congressional_district_vintage_crosswalk_sha256=None,
+        ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
+    )
+
+    def fail_materialize(*args, **kwargs):
+        raise AssertionError("materialization should not run on checkpoint hit")
+
+    monkeypatch.setattr(builder, "_materialize_target_frame", fail_materialize)
+    monkeypatch.setattr(
+        builder,
+        "_read_target_frame_checkpoint",
+        lambda path, **kwargs: (
+            small_frame,
+            registry,
+            {"target_frame_checkpoint": {"status": "hit"}},
+        ),
+    )
+
+    loaded_frame, loaded_registry, compilation = (
+        builder._load_or_materialize_target_frame(
+            small_frame,
+            (target,),
+            target_frame_checkpoint_path=tmp_path / "target_frame_checkpoint.h5",
+            target_frame_checkpoint_identity=identity,
+            target_frame_checkpoint_build_commit="reading-commit",
+        )
+    )
+
+    assert loaded_frame is small_frame
+    assert loaded_registry is registry
+    assert compilation["target_frame_checkpoint"]["status"] == "hit"
+
+
+def _restaged_frame(
+    frame: Frame,
+    *,
+    person: pd.DataFrame | None = None,
+    weights: Weights | None = None,
+    strata: pd.Series | None = None,
+) -> Frame:
+    tables = {entity: frame.table(entity).copy() for entity in frame.entities}
+    if person is not None:
+        tables["person"] = person
+    return Frame(
+        tables,
+        frame.schema,
+        {"household": frame.weights_for("household") if weights is None else weights},
+        frame.strata if strata is None else strata,
+    )
+
+
+def test_staged_frame_digest_moves_with_any_one_staged_input(small_frame) -> None:
+    """microcosm#956: one changed staged column, dtype, name, weight or
+    stratum changes the digest; an equal frame rebuilt from copies does not."""
+
+    builder = _load_builder_module()
+    digest = builder._staged_frame_sha256
+    baseline = digest(small_frame)
+    person = small_frame.table("person")
+
+    assert len(baseline) == 64
+    assert digest(_restaged_frame(small_frame, person=person.copy())) == baseline
+
+    one_value = person.copy()
+    one_value.loc[3, "income"] = 51.0
+    narrower = person.copy()
+    narrower["income"] = narrower["income"].astype(np.float32)
+    renamed = person.rename(columns={"income": "income_renamed"})
+    reordered = person[["person_id", "income", "person_household_id"]]
+    one_stratum = small_frame.strata.copy()
+    one_stratum.iloc[3] = "puf"
+    variants = {
+        "one staged value": _restaged_frame(small_frame, person=one_value),
+        "same values, narrower dtype": _restaged_frame(small_frame, person=narrower),
+        "renamed column": _restaged_frame(small_frame, person=renamed),
+        "reordered columns": _restaged_frame(small_frame, person=reordered),
+        "one weight": _restaged_frame(
+            small_frame,
+            weights=Weights(np.asarray([1000.0, 2001.0]), WeightKind.DESIGN),
+        ),
+        "weight kind": _restaged_frame(
+            small_frame,
+            weights=Weights(np.asarray([1000.0, 2000.0]), WeightKind.IMPORTANCE),
+        ),
+        "one stratum": _restaged_frame(small_frame, strata=one_stratum),
+    }
+    digests = {name: digest(frame) for name, frame in variants.items()}
+    assert all(value != baseline for value in digests.values()), digests
+    assert len(set(digests.values())) == len(digests)
+
+
+def test_staged_frame_digest_covers_every_entity_table() -> None:
+    """microcosm#956: every US entity table feeds the digest, not only person.
+
+    The materializer reads group-entity inputs too (household ``state_fips``,
+    for one), so one changed value or one added column in any table must move
+    the digest, as must a weight vector on a group entity. The loop runs over
+    the real ``US_SCHEMA``, so a new entity is covered as soon as it exists.
+    """
+
+    builder = _load_builder_module()
+    base = _multi_reform_frame(builder)
+    assert tuple(base.entities) == tuple(builder.US_SCHEMA.entities)
+    assert len(base.entities) == 6
+    tables = {entity: base.table(entity).copy() for entity in base.entities}
+    for entity, table in tables.items():
+        # Column names are globally unique across tables (the flattening rule).
+        table[f"{entity}_staged_input"] = np.arange(len(table), dtype="int64")
+    household_weights = {"household": base.weights_for("household")}
+
+    def digest(
+        changed: dict[str, pd.DataFrame] | None = None,
+        weights: dict[str, Weights] | None = None,
+    ) -> str:
+        return builder._staged_frame_sha256(
+            Frame(
+                tables if changed is None else changed,
+                builder.US_SCHEMA,
+                household_weights if weights is None else weights,
+            )
+        )
+
+    def copied() -> dict[str, pd.DataFrame]:
+        return {entity: table.copy() for entity, table in tables.items()}
+
+    baseline = digest()
+    assert digest(copied()) == baseline
+    variants: dict[str, str] = {}
+    for entity in builder.US_SCHEMA.entities:
+        one_value = copied()
+        one_value[entity].loc[0, f"{entity}_staged_input"] = 7
+        variants[f"{entity}: one value"] = digest(one_value)
+        added = copied()
+        added[entity][f"{entity}_added_input"] = 0
+        variants[f"{entity}: added column"] = digest(added)
+    recoded = copied()
+    recoded["household"].loc[1, "state_fips"] = 34
+    variants["household: state_fips recode"] = digest(recoded)
+    variants["tax_unit: weights added"] = digest(
+        weights={
+            **household_weights,
+            "tax_unit": Weights(np.ones(3), WeightKind.DESIGN),
+        }
+    )
+    assert baseline not in variants.values(), variants
+    assert len(set(variants.values())) == len(variants)
+
+
+#: The staged-frame digest of ``_golden_staged_frame`` under
+#: ``us_fiscal_refresh_staged_frame_v1``. A pass-B checkpoint hit needs a new
+#: process to reproduce pass A's digest for an equal frame, so the value is
+#: pinned, not only compared within one process. If this assertion moves, the
+#: byte framing (or a dtype name it hashes) changed: rename
+#: ``STAGED_FRAME_DIGEST_CODEC`` and repin, never repin alone.
+GOLDEN_STAGED_FRAME_SHA256 = (
+    "26eb1cb211ad6f5c4fce85bca76a52986ba1bd390ca9db5c006ea5a477504305"
+)
+
+
+def _golden_staged_frame() -> Frame:
+    """A fixed frame that reaches every encoding branch of the digest."""
+
+    person = pd.DataFrame(
+        {
+            "person_id": np.arange(4, dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2, 2], dtype="int64"),
+            "income": np.asarray([100.5, 0.0, -250.25, np.nan]),
+            "is_flag": np.asarray([True, False, True, False]),
+            "masked_flag": pd.arrays.BooleanArray(
+                np.asarray([True, True, False, True]),
+                np.asarray([False, True, False, True]),
+            ),
+            "label": pd.Series(["a", "", None, "é"], dtype=object),
+            "mixed": pd.Series([1, "1", 1.5, None], dtype=object),
+        }
+    )
+    household = pd.DataFrame(
+        {
+            "household_id": np.asarray([1, 2], dtype="int64"),
+            "state_fips": np.asarray([6, 36], dtype="int32"),
+        }
+    )
+    return Frame(
+        {"person": person, "household": household},
+        EntitySchema(group_entities=("household",)),
+        {
+            "household": Weights(np.asarray([1000.0, 2000.0]), WeightKind.DESIGN),
+            "person": Weights(np.asarray([1.0, 2.0, 3.0, 4.0]), WeightKind.IMPORTANCE),
+        },
+        pd.Series(["asec", "asec", "puf", "puf"], index=person.index),
+    )
+
+
+def test_staged_frame_digest_is_pinned_across_processes() -> None:
+    """microcosm#956: the digest of a fixed frame is a known constant."""
+
+    builder = _load_builder_module()
+    assert builder.STAGED_FRAME_DIGEST_CODEC == "us_fiscal_refresh_staged_frame_v1"
+    assert (
+        builder._staged_frame_sha256(_golden_staged_frame())
+        == GOLDEN_STAGED_FRAME_SHA256
+    )
+
+
+def _staged_digest_with_person_column(builder, frame: Frame, column) -> str:
+    """Digest ``frame`` with ``column`` appended to its person table."""
+
+    person = frame.table("person").copy()
+    person["staged"] = column
+    return builder._staged_frame_sha256(_restaged_frame(frame, person=person))
+
+
+def test_staged_frame_digest_names_the_dtype_of_same_width_values(
+    small_frame,
+) -> None:
+    """Equal bytes under another dtype still move the digest.
+
+    Each pair below has identical value bytes and byte length, so only the
+    digest's dtype field tells the columns apart; a staging cast between them
+    must not reuse a checkpoint materialized from the other dtype.
+    """
+
+    builder = _load_builder_module()
+    flags = [True, False, True, False]
+    pairs = {
+        "bool vs uint8 flags": (
+            np.asarray(flags, dtype=np.bool_),
+            np.asarray(flags, dtype=np.uint8),
+        ),
+        "int64 vs float64 zeros": (
+            np.zeros(4, dtype=np.int64),
+            np.zeros(4, dtype=np.float64),
+        ),
+        "int64 vs uint64 zeros": (
+            np.zeros(4, dtype=np.int64),
+            np.zeros(4, dtype=np.uint64),
+        ),
+    }
+    for name, (left, right) in pairs.items():
+        assert left.tobytes() == right.tobytes(), name
+        assert _staged_digest_with_person_column(
+            builder, small_frame, left
+        ) != _staged_digest_with_person_column(builder, small_frame, right), name
+
+
+def test_staged_frame_digest_frames_variable_width_and_masked_values(
+    small_frame,
+) -> None:
+    """Missing is not "", string boundaries cannot shift, mixed objects carry
+    their types, and bits hidden under a nullable mask cannot move the digest."""
+
+    builder = _load_builder_module()
+
+    def staged(column: pd.Series) -> str:
+        return _staged_digest_with_person_column(builder, small_frame, column)
+
+    assert staged(pd.Series(["ab", "c", "", None], dtype=object)) != staged(
+        pd.Series(["a", "bc", "", None], dtype=object)
+    )
+    assert staged(pd.Series(["a", "b", "", None], dtype=object)) != staged(
+        pd.Series(["a", "b", None, ""], dtype=object)
+    )
+    # A mixed column takes the typed encoding and an all-string column the
+    # utf8 one, so the two never collide.
+    assert staged(pd.Series([1, "1", "x", "y"], dtype=object)) != staged(
+        pd.Series(["1", "1", "x", "y"], dtype=object)
+    )
+    # Within the typed encoding every value carries its type, so swapping an
+    # integer with its spelling still moves the digest.
+    assert staged(pd.Series([1, "1", "x", "y"], dtype=object)) != staged(
+        pd.Series(["1", 1, "x", "y"], dtype=object)
+    )
+    mask = np.asarray([False, True, False, True])
+    hidden_true = pd.Series(
+        pd.arrays.BooleanArray(np.asarray([True, True, False, True]), mask)
+    )
+    hidden_false = pd.Series(
+        pd.arrays.BooleanArray(np.asarray([True, False, False, False]), mask)
+    )
+    assert staged(hidden_true) == staged(hidden_false)
+    assert staged(hidden_false) != staged(
+        pd.Series([True, False, False, False], dtype="boolean")
+    )
+
+
+def test_target_frame_checkpoint_hit_records_source_commit_not_identity(
+    monkeypatch,
+    tmp_path,
+    small_frame,
+) -> None:
+    """microcosm#956: the build commit is provenance, never identity.
+
+    A checkpoint written at one commit serves a later commit that stages the
+    same frame, and the hit names the commit that wrote it. A frame that
+    differs in one staged column misses, whatever the commit.
+    """
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    target = TargetSpec(
+        name="mock.measure",
+        entity="household",
+        measure="household_id",
+        value=1.0,
+        source="Mock source",
+    )
+    materialized: list[str] = []
+
+    def fake_materialize(base_frame, target_specs, **kwargs):
+        materialized.append(builder._staged_frame_sha256(base_frame))
+        return (
+            base_frame,
+            TargetRegistry(target_specs, country="us"),
+            {"declared_targets": len(target_specs)},
+        )
+
+    monkeypatch.setattr(builder, "_materialize_target_frame", fake_materialize)
+
+    def identity_for(frame: Frame) -> dict[str, object]:
+        return builder._target_frame_checkpoint_identity(
+            base_dataset_sha256="base-sha",
+            policyengine_us_version="1.2.3",
+            seed=0,
+            target_period=builder.PERIOD,
+            target_registry_version="registry-sha",
+            weeks_unemployed_source_sha256="weeks-source-sha",
+            congressional_district_vintage_crosswalk_sha256=None,
+            ssi_take_up_assignment_sha256="ssi-flags-sha",
+            selection_identities_sha256=None,
+            staged_frame_sha256=builder._staged_frame_sha256(frame),
+        )
+
+    def load(frame: Frame, commit: str) -> dict[str, object]:
+        _, _, compilation = builder._load_or_materialize_target_frame(
+            frame,
+            (target,),
+            target_frame_checkpoint_path=path,
+            target_frame_checkpoint_identity=identity_for(frame),
+            target_frame_checkpoint_build_commit=commit,
+        )
+        return compilation["target_frame_checkpoint"]
+
+    # The identity takes no commit, so no commit can move it.
+    parameters = inspect.signature(builder._target_frame_checkpoint_identity)
+    assert not [name for name in parameters.parameters if "commit" in name]
+    identity = identity_for(small_frame)
+    assert not [key for key in identity if "commit" in key]
+    path = tmp_path / "target_frame_checkpoint.h5"
+    writer_commit = "a" * 40
+    reader_commit = "b" * 40
+
+    written = load(small_frame, writer_commit)
+    assert written["status"] == "miss_written"
+    assert written["source_build_commit"] == writer_commit
+    assert written["staged_frame_sha256"] == identity["staged_frame_sha256"]
+    with h5py.File(path, "r") as h5:
+        assert str(h5.attrs["build_commit"]) == writer_commit
+        assert json.loads(str(h5.attrs["identity_json"])) == identity
+
+    rebuilt = _restaged_frame(small_frame)
+    hit = load(rebuilt, reader_commit)
+    assert hit["status"] == "hit"
+    assert hit["source_build_commit"] == writer_commit
+    assert hit["identity_sha256"] == written["identity_sha256"]
+    assert hit["staged_frame_sha256"] == written["staged_frame_sha256"]
+    assert len(materialized) == 1
+
+    person = small_frame.table("person").copy()
+    person.loc[0, "income"] = 101.0
+    restaged = _restaged_frame(small_frame, person=person)
+    missed = load(restaged, writer_commit)
+    assert missed["status"] == "miss_written"
+    assert missed["identity_sha256"] != written["identity_sha256"]
+    assert len(materialized) == 2
+    assert materialized[-1] == missed["staged_frame_sha256"]
+
+    with pytest.raises(ValueError, match="build_commit is required"):
+        builder._load_or_materialize_target_frame(
+            small_frame,
+            (target,),
+            target_frame_checkpoint_path=path,
+            target_frame_checkpoint_identity=identity,
+        )
+
+
+def test_reform_vector_cache_tightens_with_staged_frame_via_materializer_identity(
+    small_frame,
+) -> None:
+    """microcosm#956 leaves the reform-vector keys alone: they still bind the
+    materializer identity digest, which now moves with the staged frame, and
+    they still exclude the raw build commit (#217/#557)."""
+
+    builder = _load_builder_module()
+    keys = builder.REFORM_VECTOR_CACHE_CONTEXT_KEYS
+    assert "target_frame_materializer_identity_sha256" in keys
+    assert "staged_frame_sha256" not in keys
+    assert "build_commit" not in keys
+    person = small_frame.table("person").copy()
+    person.loc[0, "income"] = 101.0
+    restaged = _restaged_frame(small_frame, person=person)
+    reform_spec = SimpleNamespace(
+        measure="jct_mock_tax_expenditure",
+        neutralized_variable="mock_credit",
+    )
+
+    def cache_digest(frame: Frame, commit: str) -> tuple[str, str]:
+        materializer_identity = builder._target_frame_checkpoint_digest(
+            builder._target_frame_checkpoint_identity(
+                base_dataset_sha256="base-sha",
+                policyengine_us_version="1.2.3",
+                seed=0,
+                target_period=builder.PERIOD,
+                target_registry_version="registry-sha",
+                weeks_unemployed_source_sha256="weeks-source-sha",
+                congressional_district_vintage_crosswalk_sha256=None,
+                ssi_take_up_assignment_sha256="ssi-flags-sha",
+                selection_identities_sha256=None,
+                staged_frame_sha256=builder._staged_frame_sha256(frame),
+            )
+        )
+        cache_identity = builder._target_materialization_cache_identity(
+            context={
+                "base_dataset_sha256": "base-sha",
+                "build_commit": commit,
+                "target_frame_materializer_identity_sha256": materializer_identity,
+            },
+            reform_spec=reform_spec,
+            n_households=2,
+        )
+        assert (
+            cache_identity["context"]["target_frame_materializer_identity_sha256"]
+            == materializer_identity
+        )
+        assert "build_commit" not in cache_identity["context"]
+        return (
+            materializer_identity,
+            builder._target_materialization_cache_digest(cache_identity),
+        )
+
+    baseline = cache_digest(small_frame, "a" * 40)
+    assert cache_digest(small_frame, "b" * 40) == baseline
+    changed = cache_digest(restaged, "a" * 40)
+    assert changed[0] != baseline[0]
+    assert changed[1] != baseline[1]
+
+
+def test_runtime_versions_use_local_workspace_package_version(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    package = tmp_path / "packages" / "microcosm-data"
+    package.mkdir(parents=True)
+    (package / "pyproject.toml").write_text(
+        '[project]\nname = "microcosm-data"\nversion = "0.1.0"\n'
+    )
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        builder.importlib.metadata,
+        "version",
+        lambda name: (_ for _ in ()).throw(
+            builder.importlib.metadata.PackageNotFoundError(name)
+        ),
+    )
+
+    versions = builder._runtime_versions()
+
+    assert versions["microcosm-data"] == "0.1.0"
+
+
+def test_reviewed_exclusions_do_not_report_active_cd_sources() -> None:
+    builder = _load_builder_module()
+    acs_cd_alias = "census-acs-s0101-congressional-district-age-2024"
+    soi_cd_alias = "soi-congressional-district-2022"
+
+    reviewed = builder._reviewed_exclusions(
+        builder.DIRECT_ACTIVE_ALIASES + (acs_cd_alias, soi_cd_alias)
+    )
+
+    assert acs_cd_alias not in reviewed
+    assert soi_cd_alias not in reviewed
+    assert "census-acs-s0101-national-age-2024" in reviewed
+    assert "census-acs-s0101-state-age-2024" in reviewed
+
+
+def test_cd_vintage_support_provenance_requires_matching_h5_attrs(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    h5_path = tmp_path / "support.h5"
+    h5_path.write_text("")
+
+    metadata = {"sha256": "crosswalk-sha"}
+    monkeypatch.setattr(
+        builder,
+        "_read_cd_vintage_support_provenance",
+        lambda path: {},
+    )
+
+    with pytest.raises(ValueError, match="crosswalk provenance mismatch"):
+        builder._assert_cd_vintage_support_matches(h5_path, metadata)
+
+
+def test_cd_vintage_support_provenance_reads_fixed_household_frame(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    pytest.importorskip("tables")
+    builder = _load_builder_module()
+    h5_path = tmp_path / "support.h5"
+    metadata = {"sha256": "crosswalk-sha"}
+
+    with pd.HDFStore(h5_path, mode="w") as store:
+        store.put(
+            "household",
+            pd.DataFrame({"congressional_district_geoid": [0, 101, 101, 202]}),
+            format="fixed",
+        )
+        assert store.get_storer("household").is_table is False
+        attrs = store.get_node("/")._v_attrs
+        attrs[builder.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR] = (
+            "crosswalk-sha"
+        )
+        attrs[builder.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR] = (
+            builder.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+        )
+
+    original_hdf_store = builder.pd.HDFStore
+    opened_paths: list[Path] = []
+
+    def tracked_hdf_store(path, *args, **kwargs):
+        opened_paths.append(Path(path))
+        return original_hdf_store(path, *args, **kwargs)
+
+    monkeypatch.setattr(builder.pd, "HDFStore", tracked_hdf_store)
+    provenance = builder._read_cd_vintage_support_provenance(h5_path)
+
+    assert opened_paths == [h5_path]
+    assert provenance == {
+        builder.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: ("crosswalk-sha"),
+        builder.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
+            builder.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+        ),
+        "household_congressional_district_geoid": {
+            "exists": True,
+            "table": "household",
+            "column": "congressional_district_geoid",
+            "rows": 4,
+            "positive_unique_count": 2,
+        },
+    }
+    builder._assert_cd_vintage_support_matches(h5_path, metadata)
+    assert opened_paths == [h5_path, h5_path]
+
+
+def test_cd_vintage_support_provenance_rejects_missing_cd_lookup(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    h5_path = tmp_path / "support.h5"
+    h5_path.write_text("")
+    metadata = {"sha256": "crosswalk-sha"}
+    monkeypatch.setattr(
+        builder,
+        "_read_cd_vintage_support_provenance",
+        lambda path: {
+            builder.CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK_SHA256_ATTR: (
+                "crosswalk-sha"
+            ),
+            builder.CONGRESSIONAL_DISTRICT_VINTAGE_TARGET_ATTR: (
+                builder.CURRENT_CONGRESSIONAL_DISTRICT_VINTAGE
+            ),
+            "household_congressional_district_geoid": {"exists": False},
+        },
+    )
+
+    with pytest.raises(ValueError, match="missing household congressional"):
+        builder._assert_cd_vintage_support_matches(h5_path, metadata)
+
+
+def test_cd_vintage_support_provenance_counts_only_positive_numeric_lookup() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        builder._positive_numeric_unique_count(
+            np.asarray(["", "0", "0000", "not-a-geoid"])
+        )
+        == 0
+    )
+    assert (
+        builder._positive_numeric_unique_count(np.asarray(["0101", "0101", "0200"]))
+        == 2
+    )
+
+
+def test_cd_vintage_support_provenance_names_us_extra_when_pytables_missing(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    h5_path = tmp_path / "support.h5"
+    h5_path.write_text("")
+
+    def missing_hdf_store(*args, **kwargs):
+        raise ImportError("Missing optional dependency 'tables'.")
+
+    monkeypatch.setattr(builder.pd, "HDFStore", missing_hdf_store)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        builder._read_cd_vintage_support_provenance(h5_path)
+
+    message = str(excinfo.value)
+    assert "--extra us" in message
+    assert "before calibration or donor imputation" in message
+
+
+def _passing_critical_diagnostics(builder) -> tuple[SimpleNamespace, ...]:
+    def diagnostic(name, target, final_estimate):
+        return SimpleNamespace(
+            name=f"{name}@{builder.PERIOD}",
+            target=target,
+            initial_estimate=target,
+            final_estimate=final_estimate,
+            relative_error=(final_estimate - target) / target,
+        )
+
+    return (
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount",
+            2_105_345_646_000.0,
+            2_067_762_165_736.424,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_returns",
+            113_562_590.0,
+            105_437_267.69738781,
+        ),
+        diagnostic(
+            "ssa_supplement.cy2024.oasdi_ssi_payments."
+            "social_security_benefits.payment_amount",
+            1_471_195_000_000.0,
+            1_541_540_768_722.367,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
+            82_863_353_000.0,
+            88_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
+            38_068_980.0,
+            40_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.actc_amount",
+            33_857_960_000.0,
+            35_300_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.actc_claims",
+            17_691_400.0,
+            17_100_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_amount",
+            69_041_649_000.0,
+            70_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_returns",
+            23_837_149.0,
+            23_800_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
+            53_910_190_000.0,
+            58_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns",
+            7_841_370.0,
+            8_200_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount",
+            455_904_900_000.0,
+            490_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns",
+            24_475_100.0,
+            26_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount",
+            1_000_000_000_000.0,
+            1_020_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "total_itemized_deductions_amount",
+            1_000_000_000_000.0,
+            1_020_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.limited_state_local_taxes_amount",
+            120_000_000_000.0,
+            121_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "limited_state_local_taxes_amount",
+            120_000_000_000.0,
+            121_000_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2022.historic_table_2.us.all.medical_dental_expense_amount",
+            80_000_000_000.0,
+            79_000_000_000.0,
+        ),
+        # microcosm#511: the Table 2.1 mortgage rows are registered critical
+        # (certified O-1 shipped the amount row at +29.5% with no gate).
+        diagnostic(
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "home_mortgage_interest_amount",
+            186_310_104_604.0,
+            199_110_000_000.0,
+        ),
+        diagnostic(
+            "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+            "home_mortgage_interest_returns",
+            11_644_348.0,
+            11_929_445.0,
+        ),
+        # The SOI Table 1.4 national dollar blanket (microcosm#462) needs at
+        # least one Table 1.4 amount row on the surface, within tolerance.
+        diagnostic(
+            "irs_soi.ty2023.table_1_4.all.wages_salaries_amount",
+            10_773_360_188_645.0,
+            10_774_383_029_502.0,
+        ),
+    )
+
+
+def _critical_surface(builder, *rows) -> tuple[SimpleNamespace, ...]:
+    replacement_names = {row.name for row in rows}
+    return tuple(
+        diagnostic
+        for diagnostic in _passing_critical_diagnostics(builder)
+        if diagnostic.name not in replacement_names
+    ) + tuple(rows)
+
+
+def _critical_contract_failures(
+    builder,
+    diagnostics,
+    *,
+    specs: tuple[TargetSpec, ...] = (),
+    incumbent: dict[str, dict[str, float]] | None = None,
+) -> tuple[list[str], list[str]]:
+    from microcosm.data.contract import _check_us_critical_target_fit
+
+    incumbent = incumbent or {}
+    registry = TargetRegistry(specs, country="us")
+    specs_by_name = {builder._target_row_name(spec): spec for spec in registry.specs}
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        problem=SimpleNamespace(
+            names=tuple(specs_by_name),
+            targets=tuple(spec.to_target() for spec in registry.specs),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    builder_failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        target_registry=registry,
+        incumbent_diagnostics=incumbent,
+    )
+    publisher_rows = []
+    for diagnostic in diagnostics:
+        spec = specs_by_name.get(diagnostic.name)
+        publisher_rows.append(
+            {
+                "name": diagnostic.name,
+                "target": diagnostic.target,
+                "final_estimate": diagnostic.final_estimate,
+                "relative_error": diagnostic.relative_error,
+                "metadata": dict(spec.metadata) if spec is not None else {},
+                "registry": {
+                    "family": spec.family if spec is not None else "",
+                },
+            }
+        )
+    publisher_failures: list[str] = []
+    _check_us_critical_target_fit(
+        {
+            "targets": publisher_rows,
+            "build": {
+                "incumbent_diagnostics": {
+                    "critical_targets": incumbent,
+                }
+            },
+        },
+        publisher_failures,
+    )
+    return builder_failures, publisher_failures
+
+
+def _assert_table_requirement_matches_shared(builder_requirement, shared) -> None:
+    assert builder_requirement.max_abs_relative_error == (shared.max_abs_relative_error)
+    assert builder_requirement.accepted_names == shared.names
+    assert builder_requirement.accepted_name_prefixes == ()
+    assert builder_requirement.accepted_name_substrings == shared.name_substrings
+    assert builder_requirement.accepted_name_suffixes == shared.name_suffixes
+
+
+def test_soi_component_amounts_use_source_specific_signs() -> None:
+    builder = _load_builder_module()
+
+    assert np.array_equal(
+        builder._signed_component(np.array([-5.0, 0.0, 7.0]), "capital_gains_gross"),
+        np.array([0.0, 0.0, 7.0]),
+    )
+    assert np.array_equal(
+        builder._signed_component(np.array([-5.0, 0.0, 7.0]), "capital_gains_losses"),
+        np.array([0.0, 0.0, 7.0]),
+    )
+    assert np.array_equal(
+        builder._signed_component(np.array([-5.0, 0.0, 7.0]), "business_net_losses"),
+        np.array([5.0, -0.0, -0.0]),
+    )
+    assert np.array_equal(
+        builder._signed_component(
+            np.array([-5.0, 0.0, 7.0]), "rent_and_royalty_net_income"
+        ),
+        np.array([-5.0, 0.0, 7.0]),
+    )
+    assert np.array_equal(
+        builder._signed_component(np.array([-5.0, 7.0]), "adjusted_gross_income"),
+        np.array([-5.0, 7.0]),
+    )
+
+
+def test_export_target_audit_is_opt_in(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    args = builder._parse_args()
+    assert not args.audit_export_targets
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--audit-export-targets",
+        ],
+    )
+    args = builder._parse_args()
+    assert args.audit_export_targets
+
+
+def test_sipp_tip_donor_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--sipp-tip-donor",
+            "pu2023_slim.csv",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.sipp_tip_donor == Path("pu2023_slim.csv")
+
+
+def test_weeks_unemployed_source_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--asec-2023-weeks-unemployed-source",
+            "asecpub23csv.zip",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.asec_2023_weeks_unemployed_source == Path("asecpub23csv.zip")
+
+
+def _exact_k_builder_argv(k: str, *, seed: int | None = 17) -> list[str]:
+    argv = [
+        "--pool-manifest",
+        "pool.manifest.json",
+        "--pool-manifest-sha256",
+        "a" * 64,
+        "--pool-release-id",
+        "fixture-publication",
+        "--exact-k",
+        k,
+        "--exact-k-pi-hi",
+        "0.95",
+        "--ledger-facts",
+        "facts",
+        "--ledger-facts-sha256",
+        "b" * 64,
+        "--ledger-manifest-sha256",
+        "c" * 64,
+        "--incumbent-diagnostics",
+        "incumbent.json",
+        "--incumbent-diagnostics-sha256",
+        "d" * 64,
+        "--frozen-target-surface-sha256",
+        "e" * 64,
+        "--out",
+        "out",
+        "--release-id",
+        "populace-us-2024-k20000-fixture",
+        "--no-staging",
+    ]
+    if seed is not None:
+        argv.extend(("--seed", str(seed)))
+    return argv
+
+
+def test_builder_exact_k_parser_enforces_charter_and_explicit_seed(capsys) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(_exact_k_builder_argv("57241"))
+    assert "ExactKCharterError" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(_exact_k_builder_argv("20000", seed=None))
+    assert "ExactKExplicitSeedError" in capsys.readouterr().err
+
+    parsed = builder._parse_args(_exact_k_builder_argv("N"))
+    assert parsed.exact_k == "N"
+    assert parsed.seed == 17
+    assert parsed.no_staging is True
+
+
+def test_builder_gate_failed_base_pool_override_is_explicit(capsys) -> None:
+    builder = _load_builder_module()
+
+    base_argv = [
+        "--base-h5",
+        "pool.h5",
+        "--ledger-facts",
+        "facts.jsonl",
+        "--out",
+        "release",
+        "--no-staging",
+    ]
+    parsed = builder._parse_args(base_argv)
+    assert parsed.allow_gate_failed_base_pool is False
+
+    parsed = builder._parse_args([*base_argv, "--allow-gate-failed-base-pool"])
+    assert parsed.allow_gate_failed_base_pool is True
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            [*_exact_k_builder_argv("20000"), "--allow-gate-failed-base-pool"]
+        )
+    assert "requires --base-h5" in capsys.readouterr().err
+
+
+def test_builder_exact_k_requires_pointer_suppression(capsys) -> None:
+    builder = _load_builder_module()
+    argv = _exact_k_builder_argv("20000")
+    argv.remove("--no-staging")
+
+    with pytest.raises(SystemExit):
+        builder._parse_args(argv)
+
+    assert "ExactKPointerSuppressionError" in capsys.readouterr().err
+
+
+def test_builder_pool_release_identity_is_manifest_authenticated() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        builder._assert_pool_release_identity(
+            "fixture-publication",
+            {"publication_run_id": "fixture-publication"},
+        )
+        == "fixture-publication"
+    )
+    with pytest.raises(
+        ValueError,
+        match="PoolReleaseIdentityMismatchError: configured pool release id",
+    ):
+        builder._assert_pool_release_identity(
+            "invented-release",
+            {"publication_run_id": "fixture-publication"},
+        )
+    assert "_assert_pool_release_id_value" in builder._main.__code__.co_names
+
+
+def test_builder_rejects_replaced_authenticated_pool_h5_at_first_consumer(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from microcosm.build.us_runtime.h5_io import (
+        AuthenticatedPoolH5MismatchError,
+    )
+
+    builder = _load_builder_module()
+    pool_h5 = tmp_path / "pool.h5"
+    authenticated_bytes = b"a" * 32
+    replacement_bytes = b"b" * 32
+    pool_h5.write_bytes(authenticated_bytes)
+    out = tmp_path / "out"
+    argv = _exact_k_builder_argv("20000")
+    argv[argv.index("out")] = str(out)
+
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(
+        builder,
+        "_refuse_certified_release_dir_reuse",
+        lambda path: None,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_load_verified_incumbent_diagnostics_payload",
+        lambda path, *, expected_sha256: ({}, expected_sha256),
+    )
+
+    def fake_load_pool(path, *, expected_manifest_sha256):
+        authenticated = builder.AuthenticatedPoolH5(
+            path=pool_h5.resolve(),
+            sha256=hashlib.sha256(authenticated_bytes).hexdigest(),
+            size_bytes=len(authenticated_bytes),
+            publication_run_id="fixture-publication",
+            manifest_sha256=expected_manifest_sha256,
+        )
+        pool_h5.write_bytes(replacement_bytes)
+        return (
+            SimpleNamespace(),
+            {"publication_run_id": "fixture-publication"},
+            authenticated,
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_simulation_ready_us_multispine_pool",
+        fake_load_pool,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_assert_pool_release_id_value",
+        lambda *args: pytest.fail("pool identity ran after an H5 divergence"),
+    )
+
+    with pytest.raises(
+        AuthenticatedPoolH5MismatchError,
+        match="builder base dataset identity",
+    ):
+        builder.main(argv)
+
+    assert not out.exists()
+
+
+@pytest.mark.parametrize(
+    (
+        "allow_gate_failed",
+        "status",
+        "simulation_ready",
+        "passed",
+        "rejected",
+    ),
+    (
+        (False, "simulation_ready", True, True, False),
+        (True, "gate_failed", False, False, False),
+        (True, "simulation_ready", True, True, True),
+    ),
+)
+def test_builder_base_h5_pool_loader_receives_explicit_terminal_gate_policy(
+    monkeypatch,
+    tmp_path,
+    allow_gate_failed,
+    status,
+    simulation_ready,
+    passed,
+    rejected,
+) -> None:
+    builder = _load_builder_module()
+    pool_h5 = tmp_path / "pool.h5"
+    pool_h5.write_bytes(b"authenticated pool")
+    manifest_path = pool_h5.with_suffix(".manifest.json")
+    gate_failures = [] if passed else ["fixture battery failure"]
+    manifest = {
+        "status": status,
+        "simulation_ready": simulation_ready,
+        "agreement_gate": {
+            "passed": passed,
+            "gates": {
+                "us_by_origin_battery": {
+                    "passed": passed,
+                    "failures": gate_failures,
+                }
+            },
+        },
+        "agreement_diagnostics": {"sha256": "2" * 64},
+    }
+    authenticated = builder.AuthenticatedPoolH5(
+        path=pool_h5.resolve(),
+        sha256=hashlib.sha256(pool_h5.read_bytes()).hexdigest(),
+        size_bytes=pool_h5.stat().st_size,
+        publication_run_id="fixture-publication",
+        manifest_sha256="a" * 64,
+        manifest_payload_sha256=builder_h5_io._canonical_json_sha256(manifest),
+    )
+    frame = SimpleNamespace()
+    monkeypatch.setattr(
+        builder,
+        "identify_us_multispine_pool_manifest",
+        lambda path: manifest_path,
+    )
+
+    def selected(path, *, allow_terminal_gate_failure):
+        assert path == manifest_path
+        assert allow_terminal_gate_failure is allow_gate_failed
+        return frame, manifest, authenticated
+
+    monkeypatch.setattr(
+        builder,
+        "load_authenticated_us_multispine_pool_for_release",
+        selected,
+    )
+
+    if rejected:
+        with pytest.raises(ValueError, match="override is valid only"):
+            builder._load_base_pool_if_identified(
+                pool_h5,
+                allow_gate_failed_base_pool=allow_gate_failed,
+            )
+        return
+
+    loaded_frame, receipt, loaded_identity = builder._load_base_pool_if_identified(
+        pool_h5,
+        allow_gate_failed_base_pool=allow_gate_failed,
+    )
+
+    assert loaded_frame is frame
+    assert loaded_identity is authenticated
+    assert receipt["status"] == status
+    assert receipt["allow_gate_failed_base_pool"] is allow_gate_failed
+    assert receipt["agreement_gate_reference"]["failure_count"] == len(gate_failures)
+
+
+def test_builder_refuses_actual_red_base_h5_pool_sidecar_without_opt_in(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    pool_h5 = tmp_path / "pool.h5"
+    pool_h5.write_bytes(b"pool identity comes from its sibling manifest")
+    manifest_path = pool_h5.with_suffix(".manifest.json")
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "artifact_kind": "populace_us_multispine_pool_manifest",
+                "status": "gate_failed",
+                "simulation_ready": False,
+            }
+        )
+    )
+    out = tmp_path / "out"
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(
+        builder, "_refuse_certified_release_dir_reuse", lambda path: None
+    )
+    monkeypatch.setattr(
+        builder,
+        "_load_frame",
+        lambda path: pytest.fail("red pool reached the generic H5 loader"),
+    )
+
+    with pytest.raises(ValueError, match="not simulation-ready"):
+        builder.main(
+            [
+                "--base-h5",
+                str(pool_h5),
+                "--ledger-facts",
+                str(tmp_path / "facts.jsonl"),
+                "--out",
+                str(out),
+                "--release-id",
+                "populace-us-2024-red-pool-fixture",
+                "--no-staging",
+            ]
+        )
+
+    assert not out.exists()
+
+
+def test_builder_refuses_bare_stamped_pool_h5_before_generic_load(
+    monkeypatch, tmp_path
+) -> None:
+    pytest.importorskip("tables", exc_type=ModuleNotFoundError)
+    builder = _load_builder_module()
+    base_h5 = tmp_path / "pool.h5"
+    with pd.HDFStore(base_h5, mode="w") as store:
+        store.put(
+            "_populace_staging_metadata",
+            pd.Series(
+                [
+                    json.dumps(
+                        {
+                            "artifact_kind": "populace_us_multispine_input_pool",
+                            "household_weight_kind": "importance",
+                            "publication_run_id": "fixture-publication",
+                        }
+                    )
+                ]
+            ),
+            format="table",
+        )
+    out = tmp_path / "out"
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+    monkeypatch.setattr(
+        builder, "_refuse_certified_release_dir_reuse", lambda path: None
+    )
+    monkeypatch.setattr(
+        builder,
+        "_load_frame",
+        lambda path: pytest.fail("bare pool reached the generic H5 loader"),
+    )
+
+    with pytest.raises(ValueError, match="pool.manifest.json is not readable"):
+        builder.main(
+            [
+                "--base-h5",
+                str(base_h5),
+                "--ledger-facts",
+                str(tmp_path / "facts.jsonl"),
+                "--out",
+                str(out),
+                "--release-id",
+                "populace-us-2024-bare-pool-fixture",
+                "--no-staging",
+            ]
+        )
+
+    assert not out.exists()
+
+
+def test_authenticated_pool_h5_consumers_use_one_returned_identity() -> None:
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    forbidden_base_hashes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_sha256"
+        and node.args
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "base_h5"
+    ]
+    assert forbidden_base_hashes == []
+    assert "shutil.copy2(base_h5" not in source
+    assert 'pool_h5.get("sha256")' not in source
+
+    main_source = inspect.getsource(builder._main)
+    diagnostics_source = inspect.getsource(
+        builder._write_release_calibration_diagnostics
+    )
+    receipt_source = inspect.getsource(builder._exact_k_ladder_manifest_payload)
+    main_tree = ast.parse(main_source)
+    base_pool_assignments = [
+        node
+        for node in ast.walk(main_tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "_load_base_pool_if_identified"
+    ]
+    assert len(base_pool_assignments) == 1
+    assert [
+        element.id
+        for element in base_pool_assignments[0].targets[0].elts
+        if isinstance(element, ast.Name)
+    ] == ["pool_frame", "base_pool_receipt", "authenticated_pool_h5"]
+    manifest_calls = [
+        node
+        for node in ast.walk(main_tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_build_manifests"
+    ]
+    assert len(manifest_calls) == 1
+    base_pool_keyword = next(
+        keyword for keyword in manifest_calls[0].keywords if keyword.arg == "base_pool"
+    )
+    assert isinstance(base_pool_keyword.value, ast.Name)
+    assert base_pool_keyword.value.id == "base_pool_receipt"
+    assert (
+        "authenticated_pool_h5.verified_digest(\n"
+        '            consumer="builder base dataset identity"'
+    ) in main_source
+    assert (
+        "if pool_frame is None:\n        base_frame = _load_frame("
+        "base_h5, expected_sha256=base_dataset_sha256)"
+    ) in main_source
+    assert "base_dataset_sha256=base_dataset_sha256" in main_source
+    assert '"base_dataset_sha256": base_dataset_sha256' in diagnostics_source
+    assert '"manifest_sha256": authenticated_pool_h5.manifest_sha256' in receipt_source
+    assert '"pool_h5_sha256": authenticated_pool_h5.sha256' in receipt_source
+    assert '"pool_h5_size_bytes": authenticated_pool_h5.size_bytes' in receipt_source
+    assert 'pool_receipt["worker_execution_authentication"] = dict(' in receipt_source
+
+
+def test_builder_reconciles_exact_k_count_before_any_release_write() -> None:
+    import inspect
+
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    count_gate = source.index("assert_exact_k_realized_count(ladder_outcome")
+
+    for later_write in (
+        "_write_release_calibration_diagnostics(",
+        "release_engine.write_dataset(",
+        "_write_npz(",
+        "_build_manifests(",
+    ):
+        assert count_gate < source.index(later_write)
+
+
+def test_legacy_cli_result_is_origin_main_three_key_fixture(
+    capsys,
+    tmp_path: Path,
+) -> None:
+    builder = _load_builder_module()
+    release_dir = tmp_path / "releases" / "fixture-release"
+    artifact_root = tmp_path / "artifacts"
+
+    returned = builder._print_build_result(
+        release_id="fixture-release",
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+    )
+
+    assert returned is None
+    assert capsys.readouterr().out == (
+        "{\n"
+        '  "release_id": "fixture-release",\n'
+        f'  "release_dir": "{release_dir}",\n'
+        f'  "artifact_root": "{artifact_root}"\n'
+        "}\n"
+    )
+    assert builder.main.__annotations__["return"] in {None, "None"}
+
+
+def test_frozen_support_selection_is_followed_by_weeks_unemployed_regate() -> None:
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text(encoding="utf-8")
+
+    base_load = source.index(
+        "base_frame = _load_frame(base_h5, expected_sha256=base_dataset_sha256)"
+    )
+    tail_presence = source.index(
+        "capital_gains_tail_presence = assert_puf_capital_gains_tail_survives_selection(",
+        base_load,
+    )
+    selection = source.index("base_frame, selection_report = select_frozen_support(")
+    tail_retention = source.index(
+        "assert_puf_capital_gains_tail_survives_selection(",
+        selection,
+    )
+    regate = source.index(
+        "post_selection_weeks_unemployed_gate = us_weeks_unemployed_signal_gate("
+    )
+    mass_repair = source.index(
+        "base_frame, base_population_repair = _with_base_population_mass_repair("
+    )
+
+    assert base_load < tail_presence < selection < tail_retention < regate < mass_repair
+    assert "Post-selection weeks-unemployed input signal failed" in source
+
+
+def test_sipp_vehicle_donor_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--sipp-vehicle-donor",
+            "pu2023.csv",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.sipp_vehicle_donor == Path("pu2023.csv")
+
+
+def test_acs_release_archive_options_parse_as_one_pinned_pair() -> None:
+    builder = _load_builder_module()
+    args = builder._parse_args(
+        [
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--acs-person-zip",
+            "csv_pus.zip",
+            "--acs-person-sha256",
+            "a" * 64,
+            "--acs-household-zip",
+            "csv_hus.zip",
+            "--acs-household-sha256",
+            "b" * 64,
+        ]
+    )
+
+    assert args.acs_person_zip == Path("csv_pus.zip")
+    assert args.acs_person_sha256 == "a" * 64
+    assert args.acs_household_zip == Path("csv_hus.zip")
+    assert args.acs_household_sha256 == "b" * 64
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        ["--acs-person-zip", "csv_pus.zip"],
+        [
+            "--acs-person-zip",
+            "csv_pus.zip",
+            "--acs-person-sha256",
+            "A" * 64,
+            "--acs-household-zip",
+            "csv_hus.zip",
+            "--acs-household-sha256",
+            "b" * 64,
+        ],
+    ],
+)
+def test_acs_release_archive_options_fail_closed(extra: list[str]) -> None:
+    builder = _load_builder_module()
+    with pytest.raises(SystemExit):
+        builder._parse_args(
+            [
+                "--ledger-facts",
+                "facts.jsonl",
+                "--out",
+                "release",
+                *extra,
+            ]
+        )
+
+
+def test_acs_predictor_join_precedes_all_six_archived_model_stages() -> None:
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    join_position = source.index("join_acs_release_predictors(")
+
+    for stage in (
+        "with_us_scf_wealth_inputs(",
+        "with_us_ssi_disability_criteria(",
+        "with_us_scf_auto_loan_inputs(",
+        "with_us_sipp_vehicle_inputs(",
+        "with_us_sipp_tip_inputs(",
+        "with_us_org_wages_inputs(",
+    ):
+        assert join_position < source.index(stage)
+
+    manifest_calls = [
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_build_manifests"
+    ]
+    assert len(manifest_calls) == 1
+    receipt_keyword = next(
+        keyword
+        for keyword in manifest_calls[0].keywords
+        if keyword.arg == "acs_predictor_join"
+    )
+    assert isinstance(receipt_keyword.value, ast.Name)
+    assert receipt_keyword.value.id == "acs_predictor_join_receipt"
+
+
+def test_fiscal_target_exclusion_receipt_replays_the_compile_into_source_coverage() -> (
+    None
+):
+    """The receipt sees the compile's facts, period and crosswalk, and ships.
+
+    No _main test reaches the us_source_coverage.json write, so pin the wiring
+    (microcosm#956): the receipt call must replay exactly the arguments the
+    registry compile saw, and its result must land in the coverage payload
+    before that payload is written.
+    """
+
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    tree = ast.parse(inspect.getsource(builder._main))
+    calls = {
+        name: [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == name
+        ]
+        for name in (
+            "compile_us_fiscal_target_registry",
+            "us_fiscal_target_exclusion_receipt",
+            "write_us_source_coverage_diagnostics",
+        )
+    }
+    assert [len(found) for found in calls.values()] == [1, 1, 1]
+    compile_call = calls["compile_us_fiscal_target_registry"][0]
+    receipt_call = calls["us_fiscal_target_exclusion_receipt"][0]
+    assert ast.dump(receipt_call.args[0]) == ast.dump(compile_call.args[0])
+    compile_keywords = {
+        keyword.arg: ast.dump(keyword.value) for keyword in compile_call.keywords
+    }
+    for keyword in receipt_call.keywords:
+        assert keyword.arg in {
+            "target_period",
+            "congressional_district_vintage_crosswalk",
+        }
+        assert ast.dump(keyword.value) == compile_keywords[keyword.arg]
+    assert {keyword.arg for keyword in receipt_call.keywords} == {
+        "target_period",
+        "congressional_district_vintage_crosswalk",
+    }
+
+    coverage_writes = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.targets[0], ast.Subscript)
+        and isinstance(node.targets[0].value, ast.Name)
+        and node.targets[0].value.id == "coverage"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "fiscal_target_exclusion_receipt"
+    ]
+    assert len(coverage_writes) == 1
+    assert (
+        receipt_call.lineno
+        < coverage_writes[0].lineno
+        < calls["write_us_source_coverage_diagnostics"][0].lineno
+    )
+
+
+def test_scf_full_extract_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--scf-full-extract",
+            "p22i6.dta",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.scf_full_extract == Path("p22i6.dta")
+
+
+def test_org_wages_donor_override_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--org-wages-donor",
+            "census_cps_org_2024_wages.csv.gz",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.org_wages_donor == Path("census_cps_org_2024_wages.csv.gz")
+
+
+def test_cd_targets_default_to_the_packaged_vintage_crosswalk(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    # Every target compilation with no explicit crosswalk falls back to the
+    # packaged Census-built default.
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    args = builder._parse_args()
+    default_path = args.congressional_district_vintage_crosswalk
+    assert default_path is not None
+    assert default_path.name == "congressional_district_vintage_crosswalk.csv"
+    assert default_path.exists()
+
+    # An explicit path still overrides the default.
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--congressional-district-vintage-crosswalk",
+            "crosswalk.csv",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.congressional_district_vintage_crosswalk == Path("crosswalk.csv")
+
+
+def test_maximum_microsim_batch_size_defaults_and_overrides(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    args = builder._parse_args()
+    assert (
+        args.maximum_microsim_batch_size == builder.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    )
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--maximum-microsim-batch-size",
+            "0",
+        ],
+    )
+    args = builder._parse_args()
+    assert args.maximum_microsim_batch_size == 0
+
+
+def test_staging_repo_can_default_from_environment(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "policyengine/populace-us-canary")
+    monkeypatch.setenv("POPULACE_STAGING_PREFIX", "candidate-runs")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.staging_repo_id == "policyengine/populace-us-canary"
+    assert args.staging_prefix == "candidate-runs"
+
+
+def test_empty_staging_environment_does_not_disable_staging(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setenv("POPULACE_STAGING_REPO_ID", "")
+    monkeypatch.setenv("POPULACE_STAGING_PREFIX", "   ")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+
+    args = builder._parse_args()
+
+    assert args.staging_repo_id == builder.STAGING_REPO_ID
+    assert args.staging_prefix == builder.DEFAULT_STAGING_PREFIX
+
+
+def test_env_default_treats_blank_as_unset_and_trims(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.delenv("POPULACE_TEST_ENV_DEFAULT", raising=False)
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "fallback"
+
+    monkeypatch.setenv("POPULACE_TEST_ENV_DEFAULT", "")
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "fallback"
+
+    monkeypatch.setenv("POPULACE_TEST_ENV_DEFAULT", "   ")
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "fallback"
+
+    monkeypatch.setenv("POPULACE_TEST_ENV_DEFAULT", " org/repo ")
+    assert builder._env_default("POPULACE_TEST_ENV_DEFAULT", "fallback") == "org/repo"
+
+
+def test_soi_indicator_rows_flag_positive_component_items() -> None:
+    builder = _load_builder_module()
+
+    assert np.array_equal(
+        builder._soi_component_row(
+            np.array([-5.0, 0.0, 7.0]),
+            "capital_gains_gross",
+            indicator=True,
+        ),
+        np.array([0.0, 0.0, 1.0]),
+    )
+    assert np.array_equal(
+        builder._soi_component_row(
+            np.array([-5.0, 0.0, 7.0]),
+            "capital_gains_losses",
+            indicator=True,
+        ),
+        np.array([0.0, 0.0, 1.0]),
+    )
+    assert np.array_equal(
+        builder._soi_component_row(
+            np.array([-5.0, 0.0, 7.0]),
+            "business_net_losses",
+            indicator=True,
+        ),
+        np.array([1.0, 0.0, 0.0]),
+    )
+
+
+def test_soi_eitc_child_count_filter_uses_ledger_filter_first() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {
+                "ledger_filter_eitc_child_count": "2",
+                "source_measure_id": "eitc_no_children_amount",
+            }
+        )
+        == "2"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {"source_measure_id": "eitc_no_children_amount"}
+        )
+        == "0"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {"source_measure_id": "eitc_one_child_claims"}
+        )
+        == "1"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {"source_measure_id": "eitc_two_children_amount"}
+        )
+        == "2"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {"source_measure_id": "eitc_three_or_more_children_claims"}
+        )
+        == "3plus"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {
+                "ledger_layout_record_set_id": (
+                    "irs_soi.ty2022.table_2_5.eitc_by_agi_children."
+                    "no_qualifying_children"
+                ),
+                "source_measure_id": "eitc_total",
+            }
+        )
+        == "0"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter(
+            {
+                "ledger_layout_record_set_id": (
+                    "irs_soi.ty2022.table_2_5.eitc_by_agi_children."
+                    "three_or_more_qualifying_children"
+                ),
+                "source_measure_id": "eitc_total",
+            }
+        )
+        == "3plus"
+    )
+    assert (
+        builder._soi_eitc_child_count_filter({"source_measure_id": "eitc_total"})
+        is None
+    )
+
+
+def test_unsupported_soi_ledger_filters_require_materializer_support() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        builder._unsupported_soi_ledger_filters(
+            {
+                "ledger_filter_income_range": "25k_to_30k",
+                "ledger_filter_filing_status": "all",
+                "ledger_filter_eitc_child_count": "1",
+            }
+        )
+        == ()
+    )
+    assert (
+        builder._unsupported_soi_ledger_filters(
+            {
+                "ledger_filter_new_dimension": "all",
+            }
+        )
+        == ()
+    )
+    assert builder._unsupported_soi_ledger_filters(
+        {
+            "ledger_filter_new_dimension": "specific_slice",
+        }
+    ) == ("ledger_filter_new_dimension",)
+
+
+def test_unsupported_ledger_filter_metadata_all_value_is_noop() -> None:
+    builder = _load_builder_module()
+    specs = (
+        SimpleNamespace(
+            name="all_child_count",
+            metadata={"ledger_filter_qualifying_children": "all"},
+        ),
+        SimpleNamespace(
+            name="specific_child_count",
+            metadata={"ledger_filter_qualifying_children": "one"},
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "specific_child_count": ("ledger_filter_qualifying_children",)
+    }
+
+
+def test_identity_ledger_filter_qualifiers_are_inert_not_unsupported() -> None:
+    """Series-identity qualifiers pass the guard; unknown domain filters fail.
+
+    Build M's sparse run stopped here: the #405 NIPA and LIHEAP targets carry
+    fact metadata identifying WHICH published series the registry selected
+    (a NIPA table line code, the LIHEAP state-programs count) — applied at
+    fact-selection, restricting nothing in the microdata. The guard now
+    recognizes the reviewed identity-qualifier class as inert while any
+    unknown ledger_filter_* key stays fatal, so a genuine domain filter can
+    never be silently ignored.
+    """
+
+    builder = _load_builder_module()
+    specs = (
+        SimpleNamespace(
+            name="bea_nipa.cy2024.total_wages_salaries.a034rc.wages_salaries_amount",
+            metadata={"ledger_filter_bea_nipa.series_code": "a034rc"},
+        ),
+        SimpleNamespace(
+            name="hhs_acf_liheap.fy2024.national_profile.state_programs.households_served",
+            metadata={
+                "ledger_filter_administering_entity": "state_programs",
+                "ledger_filter_program": "liheap",
+            },
+        ),
+        SimpleNamespace(
+            name="unknown_domain_filter",
+            metadata={"ledger_filter_novel_dimension": "specific_slice"},
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "unknown_domain_filter": ("ledger_filter_novel_dimension",)
+    }
+
+
+_RESTATED_AGI_LOWER = (
+    "ledger_filter_us:statutes/26/62#adjusted_gross_income_lower_bound"
+)
+_RESTATED_AGI_UPPER = (
+    "ledger_filter_us:statutes/26/62#adjusted_gross_income_upper_bound"
+)
+_RESTATED_AGI_EXACT = "ledger_filter_us:statutes/26/62#adjusted_gross_income"
+_RESTATED_EITC_CHILDREN_LOWER = (
+    "ledger_filter_us.tax.earned_income_credit_qualifying_children_lower_bound"
+)
+_RESTATED_EITC_CHILDREN_UPPER = (
+    "ledger_filter_us.tax.earned_income_credit_qualifying_children_upper_bound"
+)
+_RESTATED_EITC_CHILDREN_EXACT = (
+    "ledger_filter_us.tax.earned_income_credit_qualifying_children"
+)
+
+
+def _soi_band_metadata(**overrides: str | None) -> dict[str, str]:
+    """A compiled SOI AGI-band spec's metadata, in the shape the compiler emits.
+
+    Mirrors ``_soi_target_reference`` output for an IRS SOI Historic Table 2
+    state AGI cell: the half-open band the materializer slices on
+    (``agi_lower_bound``/``agi_upper_bound``) plus the supported Ledger filter
+    keys. An override of ``None`` drops the key.
+    """
+
+    metadata = {
+        "source_measure_id": "taxable_interest_amount",
+        "source_variable": "taxable_interest",
+        "variable": "taxable_interest",
+        "materializer": "irs_soi_slice",
+        "measure_mode": "sum",
+        "agi_lower_bound": "100000.0",
+        "agi_upper_bound": "200000.0",
+        "filing_status": "All",
+        "state_fips": "02",
+        "ledger_filter_filing_status": "all",
+        "ledger_filter_income_range": "100k_to_200k",
+    }
+    for key, value in overrides.items():
+        if value is None:
+            metadata.pop(key, None)
+        else:
+            metadata[key] = value
+    return metadata
+
+
+def _spec(name: str, metadata: dict[str, str]) -> SimpleNamespace:
+    return SimpleNamespace(name=name, metadata=metadata)
+
+
+def test_restated_agi_bounds_pass_the_guard_only_where_they_agree() -> None:
+    """A labelled AGI bound equal to the compiled one is ignorable, so accepted.
+
+    The labelled Chronicle vocabulary restates a fact's universe constraint as
+    ``ledger_filter_us:statutes/26/62#adjusted_gross_income_{lower,upper}_bound``
+    beside the compiled ``agi_lower_bound``/``agi_upper_bound`` the materializer
+    actually slices on. Where the two name the same edge, dropping the
+    restatement changes no population, so the guard lets it through — one side
+    at a time, and with the open ends spelled the compiler's way (``-inf`` and
+    ``inf``).
+    """
+
+    builder = _load_builder_module()
+    both = _spec(
+        "irs_soi.ty2022.historic_table_2.state_agi.ak.100k_to_200k.taxable_interest_amount",
+        _soi_band_metadata(
+            **{_RESTATED_AGI_LOWER: "100000", _RESTATED_AGI_UPPER: "200000"}
+        ),
+    )
+    lower_only = _spec(
+        "lower_only", _soi_band_metadata(**{_RESTATED_AGI_LOWER: "100000.0"})
+    )
+    upper_only = _spec(
+        "upper_only", _soi_band_metadata(**{_RESTATED_AGI_UPPER: "200000"})
+    )
+    open_ends = _spec(
+        "open_ends",
+        _soi_band_metadata(
+            agi_lower_bound="-inf",
+            agi_upper_bound="inf",
+            **{_RESTATED_AGI_LOWER: "-inf", _RESTATED_AGI_UPPER: "inf"},
+        ),
+    )
+
+    assert (
+        builder._unsupported_ledger_filter_metadata(
+            (both, lower_only, upper_only, open_ends)
+        )
+        == {}
+    )
+    builder._assert_supported_ledger_filter_metadata(
+        (both, lower_only, upper_only, open_ends)
+    )
+
+
+def test_disagreeing_restated_agi_bounds_are_refused_by_value() -> None:
+    """Negative control for the acceptance above: only equality is accepted.
+
+    Each spec here carries a labelled bound the materializer would ignore
+    while slicing a different population — a lower edge below the compiled
+    one, an upper edge above it, a bound on a spec that compiles no band at
+    all, and an exact-value restatement for which the materializer has no
+    filter. All four keep the pre-existing refusal, now naming the values that
+    disagree. The unknown key is the control that the ordinary path is
+    untouched: it still refuses under its bare name.
+    """
+
+    builder = _load_builder_module()
+    specs = (
+        _spec(
+            "disagreeing_lower", _soi_band_metadata(**{_RESTATED_AGI_LOWER: "50000"})
+        ),
+        _spec(
+            "disagreeing_upper", _soi_band_metadata(**{_RESTATED_AGI_UPPER: "250000"})
+        ),
+        _spec(
+            "no_compiled_lower",
+            _soi_band_metadata(agi_lower_bound=None, **{_RESTATED_AGI_LOWER: "100000"}),
+        ),
+        _spec("exact_agi", _soi_band_metadata(**{_RESTATED_AGI_EXACT: "100000"})),
+        _spec(
+            "unknown_key",
+            _soi_band_metadata(ledger_filter_novel_dimension="specific_slice"),
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "disagreeing_lower": (
+            f"{_RESTATED_AGI_LOWER}=50000 disagrees with agi_lower_bound=100000.0",
+        ),
+        "disagreeing_upper": (
+            f"{_RESTATED_AGI_UPPER}=250000 disagrees with agi_upper_bound=200000.0",
+        ),
+        "no_compiled_lower": (
+            f"{_RESTATED_AGI_LOWER}=100000 restates a bound the spec does not "
+            "compile: no agi_lower_bound",
+        ),
+        "exact_agi": (
+            f"{_RESTATED_AGI_EXACT}=100000 restates an exact AGI, but the "
+            "materializer slices a half-open AGI band and applies no "
+            "exact-value AGI filter",
+        ),
+        "unknown_key": ("ledger_filter_novel_dimension",),
+    }
+    with pytest.raises(RuntimeError) as excinfo:
+        builder._assert_supported_ledger_filter_metadata(specs)
+    message = str(excinfo.value)
+    assert "Unsupported Ledger target filter metadata would be ignored" in message
+    assert "disagrees with agi_lower_bound=100000.0" in message
+    assert "ledger_filter_novel_dimension" in message
+
+
+def test_restated_eitc_child_bounds_pass_the_guard_only_where_they_agree() -> None:
+    """A restated qualifying-child bound is judged against the applied filter.
+
+    ``_soi_eitc_child_count_filter`` is what the materializer applies, and
+    ``_eitc_child_count_mask`` resolves it to ``== 0``, ``== 1``, ``== 2`` or
+    ``>= 3``. A lower bound of three therefore agrees with ``3plus`` and only
+    with it, and a suffix-free key restates an exact count. Upper bounds are
+    not compared at all; see
+    :func:`test_restated_eitc_child_upper_bounds_are_refused_outright`.
+    """
+
+    builder = _load_builder_module()
+    three_plus = _spec(
+        "irs_soi.ty2023.table_2_5.eitc_by_agi_children.three_or_more_qualifying_children",
+        _soi_band_metadata(
+            ledger_filter_eitc_child_count="3plus",
+            **{_RESTATED_EITC_CHILDREN_LOWER: "3"},
+        ),
+    )
+    exactly_two = _spec(
+        "exactly_two",
+        _soi_band_metadata(
+            ledger_filter_eitc_child_count="2",
+            **{_RESTATED_EITC_CHILDREN_EXACT: "2"},
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata((three_plus, exactly_two)) == {}
+    assert builder._unsupported_soi_ledger_filters(three_plus.metadata) == ()
+    assert builder._unsupported_soi_ledger_filters(exactly_two.metadata) == ()
+
+
+def test_restated_eitc_child_upper_bounds_are_refused_outright() -> None:
+    """A qualifying-child upper bound is refused whatever it would agree with.
+
+    Max's ruling (2026-09-22): until the Ledger confirms whether a count upper
+    bound means ``<`` or ``<=``, none is compared. ``< 1`` would agree with a
+    compiled ``0`` and ``<= 0`` would too, so both specs below are ones an
+    agreement rule could accept under one reading — and each is refused, with
+    the operator named as the reason, as is an upper bound on a spec with no
+    child-count filter. The refusal is per key: an exact restatement on the
+    same spec is still accepted, and a restated AGI upper bound is untouched.
+    The fatal guard raises, and the SOI skip keeps the key listed, so the
+    refusal cannot turn into a silent drop. ``_upper_bound_inclusive`` names
+    no restated concept and stays refused by its bare key.
+    """
+
+    builder = _load_builder_module()
+    reason = (
+        "restates a qualifying-child upper bound, refused outright: the "
+        "Ledger's operator for it (< or <=) is unconfirmed, and the two "
+        "readings select different returns"
+    )
+    inclusive_upper = f"{_RESTATED_EITC_CHILDREN_UPPER}_inclusive"
+    exclusive_reading = _soi_band_metadata(
+        ledger_filter_eitc_child_count="0",
+        **{
+            _RESTATED_EITC_CHILDREN_UPPER: "1",
+            _RESTATED_EITC_CHILDREN_EXACT: "0",
+            _RESTATED_AGI_UPPER: "200000",
+        },
+    )
+    specs = (
+        _spec("exclusive_reading", exclusive_reading),
+        _spec(
+            "inclusive_reading",
+            _soi_band_metadata(
+                ledger_filter_eitc_child_count="0",
+                **{_RESTATED_EITC_CHILDREN_UPPER: "0"},
+            ),
+        ),
+        _spec(
+            "no_child_filter",
+            _soi_band_metadata(**{_RESTATED_EITC_CHILDREN_UPPER: "1"}),
+        ),
+        _spec(
+            "inclusive_key",
+            _soi_band_metadata(
+                ledger_filter_eitc_child_count="0", **{inclusive_upper: "0"}
+            ),
+        ),
+    )
+
+    assert builder.RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES == frozenset({"upper"})
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "exclusive_reading": (f"{_RESTATED_EITC_CHILDREN_UPPER}=1 {reason}",),
+        "inclusive_reading": (f"{_RESTATED_EITC_CHILDREN_UPPER}=0 {reason}",),
+        "no_child_filter": (f"{_RESTATED_EITC_CHILDREN_UPPER}=1 {reason}",),
+        "inclusive_key": (inclusive_upper,),
+    }
+    assert builder._unsupported_soi_ledger_filters(exclusive_reading) == (
+        _RESTATED_EITC_CHILDREN_UPPER,
+    )
+    with pytest.raises(RuntimeError, match=r"operator for it \(< or <=\)"):
+        builder._assert_supported_ledger_filter_metadata(specs[:1])
+
+
+def test_restated_eitc_child_comparison_never_guesses_an_upper_reading() -> None:
+    """Dropping ``upper`` from the refused sides must not reopen a guess.
+
+    The comparison reads only lower and exact restatements. If a later edit
+    empties :data:`RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES` without choosing
+    an operator, an upper bound must fail loudly rather than fall through to
+    an exact-count comparison that happens to accept it (``== 0`` against a
+    compiled ``0``).
+    """
+
+    builder = _load_builder_module()
+    builder.RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES = frozenset()
+    metadata = _soi_band_metadata(
+        ledger_filter_eitc_child_count="0",
+        **{_RESTATED_EITC_CHILDREN_UPPER: "0"},
+    )
+
+    with pytest.raises(ValueError, match="reads only lower and exact"):
+        builder._unsupported_ledger_filter_metadata(
+            (_spec("unguarded_upper", metadata),)
+        )
+
+
+def test_disagreeing_restated_eitc_child_bounds_are_refused_by_value() -> None:
+    """Negative control: a child bound that selects other returns stays fatal.
+
+    ``>= 3`` against a compiled ``== 2`` selects different returns; a bound on
+    a spec carrying no child-count filter at all has nothing to agree with;
+    and a value that is not a count in the probed range cannot be compared, so
+    it is refused rather than guessed at.
+    """
+
+    builder = _load_builder_module()
+    specs = (
+        _spec(
+            "wrong_group",
+            _soi_band_metadata(
+                ledger_filter_eitc_child_count="2",
+                **{_RESTATED_EITC_CHILDREN_LOWER: "3"},
+            ),
+        ),
+        _spec(
+            "no_child_filter",
+            _soi_band_metadata(**{_RESTATED_EITC_CHILDREN_LOWER: "3"}),
+        ),
+        _spec(
+            "not_a_count",
+            _soi_band_metadata(
+                ledger_filter_eitc_child_count="3plus",
+                **{_RESTATED_EITC_CHILDREN_LOWER: "three"},
+            ),
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "wrong_group": (
+            f"{_RESTATED_EITC_CHILDREN_LOWER}=3 selects different returns than "
+            "the compiled child-count filter '2'",
+        ),
+        "no_child_filter": (
+            f"{_RESTATED_EITC_CHILDREN_LOWER}=3 restates a qualifying-child "
+            "bound on a spec that carries no child-count filter for the "
+            "materializer to apply",
+        ),
+        "not_a_count": (
+            f"{_RESTATED_EITC_CHILDREN_LOWER}=three is not a qualifying-child "
+            f"count in 0..{builder.RESTATED_EITC_CHILD_COUNT_PROBE_MAX}",
+        ),
+    }
+
+
+def test_legacy_agi_usd_dimensions_stay_refused_by_bare_key() -> None:
+    """``agi_lower_usd``/``agi_upper_usd`` are not restated concepts (2026-09-22).
+
+    Max ruled against adding them to ``RESTATED_LEDGER_FILTER_CONCEPTS``: no
+    compiled target carries them today, and the guard already refuses an
+    unknown ``ledger_filter_*`` key loudly. This pins that second half — even
+    where the legacy key equals the compiled edge, it is refused by its bare
+    name and the fatal guard raises, so a future compile that picks those
+    facts up stops rather than being accepted or silently dropped.
+    """
+
+    builder = _load_builder_module()
+    metadata = _soi_band_metadata(
+        ledger_filter_agi_lower_usd="100000", ledger_filter_agi_upper_usd="200000"
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(
+        (_spec("legacy_agi_usd", metadata),)
+    ) == {
+        "legacy_agi_usd": (
+            "ledger_filter_agi_lower_usd",
+            "ledger_filter_agi_upper_usd",
+        )
+    }
+    assert builder._unsupported_soi_ledger_filters(metadata) == (
+        "ledger_filter_agi_lower_usd",
+        "ledger_filter_agi_upper_usd",
+    )
+    with pytest.raises(RuntimeError, match="ledger_filter_agi_lower_usd"):
+        builder._assert_supported_ledger_filter_metadata(
+            (_spec("legacy_agi_usd", metadata),)
+        )
+
+
+def test_restated_filters_clear_the_soi_skip_only_where_they_agree() -> None:
+    """The second checker must not turn an accepted restatement into a silent drop.
+
+    ``_unsupported_soi_ledger_filters`` is consulted inside
+    ``_materialize_target_frame``'s SOI loop, where a non-empty result skips
+    the spec with no error at all — so accepting a restatement at the fatal
+    guard while leaving it listed here would only move the spec from a refusal
+    to a silent disappearance. A disagreeing restatement stays listed, and the
+    fatal guard at the top of the same function refuses it before the loop
+    runs, so the silent skip is unreachable for one. Unknown SOI filters keep
+    their existing behaviour.
+    """
+
+    builder = _load_builder_module()
+    agreeing = _soi_band_metadata(**{_RESTATED_AGI_LOWER: "100000"})
+    disagreeing = _soi_band_metadata(**{_RESTATED_AGI_LOWER: "50000"})
+
+    assert builder._unsupported_soi_ledger_filters(agreeing) == ()
+    assert builder._unsupported_soi_ledger_filters(disagreeing) == (
+        _RESTATED_AGI_LOWER,
+    )
+    with pytest.raises(RuntimeError, match="disagrees with agi_lower_bound"):
+        builder._assert_supported_ledger_filter_metadata(
+            (_spec("disagreeing", disagreeing),)
+        )
+    assert builder._unsupported_soi_ledger_filters(
+        {"ledger_filter_new_dimension": "specific_slice"}
+    ) == ("ledger_filter_new_dimension",)
+
+
+_RESTATED_AGE_LOWER = "ledger_filter_age_lower_bound"
+_RESTATED_AGE_UPPER = "ledger_filter_age_upper_bound"
+_RESTATED_AGE_EXACT = "ledger_filter_age"
+_AGE_STAMP_SOURCE = "age_bound_stamp_source"
+
+
+def _population_age_metadata(**overrides: str | None) -> dict[str, str]:
+    """A compiled Census population-by-age spec's metadata, as compiled.
+
+    Mirrors ``_population_age_reference_from_fact`` for a state 5-to-9 cell —
+    the half-open band the materializer slices on
+    (``age_lower_bound``/``age_upper_bound``) and the compile's attestation
+    that the fact has no dimension that could shadow its age rows — plus the
+    restatement ``ledger_targets._constraint_bound_filters`` stamps from that
+    fact's ``age >= 5`` and ``age < 10`` rows. An override of ``None`` drops
+    the key.
+    """
+
+    metadata = {
+        "materializer": "population_age",
+        "measure_mode": "indicator_sum",
+        "source_measure_id": "population",
+        "target_role": "population_age",
+        "geography_scope": "state",
+        "state_fips": "06",
+        "age_group": "5_to_9",
+        "age_lower_bound": "5",
+        "age_upper_bound": "10",
+        _AGE_STAMP_SOURCE: "constraint_rows",
+        _RESTATED_AGE_LOWER: "5",
+        _RESTATED_AGE_UPPER: "10",
+    }
+    for key, value in overrides.items():
+        if value is None:
+            metadata.pop(key, None)
+        else:
+            metadata[key] = value
+    return metadata
+
+
+def _ssa_age_band_metadata(**overrides: str | None) -> dict[str, str]:
+    """A compiled SSA SSI recipients-by-age spec's metadata, as compiled.
+
+    Mirrors ``_ssa_ssi_reference_from_fact`` for the ``under_18`` row
+    (``age >= 0``, ``age < 18``): an age-banded ``policyengine_variable``
+    indicator count, plus the stamped restatement.
+    """
+
+    metadata = {
+        "materializer": "policyengine_variable",
+        "measure_mode": "indicator_sum",
+        "base_variable": "ssi",
+        "target_role": "ssa_ssi_age_band_recipients",
+        "source_measure_id": "recipient_count",
+        "age_lower_bound": "0",
+        "age_upper_bound": "18",
+        _AGE_STAMP_SOURCE: "constraint_rows",
+        _RESTATED_AGE_LOWER: "0",
+        _RESTATED_AGE_UPPER: "18",
+    }
+    for key, value in overrides.items():
+        if value is None:
+            metadata.pop(key, None)
+        else:
+            metadata[key] = value
+    return metadata
+
+
+def test_restated_age_bounds_pass_the_guard_only_where_they_agree() -> None:
+    """A restated age bound equal to the compiled one is ignorable, so accepted.
+
+    The Ledger stamp restates a fact's ``age >= a`` / ``age < b`` rows as
+    ``ledger_filter_age_{lower,upper}_bound`` beside the compiled
+    ``age_lower_bound``/``age_upper_bound`` that both age paths in
+    ``_materialize_target_frame`` slice on as ``a <= age < b``. Where the two
+    name the same edge, dropping the restatement changes no population. Both
+    materializers are covered, one side at a time, an open top (``85+``: no
+    upper row, compiled ``inf``), and float spellings of the same edge. The
+    SOI checker must not list them either, so no listing turns an accepted
+    restatement into a silent drop.
+    """
+
+    builder = _load_builder_module()
+    specs = (
+        _spec(
+            "census_pep.v2024.cy2024.state_resident_population.06.5_to_9.population",
+            _population_age_metadata(),
+        ),
+        _spec("lower_only", _population_age_metadata(**{_RESTATED_AGE_UPPER: None})),
+        _spec("upper_only", _population_age_metadata(**{_RESTATED_AGE_LOWER: None})),
+        _spec(
+            "open_top",
+            _population_age_metadata(
+                age_group="85_plus",
+                age_lower_bound="85",
+                age_upper_bound="inf",
+                **{_RESTATED_AGE_LOWER: "85", _RESTATED_AGE_UPPER: None},
+            ),
+        ),
+        _spec(
+            "float_spelling",
+            _population_age_metadata(
+                **{_RESTATED_AGE_LOWER: "5.0", _RESTATED_AGE_UPPER: "10.0"}
+            ),
+        ),
+        _spec(
+            "ssa_ssi_monthly.month2024_12.ssi_federal_payment_recipients."
+            "by_age.under_18.recipient_count",
+            _ssa_age_band_metadata(),
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {}
+    builder._assert_supported_ledger_filter_metadata(specs)
+    for spec in specs:
+        assert builder._unsupported_soi_ledger_filters(spec.metadata) == ()
+
+    # Non-vacuity: with the concept unnamed, the same specs get the bare-key
+    # refusal every one of them got before this rule.
+    del builder.RESTATED_LEDGER_FILTER_CONCEPTS["age"]
+    refused = builder._unsupported_ledger_filter_metadata(specs)
+    assert set(refused) == {spec.name for spec in specs}
+    assert refused[specs[0].name] == (_RESTATED_AGE_LOWER, _RESTATED_AGE_UPPER)
+
+
+def test_disagreeing_restated_age_bounds_are_refused_by_value() -> None:
+    """Negative control for the acceptance above: only an applied, equal edge.
+
+    Each spec carries an age restatement the materializer would ignore while
+    slicing a different population, or no population at all: an edge a year
+    off on either side, a finite upper edge over a compiled open top, a bound
+    with no compiled counterpart, an exact-age restatement (the materializer
+    has no exact-age filter), a bound on a fact whose dimensions include age
+    (so the bound came from the operator-less dimension stamp), a bound on
+    specs whose materializer applies no age band, and agreeing bounds whose
+    operator the compile does not attest: no attestation at all, or one naming
+    a dimension that could have written the key with no operator. Every
+    refusal names the restated value and, where one exists, the compiled one
+    or the attestation. The unknown key is the control that the ordinary path
+    is untouched.
+    """
+
+    builder = _load_builder_module()
+    specs = (
+        _spec(
+            "disagreeing_lower",
+            _population_age_metadata(**{_RESTATED_AGE_LOWER: "4"}),
+        ),
+        _spec(
+            "disagreeing_upper",
+            _population_age_metadata(**{_RESTATED_AGE_UPPER: "9"}),
+        ),
+        _spec(
+            "ssa_disagreeing_upper",
+            _ssa_age_band_metadata(**{_RESTATED_AGE_UPPER: "65"}),
+        ),
+        _spec(
+            "finite_over_open_top",
+            _population_age_metadata(
+                age_lower_bound="85",
+                age_upper_bound="inf",
+                **{_RESTATED_AGE_LOWER: "85", _RESTATED_AGE_UPPER: "100"},
+            ),
+        ),
+        _spec(
+            "no_compiled_upper",
+            _population_age_metadata(age_upper_bound=None),
+        ),
+        _spec(
+            "exact_age",
+            _population_age_metadata(
+                **{
+                    _RESTATED_AGE_EXACT: "7",
+                    _RESTATED_AGE_LOWER: None,
+                    _RESTATED_AGE_UPPER: None,
+                }
+            ),
+        ),
+        _spec(
+            "age_dimension",
+            _population_age_metadata(
+                **{_RESTATED_AGE_EXACT: "all", _RESTATED_AGE_UPPER: None}
+            ),
+        ),
+        _spec(
+            "soi_materializer",
+            _soi_band_metadata(
+                age_lower_bound="5",
+                age_upper_bound="10",
+                **{_RESTATED_AGE_LOWER: "5"},
+            ),
+        ),
+        _spec(
+            "no_materializer",
+            _population_age_metadata(materializer=None, **{_RESTATED_AGE_UPPER: None}),
+        ),
+        _spec(
+            "unattested",
+            _population_age_metadata(
+                **{_AGE_STAMP_SOURCE: None, _RESTATED_AGE_LOWER: None}
+            ),
+        ),
+        _spec(
+            "dimension_shadowed",
+            _ssa_age_band_metadata(
+                **{
+                    _AGE_STAMP_SOURCE: "dimensions:age_upper_bound",
+                    _RESTATED_AGE_LOWER: None,
+                }
+            ),
+        ),
+        _spec(
+            "unknown_key",
+            _population_age_metadata(ledger_filter_novel_dimension="specific_slice"),
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "disagreeing_lower": (
+            f"{_RESTATED_AGE_LOWER}=4 disagrees with age_lower_bound=5",
+        ),
+        "disagreeing_upper": (
+            f"{_RESTATED_AGE_UPPER}=9 disagrees with age_upper_bound=10",
+        ),
+        "ssa_disagreeing_upper": (
+            f"{_RESTATED_AGE_UPPER}=65 disagrees with age_upper_bound=18",
+        ),
+        "finite_over_open_top": (
+            f"{_RESTATED_AGE_UPPER}=100 disagrees with age_upper_bound=inf",
+        ),
+        "no_compiled_upper": (
+            f"{_RESTATED_AGE_UPPER}=10 restates a bound the spec does not "
+            "compile: no age_upper_bound",
+        ),
+        "exact_age": (
+            f"{_RESTATED_AGE_EXACT}=7 restates an exact age, but the "
+            "materializer slices a half-open age band and applies no "
+            "exact-age filter",
+        ),
+        "age_dimension": (
+            f"{_RESTATED_AGE_LOWER}=5 restates an age bound on a fact whose "
+            f"dimensions include age ({_RESTATED_AGE_EXACT}=all), so the bound "
+            "came from the dimension stamp, which carries no operator",
+        ),
+        "soi_materializer": (
+            f"{_RESTATED_AGE_LOWER}=5 restates an age bound on a spec whose "
+            "materializer ('irs_soi_slice') applies no age band",
+        ),
+        "no_materializer": (
+            f"{_RESTATED_AGE_LOWER}=5 restates an age bound on a spec whose "
+            "materializer (None) applies no age band",
+        ),
+        "unattested": (
+            f"{_RESTATED_AGE_UPPER}=10 restates an age bound whose operator is "
+            f"ambiguous: {_AGE_STAMP_SOURCE}=None does not attest it was stamped "
+            "from a constraint row (>= or <), and a dimension of that name "
+            "carries no operator",
+        ),
+        "dimension_shadowed": (
+            f"{_RESTATED_AGE_UPPER}=18 restates an age bound whose operator is "
+            f"ambiguous: {_AGE_STAMP_SOURCE}=dimensions:age_upper_bound does not "
+            "attest it was stamped from a constraint row (>= or <), and a "
+            "dimension of that name carries no operator",
+        ),
+        "unknown_key": ("ledger_filter_novel_dimension",),
+    }
+    with pytest.raises(RuntimeError) as excinfo:
+        builder._assert_supported_ledger_filter_metadata(specs)
+    message = str(excinfo.value)
+    assert "Unsupported Ledger target filter metadata would be ignored" in message
+    assert f"{_RESTATED_AGE_UPPER}=9 disagrees with age_upper_bound=10" in message
+    assert "ledger_filter_novel_dimension" in message
+    # The SOI loop's checker lists the same refusal, so the fatal guard (which
+    # runs first) is what stops it rather than a silent skip.
+    assert builder._unsupported_soi_ledger_filters(
+        _soi_band_metadata(
+            age_lower_bound="5", age_upper_bound="10", **{_RESTATED_AGE_LOWER: "5"}
+        )
+    ) == (_RESTATED_AGE_LOWER,)
+
+
+def test_operator_changed_age_bounds_stay_refused_by_bare_key() -> None:
+    """A ``>`` or ``<=`` age row is refused even when its value matches.
+
+    ``us_runtime.fiscal_targets._age_bounds`` drops the operator when it
+    compiles the band, so an ``age <= 9`` row compiles to
+    ``age_upper_bound=9`` and the materializer's ``age < 9`` leaves out the
+    nine-year-olds the published cell counts; ``age > 4`` compiles to
+    ``age_lower_bound=4`` and lets the four-year-olds in. The stamp keeps the
+    operator in the key (``_upper_bound_inclusive`` /
+    ``_lower_bound_exclusive``), which is not a restated concept, so those
+    keys keep the bare-key refusal whatever their value — the rule must not
+    swallow them by value agreement.
+    """
+
+    builder = _load_builder_module()
+    inclusive_upper = f"{_RESTATED_AGE_UPPER}_inclusive"
+    exclusive_lower = f"{_RESTATED_AGE_LOWER}_exclusive"
+    assert builder._restated_ledger_filter_concept(inclusive_upper) == (
+        "age_upper_bound_inclusive",
+        None,
+    )
+    specs = (
+        _spec(
+            "inclusive_upper",
+            _population_age_metadata(
+                age_upper_bound="9",
+                **{_RESTATED_AGE_UPPER: None, inclusive_upper: "9"},
+            ),
+        ),
+        _spec(
+            "exclusive_lower",
+            _population_age_metadata(
+                age_lower_bound="4",
+                **{_RESTATED_AGE_LOWER: None, exclusive_lower: "4"},
+            ),
+        ),
+    )
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {
+        "inclusive_upper": (inclusive_upper,),
+        "exclusive_lower": (exclusive_lower,),
+    }
+
+
+def _census_age_fact(
+    groupby_value_id: str,
+    constraints: list[tuple[str, int]],
+    *,
+    dimensions: dict[str, str] | None = None,
+) -> dict[str, object]:
+    """A minimal Census PEP national population-by-age consumer fact."""
+
+    source_record_id = (
+        f"census_pep.cy2024.national_resident_population_age.{groupby_value_id}"
+        ".population"
+    )
+    fact_key = source_record_id.replace(".", "_")
+    dimensions = dict(dimensions or {})
+    return {
+        "label": source_record_id,
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{fact_key}",
+        "semantic_fact_key": f"ledger.semantic_fact.v2:{fact_key}",
+        "legacy_fact_key": f"ledger.fact.v1:{fact_key}",
+        "lineage": {"source_record_id": source_record_id},
+        "value": 1_000.0,
+        "period": {"type": "calendar_year", "value": 2024},
+        "entity": {"name": "person"},
+        "aggregation": {"method": "sum"},
+        "geography": {"level": "country", "id": "0100000US", "name": "United States"},
+        "dimensions": dimensions,
+        "dimension_labels": {key: f"Label {key}" for key in dimensions},
+        "dimension_value_labels": {
+            key: {str(value): f"Value {value}"} for key, value in dimensions.items()
+        },
+        "universe_constraints": {
+            "constraints": [
+                {
+                    "variable": "age",
+                    "operator": operator,
+                    "value": value,
+                    "role": "filter",
+                    "unit": "years",
+                }
+                for operator, value in constraints
+            ]
+        },
+        "layout": {
+            "record_set_id": "census_pep.cy2024.national_resident_population_age",
+            "groupby_value_id": groupby_value_id,
+            "measure_id": "population",
+        },
+        "observed_measure": {
+            "source_name": "census_pep",
+            "source_measure_id": "population",
+            "unit": "persons",
+        },
+        "source": {"source_name": "census_pep", "source_table": "PEP"},
+    }
+
+
+def test_restated_age_bounds_are_judged_on_the_real_compile() -> None:
+    """The rule meets the keys the production compile actually stamps.
+
+    Facts run through ``_dynamic_us_fiscal_target_references`` and
+    ``compile_ledger_target_references`` — the path
+    ``compile_us_fiscal_target_registry`` takes — so the compiled bounds and
+    the restated keys are the real compiler's, not hand-written metadata.
+    The ``>=``/``<`` band and the open-topped ``>=`` band are accepted, and
+    the test first checks they really carry the restated keys; the ``<=`` and
+    ``>`` rows compile to the same numeric edges but keep the operator in the
+    stamped key and stay refused; a fact with ``age`` as a dimension gets no
+    bound stamp at all, only the exact restatement, which is refused.
+
+    The last two facts are the dimension stamp's operator-less keys, which
+    agree with the compiled edge by value and carry no other refusable key:
+    an ``age_upper_bound`` dimension whose value the stamp writes over the
+    ``<`` row's (``setdefault``), and an ``age`` dimension valued ``None``
+    beside an ``age_upper_bound`` dimension over an ``age <= 29`` row, where
+    no ``ledger_filter_age`` or ``_inclusive`` key is stamped at all and the
+    materializer's ``age < 29`` would drop the 29-year-olds. Only the
+    compile's attestation refuses them.
+    """
+
+    from microcosm.build.ledger_targets import compile_ledger_target_references
+    from microcosm.build.us_runtime.fiscal_targets import (
+        _dynamic_us_fiscal_target_references,
+    )
+
+    builder = _load_builder_module()
+    facts = [
+        _census_age_fact("0_to_4", [(">=", 0), ("<", 5)]),
+        _census_age_fact("85_plus", [(">=", 85)]),
+        _census_age_fact("5_to_9", [(">=", 5), ("<=", 9)]),
+        _census_age_fact("10_to_14", [(">", 9), ("<", 15)]),
+        _census_age_fact(
+            "15_to_19", [(">=", 15), ("<", 20)], dimensions={"age": "15_to_19"}
+        ),
+        _census_age_fact(
+            "20_to_24", [(">=", 20), ("<", 25)], dimensions={"age_upper_bound": 25}
+        ),
+        _census_age_fact(
+            "25_to_29",
+            [(">=", 25), ("<=", 29)],
+            dimensions={"age": None, "age_upper_bound": 29},
+        ),
+    ]
+    registry = compile_ledger_target_references(
+        facts,
+        _dynamic_us_fiscal_target_references(facts, target_period=2024),
+        country="us",
+    )
+    specs = {spec.name.split(".")[-2]: spec for spec in registry.specs}
+    assert set(specs) == {
+        "0_to_4",
+        "85_plus",
+        "5_to_9",
+        "10_to_14",
+        "15_to_19",
+        "20_to_24",
+        "25_to_29",
+    }
+
+    def age_keys(name: str) -> dict[str, str]:
+        return {
+            key: value
+            for key, value in specs[name].metadata.items()
+            if key.startswith(("age_", "ledger_filter_age")) and key != "age_group"
+        }
+
+    assert age_keys("0_to_4") == {
+        "age_lower_bound": "0",
+        "age_upper_bound": "5",
+        _AGE_STAMP_SOURCE: "constraint_rows",
+        _RESTATED_AGE_LOWER: "0",
+        _RESTATED_AGE_UPPER: "5",
+    }
+    assert age_keys("85_plus") == {
+        "age_lower_bound": "85",
+        "age_upper_bound": "inf",
+        _AGE_STAMP_SOURCE: "constraint_rows",
+        _RESTATED_AGE_LOWER: "85",
+    }
+    assert age_keys("5_to_9")["age_upper_bound"] == "9"
+    assert age_keys("10_to_14")["age_lower_bound"] == "9"
+    assert age_keys("15_to_19")[_AGE_STAMP_SOURCE] == "dimensions:age"
+    # The shadowed keys agree with the compiled edges by value, so value
+    # agreement alone would accept them.
+    assert age_keys("20_to_24") == {
+        "age_lower_bound": "20",
+        "age_upper_bound": "25",
+        _AGE_STAMP_SOURCE: "dimensions:age_upper_bound",
+        _RESTATED_AGE_LOWER: "20",
+        _RESTATED_AGE_UPPER: "25",
+    }
+    assert age_keys("25_to_29") == {
+        "age_lower_bound": "25",
+        "age_upper_bound": "29",
+        _AGE_STAMP_SOURCE: "dimensions:age,age_upper_bound",
+        _RESTATED_AGE_UPPER: "29",
+    }
+
+    def ambiguous(key: str, value: str, source: str) -> str:
+        return (
+            f"{key}={value} restates an age bound whose operator is ambiguous: "
+            f"{_AGE_STAMP_SOURCE}={source} does not attest it was stamped from "
+            "a constraint row (>= or <), and a dimension of that name carries "
+            "no operator"
+        )
+
+    refused = builder._unsupported_ledger_filter_metadata(registry.specs)
+    assert {name.split(".")[-2]: entries for name, entries in refused.items()} == {
+        "5_to_9": (f"{_RESTATED_AGE_UPPER}_inclusive",),
+        "10_to_14": (f"{_RESTATED_AGE_LOWER}_exclusive",),
+        "15_to_19": (
+            f"{_RESTATED_AGE_EXACT}=15_to_19 restates an exact age, but the "
+            "materializer slices a half-open age band and applies no "
+            "exact-age filter",
+        ),
+        "20_to_24": (
+            ambiguous(_RESTATED_AGE_LOWER, "20", "dimensions:age_upper_bound"),
+            ambiguous(_RESTATED_AGE_UPPER, "25", "dimensions:age_upper_bound"),
+        ),
+        "25_to_29": (
+            ambiguous(_RESTATED_AGE_UPPER, "29", "dimensions:age,age_upper_bound"),
+        ),
+    }
+
+
+def test_pinned_chronicle_feed_whole_registry_compiles_no_unsupported_filters() -> None:
+    """The whole compiled registry clears the guard, when this machine has the feed.
+
+    Before the age-band rule, ``compile_us_fiscal_target_registry(...,
+    age_targets=True)`` over the pinned feed left 939 of 32,866 targets
+    refused, every one a ``census_population``/``population_age`` or
+    ``ssa``/``ssa_ssi_age_band_recipients`` target carrying
+    ``ledger_filter_age_{lower,upper}_bound``
+    (``experiments/us-labelled-filter-support/REPORT.md`` section 7). This is
+    the whole-registry sibling of
+    :func:`test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters`
+    and runs only when ``MICROCOSM_US_CHRONICLE_FACTS`` points at the feed.
+    The non-vacuity arm requires restated age keys to be present.
+    """
+
+    feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
+    if not feed or not Path(feed).exists():
+        pytest.skip(
+            "set MICROCOSM_US_CHRONICLE_FACTS to the pinned consumer-facts feed"
+        )
+
+    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.us_runtime import (
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+    )
+    from microcosm.build.us_runtime.fiscal_targets import (
+        compile_us_fiscal_target_registry,
+    )
+
+    builder = _load_builder_module()
+    registry = compile_us_fiscal_target_registry(
+        load_ledger_consumer_artifact(feed).facts,
+        target_period=builder.PERIOD,
+        congressional_district_vintage_crosswalk=(
+            load_congressional_district_vintage_crosswalk(
+                default_congressional_district_vintage_crosswalk_path()
+            )
+        ),
+        age_targets=True,
+    )
+    specs = tuple(registry.specs)
+    restated_age = [
+        spec
+        for spec in specs
+        if _RESTATED_AGE_LOWER in spec.metadata or _RESTATED_AGE_UPPER in spec.metadata
+    ]
+
+    assert restated_age
+    assert {spec.metadata.get("materializer") for spec in restated_age} <= (
+        builder.RESTATED_AGE_BAND_MATERIALIZERS
+    )
+    assert {spec.metadata.get(_AGE_STAMP_SOURCE) for spec in restated_age} == {
+        "constraint_rows"
+    }
+    assert builder._unsupported_ledger_filter_metadata(specs) == {}
+    assert not [
+        spec
+        for spec in specs
+        if spec.family == "irs_soi"
+        and builder._unsupported_soi_ledger_filters(spec.metadata)
+    ]
+
+
+def test_restated_concept_rules_all_have_a_comparison() -> None:
+    """Every named restated concept must route to an implemented comparison.
+
+    Adding a concept to ``RESTATED_LEDGER_FILTER_CONCEPTS`` without a rule
+    would raise at compile time on the first spec carrying it; this pins the
+    three rules that exist instead.
+    """
+
+    builder = _load_builder_module()
+
+    assert set(builder.RESTATED_LEDGER_FILTER_CONCEPTS.values()) == {
+        "agi_band",
+        "eitc_child_count",
+        "age_band",
+    }
+    assert builder._restated_ledger_filter_concept(_RESTATED_AGE_UPPER) == (
+        "age",
+        "upper",
+    )
+    # The age rule reads the compile's attestation under the compile's names.
+    assert builder.AGE_BOUND_STAMP_SOURCE_KEY == _AGE_STAMP_SOURCE
+    assert builder.AGE_BOUND_STAMP_FROM_CONSTRAINT_ROWS == "constraint_rows"
+    assert builder._restated_ledger_filter_concept(_RESTATED_AGE_EXACT) == (
+        "age",
+        None,
+    )
+    assert builder._restated_ledger_filter_concept(_RESTATED_AGI_LOWER) == (
+        "us:statutes/26/62#adjusted_gross_income",
+        "lower",
+    )
+    assert builder._restated_ledger_filter_concept(_RESTATED_EITC_CHILDREN_EXACT) == (
+        "us.tax.earned_income_credit_qualifying_children",
+        None,
+    )
+    assert builder._restated_ledger_filter_concept("not_a_filter_key") == ("", None)
+
+
+_COMPILED_LEDGER_FILTER_FIXTURE = (
+    _TEST_PATHS.tests / "fixtures" / "us_compiled_ledger_filter_specs.json"
+)
+
+
+def _compiled_ledger_filter_fixture() -> dict:
+    return json.loads(_COMPILED_LEDGER_FILTER_FIXTURE.read_text())
+
+
+def test_pinned_chronicle_feed_compiles_no_unsupported_ledger_filters() -> None:
+    """The pre-merge compile of the feed #955 pins carries no ignored filter key.
+
+    The fixture is compiled target metadata from
+    ``compile_us_fiscal_target_registry`` over that feed — the sampled rows in
+    full, and a key census covering every one of its compiled targets. Both
+    guards must clear: no target refused, no ``irs_soi`` target dropped from
+    SOI materialization by the silent skip. The census arm generalises the
+    sample: any ``ledger_filter_*`` key the feed carries that is neither
+    supported nor a reviewed identity qualifier must be noop-valued on every
+    target that carries it, which is what makes "zero unsupported" a statement
+    about the whole registry and not only about the fifty rows kept here.
+
+    The census was captured at ``369dedf1f``, before this branch merged
+    ``origin/main`` and so before
+    :func:`microcosm.build.ledger_targets._constraint_bound_filters` existed;
+    a compile at the current head stamps restated keys this census does not
+    list. That is deliberate — the rows keep pinning the compile the
+    supported/identity classification was reviewed against, and
+    :func:`test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters`
+    is the arm that meets the restated keys on the live feed.
+    """
+
+    builder = _load_builder_module()
+    payload = _compiled_ledger_filter_fixture()
+    specs = tuple(_spec(row["name"], dict(row["metadata"])) for row in payload["specs"])
+    assert specs
+
+    assert builder._unsupported_ledger_filter_metadata(specs) == {}
+    builder._assert_supported_ledger_filter_metadata(specs)
+    for spec in specs:
+        if spec.metadata.get("family") == "irs_soi":
+            assert builder._unsupported_soi_ledger_filters(spec.metadata) == ()
+
+    classified = (
+        builder.SUPPORTED_LEDGER_FILTER_METADATA_KEYS
+        | builder.IDENTITY_LEDGER_FILTER_METADATA_KEYS
+    )
+    for key, census in payload["ledger_filter_key_census"].items():
+        if key in classified:
+            continue
+        for value in census["values"]:
+            assert builder._is_noop_ledger_filter_value(value), (key, value)
+
+
+def test_restated_bounds_track_each_compiled_band_in_the_fixture() -> None:
+    """Replay the rule over real compiled bands, agreeing and perturbed.
+
+    In the pre-merge compile the fixture pins, the feed states its AGI band
+    only as compiled metadata, so this injects the restatement a labelled
+    vocabulary would add onto real rows: each banded target's own lower edge
+    is accepted, and the same target with that edge moved is refused. Guards
+    the rule against a fixture that happens to contain no band — if the sample
+    ever loses its SOI rows, the assertion on ``banded`` fails rather than the
+    test passing vacuously.
+    """
+
+    builder = _load_builder_module()
+    payload = _compiled_ledger_filter_fixture()
+    banded = [
+        row
+        for row in payload["specs"]
+        if row["metadata"].get("agi_lower_bound") is not None
+    ]
+    assert len(banded) >= 4
+
+    agreeing = []
+    perturbed = []
+    for row in banded:
+        metadata = dict(row["metadata"])
+        compiled = metadata["agi_lower_bound"]
+        agreeing.append(_spec(row["name"], {**metadata, _RESTATED_AGI_LOWER: compiled}))
+        moved = "0" if compiled == "-inf" else str(builder._as_bound(compiled) + 1.0)
+        perturbed.append(_spec(row["name"], {**metadata, _RESTATED_AGI_LOWER: moved}))
+
+    assert builder._unsupported_ledger_filter_metadata(tuple(agreeing)) == {}
+    refused = builder._unsupported_ledger_filter_metadata(tuple(perturbed))
+    assert len(refused) == len({spec.name for spec in perturbed})
+    assert all(
+        entry.startswith(_RESTATED_AGI_LOWER)
+        and "disagrees with agi_lower_bound" in entry
+        for entries in refused.values()
+        for entry in entries
+    )
+
+
+def test_pinned_chronicle_feed_state_surface_compiles_no_unsupported_filters() -> None:
+    """The same assertion against the real feed, when this machine has it.
+
+    The pinned consumer-facts feed is a 164 MB restricted-free public
+    aggregate export that no CI lane carries, so this runs only when
+    ``MICROCOSM_US_CHRONICLE_FACTS`` points at it.
+    ``experiments/us-labelled-filter-support/census_compiled_ledger_filters.py``
+    surveys the same compile.
+
+    This is the arm that meets real restated keys. Since the branch merged
+    ``origin/main``,
+    :func:`microcosm.build.ledger_targets._constraint_bound_filters` stamps the
+    feed's AGI and qualifying-child universe constraints as
+    ``ledger_filter_us:statutes/26/62#adjusted_gross_income_{lower,upper}_bound``
+    and
+    ``ledger_filter_us.tax.earned_income_credit_qualifying_children_lower_bound``,
+    and 1,988 of the 31,066 state-surface specs carry one. Reverting either
+    call site of :func:`_restated_ledger_filter_refusal` fails this assertion
+    on exactly those 1,988.
+    """
+
+    feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
+    if not feed or not Path(feed).exists():
+        pytest.skip(
+            "set MICROCOSM_US_CHRONICLE_FACTS to the pinned consumer-facts feed"
+        )
+
+    builder = _load_builder_module()
+    acs_release = _load_acs_local_release_module()
+    registry, _substitutions = acs_release.state_admin_specs(
+        feed, ["snap", "medicaid", "soi"], soi_mode="full"
+    )
+    specs = tuple(registry.specs)
+
+    assert specs
+    assert builder._unsupported_ledger_filter_metadata(specs) == {}
+    assert not [
+        spec
+        for spec in specs
+        if spec.family == "irs_soi"
+        and builder._unsupported_soi_ledger_filters(spec.metadata)
+    ]
+
+
+def test_eitc_child_count_mask_supports_soi_child_groups() -> None:
+    builder = _load_builder_module()
+    counts = np.asarray([0, 1, 2, 3, 4], dtype=np.float64)
+
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "0"),
+        np.asarray([True, False, False, False, False]),
+    )
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "1"),
+        np.asarray([False, True, False, False, False]),
+    )
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "2"),
+        np.asarray([False, False, True, False, False]),
+    )
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "3plus"),
+        np.asarray([False, False, False, True, True]),
+    )
+    assert np.array_equal(
+        builder._eitc_child_count_mask(counts, "3+"),
+        np.asarray([False, False, False, True, True]),
+    )
+
+
+def test_combined_household_values_unions_positive_person_support(small_frame) -> None:
+    builder = _load_builder_module()
+
+    variable_values = {
+        "medicaid_enrolled": np.asarray([1.0, 1.0, 0.0, 0.0]),
+        "chip_enrolled": np.asarray([1.0, 0.0, 1.0, 0.0]),
+    }
+
+    class FakeSimulation:
+        def calculate(self, variable, *, period, map_to=None):
+            assert period == builder.PERIOD
+            assert map_to is None
+            return variable_values[variable]
+
+    person_entity = SimpleNamespace(key="person")
+    system = SimpleNamespace(
+        variables={
+            variable: SimpleNamespace(entity=person_entity)
+            for variable in variable_values
+        }
+    )
+
+    values = builder._combined_household_values(
+        frame=small_frame,
+        simulation=FakeSimulation(),
+        system=system,
+        variables=("medicaid_enrolled", "chip_enrolled"),
+        tax_unit_positions=np.asarray([], dtype=np.int64),
+        positive_indicator=True,
+    )
+    assert np.array_equal(values, np.asarray([2.0, 1.0]))
+
+    summed_values = builder._combined_household_values(
+        frame=small_frame,
+        simulation=FakeSimulation(),
+        system=system,
+        variables=("medicaid_enrolled", "chip_enrolled"),
+        tax_unit_positions=np.asarray([], dtype=np.int64),
+        positive_indicator=False,
+    )
+    assert np.array_equal(summed_values, np.asarray([3.0, 1.0]))
+
+
+def test_combined_household_values_can_count_tax_unit_variable_on_people(
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+
+    mapped_values = {
+        "assigned_aca_ptc": np.asarray([5_000.0, 5_000.0, 3_000.0, 0.0]),
+        "is_aca_ptc_eligible": np.asarray([1.0, 0.0, 1.0, 1.0]),
+    }
+
+    class FakeSimulation:
+        def calculate(self, variable, *, period, map_to=None):
+            assert period == builder.PERIOD
+            assert map_to == "person"
+            return mapped_values[variable]
+
+    system = SimpleNamespace(
+        variables={
+            "assigned_aca_ptc": SimpleNamespace(entity=SimpleNamespace(key="tax_unit")),
+            "is_aca_ptc_eligible": SimpleNamespace(
+                entity=SimpleNamespace(key="person")
+            ),
+        }
+    )
+
+    values = builder._combined_household_values(
+        frame=small_frame,
+        simulation=FakeSimulation(),
+        system=system,
+        variables=("assigned_aca_ptc",),
+        tax_unit_positions=np.asarray([], dtype=np.int64),
+        positive_indicator=True,
+        map_to="person",
+        filter_variable="is_aca_ptc_eligible",
+    )
+
+    assert np.array_equal(values, np.asarray([1.0, 1.0]))
+
+
+def test_combined_household_values_threshold_count_keeps_domain_filter(
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+
+    mapped_values = {
+        "selected_marketplace_plan_benchmark_ratio": np.asarray([0.8, 1.2, 0.7]),
+        "assigned_aca_ptc": np.asarray([500.0, 500.0, 0.0]),
+    }
+
+    class FakeSimulation:
+        def calculate(self, variable, *, period, map_to=None):
+            assert period == builder.PERIOD
+            assert map_to is None
+            return mapped_values[variable]
+
+    system = SimpleNamespace(
+        variables={
+            "selected_marketplace_plan_benchmark_ratio": SimpleNamespace(
+                entity=SimpleNamespace(key="tax_unit")
+            ),
+            "assigned_aca_ptc": SimpleNamespace(entity=SimpleNamespace(key="tax_unit")),
+        }
+    )
+
+    values = builder._combined_household_values(
+        frame=small_frame,
+        simulation=FakeSimulation(),
+        system=system,
+        variables=("selected_marketplace_plan_benchmark_ratio",),
+        tax_unit_positions=np.asarray([0, 0, 1], dtype=np.int64),
+        filter_variable="assigned_aca_ptc",
+        less_than=1.0,
+    )
+
+    assert np.array_equal(values, np.asarray([1.0, 0.0]))
+
+
+def test_release_gate_failures_are_not_unconditional() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    assert builder._release_gate_failures(result, {"dropped_target_names": []}) == []
+
+    assert builder._release_gate_failures(
+        result,
+        {"dropped_target_names": ["missing"]},
+    ) == ["1 fiscal targets were not materialized."]
+
+    skipped = SimpleNamespace(target=SimpleNamespace(name="skipped"), reason="bad")
+    with_skipped = SimpleNamespace(
+        skipped=(skipped,),
+        diagnostics=_passing_critical_diagnostics(builder),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    assert builder._release_gate_failures(
+        with_skipped,
+        {"dropped_target_names": []},
+    ) == ["1 fiscal targets were skipped by calibration."]
+
+    worse = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder),
+        initial_loss=5.0,
+        final_loss=10.0,
+    )
+    assert builder._release_gate_failures(worse, {"dropped_target_names": []}) == [
+        "Calibration final loss is worse than the initial loss (10.0 > 5.0)."
+    ]
+
+
+def test_release_gate_failures_include_target_profile_coverage() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    target_profile_gate = builder.GateResult(
+        name="target_profile_coverage",
+        passed=False,
+        failures=("medicaid_chip_enrollment: missing",),
+    )
+
+    assert builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        target_profile_gate,
+    ) == [
+        "Target profile coverage failed: medicaid_chip_enrollment: missing",
+    ]
+
+
+def test_release_gate_failures_include_health_input_signal() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    health_input_gate = builder.GateResult(
+        name="health_input_signal",
+        passed=False,
+        failures=("takes_up_aca_if_eligible: constant",),
+    )
+
+    assert builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        health_input_gate=health_input_gate,
+    ) == [
+        "Health input signal failed: takes_up_aca_if_eligible: constant",
+    ]
+
+
+def test_release_gate_failures_include_reported_coverage_vintage_signal() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    reported_coverage_vintage_gate = builder.GateResult(
+        name="reported_coverage_vintage_signal",
+        passed=False,
+        failures=(
+            "has_medicaid_health_coverage_at_interview: source_year 2022 has 0 "
+            "reporters over 54464 person rows — the vintage source lacks the "
+            "at-interview recode (microcosm #720).",
+        ),
+    )
+
+    assert builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        reported_coverage_vintage_gate=reported_coverage_vintage_gate,
+    ) == [
+        "Reported-coverage vintage signal failed: "
+        "has_medicaid_health_coverage_at_interview: source_year 2022 has 0 "
+        "reporters over 54464 person rows — the vintage source lacks the "
+        "at-interview recode (microcosm #720).",
+    ]
+
+
+def test_reported_coverage_vintage_gate_receipt_is_written(tmp_path) -> None:
+    builder = _load_builder_module()
+    gate = builder.GateResult(
+        name="reported_coverage_vintage_signal",
+        passed=False,
+        failures=(
+            "has_medicaid_health_coverage_at_interview: vintage asec/2022 has 0 "
+            "reporters over 54464 person rows (consistent with a source input "
+            "lacking the at-interview recode, microcosm #720).",
+        ),
+        details={"min_vintage_rows": 5000, "vintages": {"asec/2022": {"rows": 54464}}},
+    )
+    release_dir = tmp_path / "releases" / "rid"
+
+    path = builder._write_reported_coverage_vintage_gate_receipt(release_dir, gate)
+
+    assert path == release_dir / builder.US_REPORTED_COVERAGE_VINTAGE_GATE_RECEIPT
+    payload = json.loads(path.read_text())
+    assert payload["gate"] == "reported_coverage_vintage_signal"
+    assert payload["passed"] is False
+    assert payload["failures"] == list(gate.failures)
+    assert payload["details"]["vintages"]["asec/2022"]["rows"] == 54464
+    # A receipt-only directory is not a certified release (#568): reruns under
+    # the same id stay allowed.
+    builder._refuse_certified_release_dir_reuse(release_dir)
+
+
+def test_base_population_scale_gate_rejects_underweighted_base(small_frame) -> None:
+    builder = _load_builder_module()
+
+    gate = builder._base_population_scale_gate(small_frame)
+
+    assert not gate.passed
+    assert gate.name == "base_population_scale"
+    assert gate.details["population"] == 6000.0
+    assert "mass='conserve'" in gate.failures[0]
+
+
+def test_base_population_scale_gate_accepts_national_scale_base(small_frame) -> None:
+    builder = _load_builder_module()
+    benchmark = builder.US_BASE_PERSON_POPULATION_BENCHMARK
+    frame = small_frame.with_weights(
+        "household",
+        builder.Weights(
+            values=np.asarray([benchmark / 4.0, benchmark / 4.0]),
+            kind=WeightKind.DESIGN,
+        ),
+        mass=builder.MassChange(
+            factor=benchmark / 6000.0,
+            reason="test fixture national-scale base",
+        ),
+    )
+
+    gate = builder._base_population_scale_gate(frame)
+
+    assert gate.passed
+    assert gate.details["population"] == benchmark
+    assert gate.details["relative_error"] == 0.0
+
+
+def test_base_population_mass_repair_rescales_to_census_benchmark(
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    benchmark = builder.US_BASE_PERSON_POPULATION_BENCHMARK
+
+    repaired, repair = builder._with_base_population_mass_repair(small_frame)
+
+    assert repair["applied"]
+    assert repair["method"] == "rescale_household_weights_to_census_person_population"
+    assert repair["initial_population"] == 6000.0
+    assert np.isclose(repair["factor"], benchmark / 6000.0)
+    assert np.isclose(repair["repaired_population"], benchmark)
+    assert np.isclose(float(repaired.resolve_weights("person").values.sum()), benchmark)
+    assert repaired.mass_log[-1].entity == "household"
+    assert (
+        repaired.mass_log[-1].reason == builder.US_BASE_PERSON_POPULATION_REPAIR_REASON
+    )
+
+    gate = builder._base_population_scale_gate(repaired, mass_repair=repair)
+    assert gate.passed
+    assert gate.details["mass_repair"]["initial_population"] == 6000.0
+    assert np.isclose(gate.details["mass_repair"]["factor"], benchmark / 6000.0)
+
+
+def test_social_security_component_value_repair_uses_registry_targets(
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    person = small_frame.table("person").copy()
+    person["social_security_retirement"] = [1.0, 0.0, 2.0, 0.0]
+    person["social_security_disability"] = [0.0, 3.0, 0.0, 1.0]
+    person["social_security_dependents"] = [2.0, 0.0, 0.0, 1.0]
+    person["social_security_survivors"] = [0.0, 1.0, 2.0, 0.0]
+    frame = Frame(
+        {
+            "person": person,
+            "household": small_frame.table("household").copy(),
+        },
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+    )
+    targets = {
+        "ssa_retirement_total": 10_000.0,
+        "ssa_disability_total": 8_000.0,
+        "ssa_dependents_total": 6_000.0,
+        "ssa_survivors_total": 12_000.0,
+    }
+    specs = tuple(
+        TargetSpec(
+            name=f"ssa.{role}",
+            entity="household",
+            value=value,
+            measure="unused",
+            period=builder.PERIOD,
+            source="SSA",
+            metadata={"target_role": role},
+        )
+        for role, value in targets.items()
+    )
+
+    repaired, repair = builder._with_social_security_component_value_repair(
+        frame,
+        specs,
+    )
+
+    assert repair["applied"]
+    weights = pd.Series(repaired.resolve_weights("person").values)
+    for role, column in builder.US_SOCIAL_SECURITY_COMPONENT_TARGET_ROLES.items():
+        total = float((repaired.table("person")[column] * weights).sum())
+        assert np.isclose(total, targets[role])
+        assert np.isclose(
+            repair["components"][column]["repaired_estimate"],
+            targets[role],
+        )
+
+
+def test_non_sch_d_cgd_value_repair_pins_the_aged_soi_fact(small_frame) -> None:
+    builder = _load_builder_module()
+    person = small_frame.table("person").copy()
+    person["non_sch_d_capital_gains"] = [100.0, 0.0, 300.0, 0.0]
+    frame = Frame(
+        {
+            "person": person,
+            "household": small_frame.table("household").copy(),
+        },
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+    )
+    # The REAL compiled spec name is the unsuffixed ledger source_record_id
+    # (verified against a live v9.2 compile; PR #486 review finding 1).
+    spec = TargetSpec(
+        name="irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount",
+        entity="household",
+        value=500.0,
+        measure="unused",
+        period=builder.PERIOD,
+        source="IRS SOI",
+        metadata={"source_measure_id": "payment_amount", "aged_to": "2024"},
+    )
+    returns_decoy = TargetSpec(
+        name="irs_soi.ty2023.table_1_4.all.capital_gain_distributions_returns",
+        entity="household",
+        value=3_209_131.0,
+        measure="unused",
+        period=builder.PERIOD,
+        source="IRS SOI",
+        metadata={"source_measure_id": "return_count"},
+    )
+    state_decoy = TargetSpec(
+        name="irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount",
+        entity="household",
+        value=9.0,
+        measure="unused",
+        period=builder.PERIOD,
+        source="IRS SOI",
+        metadata={"source_measure_id": "payment_amount", "state_fips": "06"},
+    )
+
+    repaired, repair = builder._with_non_sch_d_cgd_value_repair(
+        frame, (returns_decoy, spec, state_decoy)
+    )
+
+    assert repair["applied"]
+    weights = pd.Series(repaired.resolve_weights("person").values)
+    total = float((repaired.table("person")["non_sch_d_capital_gains"] * weights).sum())
+    assert np.isclose(total, 500.0)
+    assert np.isclose(repair["repaired_estimate"], 500.0)
+    assert np.isclose(repair["factor"], repair["target"] / repair["initial_estimate"])
+    assert repair["target_aged_to"] == "2024"
+    assert "mean-reverting" in repair["reason"]
+
+    with pytest.raises(RuntimeError, match="exactly one aged Table 1.4"):
+        builder._with_non_sch_d_cgd_value_repair(frame, ())
+    person_missing = small_frame.table("person").copy()
+    frame_missing = Frame(
+        {
+            "person": person_missing,
+            "household": small_frame.table("household").copy(),
+        },
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+    )
+    with pytest.raises(RuntimeError, match="requires person column"):
+        builder._with_non_sch_d_cgd_value_repair(frame_missing, (spec,))
+
+
+def test_load_qrf_tail_concentration_exclusions(tmp_path) -> None:
+    builder = _load_builder_module()
+    assert builder._load_qrf_tail_concentration_exclusions(None) == {}
+    good = tmp_path / "tail.json"
+    good.write_text('{"estate_income": "tracked defect microcosm#481"}')
+    assert builder._load_qrf_tail_concentration_exclusions(good) == {
+        "estate_income": "tracked defect microcosm#481"
+    }
+    bad = tmp_path / "bad.json"
+    bad.write_text('{"estate_income": "  "}')
+    with pytest.raises(ValueError, match="non-empty reason"):
+        builder._load_qrf_tail_concentration_exclusions(bad)
+    notdict = tmp_path / "list.json"
+    notdict.write_text("[1]")
+    with pytest.raises(ValueError, match="JSON object"):
+        builder._load_qrf_tail_concentration_exclusions(notdict)
+
+
+def test_release_gate_failures_reject_positive_zero_support_targets() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=(
+            SimpleNamespace(
+                name=f"nation/irs/zero@{builder.PERIOD}",
+                target=1_000.0,
+                initial_estimate=0.0,
+                final_estimate=0.0,
+            ),
+            SimpleNamespace(
+                name=f"nation/irs/nonzero@{builder.PERIOD}",
+                target=1_000.0,
+                initial_estimate=10.0,
+                final_estimate=20.0,
+            ),
+            *_passing_critical_diagnostics(builder),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    assert builder._release_gate_failures(result, {"dropped_target_names": []}) == [
+        "1 positive fiscal targets have zero materialized support "
+        f"(examples: nation/irs/zero@{builder.PERIOD})."
+    ]
+
+
+def test_release_gate_failures_reject_certified_o1_mortgage_overshoot() -> None:
+    # microcosm#511 regression: certified O-1 shipped the Table 2.1 mortgage
+    # amount row at +29.5% and no gate objected because mortgage was not in
+    # the critical register. The exact shipped diagnostics must now fail the
+    # release gate, and the expected post-remap fit (+6.9%) must pass.
+    builder = _load_builder_module()
+    row_name = (
+        "irs_soi.ty2023.table_2_1.itemized_all_returns.all."
+        "home_mortgage_interest_amount"
+    )
+    shipped_o1 = SimpleNamespace(
+        name=f"{row_name}@{builder.PERIOD}",
+        target=186_310_104_604.0,
+        initial_estimate=344_449_138_996.0,
+        final_estimate=241_268_995_041.0,
+        relative_error=(241_268_995_041.0 - 186_310_104_604.0) / 186_310_104_604.0,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_critical_surface(builder, shipped_o1),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(result, {"dropped_target_names": []})
+
+    # Pin the overshoot arithmetic, not just the row identity: the missing-row
+    # formatter also names the row and label, so a fixture slip that drops the
+    # replacement instead of appending it must not satisfy this assertion.
+    assert any(
+        row_name in failure
+        and "home mortgage interest deduction amount" in failure
+        and "relative_error=0.294986" in failure
+        and "exceeding 0.2" in failure
+        for failure in failures
+    ), failures
+
+    passing = SimpleNamespace(
+        skipped=(),
+        diagnostics=_critical_surface(builder),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    assert builder._release_gate_failures(passing, {"dropped_target_names": []}) == []
+
+
+def test_release_gate_failures_keep_cd_targets_diagnostic_by_default() -> None:
+    builder = _load_builder_module()
+    cd_spec = TargetSpec(
+        name="irs_soi.ty2023.congressional_district_2022.all_returns."
+        "ak_00.tax_exempt_interest_amount",
+        entity="household",
+        measure="tax_exempt_interest",
+        value=1_000.0,
+        source="fixture",
+        family="irs_soi",
+        metadata={
+            "ledger_geography_level": "congressional_district",
+            "congressional_district_geoid": "0200",
+        },
+    )
+    cd_target = cd_spec.to_target()
+    cd_row_name = f"{cd_spec.name}@{builder.PERIOD}"
+    result = SimpleNamespace(
+        skipped=(SimpleNamespace(target=cd_target, reason="missing column"),),
+        diagnostics=(
+            SimpleNamespace(
+                name=cd_row_name,
+                target=1_000.0,
+                initial_estimate=0.0,
+                final_estimate=0.0,
+            ),
+            *_passing_critical_diagnostics(builder),
+        ),
+        problem=SimpleNamespace(
+            names=(cd_row_name,),
+            targets=(cd_target,),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    compilation = {
+        "dropped_target_names": [cd_spec.name],
+        "gate_congressional_district_targets": False,
+        "diagnostic_only_dropped_target_names": [cd_spec.name],
+    }
+
+    assert builder._release_gate_failures(result, compilation) == []
+
+    gated_compilation = {
+        **compilation,
+        "gate_congressional_district_targets": True,
+    }
+
+    assert builder._release_gate_failures(result, gated_compilation) == [
+        "1 fiscal targets were not materialized.",
+        "1 fiscal targets were skipped by calibration.",
+        "1 positive fiscal targets have zero materialized support "
+        f"(examples: {cd_row_name}).",
+    ]
+
+
+def test_builder_contains_publisher_cd_exclusions_from_real_registry() -> None:
+    from collections import UserDict
+    from dataclasses import replace
+
+    from microcosm.build.ledger_targets import (
+        LedgerTargetReference,
+        compile_ledger_target_references,
+    )
+    from microcosm.data.contract import (
+        _check_us_critical_target_fit,
+        _is_congressional_district_layout_target,
+    )
+    from microcosm.data.us_critical_targets import is_congressional_district_target
+
+    builder = _load_builder_module()
+    source_record_id = (
+        "irs_soi.ty2023.table_1_4.congressional_district_2022.al_01."
+        "medical_expense_amount"
+    )
+    fact = {
+        "aggregate_fact_key": "ledger.aggregate_fact.v2:cd-fixture",
+        "legacy_fact_key": "ledger.fact.v1:cd-fixture",
+        "lineage": {
+            "source_record_id": source_record_id,
+            "source_cell_keys": ["ledger.source_cell.v1:cd-fixture"],
+            "source_row_keys": [],
+        },
+        "value": 100.0,
+        "period": {"type": "tax_year", "value": 2023},
+        "geography": {
+            "level": "congressional_district",
+            "id": "5001700US0101",
+            "name": "Alabama District 1",
+            "vintage": "2022",
+        },
+        "entity": {"name": "tax_unit", "role": "filing_unit"},
+        "observed_measure": {
+            "source_name": "irs_soi",
+            "source_table": "Publication 1304 Table 1.4",
+            "source_measure_id": "medical_expense_amount",
+            "source_concept": "irs_soi.medical_expense_amount",
+            "unit": "usd",
+        },
+        "concept_alignment": {
+            "source_concept": "irs_soi.medical_expense_amount",
+            "canonical_concept": "irs_soi.medical_expense_amount",
+            "relation": "exact",
+            "authority": "policyengine-ledger",
+            "legal_vintage": "tax_year_2023",
+        },
+        "aggregation": {"method": "sum"},
+        "source": {
+            "source_name": "irs_soi",
+            "source_table": "Publication 1304 Table 1.4",
+            "source_file": "fixture.xlsx",
+            "url": "https://www.irs.gov/",
+            "vintage": "tax_year_2023",
+        },
+        "dimensions": {},
+        "universe_constraints": {"domain": "all_individual_income_tax_returns"},
+        "layout": {
+            "record_set_id": "irs_soi.ty2023.table_1_4.cd_fixture",
+            "groupby_dimension": "irs_soi.congressional_district",
+            "groupby_value_id": "al_01",
+            "measure_id": "medical_expense_amount",
+        },
+    }
+    reference = LedgerTargetReference(
+        name=(
+            "irs_soi.ty2023.table_1_4.congressional_district_2022.al_01."
+            "medical_expense_amount"
+        ),
+        ledger_source_record_id=source_record_id,
+        entity="household",
+        measure="medical_expense",
+        period=builder.PERIOD,
+        family="irs_soi",
+        metadata={
+            "target_role": "medical_expense_deduction_total",
+            "geography_scope": "congressional_district",
+            "congressional_district_geoid": "0101",
+        },
+    )
+    compiled = compile_ledger_target_references([fact], [reference], country="us")
+    (compiled_spec,) = compiled.specs
+
+    evidence = {
+        "layout": (
+            "ledger_layout_groupby_dimension",
+            "irs_soi.congressional_district",
+        ),
+        "source": (
+            "ledger_source_record_id",
+            "fixture.congressional_district_01",
+        ),
+        "level": ("ledger_geography_level", "congressional_district"),
+        "scope": ("geography_scope", "congressional_district"),
+        "geoid": ("congressional_district_geoid", "0101"),
+        "name": (None, None),
+    }
+    metadata_evidence_keys = {key for key, _ in evidence.values() if key is not None}
+    assert {key: compiled_spec.metadata[key] for key in metadata_evidence_keys} == {
+        "ledger_layout_groupby_dimension": "irs_soi.congressional_district",
+        "ledger_source_record_id": source_record_id,
+        "ledger_geography_level": "congressional_district",
+        "geography_scope": "congressional_district",
+        "congressional_district_geoid": "0101",
+    }
+
+    cd_specs = []
+    for label, (metadata_key, metadata_value) in evidence.items():
+        metadata = {
+            key: value
+            for key, value in compiled_spec.metadata.items()
+            if key not in metadata_evidence_keys
+        }
+        if metadata_key is not None:
+            metadata[metadata_key] = metadata_value
+        name = f"other.table_1_4.all.cd_{label}_amount"
+        if label == "name":
+            name = "other.table_1_4.congressional_district_name.bad_amount"
+        cd_specs.append(replace(compiled_spec, name=name, metadata=metadata))
+
+    control = replace(
+        compiled_spec,
+        name="other.table_1_4.all.non_cd_control_amount",
+        metadata={
+            key: value
+            for key, value in compiled_spec.metadata.items()
+            if key not in metadata_evidence_keys
+        },
+    )
+    registry = TargetRegistry((*cd_specs, control), country="us")
+    publisher_rows = [
+        {"name": builder._target_row_name(spec), "metadata": spec.metadata}
+        for spec in registry.specs
+    ]
+    builder_excluded = {
+        builder._target_row_name(spec)
+        for spec in registry.specs
+        if builder._target_is_congressional_district(spec)
+    }
+    publisher_excluded = {
+        str(row["name"])
+        for row in publisher_rows
+        if _is_congressional_district_layout_target(row)
+    }
+    expected_excluded = {builder._target_row_name(spec) for spec in cd_specs}
+
+    assert builder_excluded == publisher_excluded == expected_excluded
+    assert len(builder_excluded) == len(publisher_excluded) == 6
+    assert not builder._target_is_congressional_district(control)
+    assert not _is_congressional_district_layout_target(publisher_rows[-1])
+    assert not is_congressional_district_target(123, None)
+    assert is_congressional_district_target(
+        "ordinary",
+        UserDict({"geography_scope": "congressional_district"}),
+    )
+
+    diagnostics = tuple(
+        SimpleNamespace(
+            name=builder._target_row_name(spec),
+            target=100.0,
+            initial_estimate=100.0,
+            final_estimate=100.0 if spec is control else 200.0,
+            relative_error=0.0 if spec is control else 1.0,
+        )
+        for spec in registry.specs
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + diagnostics,
+        problem=SimpleNamespace(
+            names=tuple(builder._target_row_name(spec) for spec in registry.specs),
+            targets=tuple(spec.to_target() for spec in registry.specs),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    assert (
+        builder._release_gate_failures(
+            result,
+            {"dropped_target_names": []},
+            target_registry=registry,
+        )
+        == []
+    )
+
+    diagnostics_by_name = {
+        diagnostic.name: diagnostic
+        for diagnostic in (*_passing_critical_diagnostics(builder), *diagnostics)
+    }
+    specs_by_name = {builder._target_row_name(spec): spec for spec in registry.specs}
+    publisher_diagnostics = {
+        "targets": [
+            {
+                "name": diagnostic.name,
+                "target": diagnostic.target,
+                "final_estimate": diagnostic.final_estimate,
+                "relative_error": diagnostic.relative_error,
+                "metadata": dict(
+                    getattr(specs_by_name.get(diagnostic.name), "metadata", {})
+                ),
+                "registry": {
+                    "family": getattr(
+                        specs_by_name.get(diagnostic.name),
+                        "family",
+                        "",
+                    )
+                },
+            }
+            for diagnostic in diagnostics_by_name.values()
+        ]
+    }
+    publisher_failures: list[str] = []
+    _check_us_critical_target_fit(publisher_diagnostics, publisher_failures)
+    assert publisher_failures == []
+
+
+def test_release_gate_failures_reject_bad_critical_target_fit() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=(
+            SimpleNamespace(
+                name=(
+                    "irs_soi.ty2022.historic_table_2.us.all."
+                    f"income_tax_liability_amount@{builder.PERIOD}"
+                ),
+                target=2_105_345_646_000.0,
+                initial_estimate=2_000_000_000_000.0,
+                final_estimate=735_173_331_468.564,
+                relative_error=0.0,
+            ),
+            *_passing_critical_diagnostics(builder)[1:],
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+    )
+
+    assert len(failures) == 2
+    assert "stale relative_error" in failures[0]
+    assert "federal income tax liability amount" in failures[1]
+    assert "relative_error=-0.650806" in failures[1]
+
+
+def test_release_gate_failures_reject_missing_critical_targets() -> None:
+    builder = _load_builder_module()
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder)[1:],
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+    )
+
+    assert failures == [
+        "Critical fiscal target "
+        "'irs_soi.ty2022.historic_table_2.us.all."
+        f"income_tax_liability_amount@{builder.PERIOD}' "
+        "(federal income tax liability amount) is missing from calibration "
+        "diagnostics."
+    ]
+
+
+def test_builder_critical_register_covers_publish_contract() -> None:
+    from microcosm.data.contract import _US_CRITICAL_TARGET_FIT_REQUIREMENTS
+
+    builder = _load_builder_module()
+    publish_by_id = {
+        requirement.requirement_id: requirement
+        for requirement in _US_CRITICAL_TARGET_FIT_REQUIREMENTS
+    }
+    builder_by_id = {
+        requirement.requirement_id: requirement
+        for requirement in builder.US_CRITICAL_TARGET_FIT_REQUIREMENTS
+    }
+    table_builder = builder.US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT
+
+    assert set(builder_by_id) >= set(publish_by_id) - {table_builder.requirement_id}
+    for requirement_id, publish in publish_by_id.items():
+        if requirement_id == table_builder.requirement_id:
+            _assert_table_requirement_matches_shared(table_builder, publish)
+            continue
+        built = builder_by_id[requirement_id]
+        assert built.max_abs_relative_error <= publish.max_abs_relative_error
+        assert set(built.names) >= set(publish.names)
+        assert set(built.families) >= set(publish.families)
+        assert set(built.target_roles) >= set(publish.target_roles)
+        assert set(built.name_substrings) >= set(publish.name_substrings)
+        assert set(built.name_suffixes) >= set(publish.name_suffixes)
+        if not publish.allow_incumbent_improvement:
+            assert not built.allow_incumbent_improvement
+
+
+def test_builder_anti_drift_guard_rejects_any_prefix_narrowing() -> None:
+    from dataclasses import replace
+
+    from microcosm.data.contract import _US_CRITICAL_TARGET_FIT_REQUIREMENTS
+
+    builder = _load_builder_module()
+    table_builder = builder.US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT
+    shared = next(
+        requirement
+        for requirement in _US_CRITICAL_TARGET_FIT_REQUIREMENTS
+        if requirement.requirement_id == table_builder.requirement_id
+    )
+    narrowed = replace(
+        table_builder,
+        accepted_name_prefixes=("any-prefix-narrows-a-conjunctive-selector.",),
+    )
+
+    with pytest.raises(AssertionError):
+        _assert_table_requirement_matches_shared(narrowed, shared)
+
+
+def test_builder_behaviorally_contains_publisher_critical_rejections() -> None:
+    builder = _load_builder_module()
+
+    def row(
+        name: str,
+        *,
+        target: float,
+        final_estimate: float,
+        relative_error: float | None,
+    ) -> SimpleNamespace:
+        return SimpleNamespace(
+            name=name,
+            target=target,
+            initial_estimate=target,
+            final_estimate=final_estimate,
+            relative_error=relative_error,
+        )
+
+    exact = row(
+        "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
+        target=100.0,
+        final_estimate=200.0,
+        relative_error=1.0,
+    )
+    alias_spec = TargetSpec(
+        name="adversarial_income_tax_alias",
+        entity="household",
+        measure="income_tax",
+        value=100.0,
+        period=builder.PERIOD,
+        source="fixture",
+        family="irs_soi",
+        metadata={"target_role": "federal_income_tax_total"},
+    )
+    semantic_alias = row(
+        builder._target_row_name(alias_spec),
+        target=100.0,
+        final_estimate=200.0,
+        relative_error=1.0,
+    )
+    table_pattern = row(
+        "other.table_1_4.all.bad_amount@2024",
+        target=100.0,
+        final_estimate=200.0,
+        relative_error=1.0,
+    )
+    missing_error = row(
+        "irs_soi.ty2023.table_1_4.all.adversarial_amount@2024",
+        target=100.0,
+        final_estimate=100.0,
+        relative_error=None,
+    )
+    nonfinite_target = row(
+        "other.table_1_4.all.nonfinite_target_amount@2024",
+        target=float("nan"),
+        final_estimate=100.0,
+        relative_error=float("nan"),
+    )
+    nonfinite_final = row(
+        "other.table_1_4.all.nonfinite_final_amount@2024",
+        target=100.0,
+        final_estimate=float("inf"),
+        relative_error=float("inf"),
+    )
+    nonfinite_recorded = row(
+        "other.table_1_4.all.nonfinite_recorded_amount@2024",
+        target=100.0,
+        final_estimate=100.0,
+        relative_error=float("nan"),
+    )
+    incumbent_escape = row(
+        "irs_soi.ty2022.historic_table_2.us.all.itemized_deductions_amount@2024",
+        target=100.0,
+        final_estimate=125.0,
+        relative_error=0.25,
+    )
+    incumbent = {
+        incumbent_escape.name: {
+            "target": 100.0,
+            "final_estimate": 300.0,
+        }
+    }
+    # Round-2 boundary: np.isclose's additive rtol+atol formula accepts this
+    # 1.05e-9 stale delta at |computed|=0.1; math.isclose (the publish
+    # contract's predicate) rejects it. Both gates must reject.
+    narrowly_stale = row(
+        "other.table_1_4.all.round2_stale_amount@2024",
+        target=100.0,
+        final_estimate=110.0,
+        relative_error=0.10000000105000001,
+    )
+    # allow_incumbent_improvement=True requirement pushed just past the 0.25
+    # improvement hard stop: improving on the incumbent must not save it.
+    beyond_hard_stop_final = 125.0000001
+    beyond_hard_stop = row(
+        "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
+        target=100.0,
+        final_estimate=beyond_hard_stop_final,
+        relative_error=(beyond_hard_stop_final - 100.0) / 100.0,
+    )
+    beyond_hard_stop_incumbent = {
+        beyond_hard_stop.name: {
+            "target": 100.0,
+            "final_estimate": 300.0,
+        }
+    }
+    cases = (
+        ("exact name", exact, (), None),
+        ("family and role alias", semantic_alias, (alias_spec,), None),
+        ("Table 1.4 substring and suffix", table_pattern, (), None),
+        ("missing recorded relative error", missing_error, (), None),
+        ("non-finite target", nonfinite_target, (), None),
+        ("non-finite final estimate", nonfinite_final, (), None),
+        ("non-finite recorded error", nonfinite_recorded, (), None),
+        ("incumbent improvement disallowed by law", incumbent_escape, (), incumbent),
+        ("narrowly stale recorded error", narrowly_stale, (), None),
+        (
+            "improvement past the 0.25 hard stop",
+            beyond_hard_stop,
+            (),
+            beyond_hard_stop_incumbent,
+        ),
+    )
+
+    baseline_builder, baseline_publisher = _critical_contract_failures(
+        builder,
+        _passing_critical_diagnostics(builder),
+    )
+    assert baseline_publisher == baseline_builder == []
+
+    for label, adversarial, specs, incumbent_rows in cases:
+        builder_failures, publisher_failures = _critical_contract_failures(
+            builder,
+            _critical_surface(builder, adversarial),
+            specs=specs,
+            incumbent=incumbent_rows,
+        )
+        assert any(adversarial.name in failure for failure in publisher_failures), label
+        assert any(adversarial.name in failure for failure in builder_failures), label
+
+    # Pass-side boundaries, asserted on BOTH consumers so drift in either
+    # direction trips the battery:
+    # a 0.9e-9 stale delta is inside math.isclose tolerance;
+    within_tolerance = row(
+        "other.table_1_4.all.round2_within_tolerance_amount@2024",
+        target=100.0,
+        final_estimate=110.0,
+        relative_error=0.1000000009,
+    )
+    # an allow-enabled row exactly AT the 0.25 hard stop, improving on a 2.0
+    # incumbent, legitimately passes via incumbent improvement on both sides.
+    at_hard_stop = row(
+        "irs_soi.ty2022.historic_table_2.us.all.income_tax_liability_amount@2024",
+        target=100.0,
+        final_estimate=125.0,
+        relative_error=0.25,
+    )
+    at_hard_stop_incumbent = {
+        at_hard_stop.name: {"target": 100.0, "final_estimate": 300.0}
+    }
+    for label, passing, incumbent_rows in (
+        ("narrowly stale within shared tolerance", within_tolerance, None),
+        (
+            "improvement exactly at the 0.25 hard stop",
+            at_hard_stop,
+            at_hard_stop_incumbent,
+        ),
+    ):
+        builder_failures, publisher_failures = _critical_contract_failures(
+            builder,
+            _critical_surface(builder, passing),
+            incumbent=incumbent_rows,
+        )
+        assert not any(passing.name in failure for failure in publisher_failures), label
+        assert not any(passing.name in failure for failure in builder_failures), label
+
+
+def test_builder_critical_gate_matches_publish_role_aliases() -> None:
+    builder = _load_builder_module()
+    alias_spec = TargetSpec(
+        name="irs_soi.ty2023.table_1_2.all_returns.all."
+        "total_itemized_deductions_amount",
+        entity="household",
+        measure="itemized_deductions",
+        value=100.0,
+        period=builder.PERIOD,
+        source="fixture",
+        family="irs_soi",
+        metadata={"target_role": "itemized_deduction_total"},
+    )
+    alias_diagnostic = SimpleNamespace(
+        name=f"{alias_spec.name}@{alias_spec.period}",
+        target=100.0,
+        initial_estimate=100.0,
+        final_estimate=150.0,
+        relative_error=0.5,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + (alias_diagnostic,),
+        problem=SimpleNamespace(
+            names=(alias_diagnostic.name,),
+            targets=(alias_spec.to_target(),),
+        ),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    registry = TargetRegistry((alias_spec,), country="us")
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        target_registry=registry,
+    )
+
+    assert len(failures) == 1
+    assert "total_itemized_deductions_amount@2024" in failures[0]
+    assert "relative_error=0.5" in failures[0]
+    assert "exceeding 0.15" in failures[0]
+
+
+def test_builder_critical_gate_rejects_medical_incumbent_escape() -> None:
+    builder = _load_builder_module()
+    medical_name = (
+        "irs_soi.ty2022.historic_table_2.us.all."
+        f"medical_dental_expense_amount@{builder.PERIOD}"
+    )
+    # Past the row's own absolute cap (medical sits at the adjudicated 0.25
+    # bound, 2026-07-22): even improving on the incumbent never passes it.
+    diagnostics = tuple(
+        SimpleNamespace(
+            **{
+                **vars(diagnostic),
+                "final_estimate": 104_000_000_000.0,
+                "relative_error": 0.3,
+            }
+        )
+        if diagnostic.name == medical_name
+        else diagnostic
+        for diagnostic in _passing_critical_diagnostics(builder)
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=diagnostics,
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        incumbent_diagnostics={
+            medical_name: {
+                "target": 80_000_000_000.0,
+                "final_estimate": 240_000_000_000.0,
+            }
+        },
+    )
+
+    assert len(failures) == 1
+    assert "medical_dental_expense_amount@2024" in failures[0]
+    assert "relative_error=0.3" in failures[0]
+
+
+def test_fiscal_target_loss_weights_ignore_roles_and_geography() -> None:
+    builder = _load_builder_module()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="national_critical_role",
+                entity="household",
+                measure="national_critical_role",
+                value=100.0,
+                source="fixture",
+                metadata={"target_role": "federal_income_tax_total"},
+            ),
+            TargetSpec(
+                name="state_role_row",
+                entity="household",
+                measure="state_role_row",
+                value=100.0,
+                source="fixture",
+                metadata={"state_fips": "06", "target_role": "tanf_total"},
+            ),
+            TargetSpec(
+                name="ordinary_distribution_row",
+                entity="household",
+                measure="ordinary_distribution_row",
+                value=100.0,
+                source="fixture",
+            ),
+        ),
+        country="us",
+    )
+
+    weights = builder._fiscal_target_loss_weights(registry)
+
+    assert weights.shape == (3,)
+    assert weights.mean() == 1.0
+    assert np.array_equal(weights, np.ones(3))
+
+
+def test_fiscal_target_loss_weights_hold_concept_budget_when_geography_expands() -> (
+    None
+):
+    builder = _load_builder_module()
+
+    def spec(name: str, value: float, **metadata: str) -> TargetSpec:
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure=metadata.get("variable", "amount"),
+            value=value,
+            source="fixture",
+            metadata={
+                "source_measure_id": "amount",
+                "source_period": "2024",
+                "target_role": "fixture_distribution",
+                "measure_mode": "sum",
+                **metadata,
+            },
+        )
+
+    national_income_tax = spec(
+        "income_tax_national",
+        100.0,
+        variable="income_tax",
+        ledger_geography_level="country",
+        ledger_geography_id="0100000US",
+    )
+    ctc_national = spec(
+        "ctc_national",
+        400.0,
+        variable="ctc",
+        ledger_geography_level="country",
+        ledger_geography_id="0100000US",
+    )
+    ctc_cd_1 = spec(
+        "ctc_cd_1",
+        100.0,
+        variable="ctc",
+        ledger_geography_level="congressional_district",
+        ledger_geography_id="5001700US0101",
+        ledger_geography_name="Alabama Congressional District 1",
+        congressional_district_geoid="0101",
+        state_fips="01",
+    )
+    ctc_cd_2 = spec(
+        "ctc_cd_2",
+        100.0,
+        variable="ctc",
+        ledger_geography_level="congressional_district",
+        ledger_geography_id="5001700US0102",
+        ledger_geography_name="Alabama Congressional District 2",
+        congressional_district_geoid="0102",
+        state_fips="01",
+    )
+
+    base_weights = builder._fiscal_target_loss_weights(
+        TargetRegistry((national_income_tax, ctc_national), country="us")
+    )
+    one_child_weights = builder._fiscal_target_loss_weights(
+        TargetRegistry(
+            (national_income_tax, ctc_national, ctc_cd_1),
+            country="us",
+        )
+    )
+    two_child_weights = builder._fiscal_target_loss_weights(
+        TargetRegistry(
+            (national_income_tax, ctc_national, ctc_cd_1, ctc_cd_2),
+            country="us",
+        )
+    )
+
+    assert np.isclose(base_weights[1] / base_weights.sum(), 2 / 3)
+    assert np.isclose(
+        one_child_weights[2:].sum() / one_child_weights.sum(),
+        two_child_weights[2:].sum() / two_child_weights.sum(),
+    )
+    assert two_child_weights[1] > two_child_weights[2:].sum()
+    assert two_child_weights[2] == two_child_weights[3]
+
+
+def test_fiscal_target_loss_weights_budget_unparented_cd_rows_by_concept() -> None:
+    builder = _load_builder_module()
+
+    def cd_spec(name: str, geoid: str) -> TargetSpec:
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure="tax_filer_individual_count",
+            value=100.0,
+            source="fixture",
+            metadata={
+                "source_measure_id": "tax_filer_individual_count",
+                "source_period": "2023",
+                "target_role": "soi_fiscal_distribution",
+                "variable": "tax_filer_individual_count",
+                "source_variable": "tax_filer_individual_count",
+                "measure_mode": "sum",
+                "ledger_geography_level": "congressional_district",
+                "ledger_geography_id": f"5001700US{geoid}",
+                "ledger_geography_name": f"Congressional District {geoid}",
+                "congressional_district_geoid": geoid,
+                "state_fips": geoid[:2],
+            },
+        )
+
+    comparison = TargetSpec(
+        name="comparison_amount",
+        entity="household",
+        measure="adjusted_gross_income",
+        value=100.0,
+        source="fixture",
+        metadata={
+            "source_measure_id": "adjusted_gross_income",
+            "source_period": "2023",
+            "target_role": "soi_fiscal_distribution",
+            "variable": "adjusted_gross_income",
+            "source_variable": "adjusted_gross_income",
+            "measure_mode": "sum",
+        },
+    )
+    one_cd_registry = TargetRegistry(
+        (comparison, cd_spec("cd_1", "0101")), country="us"
+    )
+    many_cd_registry = TargetRegistry(
+        (
+            comparison,
+            cd_spec("cd_1", "0101"),
+            cd_spec("cd_2", "0102"),
+            cd_spec("cd_3", "0103"),
+            cd_spec("cd_4", "0104"),
+        ),
+        country="us",
+    )
+
+    one_cd_weights = builder._fiscal_target_loss_weights(one_cd_registry)
+    many_cd_weights = builder._fiscal_target_loss_weights(many_cd_registry)
+
+    assert np.isclose(one_cd_weights[1:].sum() / one_cd_weights.sum(), 0.5)
+    assert np.isclose(many_cd_weights[1:].sum() / many_cd_weights.sum(), 0.5)
+    assert np.allclose(many_cd_weights[1:], many_cd_weights[1])
+
+
+def test_fiscal_target_loss_weights_scale_by_sqrt_value_within_basis() -> None:
+    builder = _load_builder_module()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="amount_small",
+                entity="household",
+                measure="amount_small",
+                value=100.0,
+                source="fixture",
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+            TargetSpec(
+                name="amount_large",
+                entity="household",
+                measure="amount_large",
+                value=300.0,
+                source="fixture",
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+            TargetSpec(
+                name="returns_small",
+                entity="household",
+                measure="returns_small",
+                value=10.0,
+                source="fixture",
+                metadata={
+                    "source_measure_id": "income_tax_liability_returns",
+                    "measure_mode": "indicator_sum",
+                },
+            ),
+            TargetSpec(
+                name="returns_large",
+                entity="household",
+                measure="returns_large",
+                value=30.0,
+                source="fixture",
+                metadata={
+                    "source_measure_id": "ctc_claims",
+                    "measure_mode": "indicator_sum",
+                },
+            ),
+        ),
+        country="us",
+    )
+
+    weights = builder._fiscal_target_loss_weights(registry)
+
+    assert weights.mean() == 1.0
+    assert np.isclose(weights[1] / weights[0], np.sqrt(3.0))
+    assert np.isclose(weights[3] / weights[2], np.sqrt(3.0))
+    assert weights[0] == weights[2]
+    assert weights[1] == weights[3]
+
+
+def test_fiscal_target_loss_weights_apply_family_multipliers() -> None:
+    builder = _load_builder_module()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="snap_state_row",
+                entity="household",
+                measure="snap_state_row",
+                value=100.0,
+                source="fixture",
+                family="usda_snap",
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+            TargetSpec(
+                name="ordinary_amount_row",
+                entity="household",
+                measure="ordinary_amount_row",
+                value=100.0,
+                source="fixture",
+                family="other_family",
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+        ),
+        country="us",
+    )
+
+    base_weights = builder._fiscal_target_loss_weights(registry)
+    boosted_weights = builder._fiscal_target_loss_weights(registry, {"usda_snap": 8.0})
+
+    assert np.isclose(boosted_weights.mean(), 1.0)
+    assert np.isclose(
+        boosted_weights[0] / boosted_weights[1],
+        8.0 * base_weights[0] / base_weights[1],
+    )
+
+    with pytest.raises(ValueError, match="matches no compiled target"):
+        builder._fiscal_target_loss_weights(registry, {"missing_family": 2.0})
+
+
+def test_fiscal_target_loss_weights_split_evenly_between_amount_and_count() -> None:
+    builder = _load_builder_module()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="amount_small",
+                entity="household",
+                measure="amount_small",
+                value=100.0,
+                source="fixture",
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+            TargetSpec(
+                name="amount_large",
+                entity="household",
+                measure="amount_large",
+                value=300.0,
+                source="fixture",
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+            TargetSpec(
+                name="returns",
+                entity="household",
+                measure="returns",
+                value=10.0,
+                source="fixture",
+                metadata={
+                    "source_measure_id": "ctc_claims",
+                    "measure_mode": "indicator_sum",
+                },
+            ),
+        ),
+        country="us",
+    )
+
+    weights = builder._fiscal_target_loss_weights(registry)
+    bases = np.asarray(
+        [builder._fiscal_target_value_basis(spec) for spec in registry.specs],
+        dtype=object,
+    )
+
+    assert weights.mean() == 1.0
+    assert weights[bases == "amount"].sum() == weights[bases == "count"].sum()
+    assert np.isclose(weights[1] / weights[0], np.sqrt(3.0))
+
+
+def test_fiscal_target_loss_weights_floor_zero_subunit_and_abs_values() -> None:
+    builder = _load_builder_module()
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="zero",
+                entity="household",
+                measure="zero",
+                value=0.0,
+                source="fixture",
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+            TargetSpec(
+                name="subunit",
+                entity="household",
+                measure="subunit",
+                value=0.25,
+                source="fixture",
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+            TargetSpec(
+                name="negative",
+                entity="household",
+                measure="negative",
+                value=-9.0,
+                source="fixture",
+                signed=True,
+                metadata={"source_measure_id": "payment_amount"},
+            ),
+        ),
+        country="us",
+    )
+
+    weights = builder._fiscal_target_loss_weights(registry)
+
+    assert weights.mean() == 1.0
+    assert weights[0] == weights[1]
+    assert np.isclose(weights[2] / weights[0], 3.0)
+
+
+def test_fiscal_target_value_basis_uses_only_amount_and_count() -> None:
+    builder = _load_builder_module()
+    amount = TargetSpec(
+        name="amount",
+        entity="household",
+        measure="amount",
+        value=100.0,
+        source="fixture",
+        metadata={"source_measure_id": "payment_amount"},
+    )
+    return_count = TargetSpec(
+        name="return_count",
+        entity="household",
+        measure="return_count",
+        value=100.0,
+        source="fixture",
+        metadata={
+            "source_measure_id": "ctc_claims",
+            "measure_mode": "indicator_sum",
+        },
+    )
+    person_count = TargetSpec(
+        name="person_count",
+        entity="household",
+        measure="person_count",
+        value=100.0,
+        source="fixture",
+        metadata={
+            "measure_mode": "indicator_sum",
+            "source_measure_id": "aptc_recipients",
+            "target_role": "aca_ptc_recipients",
+            "indicator_map_to": "person",
+        },
+    )
+    bronze_count = TargetSpec(
+        name="bronze_count",
+        entity="household",
+        measure="bronze_count",
+        value=100.0,
+        source="fixture",
+        metadata={
+            "measure_mode": "less_than_indicator_sum",
+            "source_measure_id": "bronze_aptc_consumers",
+            "target_role": "aca_bronze_aptc_consumers",
+        },
+    )
+
+    assert builder._fiscal_target_value_basis(amount) == "amount"
+    assert builder._fiscal_target_value_basis(return_count) == "count"
+    assert builder._fiscal_target_value_basis(person_count) == "count"
+    assert builder._fiscal_target_value_basis(bronze_count) == "count"
+
+
+def test_release_calibration_diagnostics_include_gate_failures(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    captured: dict[str, object] = {}
+
+    def fake_write_calibration_diagnostics(result, path, *, target_registry, build):
+        captured["result"] = result
+        captured["path"] = path
+        captured["target_registry"] = target_registry
+        captured["build"] = build
+        return path
+
+    monkeypatch.setattr(
+        builder, "write_calibration_diagnostics", fake_write_calibration_diagnostics
+    )
+    result = SimpleNamespace()
+    registry = TargetRegistry((), country="us")
+    profile_gate = SimpleNamespace(passed=True, failures=(), details={"n": 1})
+    health_gate = SimpleNamespace(passed=True, failures=(), details={"n": 2})
+    base_population_gate = SimpleNamespace(
+        passed=True,
+        failures=(),
+        details={"population": 334_200_000.0},
+    )
+
+    builder._write_release_calibration_diagnostics(
+        result=result,
+        release_dir=tmp_path,
+        registry=registry,
+        base_dataset_sha256="base-sha",
+        compilation={"dropped_target_names": []},
+        target_profile_gate=profile_gate,
+        health_input_gate=health_gate,
+        base_population_gate=base_population_gate,
+        support_value_repairs={"social_security_components": {"applied": True}},
+        audit_export_targets=False,
+        gate_failures=["ctc failed"],
+        timing={
+            "target_compilation_seconds": 1.25,
+            "calibration_seconds": 2.5,
+        },
+    )
+
+    assert captured["path"] == tmp_path / "calibration_diagnostics.json"
+    build = captured["build"]
+    assert build["base_dataset_sha256"] == "base-sha"
+    assert build["target_loss_weighting"].endswith("_cap_100pct")
+    assert build["target_loss_cap"] == 1.0
+    assert build["release_gates"] == {
+        "passed": False,
+        "failures": ["ctc failed"],
+    }
+    assert build["health_input_signal"] == {
+        "passed": True,
+        "failures": [],
+        "details": {"n": 2},
+    }
+    assert build["base_population_scale"] == {
+        "passed": True,
+        "failures": [],
+        "details": {"population": 334_200_000.0},
+    }
+    assert build["support_value_repairs"] == {
+        "social_security_components": {"applied": True}
+    }
+    assert build["timing"] == {
+        "target_compilation_seconds": 1.25,
+        "calibration_seconds": 2.5,
+    }
+
+
+def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
+    small_frame,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    base_h5 = tmp_path / "base.h5"
+    base_h5.write_bytes(b"h5")
+    registry = TargetRegistry(
+        (
+            TargetSpec(
+                name="income",
+                entity="person",
+                measure="income",
+                value=500_000.0,
+                source="fixture",
+                metadata={
+                    "ledger_selector_source_name": "irs_soi",
+                    "ledger_measure_concept": "irs_soi.income",
+                    "ledger_measure_unit": "usd",
+                    "ledger_geography_level": "state",
+                    "ledger_geography_id": "0400000US06",
+                },
+                hierarchy=CalibrationHierarchy(
+                    provider=HierarchyNode(
+                        "irs_soi",
+                        "IRS Statistics of Income",
+                    ),
+                    category=HierarchyCategory(
+                        "irs_soi.income",
+                        "Income",
+                        "irs_soi",
+                    ),
+                    geography=HierarchyGeography(
+                        "0400000US06",
+                        "California",
+                        "state",
+                    ),
+                    dimensions=(),
+                    target=HierarchyNode("income", "Income"),
+                ),
+            ),
+        ),
+        country="us",
+    )
+    result = replace(
+        calibrate(
+            small_frame,
+            registry.to_target_set(),
+            epochs=1,
+            seed=0,
+        ),
+        closing_loss=float("nan"),
+    )
+    passing_gate = builder.GateResult(
+        name="passing",
+        passed=True,
+        details={"checked": True},
+    )
+
+    builder._write_release_calibration_diagnostics(
+        result=result,
+        release_dir=tmp_path,
+        registry=registry,
+        base_dataset_sha256=builder._sha256(base_h5),
+        compilation={"dropped_target_names": []},
+        target_profile_gate=passing_gate,
+        health_input_gate=passing_gate,
+        base_population_gate=passing_gate,
+        support_value_repairs={},
+        audit_export_targets=False,
+        gate_failures=["Calibration final loss is non-finite."],
+        # main() applies the committed 012733e scrub before invoking this real
+        # writer; keep that call boundary explicit rather than moving the fix.
+        default_dataset={"method": "dense_no_l0", "final_loss": None},
+    )
+
+    diagnostics = json.loads((tmp_path / "calibration_diagnostics.json").read_text())
+    assert diagnostics["schema_version"] == 8
+    assert diagnostics["targets"][0]["source"] == "fixture"
+    assert diagnostics["targets"][0]["hierarchy"] == {
+        "provider": {
+            "id": "irs_soi",
+            "label": "IRS Statistics of Income",
+        },
+        "category": {
+            "id": "irs_soi.income",
+            "label": "Income",
+            "provider_id": "irs_soi",
+        },
+        "geography": {
+            "id": "0400000US06",
+            "label": "California",
+            "level": "state",
+        },
+        "dimensions": [],
+        "target": {"id": "income", "label": "Income"},
+    }
+    assert diagnostics["final_loss"] is None
+    assert diagnostics["build"]["default_dataset"]["final_loss"] is None
+
+
+def _run_green_register_release(
+    builder,
+    monkeypatch,
+    *,
+    captured,
+    out: Path,
+    release_id: str,
+    tail_register: Path,
+    export_mass_reference: Path,
+    skipped_smoke: bool,
+) -> None:
+    """Drive the harness's green register run through main() and check that
+    both manifests bind the run's gate evidence (route A remediation PR-3).
+    """
+    from microcosm.data.contract import (
+        _check_build_manifest,
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    release_dir = out / "releases" / release_id
+    # The harness stubs every hash to a constant. The run's own outputs, the
+    # register and the export-mass reference hash for real, so the manifests
+    # can be checked against the bytes on disk.
+    stub_sha256 = builder._sha256
+
+    def sha256(path):
+        path = Path(path)
+        if path in {tail_register, export_mass_reference} or out in path.parents:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+        return stub_sha256(path)
+
+    monkeypatch.setattr(builder, "_sha256", sha256)
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "2.2.1",
+            "torch": "2.12.0",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, *, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "e" * 64, "n_targets": 1},
+        },
+    )
+    reference_frame = object()
+
+    def fake_load_us_frame(path):
+        captured["export_reference_loaded"] = Path(path)
+        return reference_frame
+
+    monkeypatch.setattr(builder, "load_us_frame", fake_load_us_frame)
+
+    class WrittenH5Scorer:
+        """The household-batched post-export scorer (#956) without an engine:
+        it binds the sha256 of the file it opens, as the real one does, and
+        hands each consumer a seam naming that file."""
+
+        def __init__(self, dataset_path, **kwargs):
+            self.dataset_path = Path(dataset_path)
+            self.dataset_sha256 = builder._sha256(self.dataset_path)
+            captured["scorer_opened_on"] = self.dataset_path
+
+        def open_consumer(self, name, baseline_plan):
+            record = {"dataset_sha256": self.dataset_sha256, "consumer": name}
+            return SimpleNamespace(
+                name=name, simulate=self.dataset_path, record=lambda: record
+            )
+
+        def finish_consumer(self, scoring):
+            captured.setdefault("finished_consumers", []).append(scoring.name)
+            return scoring.record()
+
+        def manifest_record(self):
+            return {
+                "dataset_sha256": self.dataset_sha256,
+                "consumers": list(captured.get("finished_consumers", [])),
+            }
+
+        def close(self):
+            captured["scorer_closed"] = True
+
+    monkeypatch.setattr(builder, "_HouseholdBatchedPostExportScorer", WrittenH5Scorer)
+
+    def fake_smoke(*, simulate, period):
+        # The pre-export plan dry-runs the smoke on a recording seam first;
+        # the last call is the gate scoring the written release.
+        captured["smoke_scored"] = simulate
+        return builder.GateResult(
+            name="reform_coverage_smoke",
+            passed=True,
+            details={"probes": ["ssi_asset_limit"]},
+        )
+
+    monkeypatch.setattr(builder, "us_reform_coverage_smoke_gate", fake_smoke)
+    monkeypatch.setattr(
+        builder,
+        "us_take_up_participation_diagnostics",
+        lambda frame: {"programs": []},
+    )
+    monkeypatch.setattr(
+        builder, "_fiscal_target_source_provenance", lambda target_specs: []
+    )
+    # A superseded attempt under the same --release-id left a verdict for
+    # every gate behind. Each gate this run evaluates rewrites its file; the
+    # smoke, when skipped, must leave no verdict at all rather than the old one.
+    release_dir.mkdir(parents=True, exist_ok=True)
+    for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values():
+        (release_dir / filename).write_text('{"stale": true}')
+
+    builder.main()
+
+    assert captured["terminal_gate_events"] == [
+        "input_coverage",
+        "input_mass_parity",
+        "qrf_tail_concentration",
+    ]
+    # All four stale verdicts were cleared before any gate ran, including the
+    # three this run goes on to rewrite: a gate that crashed or was skipped
+    # must leave no verdict rather than the superseded one.
+    assert captured["gate_evidence_on_disk_at_first_gate"] == []
+    assert captured["qrf_tail_register_seen"] == {
+        "estate_income": "donor tail concentrated before calibration"
+    }
+    if skipped_smoke:
+        # No post-export stage runs, so no scorer opens.
+        assert "smoke_scored" not in captured
+        assert "scorer_opened_on" not in captured
+        assert not (release_dir / "reform_coverage_smoke.json").exists()
+    else:
+        assert captured["scorer_opened_on"] == captured["written_dataset"]
+        assert captured["smoke_scored"] == captured["written_dataset"]
+        assert captured["scorer_closed"] is True
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    if not skipped_smoke:
+        # The smoke verdict names the bytes it scored, and they are the bytes
+        # the manifest pins.
+        smoke_scoring = json.loads(
+            (release_dir / "reform_coverage_smoke.json").read_text()
+        )["post_export_scoring"]
+        assert smoke_scoring == {
+            "dataset_sha256": hashlib.sha256(b"release h5").hexdigest(),
+            "consumer": "reform_coverage_smoke",
+        }
+        assert build_manifest["dataset"]["sha256"] == smoke_scoring["dataset_sha256"]
+    # Both manifests carry how the post-export gates were scored (route A
+    # remediation PR-3's rule): the scorer's block, taken after every consumer
+    # finished and naming the bytes the manifest pins. With no post-export
+    # stage there is no scorer and no block.
+    for block in (build_manifest, release_manifest["build"]):
+        if skipped_smoke:
+            assert "post_export_scoring" not in block
+        else:
+            assert block["post_export_scoring"] == {
+                "dataset_sha256": build_manifest["dataset"]["sha256"],
+                "consumers": ["reform_coverage_smoke"],
+            }
+
+    artifacts = release_manifest["artifacts"]
+    bound = dict(builder.US_RELEASE_GATE_EVIDENCE_FILES)
+    if skipped_smoke:
+        bound.pop("reform_coverage_smoke")
+        assert "reform_coverage_smoke" not in artifacts
+    for key, filename in bound.items():
+        assert json.loads((release_dir / filename).read_text()) != {"stale": True}
+        assert artifacts[key] == {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": builder.REPO_ID,
+            "revision": release_id,
+            "sha256": hashlib.sha256((release_dir / filename).read_bytes()).hexdigest(),
+        }
+    if not skipped_smoke:
+        smoke = json.loads((release_dir / "reform_coverage_smoke.json").read_text())
+        assert smoke["reform_coverage_smoke"]["passed"] is True
+    tail = json.loads((release_dir / "qrf_tail_concentration.json").read_text())
+    assert tail["tail_concentration"]["passed"] is True
+    assert set(tail["tail_concentration"]["details"]["reviewed_exclusions"]) == {
+        "estate_income"
+    }
+
+    register_sha256 = hashlib.sha256(tail_register.read_bytes()).hexdigest()
+    # The manifests bind the register the gate recorded, byte for byte.
+    assert tail["surface"]["reviewed_exclusions_sha256"] == register_sha256
+    expected_register = {
+        "path": str(tail_register),
+        "sha256": register_sha256,
+        "entries": {"estate_income": "donor tail concentrated before calibration"},
+        "mismatch": {"stale": [], "unused": []},
+        "enforced": True,
+    }
+    expected_reference = {
+        "path": str(export_mass_reference),
+        "sha256": hashlib.sha256(b"reference h5").hexdigest(),
+        "reference_name": export_mass_reference.name,
+        "evaluated": True,
+    }
+    # Whether the coverage file carries the PR-1 receipt depends on merge
+    # order; the reference must describe whichever bytes were written. Once
+    # PR-1's receipt compiler is in the tool, the receipt must be present:
+    # a writer/reader key drift would otherwise read as "no receipt".
+    coverage_path = release_dir / "us_source_coverage.json"
+    written_receipt = json.loads(coverage_path.read_text()).get(
+        builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY
+    )
+    if hasattr(builder, "us_fiscal_target_exclusion_receipt"):
+        assert written_receipt is not None
+    expected_receipt = {
+        "artifact": "us_source_coverage",
+        "path": "us_source_coverage.json",
+        "sha256": hashlib.sha256(coverage_path.read_bytes()).hexdigest(),
+        "key": builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY,
+        "present": written_receipt is not None,
+        "receipt_sha256": (
+            hashlib.sha256(
+                json.dumps(
+                    written_receipt, sort_keys=True, separators=(",", ":")
+                ).encode()
+            ).hexdigest()
+            if written_receipt is not None
+            else None
+        ),
+    }
+    expected_gate_evidence = {
+        "input_coverage": "bound",
+        "input_mass_parity": "bound",
+        "qrf_tail_concentration": "bound",
+        "reform_coverage_smoke": "skipped" if skipped_smoke else "bound",
+    }
+    for block in (build_manifest, release_manifest["build"]):
+        assert block["gate_evidence"] == expected_gate_evidence
+        assert block["qrf_tail_register"] == expected_register
+        assert block["export_input_mass_reference"] == expected_reference
+        runtime = block["calibration_runtime"]
+        assert set(runtime) == {"torch", "torch_num_threads", "omp_num_threads"}
+        assert runtime["torch_num_threads"] >= 1
+        assert runtime["omp_num_threads"] == os.environ["OMP_NUM_THREADS"]
+        # One reading, recorded in the diagnostics and both manifests.
+        assert runtime == captured["diagnostics"]["calibration_runtime"]
+        assert block["fiscal_target_exclusion_receipt"] == expected_receipt
+    # The manifests pin the reference the export-mass gate compared against.
+    assert captured["export_reference_loaded"] == export_mass_reference
+    parity_kwargs = captured["export_input_mass_kwargs"]
+    assert parity_kwargs["reference_frame"] is reference_frame
+    assert parity_kwargs["reference_name"] == export_mass_reference.name
+
+    # The publisher contract accepts both manifests, verifies every gate
+    # evidence hash against the local bytes, and uploads the files.
+    failures: list[str] = []
+    _check_build_manifest(build_manifest, release_id, failures)
+    _check_release_manifest(release_manifest, release_id, failures)
+    _check_local_artifact_hashes(release_dir, release_manifest, failures)
+    assert failures == []
+    assert set(bound.values()) <= set(_release_manifest_release_artifacts(release_dir))
+    assert not list(release_dir.glob("final_household_weight*"))
+
+
+@pytest.mark.parametrize(
+    "terminal_mode",
+    [
+        "merge",
+        "integrity",
+        "retirement",
+        "crash",
+        "telemetry",
+        "puf_tail",
+        "spm_missing_pool",
+        "qrf_tail_register",
+        "qrf_tail_register_clean",
+        "target_frame_checkpoint",
+        "qrf_tail_register_green",
+        "qrf_tail_register_green_skipped_smoke",
+    ],
+)
+def test_main_writes_diagnostics_before_post_calibration_gate_failure(
+    monkeypatch, tmp_path, terminal_mode
+) -> None:
+    """The microcosm#547 corridor contract, end to end through main().
+
+    ``merge``: SSI delivery + export other-health + the ctc sentinel all
+    fail in one run — the batch carries every group in corridor order and
+    the diagnostics artifact is written first.
+    ``integrity``: the persisted-flag FINAL-INTEGRITY gate reports a
+    Bernoulli-law violation; that failure reaches the written diagnostics
+    and the single terminal batch while the delivery gate passes and every
+    later terminal group still runs.
+    ``retirement``: an incomplete consume-only retirement surface reports its
+    missing leaves through the same written diagnostics and terminal batch,
+    while later terminal groups still run.
+    ``crash``: the degraded-mode guards themselves are exercised — the
+    health-input evaluation raises, the incumbent path is missing, and
+    ``_release_gate_failures`` raises; each records a line instead of
+    masking the SSI failure, and the incumbent path is nulled for the
+    writer so the caught I/O failure is not replayed at the re-hash.
+    ``telemetry``: live telemetry raises while attaching the already-written
+    calibration diagnostics; the exception becomes a batch line and every
+    later terminal gate group still evaluates before the terminal raise.
+    ``puf_tail``: exact-k selection loses the original PUF capital-gains tail;
+    the failure is batched while diagnostics and final-weight evidence remain,
+    every later terminal group runs, and release artifacts stay suppressed.
+    ``spm_missing_pool``: a prepared pool without the source role fails at
+    the real SPM signal gate before calibration or terminal coverage checks.
+    ``qrf_tail_register``: the per-run tail register carries a stale and an
+    absent entry under earlier failures; the mismatch rides the batch as its
+    own line (it used to collapse into one "evaluation error" line that nulled
+    the gate) while the tail JSON, the gate's own failures, and the
+    final-weight evidence all survive.
+    ``qrf_tail_register_clean``: the same register mismatch is the run's ONLY
+    terminal failure — every other group passes. This is the route A
+    premortem path: the old register raise escaped the batch here, before the
+    tail JSON and the #568 final-weight sidecar were written. The run must
+    now reach the batched raise with both on disk.
+    ``target_frame_checkpoint``: the ``merge`` run with the target-frame
+    checkpoint enabled, as release runs have it by default (microcosm#956).
+    main() must hand the checkpoint writer this build's full commit, and the
+    writer's payload, source commit included, must reach the written
+    diagnostics. Every other mode passes ``--no-target-frame-checkpoint`` and
+    must record the checkpoint as disabled.
+    ``qrf_tail_register_green``: the register names exactly the concentrated
+    column, so every terminal gate passes and the run goes on to write the
+    H5 and both manifests (route A remediation PR-3). The manifests must
+    bind the four gate-evidence files as release artifacts and record the
+    register the gate evaluated, the export-mass reference, the solve's
+    thread geometry, and where the fiscal-target exclusion receipt lives.
+    ``qrf_tail_register_green_skipped_smoke``: the same green run with the
+    reform-coverage smoke skipped, over a release directory a superseded
+    attempt left a smoke verdict in. That stale verdict must not be bound as
+    this run's.
+    """
+    builder = _load_builder_module()
+    prepared_pool = terminal_mode in {"puf_tail", "spm_missing_pool"}
+    green_run = terminal_mode in {
+        "qrf_tail_register_green",
+        "qrf_tail_register_green_skipped_smoke",
+    }
+    qrf_tail_register_modes = {
+        "qrf_tail_register",
+        "qrf_tail_register_clean",
+        "qrf_tail_register_green",
+        "qrf_tail_register_green_skipped_smoke",
+    }
+    clean_run = terminal_mode == "qrf_tail_register_clean" or green_run
+    checkpoint_run = terminal_mode == "target_frame_checkpoint"
+    # Outside ``out``, so the no-H5-under-out sweep below still pins that a
+    # failed run leaves no release artifact.
+    target_frame_checkpoint_path = (
+        tmp_path / "checkpoints" / "target_frame_checkpoint.h5"
+    )
+    # What ``git rev-parse HEAD`` returns here; distinct from the short-commit
+    # sentinel so the checkpoint can only have received the full commit.
+    harness_full_commit = "c0de" * 10
+    release_id = (
+        "populace-us-2024-k2-gate-failure-test"
+        if terminal_mode == "puf_tail"
+        else "populace-us-2024-k4-gate-failure-test"
+        if terminal_mode == "spm_missing_pool"
+        else "populace-us-2024-gate-failure-test"
+    )
+    base_h5 = tmp_path / "base.h5"
+    pool_manifest = tmp_path / "pool.manifest.json"
+    weeks_source = tmp_path / "asecpub23csv.zip"
+    acs_person_zip = tmp_path / "csv_pus.zip"
+    acs_household_zip = tmp_path / "csv_hus.zip"
+    facts = tmp_path / "facts.jsonl"
+    out = tmp_path / "out"
+    base_h5.write_bytes(b"h5")
+    pool_manifest.write_text("fixture", encoding="utf-8")
+    facts.write_text("{}\n")
+    target_spec = TargetSpec(
+        name="amount",
+        entity="household",
+        measure="income",
+        value=100.0,
+        source="fixture",
+        metadata={"source_measure_id": "payment_amount"},
+    )
+    registry = TargetRegistry((target_spec,), country="us")
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=(),
+        # A calibration result always carries its compiled problem; the
+        # pre-export post-export-scoring plan reads its targets (#956).
+        problem=SimpleNamespace(targets=()),
+        initial_loss=2.0,
+        final_loss=1.0,
+        l0_lambda=0.2,
+        n_nonzero=2,
+        frame=SimpleNamespace(n=lambda entity: 2),
+        weights=np.asarray([12.0, 35.0]),
+        initial_weights=np.asarray([1.0, 1.0]),
+        weight_entity="household",
+        selection=SimpleNamespace(n_nonzero=2, final_loss=1.5),
+    )
+    captured: dict[str, object] = {
+        "health_stage_events": [],
+        "source_stage_events": [],
+        "terminal_gate_events": [],
+        "spm_stage_calls": [],
+    }
+    retirement_missing_failure = (
+        "person columns missing: ['taxable_403b_distributions', 'keogh_distributions']."
+    )
+
+    class FakeFrame:
+        # Household-only, shaped like the real ``Frame`` contract: ``schema``
+        # is always present, and ``table`` raises ``ValueError`` for an entity
+        # the schema does not declare (``Frame.table``). That is what lets the
+        # pre-calibration SPM composition advisory degrade to a notice here
+        # instead of aborting the run before the gate under test.
+        schema = EntitySchema(group_entities=("household",))
+
+        def n(self, entity):
+            assert entity == "household"
+            return 2 if terminal_mode == "puf_tail" else 4
+
+        def table(self, entity):
+            if terminal_mode == "spm_missing_pool" and entity == "person":
+                return pd.DataFrame(
+                    {"person_id": [1, 2, 3, 4], "age": [30, 40, 16, 17]}
+                )
+            if entity != "household":
+                raise ValueError(
+                    f"Unknown entity {entity!r}; schema declares "
+                    f"{list(self.schema.entities)}."
+                )
+            size = self.n("household")
+            return pd.DataFrame({"household_id": np.arange(1, size + 1, dtype="int64")})
+
+        def weights_for(self, entity):
+            assert entity == "household"
+            return Weights(
+                np.ones(self.n("household"), dtype=np.float64),
+                WeightKind.IMPORTANCE,
+            )
+
+    class FakeExportFrame:
+        # Household-only, shaped like the real ``Frame`` contract for the same
+        # reason ``FakeFrame`` above is: ``schema`` is always present and
+        # ``table`` raises ``ValueError`` for an entity the schema does not
+        # carry. That is what lets the batched SPM composition gate contribute
+        # one "cannot be classified" failure line to this run's report — the
+        # degraded-mode behaviour this test's cofailure contract expects — with
+        # no attribute the real frame lacks.
+        schema = EntitySchema(group_entities=("household",))
+
+        def n(self, entity):
+            assert entity == "household"
+            return 2
+
+        def weights_for(self, entity):
+            assert entity == "household"
+            return Weights(
+                np.asarray([12.0, 35.0]),
+                WeightKind.CALIBRATED,
+            )
+
+        def table(self, entity):
+            if entity != "household":
+                raise ValueError(
+                    f"Unknown entity {entity!r}; schema declares "
+                    f"{list(self.schema.entities)}."
+                )
+            return pd.DataFrame({"household_id": np.asarray([10, 20], dtype="int64")})
+
+    if prepared_pool:
+        loss_basis = builder._fiscal_target_loss_basis(registry, np.ones(1))
+        incumbent = tmp_path / "incumbent.json"
+        incumbent.write_text(
+            json.dumps(
+                {
+                    "target_surface": {"sha256": "e" * 64, "n_targets": 0},
+                    "build": {"target_loss_basis": loss_basis},
+                    "targets": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        incumbent_sha256 = (
+            __import__("hashlib").sha256(incumbent.read_bytes()).hexdigest()
+        )
+        argv = [
+            "build_us_fiscal_refresh_release.py",
+            "--pool-manifest",
+            str(pool_manifest),
+            "--pool-manifest-sha256",
+            "a" * 64,
+            "--pool-release-id",
+            "fixture-publication",
+            "--exact-k",
+            "N",
+            "--exact-k-pi-hi",
+            "0.95",
+            "--seed",
+            "17",
+            "--ledger-facts",
+            str(facts),
+            "--ledger-facts-sha256",
+            "b" * 64,
+            "--ledger-manifest-sha256",
+            "c" * 64,
+            "--incumbent-diagnostics",
+            str(incumbent),
+            "--incumbent-diagnostics-sha256",
+            incumbent_sha256,
+            "--frozen-target-surface-sha256",
+            "e" * 64,
+            "--out",
+            str(out),
+            "--release-id",
+            release_id,
+            "--no-target-frame-checkpoint",
+            "--no-staging",
+        ]
+    else:
+        argv = [
+            "build_us_fiscal_refresh_release.py",
+            "--base-h5",
+            str(base_h5),
+            "--ledger-facts",
+            str(facts),
+            "--out",
+            str(out),
+            "--release-id",
+            release_id,
+            "--asec-2023-weeks-unemployed-source",
+            str(weeks_source),
+            *(
+                ["--target-frame-checkpoint", str(target_frame_checkpoint_path)]
+                if checkpoint_run
+                else ["--no-target-frame-checkpoint"]
+            ),
+        ]
+    if terminal_mode != "telemetry" and not prepared_pool:
+        argv.append("--no-staging")
+    argv += [
+        "--acs-person-zip",
+        str(acs_person_zip),
+        "--acs-person-sha256",
+        "d" * 64,
+        "--acs-household-zip",
+        str(acs_household_zip),
+        "--acs-household-sha256",
+        "f" * 64,
+    ]
+    if terminal_mode == "crash":
+        # Nonexistent incumbent: the degraded-mode guard must record the
+        # load failure, null the path for the writer (no re-hash replay of
+        # the caught I/O error), and still reach the diagnostics artifact.
+        argv += [
+            "--incumbent-diagnostics",
+            str(tmp_path / "missing-incumbent.json"),
+        ]
+    if terminal_mode in qrf_tail_register_modes:
+        tail_register = tmp_path / "qrf_tail_exclusions.json"
+        tail_register.write_text(
+            json.dumps(
+                {"estate_income": "donor tail concentrated before calibration"}
+                if green_run
+                else {
+                    "estate_income": "measured concentrated on another lineage",
+                    "bond_assets": "measured concentrated on another lineage",
+                }
+            )
+        )
+        argv += ["--qrf-tail-concentration-exclusions", str(tail_register)]
+    if green_run:
+        export_mass_reference = tmp_path / "reference_populace_us_2024.h5"
+        export_mass_reference.write_bytes(b"reference h5")
+        argv += [
+            "--export-input-mass-reference-h5",
+            str(export_mass_reference),
+            "--skip-reform-validation",
+            "--skip-demographics",
+        ]
+        if terminal_mode == "qrf_tail_register_green_skipped_smoke":
+            argv.append("--skip-reform-coverage-smoke")
+    monkeypatch.setattr(sys, "argv", argv)
+    monkeypatch.setattr(builder, "_git_dirty", lambda: False)
+
+    def fake_sha256(path):
+        if prepared_pool and Path(path) == pool_manifest:
+            return "a" * 64
+        if Path(path) == weeks_source:
+            return "weeks-source-sha"
+        return "base-sha"
+
+    monkeypatch.setattr(
+        builder,
+        "_sha256",
+        fake_sha256,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: (
+            harness_full_commit if args == ("rev-parse", "HEAD") else "commit"
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_assert_cd_vintage_support_matches",
+        lambda h5_path, crosswalk_metadata, **kwargs: None,
+    )
+    if terminal_mode == "telemetry":
+
+        class LiveTelemetry:
+            run_id = "live-telemetry-test"
+            repo_id = "policyengine/populace-us-staging"
+            uploads_succeeded = 3
+
+            def stage(self, stage, **details):
+                captured.setdefault("telemetry_events", []).append(("stage", stage))
+                if stage == "weeks_unemployed_input":
+                    captured["weeks_unemployed_telemetry"] = dict(details)
+
+            def attach_artifact(self, name, path, **details):
+                captured.setdefault("telemetry_events", []).append(
+                    ("attach_artifact", name)
+                )
+                if name == "calibration_diagnostics" and not captured.get(
+                    "telemetry_crashed"
+                ):
+                    captured["telemetry_crashed"] = True
+                    raise RuntimeError(
+                        "calibration diagnostics attach exploded "
+                        "[telemetry-crash-sentinel]"
+                    )
+
+            def calibration_progress(self, event):
+                captured.setdefault("telemetry_events", []).append(
+                    ("calibration_progress", event.get("kind"))
+                )
+
+            def complete(self):
+                captured.setdefault("telemetry_events", []).append(
+                    ("complete", "complete")
+                )
+
+        live_telemetry = LiveTelemetry()
+        monkeypatch.setattr(
+            builder,
+            "_staging_telemetry",
+            lambda *args, **kwargs: live_telemetry,
+        )
+    if terminal_mode in {
+        "integrity",
+        "retirement",
+        "telemetry",
+        "puf_tail",
+        "spm_missing_pool",
+        "qrf_tail_register",
+        "qrf_tail_register_clean",
+        "qrf_tail_register_green",
+        "qrf_tail_register_green_skipped_smoke",
+    }:
+
+        def fake_write_dataset(frame, path, *, period):
+            captured["written_dataset"] = Path(path)
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_bytes(b"release h5")
+
+        monkeypatch.setattr(
+            builder,
+            "PolicyEngineUSEngine",
+            lambda: SimpleNamespace(write_dataset=fake_write_dataset),
+        )
+
+        def fake_input_coverage_gate(frame, engine):
+            captured["terminal_gate_events"].append("input_coverage")
+            # Route A PR-3: by the first terminal gate, no verdict from a
+            # superseded attempt may remain, whether or not this run's gate
+            # would rewrite it.
+            captured["gate_evidence_on_disk_at_first_gate"] = sorted(
+                filename
+                for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values()
+                if (out / "releases" / release_id / filename).exists()
+            )
+            return builder.GateResult(
+                name="input_coverage",
+                passed=True,
+                details={"checked": True},
+            )
+
+        def fake_export_input_mass_gate(export_frame, base_frame, **kwargs):
+            captured["terminal_gate_events"].append("input_mass_parity")
+            captured["export_input_mass_kwargs"] = kwargs
+            return builder.GateResult(
+                name="export_input_mass_parity",
+                passed=True,
+                details={"checked": True},
+            )
+
+        def fake_qrf_tail_concentration_gate(
+            export_frame,
+            *,
+            reviewed_exclusions,
+        ):
+            captured["terminal_gate_events"].append("qrf_tail_concentration")
+            if green_run:
+                # The register's one column is genuinely concentrated (a
+                # repeated donor-ceiling value in 100 of 600 carriers), so
+                # the reviewed exclusion is used and the register matches.
+                captured["qrf_tail_register_seen"] = dict(reviewed_exclusions)
+                concentrated = np.zeros(12_000)
+                concentrated[:100] = 594_484.0
+                concentrated[100:600] = 2_979.0
+                return (
+                    builder.tail_concentration_gate(
+                        {"estate_income": concentrated},
+                        {"estate_income": np.ones(12_000)},
+                        reviewed_exclusions=reviewed_exclusions,
+                    ),
+                    {"checked_sparse_columns": ["estate_income"]},
+                )
+            if terminal_mode in qrf_tail_register_modes:
+                # The real gate on a dispersed column: estate_income is
+                # checked and below threshold (stale), bond_assets never
+                # reaches the gate (absent), so the register mismatches.
+                captured["qrf_tail_register_seen"] = dict(reviewed_exclusions)
+                dispersed = np.zeros(12_000)
+                dispersed[:600] = 1_000.0
+                return (
+                    builder.tail_concentration_gate(
+                        {"estate_income": dispersed},
+                        {"estate_income": np.ones(12_000)},
+                        reviewed_exclusions=reviewed_exclusions,
+                    ),
+                    {
+                        "checked_sparse_columns": ["estate_income"],
+                        "absent_columns": ["bond_assets"],
+                    },
+                )
+            return (
+                builder.GateResult(
+                    name="qrf_tail_concentration",
+                    passed=True,
+                    details={"reviewed_exclusions": []},
+                ),
+                {"checked": True},
+            )
+
+        monkeypatch.setattr(
+            builder,
+            "us_release_input_coverage_gate",
+            fake_input_coverage_gate,
+        )
+        monkeypatch.setattr(
+            builder,
+            "_export_input_mass_gate",
+            fake_export_input_mass_gate,
+        )
+        monkeypatch.setattr(
+            builder,
+            "_qrf_tail_concentration_gate",
+            fake_qrf_tail_concentration_gate,
+        )
+    if clean_run:
+        # The household-only fake export frame cannot be classified, which
+        # the batched SPM composition gate records as a failure line. The
+        # clean run needs an empty batch before the tail gate, so the
+        # composition passes here.
+        monkeypatch.setattr(
+            builder,
+            "_spm_composition_gate_failures",
+            lambda frame, *, stage: ([], {"evaluated": True, "fixture": stage}),
+        )
+    # The consistency/contract preflights hit the installed policyengine-us
+    # (absent in CI); this test pins diagnostics ordering, not engine metadata.
+    monkeypatch.setattr(
+        builder, "assert_validation_leaf_registry_current", lambda: None
+    )
+    monkeypatch.setattr(
+        builder, "assert_release_input_coverage_manifest_current", lambda: None
+    )
+    monkeypatch.setattr(builder, "assert_take_up_contract_current", lambda: None)
+    monkeypatch.setattr(builder, "assert_take_up_treatments_consistent", lambda: None)
+    monkeypatch.setattr(
+        builder,
+        "assert_puf_capital_gains_tail_survives_selection",
+        lambda base_frame, selected_frame, *, require_present=False: {
+            "passed": True,
+            "status": "fixture",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_ledger_consumer_artifact",
+        lambda path, **kwargs: SimpleNamespace(
+            facts=({"fact": 1},),
+            facts_sha256="facts-sha",
+            manifest_sha256=None,
+            provenance=lambda: {
+                "path_name": "facts.jsonl",
+                "fact_row_count": 1,
+                "facts_sha256": "facts-sha",
+                "schema_version": None,
+                "manifest_sha256": None,
+            },
+        ),
+    )
+    # The invented feed is not the committed pin; this test is about the
+    # corridor contract, not the pin, which has its own tests.
+    monkeypatch.setattr(
+        builder, "_check_committed_us_ledger_feed_pin", lambda *a, **k: None
+    )
+    monkeypatch.setattr(
+        builder,
+        "compile_us_fiscal_target_registry",
+        lambda facts, **kwargs: registry,
+    )
+    monkeypatch.setattr(
+        builder,
+        "target_profile_coverage_gate",
+        lambda specs, requirements: builder.GateResult(
+            name="target_profile_coverage",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder, "assert_target_parity_manifest_current", lambda **kwargs: None
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_release_target_parity_gate",
+        lambda registry, **kwargs: builder.GateResult(
+            name="us_release_target_parity",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    def fake_load_frame(path, *, expected_sha256=None):
+        captured["source_stage_events"].append("load_frame")
+        return FakeFrame()
+
+    monkeypatch.setattr(builder, "_load_frame", fake_load_frame)
+    if prepared_pool:
+
+        def fake_load_pool(path, *, expected_manifest_sha256):
+            assert path == pool_manifest
+            assert expected_manifest_sha256 == "a" * 64
+            return (
+                FakeFrame(),
+                {
+                    "publication_run_id": "fixture-publication",
+                    "agreement_gate": {"passed": True, "gates": {}},
+                    "pool_h5": {
+                        "path": str(base_h5),
+                        "sha256": "1" * 64,
+                        "size_bytes": base_h5.stat().st_size,
+                    },
+                    "agreement_diagnostics": {"sha256": "2" * 64},
+                },
+                builder.AuthenticatedPoolH5(
+                    path=base_h5.resolve(),
+                    sha256=__import__("hashlib")
+                    .sha256(base_h5.read_bytes())
+                    .hexdigest(),
+                    size_bytes=base_h5.stat().st_size,
+                    publication_run_id="fixture-publication",
+                    manifest_sha256="a" * 64,
+                ),
+            )
+
+        monkeypatch.setattr(
+            builder,
+            "load_simulation_ready_us_multispine_pool",
+            fake_load_pool,
+        )
+        monkeypatch.setattr(
+            builder,
+            "_person_population",
+            lambda frame: builder.US_BASE_PERSON_POPULATION_BENCHMARK,
+        )
+
+    def fake_load_weeks_unemployed_source(path, **kwargs):
+        captured["source_stage_events"].append("load_weeks_source")
+        captured["weeks_unemployed_source_path"] = Path(path)
+        captured["weeks_unemployed_source_load_kwargs"] = kwargs
+        return pd.DataFrame({"LKWEEKS": [0, 12]})
+
+    def fake_with_weeks_unemployed(
+        frame,
+        *,
+        seed,
+        time_period,
+        asec_2023_source,
+    ):
+        captured["source_stage_events"].append("weeks_stage")
+        captured["weeks_unemployed_stage_seed"] = seed
+        captured["weeks_unemployed_stage_period"] = time_period
+        captured["weeks_unemployed_stage_source"] = asec_2023_source
+        return frame
+
+    def fake_weeks_unemployed_signal_gate(frame):
+        captured["source_stage_events"].append("weeks_gate")
+        captured["weeks_unemployed_gate_called"] = True
+        return builder.GateResult(
+            name="weeks_unemployed_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_asec_2023_weeks_unemployed_source",
+        fake_load_weeks_unemployed_source,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_weeks_unemployed",
+        fake_with_weeks_unemployed,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_weeks_unemployed_signal_gate",
+        fake_weeks_unemployed_signal_gate,
+    )
+
+    def fake_ssi_reporter_source_ids(frame):
+        captured["source_stage_events"].append("ssi_reporters")
+        return frozenset({"asec-reporter"})
+
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_take_up_reporter_source_ids",
+        fake_ssi_reporter_source_ids,
+    )
+    repair_payload = {
+        "method": "rescale_household_weights_to_census_person_population",
+        "applied": True,
+        "factor": 2.0,
+    }
+
+    def fake_base_population_mass_repair(frame):
+        captured["source_stage_events"].append("population_repair")
+        return frame, repair_payload
+
+    monkeypatch.setattr(
+        builder,
+        "_with_base_population_mass_repair",
+        fake_base_population_mass_repair,
+    )
+    ss_repair_payload = {
+        "method": "rescale_social_security_component_leaves_to_ssa_targets",
+        "applied": True,
+    }
+    monkeypatch.setattr(
+        builder,
+        "_with_social_security_component_value_repair",
+        lambda frame, specs: (frame, ss_repair_payload),
+    )
+    cgd_repair_payload = {
+        "method": "rescale_non_sch_d_capital_gains_to_soi_table_1_4_fact",
+        "applied": True,
+    }
+    monkeypatch.setattr(
+        builder,
+        "_with_non_sch_d_cgd_value_repair",
+        lambda frame, specs: (frame, cgd_repair_payload),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_base_population_scale_gate",
+        lambda frame, *, mass_repair=None: builder.GateResult(
+            name="base_population_scale",
+            passed=True,
+            details={"checked": True, "mass_repair": mass_repair},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_qbi_input_reconciliation",
+        lambda frame: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_qbi_inputs_signal_gate",
+        lambda frame: builder.GateResult(
+            name="qbi_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    def fake_farm_business_income_signal_gate(frame):
+        captured["farm_business_income_gate_called"] = True
+        return builder.GateResult(
+            name="farm_business_income_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_farm_business_income_signal_gate",
+        fake_farm_business_income_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_domestic_production_ald_signal_gate",
+        lambda frame: builder.GateResult(
+            name="domestic_production_ald_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    def fake_child_support_signal_gate(frame):
+        captured["child_support_gate_called"] = True
+        return builder.GateResult(
+            name="child_support_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_child_support_signal_gate",
+        fake_child_support_signal_gate,
+    )
+
+    def fake_disability_benefits_signal_gate(frame):
+        captured["disability_benefits_gate_called"] = True
+        return builder.GateResult(
+            name="disability_benefits_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_disability_benefits_signal_gate",
+        fake_disability_benefits_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_workers_compensation_signal_gate",
+        lambda frame: builder.GateResult(
+            name="workers_compensation_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    def fake_educator_expense_signal_gate(frame):
+        captured["educator_expense_gate_called"] = True
+        return builder.GateResult(
+            name="educator_expense_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_educator_expense_signal_gate",
+        fake_educator_expense_signal_gate,
+    )
+
+    def fake_form_4952_election_signal_gate(frame):
+        captured["form_4952_election_gate_called"] = True
+        return builder.GateResult(
+            name="form_4952_election_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_form_4952_election_signal_gate",
+        fake_form_4952_election_signal_gate,
+    )
+
+    def fake_salt_refund_income_signal_gate(frame):
+        captured["salt_refund_income_gate_called"] = True
+        return builder.GateResult(
+            name="salt_refund_income_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_salt_refund_income_signal_gate",
+        fake_salt_refund_income_signal_gate,
+    )
+
+    def fake_capital_gain_details_signal_gate(frame):
+        captured["capital_gain_details_gate_called"] = True
+        return builder.GateResult(
+            name="capital_gain_details_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_capital_gain_details_signal_gate",
+        fake_capital_gain_details_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_childcare_inputs",
+        lambda frame, *, seed, time_period, allow_existing_without_source: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_childcare_signal_gate",
+        lambda frame: builder.GateResult(
+            name="childcare_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_energy_subsidy_input",
+        lambda frame, *, seed, time_period, allow_existing_without_source: frame,
+    )
+
+    def fake_energy_subsidy_signal_gate(frame):
+        captured["energy_subsidy_gate_called"] = True
+        return builder.GateResult(
+            name="energy_subsidy_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_energy_subsidy_signal_gate",
+        fake_energy_subsidy_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_alimony_signal_gate",
+        lambda frame: builder.GateResult(
+            name="alimony_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_casualty_loss_signal_gate",
+        lambda frame: builder.GateResult(
+            name="casualty_loss_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_misc_itemized_signal_gate",
+        lambda frame: builder.GateResult(
+            name="misc_itemized_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_retirement_contribution_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_retirement_contributions_signal_gate",
+        lambda frame: builder.GateResult(
+            name="retirement_contributions_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_immigration_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_immigration_composition_gate",
+        lambda frame: builder.GateResult(
+            name="immigration_composition",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_take_up_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_hours_worked_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_snap_take_up_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_eligibility_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_relationship_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+
+    def fake_with_spm_independence_role(frame, *, seed, time_period):
+        # The release wrapper deliberately resolves the pinned local cache;
+        # source-path overrides belong to the base builder's CLI.
+        captured["spm_stage_calls"].append({"seed": seed, "time_period": time_period})
+        return frame
+
+    monkeypatch.setattr(
+        builder, "with_us_spm_independence_role", fake_with_spm_independence_role
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_medicare_take_up_input",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_retirement_distribution_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_education_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_pregnancy_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_wic_claim_input",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_snap_discretionary_exemption_inputs",
+        lambda frame, *, seed, time_period: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_take_up_signal_gate",
+        lambda frame: builder.GateResult(
+            name="us_take_up_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_take_up_participation_diagnostics",
+        lambda frame: {
+            "schema_version": 1,
+            "classification": "release_diagnostics",
+            "programs": [],
+            "gate": {"passed": True},
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_hours_worked_signal_gate",
+        lambda frame: builder.GateResult(
+            name="hours_worked_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_snap_take_up_signal_gate",
+        lambda frame: builder.GateResult(
+            name="snap_take_up_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_eligibility_inputs_signal_gate",
+        lambda frame: builder.GateResult(
+            name="eligibility_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_relationship_inputs_signal_gate",
+        lambda frame: builder.GateResult(
+            name="relationship_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    if terminal_mode == "spm_missing_pool":
+        real_spm_gate = builder.us_spm_independence_role_signal_gate
+
+        def recording_spm_gate(frame):
+            gate = real_spm_gate(frame)
+            captured["spm_signal_gate"] = gate
+            return gate
+
+        monkeypatch.setattr(
+            builder, "us_spm_independence_role_signal_gate", recording_spm_gate
+        )
+    else:
+        monkeypatch.setattr(
+            builder,
+            "us_spm_independence_role_signal_gate",
+            lambda frame: builder.GateResult(
+                name="spm_independence_role_signal",
+                passed=True,
+                details={"checked": True},
+            ),
+        )
+    monkeypatch.setattr(
+        builder,
+        "us_medicare_take_up_signal_gate",
+        lambda frame: builder.GateResult(
+            name="medicare_take_up_input_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_prior_year_income_signal_gate",
+        lambda frame: builder.GateResult(
+            name="prior_year_income_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_housing_inputs_signal_gate",
+        lambda frame: builder.GateResult(
+            name="housing_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    def fake_retirement_distributions_signal_gate(frame):
+        missing = terminal_mode == "retirement"
+        return builder.GateResult(
+            name="retirement_distributions_signal",
+            passed=not missing,
+            failures=((retirement_missing_failure,) if missing else ()),
+            details=(
+                {
+                    "missing": [
+                        "taxable_403b_distributions",
+                        "keogh_distributions",
+                    ]
+                }
+                if missing
+                else {"checked": True}
+            ),
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_retirement_distributions_signal_gate",
+        fake_retirement_distributions_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_education_inputs_signal_gate",
+        lambda frame: builder.GateResult(
+            name="education_inputs_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_pregnancy_signal_gate",
+        lambda frame: builder.GateResult(
+            name="pregnancy_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_reported_coverage_vintage_signal_gate",
+        lambda frame: builder.GateResult(
+            name="reported_coverage_vintage_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_wic_claim_signal_gate",
+        lambda frame: builder.GateResult(
+            name="wic_claim_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_snap_discretionary_exemption_signal_gate",
+        lambda frame: builder.GateResult(
+            name="snap_discretionary_exemption_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    def fake_join_acs_release_predictors(frame, **kwargs):
+        captured["source_stage_events"].append("acs_predictor_join")
+        captured["acs_predictor_join_kwargs"] = kwargs
+        return SimpleNamespace(
+            frame=frame,
+            receipt={"enabled": True, "join": {"acs_source_people": 3}},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "join_acs_release_predictors",
+        fake_join_acs_release_predictors,
+    )
+    monkeypatch.setattr(
+        builder,
+        "fetch_scf_2022_summary_extract",
+        lambda *args, **kwargs: Path("rscfp2022.dta"),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_scf_2022_financial_asset_donor",
+        lambda path: pd.DataFrame(),
+    )
+
+    def fake_load_sipp_financial_asset_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["sipp_financial_asset_donor_path"] = path
+        captured["sipp_financial_asset_donor_sha256"] = expected_sha256
+        captured["sipp_financial_asset_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    monkeypatch.setattr(
+        builder,
+        "fetch_sipp_2023_financial_asset_donor",
+        lambda *args, **kwargs: Path("pu2023.csv"),
+    )
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_financial_asset_donor",
+        fake_load_sipp_financial_asset_donor,
+    )
+
+    def fake_with_scf_wealth_inputs(
+        frame, *, seed, time_period, scf_donor, sipp_donor=None
+    ):
+        captured["source_stage_events"].append("scf_wealth")
+        captured["sipp_scf_wealth_blend_called"] = sipp_donor is not None
+        return frame
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_scf_wealth_inputs",
+        fake_with_scf_wealth_inputs,
+    )
+
+    def fake_scf_wealth_signal_gate(frame, *, require_sipp_blend=False):
+        captured["sipp_scf_wealth_blend_gate_required"] = require_sipp_blend
+        return builder.GateResult(
+            name="scf_wealth_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_scf_wealth_signal_gate",
+        fake_scf_wealth_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "fetch_scf_2022_full_extract",
+        lambda *args, **kwargs: Path("p22i6.dta"),
+    )
+
+    def fake_load_scf_auto_loan_donor(summary_path, full_path):
+        captured["scf_auto_summary_path"] = summary_path
+        captured["scf_auto_full_path"] = full_path
+        return pd.DataFrame()
+
+    def fake_with_scf_auto_loan_inputs(
+        frame, *, seed, time_period, scf_auto_loan_donor
+    ):
+        captured["scf_auto_stage_called"] = True
+        return frame
+
+    monkeypatch.setattr(
+        builder,
+        "load_scf_2022_auto_loan_donor",
+        fake_load_scf_auto_loan_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_scf_auto_loan_inputs",
+        fake_with_scf_auto_loan_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_scf_auto_loans_signal_gate",
+        lambda frame: builder.GateResult(
+            name="scf_auto_loans_signal",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    def fake_load_sipp_vehicle_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["sipp_vehicle_donor_path"] = path
+        captured["sipp_vehicle_donor_sha256"] = expected_sha256
+        captured["sipp_vehicle_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    def fake_with_sipp_vehicle_inputs(frame, *, seed, time_period, sipp_donor):
+        captured["sipp_vehicle_stage_called"] = True
+        captured["sipp_vehicle_seed"] = seed
+        return frame
+
+    def fake_sipp_vehicles_signal_gate(frame):
+        captured["sipp_vehicle_gate_called"] = True
+        return builder.GateResult(
+            name="sipp_vehicles_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_vehicle_donor",
+        fake_load_sipp_vehicle_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_sipp_vehicle_inputs",
+        fake_with_sipp_vehicle_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_sipp_vehicles_signal_gate",
+        fake_sipp_vehicles_signal_gate,
+    )
+
+    def fake_load_ssi_disability_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+        time_period=2024,
+    ):
+        captured["ssi_disability_donor_path"] = path
+        captured["ssi_disability_donor_sha256"] = expected_sha256
+        captured["ssi_disability_donor_size_bytes"] = expected_size_bytes
+        captured["ssi_disability_donor_period"] = time_period
+        return pd.DataFrame()
+
+    def fake_with_ssi_disability_criteria(frame, *, seed, time_period, sipp_donor):
+        captured["ssi_disability_stage_called"] = True
+        captured["ssi_disability_seed"] = seed
+        return frame
+
+    def fake_ssi_disability_signal_gate(frame):
+        captured["ssi_disability_gate_called"] = True
+        return builder.GateResult(
+            name="ssi_disability_criteria_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_ssi_disability_donor",
+        fake_load_ssi_disability_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_ssi_disability_criteria",
+        fake_with_ssi_disability_criteria,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_disability_criteria_signal_gate",
+        fake_ssi_disability_signal_gate,
+    )
+
+    def fake_load_sipp_head_start_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["sipp_head_start_donor_path"] = path
+        captured["sipp_head_start_donor_sha256"] = expected_sha256
+        captured["sipp_head_start_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    def fake_with_sipp_head_start_input(
+        frame,
+        *,
+        seed,
+        time_period,
+        sipp_donor,
+    ):
+        captured["sipp_head_start_stage_called"] = True
+        captured["sipp_head_start_seed"] = seed
+        captured["sipp_head_start_period"] = time_period
+        captured["sipp_head_start_donor"] = sipp_donor
+        return frame
+
+    def fake_sipp_head_start_signal_gate(frame):
+        captured["sipp_head_start_gate_called"] = True
+        return builder.GateResult(
+            name="sipp_head_start_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_head_start_donor",
+        fake_load_sipp_head_start_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_sipp_head_start_input",
+        fake_with_sipp_head_start_input,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_sipp_head_start_signal_gate",
+        fake_sipp_head_start_signal_gate,
+    )
+
+    def fake_ssi_uncapped_amount(
+        frame,
+        *,
+        simulation=None,
+        maximum_microsim_batch_size=None,
+    ):
+        captured["ssi_uncapped_stage_called"] = True
+        captured["ssi_uncapped_batch_size"] = maximum_microsim_batch_size
+        return np.zeros(4, dtype=np.float64)
+
+    fake_band_targets = {
+        "under_18": 1_001_922.0,
+        "18_64": 3_905_779.0,
+        "65_plus": 2_382_142.0,
+    }
+
+    def fake_band_targets_from_registry(specs):
+        captured["ssi_band_targets_specs"] = specs
+        return dict(fake_band_targets)
+
+    fake_stage_priors = {"under_18": 0.3, "18_64": 0.4, "65_plus": 0.5}
+    # Current schema-4 shape (microcosm#507/#508): main() reconstructs the prior
+    # weight basis from these stage diagnostics with the REAL module helper
+    # and threads it into the final release-weight measurement.
+    fake_stage_diagnostics = {
+        "checked": True,
+        "schema_version": 4,
+        "measurement_phase": "assignment_stage",
+        "prior_weight_basis": {
+            "kind": "current_frame",
+            "source_sha256": None,
+            "source_schema_version": None,
+        },
+        "age_bands": [
+            {
+                "age_band": key,
+                "assignment_prior": prior,
+                "prior_basis_candidate_capacity": 1_000.0,
+                "prior_basis_reporter_candidate_floor": 100.0,
+            }
+            for key, prior in fake_stage_priors.items()
+        ],
+    }
+
+    def fake_with_ssi_take_up(
+        frame,
+        *,
+        uncapped_ssi,
+        seed,
+        targets,
+        reporter_source_ids,
+        prior_basis=None,
+    ):
+        captured["ssi_take_up_stage_called"] = True
+        captured["ssi_take_up_seed"] = seed
+        captured["ssi_take_up_uncapped"] = np.asarray(uncapped_ssi)
+        captured["ssi_take_up_targets"] = dict(targets)
+        captured["ssi_reporter_source_ids"] = reporter_source_ids
+        captured["ssi_take_up_prior_basis"] = prior_basis
+        return frame, dict(fake_stage_diagnostics)
+
+    def fake_ssi_take_up_gate(diagnostics, *, targets):
+        captured["ssi_take_up_gate_called"] = True
+        gate_calls = captured.setdefault("ssi_take_up_gate_calls", [])
+        gate_calls.append({"diagnostics": diagnostics, "targets": dict(targets)})
+        captured.setdefault("ssi_event_order", []).append("integrity_gate")
+        final_integrity_failure = terminal_mode == "integrity" and len(gate_calls) == 2
+        return builder.GateResult(
+            name="ssi_take_up",
+            passed=not final_integrity_failure,
+            failures=(
+                ("Bernoulli-law violation [final-integrity-sentinel]",)
+                if final_integrity_failure
+                else ()
+            ),
+            details=diagnostics,
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_ssi_take_up_band_targets_from_registry",
+        fake_band_targets_from_registry,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_ssi_person_uncapped_amount",
+        fake_ssi_uncapped_amount,
+    )
+    monkeypatch.setattr(builder, "with_us_ssi_take_up", fake_with_ssi_take_up)
+    monkeypatch.setattr(builder, "us_ssi_take_up_gate", fake_ssi_take_up_gate)
+    # The digest reads the persisted flag column, which the stub above never
+    # writes; the sentinel keeps the checkpoint/cache-identity threading
+    # observable without a real assignment (microcosm#507/#508).
+    monkeypatch.setattr(
+        builder,
+        "_ssi_take_up_assignment_digest",
+        lambda frame, *, assignment_priors, prior_basis: "ssi-digest-sentinel",
+    )
+
+    def fake_load_voluntary_filing_donor(
+        path,
+        *,
+        expected_sha256=None,
+        expected_size_bytes=None,
+    ):
+        captured["voluntary_filing_donor_path"] = path
+        captured["voluntary_filing_donor_sha256"] = expected_sha256
+        captured["voluntary_filing_donor_size_bytes"] = expected_size_bytes
+        return pd.DataFrame()
+
+    def fake_with_voluntary_filing_input(frame, *, seed, time_period, sipp_donor):
+        captured["voluntary_filing_stage_called"] = True
+        captured["voluntary_filing_seed"] = seed
+        return frame
+
+    def fake_voluntary_filing_signal_gate(frame):
+        captured["voluntary_filing_gate_called"] = True
+        return builder.GateResult(
+            name="voluntary_filing_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_voluntary_filing_donor",
+        fake_load_voluntary_filing_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_voluntary_filing_input",
+        fake_with_voluntary_filing_input,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_voluntary_filing_signal_gate",
+        fake_voluntary_filing_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "fetch_sipp_2023_tip_donor",
+        lambda *args, **kwargs: Path("pu2023_slim.csv"),
+    )
+
+    def fake_load_sipp_tip_donor(path, *, expected_sha256=None):
+        captured["sipp_tip_donor_path"] = path
+        captured["sipp_tip_donor_sha256"] = expected_sha256
+        return pd.DataFrame()
+
+    def fake_with_sipp_tip_inputs(frame, *, seed, time_period, sipp_donor):
+        captured["sipp_tip_stage_called"] = True
+        return frame
+
+    def fake_sipp_tips_signal_gate(frame):
+        captured["sipp_tip_gate_called"] = True
+        return builder.GateResult(
+            name="sipp_tips_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "load_sipp_2023_tip_donor",
+        fake_load_sipp_tip_donor,
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_sipp_tip_inputs",
+        fake_with_sipp_tip_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_sipp_tips_signal_gate",
+        fake_sipp_tips_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "fetch_org_2024_donor",
+        lambda *args, **kwargs: Path("census_cps_org_2024_wages.csv.gz"),
+    )
+
+    def fake_load_org_donor(path, *, expected_content_sha256=None):
+        captured["org_donor_path"] = path
+        captured["org_donor_sha256"] = expected_content_sha256
+        return pd.DataFrame()
+
+    def fake_with_org_inputs(frame, *, seed, time_period, org_donor):
+        captured["org_stage_called"] = True
+        return frame
+
+    monkeypatch.setattr(builder, "load_org_2024_donor", fake_load_org_donor)
+    monkeypatch.setattr(builder, "with_us_org_wages_inputs", fake_with_org_inputs)
+    monkeypatch.setattr(
+        builder,
+        "us_org_wages_signal_gate",
+        lambda frame: builder.GateResult(
+            name="org_wages_signal", passed=True, details={"checked": True}
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_ecps_parity_gate",
+        lambda frame: builder.GateResult(
+            name="ecps_parity",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    def fake_with_aca_outputs(
+        frame,
+        specs,
+        *,
+        seed,
+        maximum_microsim_batch_size=None,
+    ):
+        captured["health_stage_events"].append("aca")
+        return frame
+
+    monkeypatch.setattr(
+        builder,
+        "_with_aca_marketplace_source_outputs",
+        fake_with_aca_outputs,
+    )
+
+    def fake_health_input_signal_gate(frame):
+        calls = captured.setdefault("health_input_gate_calls", 0) + 1
+        captured["health_input_gate_calls"] = calls
+        # Like other-health, this gate has a staging callsite (base frame)
+        # before the corridor callsite (export frame). The staging call must
+        # succeed — a crash there is green-path and rightly raises; only the
+        # corridor call exercises the #547 degraded-mode guard.
+        if terminal_mode == "crash" and calls > 1:
+            raise RuntimeError("health-input exploded [crash-sentinel]")
+        return builder.GateResult(
+            name="health_input_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_health_input_signal_gate",
+        fake_health_input_signal_gate,
+    )
+
+    def fake_with_medicaid_outputs(
+        frame,
+        specs,
+        *,
+        seed,
+        substitutions=(),
+        maximum_microsim_batch_size=None,
+    ):
+        captured["health_stage_events"].append("medicaid")
+        return frame, {}
+
+    def fake_medicaid_gate(diagnostics):
+        captured["health_stage_events"].append("medicaid_gate")
+        return builder.GateResult(
+            name="medicaid_take_up",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_with_medicaid_take_up_outputs",
+        fake_with_medicaid_outputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_medicaid_take_up_gate",
+        fake_medicaid_gate,
+    )
+
+    def fake_with_other_health_insurance_inputs(
+        frame,
+        *,
+        seed,
+        time_period,
+        maximum_microsim_batch_size,
+    ):
+        captured["health_stage_events"].append("other_health")
+        captured["other_health_insurance_stage_called"] = True
+        captured["other_health_insurance_seed"] = seed
+        captured["other_health_insurance_period"] = time_period
+        captured["other_health_insurance_batch_size"] = maximum_microsim_batch_size
+        return frame
+
+    def fake_other_health_insurance_signal_gate(frame):
+        captured["health_stage_events"].append("other_health_gate")
+        captured["other_health_insurance_gate_called"] = True
+        calls = captured.setdefault("other_health_gate_calls", 0) + 1
+        captured["other_health_gate_calls"] = calls
+        if calls == 1 or clean_run:
+            # Staging call on the base frame passes: the pre-solve gate
+            # fails fast by design (nothing to preserve yet). The clean run
+            # passes the export-frame call too.
+            return builder.GateResult(
+                name="other_health_insurance_premiums_signal",
+                passed=True,
+                details={"checked": True},
+            )
+        # Export-frame call fails deliberately: the microcosm#547 cofailure
+        # regression proves a failing post-solve signal gate batches
+        # alongside the SSI delivery failure instead of masking it with an
+        # in-place raise (the sparse-selection signal-flattening scenario).
+        return builder.GateResult(
+            name="other_health_insurance_premiums_signal",
+            passed=False,
+            failures=("premiums signal flattened [cofailure-sentinel]",),
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "with_us_other_health_insurance_inputs",
+        fake_with_other_health_insurance_inputs,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_other_health_insurance_signal_gate",
+        fake_other_health_insurance_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_with_snap_state_take_up_outputs",
+        lambda frame, specs, *, seed, maximum_microsim_batch_size=None: (frame, {}),
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_snap_state_take_up_gate",
+        lambda diagnostics: builder.GateResult(
+            name="snap_state_take_up",
+            passed=True,
+            details={"checked": True},
+        ),
+    )
+
+    def fake_materialize_target_frame(frame, specs, **kwargs):
+        captured["materialize_frame"] = frame
+        captured["materialize_kwargs"] = kwargs
+        return frame, registry, {"dropped_target_names": []}
+
+    def fake_staged_frame_sha256(frame):
+        # The digest itself is tested on real frames; this harness's frame is a
+        # household-only fake. Record which frame main() digests, so the run
+        # can prove it is the very frame handed to the materializer.
+        captured.setdefault("staged_digest_frames", []).append(frame)
+        return "staged-frame-sentinel"
+
+    real_write_target_frame_checkpoint = builder._write_target_frame_checkpoint
+
+    def recording_write_target_frame_checkpoint(
+        path, *, frame, identity, compilation, build_commit
+    ):
+        captured["checkpoint_write"] = {
+            "path": path,
+            "frame": frame,
+            "identity": dict(identity),
+            "build_commit": build_commit,
+        }
+        # The harness frame is a household-only fake the HDF writer cannot
+        # serialize. The real writer runs on a one-household stand-in, so the
+        # payload that reaches the diagnostics is the writer's own.
+        stand_in = Frame(
+            {
+                "person": pd.DataFrame(
+                    {
+                        "person_id": np.asarray([1], dtype="int64"),
+                        "person_household_id": np.asarray([1], dtype="int64"),
+                    }
+                ),
+                "household": pd.DataFrame(
+                    {"household_id": np.asarray([1], dtype="int64")}
+                ),
+            },
+            EntitySchema(group_entities=("household",)),
+            {"household": Weights(np.ones(1), WeightKind.DESIGN)},
+        )
+        return real_write_target_frame_checkpoint(
+            path,
+            frame=stand_in,
+            identity=identity,
+            compilation=compilation,
+            build_commit=build_commit,
+        )
+
+    def fake_degenerate_input_signal_gate(frame, engine):
+        # In retirement mode this gate ALSO fails: the production masking
+        # route (PR #557 round 2 finding 1) was the generic degenerate raise
+        # superseding the specific missing-leaf diagnosis. The degraded-mode
+        # append must carry BOTH lines to the single terminal batch while the
+        # run continues through the solve (the #547/#548 evidence contract).
+        if terminal_mode == "retirement":
+            return builder.GateResult(
+                name="degenerate_input_signal",
+                passed=False,
+                failures=("keogh_distributions flattened [degenerate-sentinel]",),
+                details={"checked": True},
+            )
+        return builder.GateResult(
+            name="degenerate_input_signal",
+            passed=True,
+            details={"checked": True},
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "_degenerate_input_signal_gate",
+        fake_degenerate_input_signal_gate,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_materialize_target_frame",
+        fake_materialize_target_frame,
+    )
+    monkeypatch.setattr(builder, "_staged_frame_sha256", fake_staged_frame_sha256)
+    monkeypatch.setattr(
+        builder,
+        "_write_target_frame_checkpoint",
+        recording_write_target_frame_checkpoint,
+    )
+
+    def fake_calibrate_l0_refit(*args, **kwargs):
+        captured["l0_args"] = args
+        captured["l0_kwargs"] = kwargs
+        captured["target_loss_weights"] = kwargs["target_loss_weights"]
+        captured["target_loss_cap"] = kwargs["target_loss_cap"]
+        return result
+
+    real_write_release_diagnostics = builder._write_release_calibration_diagnostics
+
+    def recording_write_release_diagnostics(**kwargs):
+        captured["diagnostics"] = kwargs
+        return real_write_release_diagnostics(**kwargs)
+
+    def fake_write_calibration_diagnostics(result, path, *, target_registry, build):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(
+                {
+                    "build": {
+                        "release_gates": dict(build["release_gates"]),
+                        # The real writer copies ``build`` whole; this block
+                        # carries the checkpoint provenance (microcosm#956).
+                        "target_compilation": build["target_compilation"],
+                        # Route A PR-3: the solve's thread geometry must
+                        # survive a gate-failed run, which mints no manifest.
+                        **(
+                            {"calibration_runtime": build["calibration_runtime"]}
+                            if "calibration_runtime" in build
+                            else {}
+                        ),
+                    }
+                },
+                allow_nan=False,
+            )
+        )
+        return path
+
+    monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
+    if terminal_mode == "puf_tail":
+        # The real receipt type, so ``_main``'s exact-k branch that drops the
+        # calibration frames before the export (microcosm#956) runs here.
+        ladder_outcome = builder.ExactKLadderCalibration(
+            result=result,
+            support=np.asarray([0, 1], dtype=np.int64),
+            selected_inclusion_probabilities=np.ones(2),
+            selection_receipt={
+                "k": 2,
+                "pi_hi": 0.95,
+                "seed": 17,
+                "certainty_count": 2,
+                "boundary_pool_size": 0,
+                "design": "full-pool",
+            },
+            refit_baseline_diagnostics={"method": "fixture-full-pool"},
+        )
+        monkeypatch.setattr(
+            builder,
+            "calibrate_exact_k_ladder",
+            lambda *args, **kwargs: ladder_outcome,
+        )
+        monkeypatch.setattr(
+            builder,
+            "_exact_k_puf_tail_support_gate",
+            lambda frame, support: builder.GateResult(
+                name="exact_k_puf_capital_gains_tail",
+                passed=False,
+                failures=("fixture PUF own-tail donor missing",),
+                details={"status": "failed"},
+            ),
+        )
+        monkeypatch.setattr(
+            builder,
+            "diagnostics_payload",
+            lambda result, *, target_registry: {
+                "target_surface": {"sha256": "e" * 64, "n_targets": 0}
+            },
+        )
+
+    def fake_l0_refit_weights(frame, refit_result):
+        captured["export_frame_from_l0_refit"] = True
+        return FakeExportFrame()
+
+    def fake_final_ssi_diagnostics(
+        frame,
+        *,
+        uncapped_ssi,
+        seed,
+        targets,
+        assignment_priors,
+        prior_basis,
+        reporter_source_ids,
+    ):
+        captured["final_ssi_diagnostics_called"] = True
+        captured["final_ssi_diagnostics_targets"] = dict(targets)
+        captured["final_ssi_diagnostics_assignment_priors"] = dict(assignment_priors)
+        captured["final_ssi_diagnostics_prior_basis"] = prior_basis
+        captured["final_ssi_diagnostics_reporter_source_ids"] = reporter_source_ids
+        return {"checked": True}
+
+    def fake_final_medicaid_diagnostics(
+        frame,
+        specs,
+        *,
+        seed,
+        substitutions,
+        maximum_microsim_batch_size=None,
+    ):
+        captured["final_medicaid_diagnostics_called"] = True
+        return {}
+
+    monkeypatch.setattr(builder, "_with_l0_refit_weights", fake_l0_refit_weights)
+    if terminal_mode == "puf_tail":
+        monkeypatch.setattr(
+            builder,
+            "_with_calibrated_weights",
+            lambda frame, weights: FakeExportFrame(),
+        )
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_take_up_diagnostics",
+        fake_final_ssi_diagnostics,
+    )
+
+    def fake_ssi_delivery_gate(diagnostics, *, targets, enforcement_fences=None):
+        captured["ssi_delivery_gate_called"] = True
+        captured["ssi_delivery_gate_targets"] = dict(targets)
+        # The sparse e2e paths must never see dense fences (microcosm#566/#567).
+        captured["ssi_delivery_gate_enforcement_fences"] = enforcement_fences
+        # The integrity and retirement cases pass delivery to isolate their
+        # own early failure. Other modes retain the microcosm#547 delivery
+        # cofailure and its written retry basis.
+        captured.setdefault("ssi_event_order", []).append("delivery_gate")
+        passes = terminal_mode in {
+            "integrity",
+            "retirement",
+            "puf_tail",
+            "qrf_tail_register_clean",
+            "qrf_tail_register_green",
+            "qrf_tail_register_green_skipped_smoke",
+        }
+        return builder.GateResult(
+            name="ssi_take_up_delivery",
+            passed=passes,
+            failures=(
+                ()
+                if passes
+                else ("18_64 delivered over envelope [cofailure-sentinel]",)
+            ),
+            details=diagnostics,
+        )
+
+    monkeypatch.setattr(
+        builder,
+        "us_ssi_take_up_delivery_gate",
+        fake_ssi_delivery_gate,
+    )
+
+    real_ssi_write = builder.write_us_ssi_take_up_diagnostics
+
+    def recording_ssi_write(diagnostics, path):
+        captured.setdefault("ssi_event_order", []).append(f"write:{Path(path).name}")
+        return real_ssi_write(diagnostics, path)
+
+    monkeypatch.setattr(
+        builder,
+        "write_us_ssi_take_up_diagnostics",
+        recording_ssi_write,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_medicaid_diagnostics_for_existing_output",
+        fake_final_medicaid_diagnostics,
+    )
+
+    def fake_release_gate_failures(*args, **kwargs):
+        if clean_run:
+            return []
+        if terminal_mode == "crash":
+            raise RuntimeError("release-gate evaluation exploded [crash-sentinel]")
+        if terminal_mode == "retirement":
+            # The degraded pre-solve contract (PR #557 round 3): the failing
+            # degenerate gate is NOT raised early — the gate object itself
+            # must arrive here, failures intact, and ride the single
+            # terminal batch. Emitting from the argument (the real
+            # function's contract) proves the un-raised object reached us.
+            degenerate_gate = args[8]
+            assert degenerate_gate is not None
+            assert not degenerate_gate.passed
+            return [
+                *(
+                    f"Degenerate input signal failed: {failure}"
+                    for failure in degenerate_gate.failures
+                ),
+                "ctc failed",
+            ]
+        return ["ctc failed"]
+
+    monkeypatch.setattr(
+        builder,
+        "_release_gate_failures",
+        fake_release_gate_failures,
+    )
+    monkeypatch.setattr(
+        builder,
+        "_write_release_calibration_diagnostics",
+        recording_write_release_diagnostics,
+    )
+    monkeypatch.setattr(
+        builder,
+        "write_calibration_diagnostics",
+        fake_write_calibration_diagnostics,
+    )
+    # The pre-export post-export-scoring plan (microcosm#956) dry-runs the real
+    # smoke and reform-validation consumers without an engine; only the reform
+    # objects they build need policyengine-core, which the engine-free lane
+    # does not install.
+    import microcosm.build.us_runtime.reform_coverage_smoke as smoke_module
+    import microcosm.build.us_runtime.reform_validation as reform_validation_module
+
+    monkeypatch.setattr(smoke_module, "_build_reform", lambda probe: probe.id)
+    monkeypatch.setattr(
+        reform_validation_module.ReformValidationSpec,
+        "build_reform",
+        lambda spec: spec.id,
+    )
+    monkeypatch.setattr(
+        reform_validation_module,
+        "_build_parameter_reform",
+        lambda changes: tuple(sorted(changes)),
+    )
+
+    if green_run:
+        _run_green_register_release(
+            builder,
+            monkeypatch,
+            captured=captured,
+            out=out,
+            release_id=release_id,
+            tail_register=tail_register,
+            export_mass_reference=export_mass_reference,
+            skipped_smoke=terminal_mode == "qrf_tail_register_green_skipped_smoke",
+        )
+        return
+
+    try:
+        builder.main()
+    except RuntimeError as exc:
+        # microcosm#547 cofailure contract: the batched report leads with the
+        # early terminal failures (SSI delivery + its retry-basis note, then
+        # the corridor lines in evaluation order); degraded-mode
+        # coverage/parity evaluation errors on the fake frame may append
+        # further lines after them.
+        message = str(exc)
+        if terminal_mode == "spm_missing_pool":
+            assert message == (
+                "Release gates failed: SPM independence role signal failed: "
+                "person columns missing: ['is_spm_independent_minor_role']."
+            )
+            assert not captured["spm_signal_gate"].passed
+            assert captured["spm_signal_gate"].details == {
+                "missing": ["is_spm_independent_minor_role"]
+            }
+            assert captured["spm_stage_calls"] == []
+            assert captured["terminal_gate_events"] == []
+            assert not captured.get("sipp_scf_wealth_blend_called", False)
+            return
+        assert captured["spm_stage_calls"] == (
+            [] if prepared_pool else [{"seed": 0, "time_period": builder.PERIOD}]
+        )
+        if terminal_mode == "puf_tail":
+            assert message.startswith(
+                "Release gates failed: Exact-k PUF capital-gains tail failed: "
+                "fixture PUF own-tail donor missing"
+            )
+            assert "SSI take-up delivery failed:" not in message
+        elif terminal_mode == "retirement":
+            assert message.startswith(
+                "Release gates failed: Retirement-distribution signal failed: "
+                f"{retirement_missing_failure}"
+            )
+            # The co-failing degenerate gate must batch AFTER the specific
+            # retirement diagnosis, never supersede it with an early raise
+            # (PR #557 round 2 finding 1).
+            assert (
+                "Degenerate input signal failed: keogh_distributions "
+                "flattened [degenerate-sentinel]" in message
+            )
+            assert "SSI take-up delivery failed:" not in message
+        elif terminal_mode == "integrity":
+            assert message.startswith(
+                "Release gates failed: SSI take-up final measurement failed: "
+                "Bernoulli-law violation [final-integrity-sentinel]"
+            )
+            assert "SSI take-up delivery failed:" not in message
+        elif clean_run:
+            # The register mismatch is the run's only terminal failure, yet
+            # it reaches the batched raise (the old register raise escaped
+            # before it): the gate's own stale line, then the register line.
+            assert message == (
+                "Release gates failed: QRF tail concentration failed: Stale "
+                "reviewed exclusions — the column is below the concentration "
+                "threshold now, remove the exclusion: ['estate_income'].; "
+                + builder._qrf_tail_register_failures(
+                    {"stale": ["estate_income"], "unused": ["bond_assets"]}
+                )[0]
+            )
+        else:
+            assert message.startswith(
+                "Release gates failed: SSI take-up delivery failed: "
+                "18_64 delivered over envelope [cofailure-sentinel]"
+            )
+        if not clean_run:
+            assert (
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]" in message
+            )
+        if clean_run:
+            pass
+        elif terminal_mode != "crash":
+            assert "ctc failed" in message
+            if terminal_mode == "telemetry":
+                assert (
+                    "Terminal-batch telemetry "
+                    "attach_artifact('calibration_diagnostics') crashed" in message
+                )
+                assert "telemetry-crash-sentinel" in message
+        else:
+            assert "health-input exploded [crash-sentinel]" in message
+            assert "release-gate evaluation exploded [crash-sentinel]" in message
+            assert "ctc failed" not in message
+        if terminal_mode in qrf_tail_register_modes:
+            # Both the gate's own stale line and the distinct register line
+            # ride the batch; the register never collapses into an
+            # "evaluation error" that nulls the gate.
+            assert "QRF tail concentration failed: Stale reviewed exclusions" in message
+            assert (
+                f"{builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX} the per-run "
+                "exclusion register must exactly match" in message
+            )
+            assert "['estate_income']" in message
+            assert "['bond_assets']" in message
+            assert "evaluation error" not in message
+            assert "QRF tail-concentration evaluation failed" not in message
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected post-calibration gate failure.")
+
+    release_dir = out / "releases" / release_id
+    written_diagnostics = json.loads(
+        (release_dir / "calibration_diagnostics.json").read_text()
+    )
+    # Route A PR-3: a gate-failed run writes no manifest, so its diagnostics
+    # are where the solve's thread geometry survives.
+    assert not (release_dir / "build_manifest.json").exists()
+    failed_runtime = written_diagnostics["build"]["calibration_runtime"]
+    assert set(failed_runtime) == {"torch", "torch_num_threads", "omp_num_threads"}
+    assert failed_runtime["torch_num_threads"] >= 1
+    assert failed_runtime["omp_num_threads"] == os.environ["OMP_NUM_THREADS"]
+    if terminal_mode == "puf_tail":
+        assert (
+            "Exact-k PUF capital-gains tail failed: "
+            "fixture PUF own-tail donor missing"
+            in written_diagnostics["build"]["release_gates"]["failures"]
+        )
+    elif terminal_mode == "retirement":
+        assert (
+            "Retirement-distribution signal failed: "
+            f"{retirement_missing_failure}"
+            in written_diagnostics["build"]["release_gates"]["failures"]
+        )
+    elif terminal_mode == "integrity":
+        assert (
+            "SSI take-up final measurement failed: "
+            "Bernoulli-law violation [final-integrity-sentinel]"
+            in written_diagnostics["build"]["release_gates"]["failures"]
+        )
+    # The SSI retry-basis artifact is written even though the run fails
+    # terminally — it IS the remedy input for the next attempt.
+    assert (release_dir / "us_ssi_take_up.json").exists()
+    final_weights_path = release_dir / "final_household_weights.npy"
+    final_ids_path = release_dir / "final_household_weight_ids.npy"
+    final_weights_metadata = json.loads(
+        (release_dir / "final_household_weights.json").read_text()
+    )
+    np.testing.assert_array_equal(
+        np.load(final_weights_path, allow_pickle=False),
+        np.asarray([12.0, 35.0]),
+    )
+    np.testing.assert_array_equal(
+        np.load(final_ids_path, allow_pickle=False),
+        np.asarray([10, 20], dtype="int64"),
+    )
+    # Identity binds the evidence to this run's target-frame context; the
+    # ids block reattaches every weight to its household. Their inner
+    # values are run-derived, so assert them structurally and compare the
+    # stable remainder exactly.
+    evidence_identity = final_weights_metadata.pop("identity")
+    cache_context = captured["materialize_kwargs"][
+        "target_materialization_cache_context"
+    ]
+    expected_evidence_identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256=cache_context["base_dataset_sha256"],
+        policyengine_us_version=cache_context["policyengine_us_version"],
+        seed=cache_context["seed"],
+        target_period=cache_context["target_period"],
+        target_registry_version=cache_context["target_registry_version"],
+        weeks_unemployed_source_sha256=cache_context["weeks_unemployed_source_sha256"],
+        congressional_district_vintage_crosswalk_sha256=cache_context[
+            "congressional_district_vintage_crosswalk_sha256"
+        ],
+        ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
+        selection_identities_sha256=cache_context["selection_identities_sha256"],
+        staged_frame_sha256="staged-frame-sentinel",
+    )
+    assert evidence_identity == dict(expected_evidence_identity)
+    ids_block = final_weights_metadata.pop("household_ids")
+    assert ids_block["file"] == "final_household_weight_ids.npy"
+    assert ids_block["shape"] == [2]
+    assert (
+        ids_block["ordering_sha256"]
+        == __import__("hashlib")
+        .sha256(np.asarray([10, 20], dtype="int64").tobytes())
+        .hexdigest()
+    )
+    assert final_weights_metadata == {
+        "artifact_kind": "populace_final_household_weight_evidence",
+        "schema_version": 1,
+        "measurement_phase": "release_final",
+        "entity": "household",
+        "weight_kind": "calibrated",
+        "values": {
+            "file": "final_household_weights.npy",
+            "dtype": "float64",
+            "shape": [2],
+            # This end-to-end fixture stubs every non-weeks file hash; the
+            # direct helper test above validates the real hash path.
+            "sha256": "base-sha",
+        },
+        "summary": {
+            "n_households": 2,
+            "household_weight_sum": 47.0,
+            "minimum": 12.0,
+            "maximum": 35.0,
+            "nonzero_count": 2,
+            "zero_count": 0,
+        },
+    }
+    # Artifact exclusion: the failed run leaves evidence, never artifacts.
+    # H5s land under the out root (not the release dir), so sweep the tree.
+    assert not list(out.rglob("*.h5"))
+    assert not list(release_dir.glob("*manifest*"))
+    if terminal_mode in qrf_tail_register_modes:
+        assert captured["qrf_tail_register_seen"] == {
+            "estate_income": "measured concentrated on another lineage",
+            "bond_assets": "measured concentrated on another lineage",
+        }
+        tail_payload = json.loads(
+            (release_dir / "qrf_tail_concentration.json").read_text()
+        )
+        assert tail_payload["surface"]["register_mismatch"] == {
+            "stale": ["estate_income"],
+            "unused": ["bond_assets"],
+        }
+        tail_details = tail_payload["tail_concentration"]["details"]
+        assert tail_details["top_share"]["estate_income"] == pytest.approx(1 / 6)
+        assert tail_details["dormant_exclusions"] == ["bond_assets"]
+    if terminal_mode == "telemetry":
+        assert captured["telemetry_crashed"] is True
+        assert captured["weeks_unemployed_telemetry"] == {
+            "message": (
+                "Restored measured ASEC LKWEEKS before frozen-support "
+                "selection and target materialization."
+            ),
+            "source_path": str(weeks_source.resolve()),
+            "source_sha256": builder.ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256,
+            "source_rows": 2,
+        }
+    if terminal_mode in {
+        "integrity",
+        "retirement",
+        "telemetry",
+        "puf_tail",
+        "qrf_tail_register",
+        "qrf_tail_register_clean",
+    }:
+        assert captured["terminal_gate_events"] == [
+            "input_coverage",
+            "input_mass_parity",
+            "qrf_tail_concentration",
+        ]
+    if terminal_mode != "crash":
+        if terminal_mode == "puf_tail":
+            expected_gate_failures = [
+                "Exact-k PUF capital-gains tail failed: "
+                "fixture PUF own-tail donor missing",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                "Exact-k frozen-register fit failed: Exact-k frozen-register "
+                "comparison has no complete candidate target rows.",
+                "ctc failed",
+            ]
+        elif terminal_mode == "retirement":
+            expected_gate_failures = [
+                f"Retirement-distribution signal failed: {retirement_missing_failure}",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                # The co-failing pre-solve degenerate gate is never raised
+                # early and never duplicated: its line arrives once, through
+                # _release_gate_failures (PR #557 round 3).
+                "Degenerate input signal failed: keogh_distributions "
+                "flattened [degenerate-sentinel]",
+                "ctc failed",
+            ]
+        elif terminal_mode == "integrity":
+            expected_gate_failures = [
+                "SSI take-up final measurement failed: "
+                "Bernoulli-law violation [final-integrity-sentinel]",
+                "Medicaid final diagnostics not evaluated: SSI decision "
+                "integrity failed upstream (Bernoulli-law violation) and "
+                "Medicaid eligibility consumes the frozen SSI decisions; "
+                "quarantined instead of mis-measured (microcosm#547).",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                "ctc failed",
+            ]
+        elif clean_run:
+            # Nothing failed before the terminal tail gate.
+            expected_gate_failures = []
+        else:
+            # The retry line carries the written artifact's sha256 — the
+            # required --ssi-take-up-prior-weight-basis-sha256 pin, handed out
+            # by the failure itself (sol round 2, new minor).
+            import hashlib
+
+            written_sha = hashlib.sha256(
+                (release_dir / "us_ssi_take_up.json").read_bytes()
+            ).hexdigest()
+            expected_gate_failures = [
+                "SSI take-up delivery failed: 18_64 delivered over envelope "
+                "[cofailure-sentinel]",
+                "SSI take-up delivered-weight prior basis written to "
+                f"{release_dir / 'us_ssi_take_up.json'} (sha256 {written_sha}) "
+                "for the --ssi-take-up-prior-weight-basis retry.",
+                "Other health insurance signal failed on the export frame: "
+                "premiums signal flattened [cofailure-sentinel]",
+                "ctc failed",
+            ]
+        assert captured["diagnostics"]["gate_failures"] == expected_gate_failures
+        if terminal_mode == "puf_tail":
+            assert captured["diagnostics"]["exact_k_ladder"]["invariant_battery"][
+                "puf_capital_gains_tail"
+            ] == {
+                "passed": False,
+                "failures": ["fixture PUF own-tail donor missing"],
+                "details": {"status": "failed"},
+            }
+            return
+    else:
+        # Corridor order: SSI delivery + basis note, health-input crash
+        # guard, other-health gate failure, incumbent guard, release-gate
+        # crash guard. Exact error suffixes vary (OS error text), so pin
+        # order-exact prefixes.
+        expected_prefixes = [
+            "SSI take-up delivery failed: 18_64 delivered over envelope",
+            "SSI take-up delivered-weight prior basis written to",
+            "Health-input signal evaluation crashed in degraded mode",
+            "Other health insurance signal failed on the export frame:",
+            "Incumbent diagnostics could not be loaded/validated in degraded mode",
+            "Release gate evaluation crashed in degraded mode",
+        ]
+        actual = captured["diagnostics"]["gate_failures"]
+        assert len(actual) == len(expected_prefixes), actual
+        for line, prefix in zip(actual, expected_prefixes, strict=True):
+            assert line.startswith(prefix), (line, prefix)
+        # The caught incumbent I/O failure must not be replayed at the
+        # writer's re-hash: the path is nulled for the writer.
+        assert captured["diagnostics"]["incumbent_diagnostics_path"] is None
+    assert (
+        captured["diagnostics"]["base_population_gate"].details["mass_repair"]
+        == repair_payload
+    )
+    assert captured["diagnostics"]["support_value_repairs"] == {
+        "social_security_components": ss_repair_payload,
+        "non_sch_d_capital_gains": cgd_repair_payload,
+    }
+    # The diagnostics carry a complete post-export scoring plan, never an
+    # error record, so no plan line joins the terminal batch (#956).
+    post_export_scoring = captured["diagnostics"]["post_export_scoring"]
+    assert "error" not in post_export_scoring
+    assert list(post_export_scoring["consumers"]) == [
+        "reform_coverage_smoke",
+        "reform_validation",
+        "demographics",
+    ]
+    assert captured["diagnostics"]["default_dataset"] == {
+        "method": "l0_refit",
+        "sparse": True,
+        "n_candidate_households": 4,
+        "n_selected_households": 2,
+        "n_exported_households": 2,
+        "l0_lambda_share": 0.8,
+        "l0_lambda": 0.2,
+        "selection_epochs": 1500,
+        "refit_epochs": 1500,
+        "selection_l2_lambda": 0.0,
+        "refit_l2_lambda": 0.0,
+        "selection_final_loss": 1.5,
+        "refit_initial_loss": 2.0,
+        "refit_final_loss": 1.0,
+        "final_loss": 1.0,
+    }
+    assert captured["l0_kwargs"]["l0_lambda"] == 0.2
+    assert captured["l0_kwargs"]["l2_lambda"] == 0.0
+    assert captured["l0_kwargs"]["refit_l2_lambda"] is None
+    assert captured["l0_kwargs"]["epochs"] == 1500
+    assert captured["l0_kwargs"]["refit_epochs"] == 1500
+    assert captured["l0_kwargs"]["warm_start_weights"] is None
+    assert captured["target_loss_cap"] == 1.0
+    assert np.array_equal(captured["target_loss_weights"], np.asarray([1.0]))
+    assert (
+        captured["materialize_kwargs"]["target_materialization_cache_dir"]
+        == out / "artifacts" / "target_materialization_cache"
+    )
+    assert not captured["materialize_kwargs"]["gate_congressional_district_targets"]
+    assert captured["sipp_tip_donor_path"] == Path("pu2023_slim.csv")
+    assert captured["weeks_unemployed_source_path"] == weeks_source
+    assert captured["weeks_unemployed_stage_seed"] == 0
+    assert captured["weeks_unemployed_stage_period"] == builder.PERIOD
+    assert isinstance(captured["weeks_unemployed_stage_source"], pd.DataFrame)
+    assert captured["weeks_unemployed_gate_called"] is True
+    assert captured["acs_predictor_join_kwargs"] == {
+        "person_zip": acs_person_zip,
+        "person_sha256": "d" * 64,
+        "household_zip": acs_household_zip,
+        "household_sha256": "f" * 64,
+    }
+    assert captured["source_stage_events"].index("acs_predictor_join") < captured[
+        "source_stage_events"
+    ].index("scf_wealth")
+    assert captured["source_stage_events"].index("weeks_stage") < captured[
+        "source_stage_events"
+    ].index("ssi_reporters")
+    assert captured["source_stage_events"].index("weeks_gate") < captured[
+        "source_stage_events"
+    ].index("population_repair")
+    assert (
+        captured["materialize_kwargs"]["target_materialization_cache_context"][
+            "weeks_unemployed_source_sha256"
+        ]
+        == builder.ASEC_2023_WEEKS_UNEMPLOYED_SOURCE_SHA256
+    )
+    assert captured["sipp_tip_donor_sha256"] == builder.SIPP_2023_TIP_DONOR_SHA256
+    assert captured["sipp_tip_stage_called"] is True
+    assert captured["sipp_tip_gate_called"] is True
+    assert captured["sipp_financial_asset_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["sipp_financial_asset_donor_sha256"]
+        == builder.SIPP_2023_FINANCIAL_ASSET_DONOR_SHA256
+    )
+    assert (
+        captured["sipp_financial_asset_donor_size_bytes"]
+        == builder.SIPP_2023_FINANCIAL_ASSET_DONOR_SIZE_BYTES
+    )
+    assert captured["sipp_scf_wealth_blend_called"] is True
+    assert captured["sipp_scf_wealth_blend_gate_required"] is True
+    assert captured["sipp_vehicle_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["sipp_vehicle_donor_sha256"] == builder.SIPP_2023_VEHICLE_DONOR_SHA256
+    )
+    assert (
+        captured["sipp_vehicle_donor_size_bytes"]
+        == builder.SIPP_2023_VEHICLE_DONOR_SIZE_BYTES
+    )
+    assert captured["sipp_vehicle_stage_called"] is True
+    assert captured["sipp_vehicle_seed"] == 42
+    assert captured["sipp_vehicle_gate_called"] is True
+    assert captured["ssi_disability_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["ssi_disability_donor_sha256"]
+        == builder.SIPP_2023_SSI_DISABILITY_DONOR_SHA256
+    )
+    assert (
+        captured["ssi_disability_donor_size_bytes"]
+        == builder.SIPP_2023_SSI_DISABILITY_DONOR_SIZE_BYTES
+    )
+    assert captured["ssi_disability_donor_period"] == builder.PERIOD
+    assert captured["ssi_disability_stage_called"] is True
+    assert captured["ssi_disability_seed"] == 42
+    assert captured["ssi_disability_gate_called"] is True
+    assert captured["sipp_head_start_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["sipp_head_start_donor_sha256"]
+        == builder.SIPP_2023_HEAD_START_DONOR_SHA256
+    )
+    assert (
+        captured["sipp_head_start_donor_size_bytes"]
+        == builder.SIPP_2023_HEAD_START_DONOR_SIZE_BYTES
+    )
+    assert captured["sipp_head_start_stage_called"] is True
+    assert captured["sipp_head_start_seed"] == 0
+    assert captured["sipp_head_start_period"] == builder.PERIOD
+    assert isinstance(captured["sipp_head_start_donor"], pd.DataFrame)
+    assert captured["sipp_head_start_gate_called"] is True
+    assert captured["ssi_uncapped_stage_called"] is True
+    assert (
+        captured["ssi_uncapped_batch_size"]
+        == builder.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    )
+    assert captured["ssi_take_up_stage_called"] is True
+    assert captured["ssi_take_up_seed"] == 0
+    assert captured["ssi_take_up_uncapped"].shape == (4,)
+    assert captured["ssi_take_up_targets"] == fake_band_targets
+    assert captured["ssi_reporter_source_ids"] == frozenset({"asec-reporter"})
+    assert captured["ssi_take_up_gate_called"] is True
+    # The gate binds twice: the fresh stage diagnostics at assignment time,
+    # then the persisted-flag measurement on the export frame (PR #477
+    # review finding 3) — both against the registry band targets.
+    gate_calls = captured["ssi_take_up_gate_calls"]
+    assert [call["diagnostics"] for call in gate_calls] == [
+        fake_stage_diagnostics,
+        {"checked": True},
+    ]
+    assert all(call["targets"] == fake_band_targets for call in gate_calls)
+    # One-shot regime (microcosm#469): the frozen flags are measured on the
+    # release weights, never reassigned or reconciled, and the final
+    # measurement republishes the stage's assignment priors verbatim.
+    assert captured["export_frame_from_l0_refit"] is True
+    assert captured["final_ssi_diagnostics_called"] is True
+    assert captured["final_ssi_diagnostics_targets"] == fake_band_targets
+    assert captured["final_ssi_diagnostics_assignment_priors"] == fake_stage_priors
+    assert captured["final_ssi_diagnostics_reporter_source_ids"] == frozenset(
+        {"asec-reporter"}
+    )
+    # No CLI basis: the stage draws on current-frame capacities, and the final
+    # measurement republishes the basis reconstructed from the stage's own
+    # diagnostics (microcosm#507/#508) — then the delivery gate binds it.
+    assert captured["ssi_take_up_prior_basis"] is None
+    final_basis = captured["final_ssi_diagnostics_prior_basis"]
+    assert final_basis.kind == "current_frame"
+    assert final_basis.band("65_plus").candidate_capacity == pytest.approx(1_000.0)
+    assert captured["ssi_delivery_gate_called"] is True
+    # This e2e harness runs the sparse arm: the dense-only enforcement
+    # fences must never reach the gate here (microcosm#566/#567).
+    assert captured["ssi_delivery_gate_enforcement_fences"] is None
+    assert captured["ssi_delivery_gate_targets"] == fake_band_targets
+    # The frozen-assignment digest invalidates the materialization cache on
+    # any retry whose flags differ (microcosm#507/#508 split-brain fix).
+    cache_context = captured["materialize_kwargs"][
+        "target_materialization_cache_context"
+    ]
+    assert cache_context["ssi_take_up_assignment_sha256"] == "ssi-digest-sentinel"
+    assert cache_context["selection_identities_sha256"] is None
+    expected_materializer_identity = builder._target_frame_checkpoint_identity(
+        base_dataset_sha256=cache_context["base_dataset_sha256"],
+        policyengine_us_version=cache_context["policyengine_us_version"],
+        seed=cache_context["seed"],
+        target_period=cache_context["target_period"],
+        target_registry_version=cache_context["target_registry_version"],
+        weeks_unemployed_source_sha256=cache_context["weeks_unemployed_source_sha256"],
+        congressional_district_vintage_crosswalk_sha256=cache_context[
+            "congressional_district_vintage_crosswalk_sha256"
+        ],
+        ssi_take_up_assignment_sha256=cache_context["ssi_take_up_assignment_sha256"],
+        selection_identities_sha256=cache_context["selection_identities_sha256"],
+        staged_frame_sha256="staged-frame-sentinel",
+    )
+    assert cache_context[
+        "target_frame_materializer_identity_sha256"
+    ] == builder._target_frame_checkpoint_digest(expected_materializer_identity)
+    # microcosm#956: one staged digest per run, taken on the exact frame
+    # object the materializer received.
+    assert len(captured["staged_digest_frames"]) == 1
+    assert captured["staged_digest_frames"][0] is captured["materialize_frame"]
+    assert cache_context["build_commit"] == harness_full_commit
+    checkpoint_payload = written_diagnostics["build"]["target_compilation"][
+        "target_frame_checkpoint"
+    ]
+    if checkpoint_run:
+        # microcosm#956: main() hands the writer this build's full commit and
+        # the materialized frame, and the writer's payload reaches the written
+        # diagnostics unchanged.
+        checkpoint_write = captured["checkpoint_write"]
+        assert checkpoint_write["path"] == target_frame_checkpoint_path
+        assert checkpoint_write["frame"] is captured["materialize_frame"]
+        assert checkpoint_write["identity"] == dict(expected_materializer_identity)
+        assert checkpoint_write["build_commit"] == harness_full_commit
+        assert checkpoint_payload == {
+            "enabled": True,
+            "status": "miss_written",
+            "path": str(target_frame_checkpoint_path),
+            "identity_sha256": builder._target_frame_checkpoint_digest(
+                expected_materializer_identity
+            ),
+            "schema_version": builder.TARGET_FRAME_CHECKPOINT_SCHEMA_VERSION,
+            "staged_frame_sha256": "staged-frame-sentinel",
+            "source_build_commit": harness_full_commit,
+        }
+        with h5py.File(target_frame_checkpoint_path, "r") as h5:
+            assert str(h5.attrs["build_commit"]) == harness_full_commit
+            assert json.loads(str(h5.attrs["identity_json"])) == dict(
+                expected_materializer_identity
+            )
+    else:
+        assert "checkpoint_write" not in captured
+        assert checkpoint_payload == {"enabled": False, "status": "disabled"}
+    # Evidence-first ordering (sol round 2, findings 3/10, reconciled with
+    # the #548 batched terminal gates): the final measurement hits disk
+    # BEFORE the final integrity gate runs. Delivery still evaluates after
+    # an integrity failure; on a delivery miss, the enforce helper rewrites
+    # the same artifact and its failure line carries the sha pin.
+    expected_ssi_event_order = [
+        "integrity_gate",  # stage diagnostics, at assignment time
+        "write:us_ssi_take_up.json",  # final measurement, written first
+        "integrity_gate",  # persisted-flag recheck on the export frame
+        "delivery_gate",  # enforced-band delivery, after the artifact exists
+    ]
+    if terminal_mode not in {"integrity", "retirement", "qrf_tail_register_clean"}:
+        # A delivery miss rewrites the final measurement as the retry basis.
+        expected_ssi_event_order.append("write:us_ssi_take_up.json")
+    assert captured["ssi_event_order"] == expected_ssi_event_order
+    if terminal_mode == "integrity":
+        assert "final_medicaid_diagnostics_called" not in captured
+    else:
+        assert captured["final_medicaid_diagnostics_called"] is True
+    assert captured["voluntary_filing_donor_path"] == Path("pu2023.csv")
+    assert (
+        captured["voluntary_filing_donor_sha256"]
+        == builder.SIPP_2023_VOLUNTARY_FILING_DONOR_SHA256
+    )
+    assert (
+        captured["voluntary_filing_donor_size_bytes"]
+        == builder.SIPP_2023_VOLUNTARY_FILING_DONOR_SIZE_BYTES
+    )
+    assert captured["voluntary_filing_stage_called"] is True
+    assert captured["voluntary_filing_seed"] == 0
+    assert captured["voluntary_filing_gate_called"] is True
+    assert captured["org_donor_path"] == Path("census_cps_org_2024_wages.csv.gz")
+    assert captured["org_donor_sha256"] == builder.ORG_2024_DONOR_CONTENT_SHA256
+    assert captured["org_stage_called"] is True
+    assert captured["scf_auto_summary_path"] == Path("rscfp2022.dta")
+    assert captured["scf_auto_full_path"] == Path("p22i6.dta")
+    assert captured["scf_auto_stage_called"] is True
+    assert captured["child_support_gate_called"] is True
+    assert captured["disability_benefits_gate_called"] is True
+    assert captured["educator_expense_gate_called"] is True
+    assert captured["form_4952_election_gate_called"] is True
+    assert captured["salt_refund_income_gate_called"] is True
+    assert captured["capital_gain_details_gate_called"] is True
+    assert captured["energy_subsidy_gate_called"] is True
+    assert captured["farm_business_income_gate_called"] is True
+    assert captured["other_health_insurance_stage_called"] is True
+    assert captured["other_health_insurance_gate_called"] is True
+    assert captured["other_health_insurance_seed"] == 0
+    assert captured["other_health_insurance_period"] == builder.PERIOD
+    assert (
+        captured["other_health_insurance_batch_size"]
+        == builder.DEFAULT_MAXIMUM_MICROSIM_BATCH_SIZE
+    )
+    assert captured["health_stage_events"] == [
+        "aca",
+        "medicaid",
+        "medicaid_gate",
+        "other_health",
+        "other_health_gate",
+        # The export-frame signal re-check (one-shot regime, microcosm#469).
+        "other_health_gate",
+    ]
+
+
+def test_release_gate_failures_reject_bad_national_credit_and_ss_fits() -> None:
+    builder = _load_builder_module()
+    cases = (
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_amount",
+            "Child Tax Credit amount",
+            82_863_353_000.0,
+            99_282_300_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.ctc_claims",
+            "Child Tax Credit claims",
+            38_068_980.0,
+            43_994_700.0,
+        ),
+        (
+            "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+            "earned_income_credit.total_earned_income_credit_amount",
+            "Earned Income Tax Credit amount",
+            69_041_649_000.0,
+            83_000_000_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_amount",
+            "Premium Tax Credit amount",
+            53_910_190_000.0,
+            84_823_800_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.premium_tax_credit_returns",
+            "Premium Tax Credit returns",
+            7_841_370.0,
+            11_637_100.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_amount",
+            "taxable Social Security amount",
+            455_904_900_000.0,
+            540_351_000_000.0,
+        ),
+        (
+            "irs_soi.ty2022.historic_table_2.us.all.taxable_social_security_returns",
+            "taxable Social Security returns",
+            24_475_100.0,
+            31_887_700.0,
+        ),
+    )
+
+    for target_name, label, target, final_estimate in cases:
+        diagnostics = list(_passing_critical_diagnostics(builder))
+        name = f"{target_name}@{builder.PERIOD}"
+        index = next(
+            i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+        )
+        diagnostics[index] = SimpleNamespace(
+            name=name,
+            target=target,
+            initial_estimate=target,
+            final_estimate=final_estimate,
+            relative_error=(final_estimate - target) / target,
+        )
+        result = SimpleNamespace(
+            skipped=(),
+            diagnostics=tuple(diagnostics),
+            initial_loss=10.0,
+            final_loss=5.0,
+        )
+
+        failures = builder._release_gate_failures(
+            result,
+            {"dropped_target_names": []},
+        )
+
+        assert len(failures) == 1
+        assert label in failures[0]
+        assert "exceeding 0.15" in failures[0]
+
+
+def test_critical_gate_allows_eitc_amount_within_credit_tolerance() -> None:
+    builder = _load_builder_module()
+    name = (
+        "irs_soi.ty2024.filing_season_week47.eitc_all_returns."
+        f"earned_income_credit.total_earned_income_credit_amount@{builder.PERIOD}"
+    )
+    target = 69_041_649_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    index = next(
+        i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+    )
+    diagnostics[index] = SimpleNamespace(
+        name=name,
+        target=target,
+        initial_estimate=target,
+        final_estimate=58_954_970_066.74941,
+        relative_error=(58_954_970_066.74941 - target) / target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    assert builder._release_gate_failures(result, {"dropped_target_names": []}) == []
+
+
+def test_critical_gate_allows_bounded_improvement_over_incumbent() -> None:
+    builder = _load_builder_module()
+    name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
+    target = 82_863_353_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    index = next(
+        i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+    )
+    diagnostics[index] = SimpleNamespace(
+        name=name,
+        target=target,
+        initial_estimate=99_315_000_000.0,
+        final_estimate=99_282_300_000.0,
+        relative_error=(99_282_300_000.0 - target) / target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    incumbent = {
+        name: {
+            "target": target,
+            "final_estimate": 134_904_000_000.0,
+        }
+    }
+
+    assert (
+        builder._release_gate_failures(
+            result,
+            {"dropped_target_names": []},
+            incumbent_diagnostics=incumbent,
+        )
+        == []
+    )
+
+
+def test_incumbent_diagnostics_must_match_current_target_surface(tmp_path) -> None:
+    builder = _load_builder_module()
+    incumbent_path = tmp_path / "calibration_diagnostics.json"
+    current_surface = {"sha256": "a" * 64, "n_targets": 33_127}
+    incumbent_payload = {
+        "target_surface": {"sha256": "b" * 64, "n_targets": 6_877},
+        "targets": [],
+    }
+
+    with pytest.raises(
+        RuntimeError,
+        match="Score the incumbent on the current target surface",
+    ):
+        builder._assert_incumbent_target_surface_matches(
+            current_surface,
+            incumbent_payload,
+            path=incumbent_path,
+        )
+
+
+def test_exact_k_gate_requires_strict_weighted_loss_improvement() -> None:
+    builder = _load_builder_module()
+    specs = (
+        TargetSpec(
+            name="fixture/one",
+            entity="household",
+            value=100.0,
+            measure="one",
+            period=builder.PERIOD,
+            source="fixture",
+            family="fixture_a",
+        ),
+        TargetSpec(
+            name="fixture/two",
+            entity="household",
+            value=200.0,
+            measure="two",
+            period=builder.PERIOD,
+            source="fixture",
+            family="fixture_b",
+        ),
+    )
+    registry = TargetRegistry(specs, country="us")
+    names = tuple(builder._target_row_name(spec) for spec in specs)
+    loss_weights = np.asarray([1.0, 3.0])
+
+    def result(estimates: tuple[float, float]):
+        targets = np.asarray([100.0, 200.0])
+        final = np.asarray(estimates)
+        return SimpleNamespace(
+            diagnostics=tuple(
+                SimpleNamespace(name=name, target=target, final_estimate=estimate)
+                for name, target, estimate in zip(names, targets, final, strict=True)
+            ),
+            final_loss=builder.relative_error_loss(
+                final,
+                targets,
+                target_loss_weights=loss_weights,
+                target_loss_cap=builder.US_FISCAL_TARGET_LOSS_CAP,
+            ),
+        )
+
+    incumbent = {
+        names[0]: {"target": 100.0, "final_estimate": 120.0},
+        names[1]: {"target": 200.0, "final_estimate": 240.0},
+    }
+    loss_basis = builder._fiscal_target_loss_basis(registry, loss_weights)
+    passing = builder._exact_k_frozen_register_fit_gate(
+        result((110.0, 220.0)),
+        incumbent,
+        target_registry=registry,
+        target_loss_weights=loss_weights,
+        configured_loss_basis=loss_basis,
+        incumbent_loss_basis=loss_basis,
+    )
+    tied = builder._exact_k_frozen_register_fit_gate(
+        result((120.0, 240.0)),
+        incumbent,
+        target_registry=registry,
+        target_loss_weights=loss_weights,
+        configured_loss_basis=loss_basis,
+        incumbent_loss_basis=loss_basis,
+    )
+
+    assert passing.passed
+    assert passing.details["candidate_loss"] < passing.details["incumbent_loss"]
+    assert passing.details["strict_improvement_required"] is True
+    assert not tied.passed
+    assert "did not beat the incumbent" in tied.failures[0]
+
+
+def test_exact_k_gate_rejects_incumbent_weight_swap_that_flips_verdict() -> None:
+    """The r1 [1, 10] versus [10, 1] loss-basis flip must fail closed."""
+    builder = _load_builder_module()
+    specs = (
+        TargetSpec(
+            name="fixture/one",
+            entity="household",
+            value=100.0,
+            measure="one",
+            period=builder.PERIOD,
+            source="fixture",
+            family="fixture_a",
+        ),
+        TargetSpec(
+            name="fixture/two",
+            entity="household",
+            value=100.0,
+            measure="two",
+            period=builder.PERIOD,
+            source="fixture",
+            family="fixture_b",
+        ),
+    )
+    registry = TargetRegistry(specs, country="us")
+    names = tuple(builder._target_row_name(spec) for spec in specs)
+    configured_weights = np.asarray([1.0, 10.0])
+    incumbent_weights = np.asarray([10.0, 1.0])
+    targets = np.asarray([100.0, 100.0])
+    candidate_estimates = np.asarray([120.0, 100.0])
+    candidate = SimpleNamespace(
+        diagnostics=tuple(
+            SimpleNamespace(name=name, target=target, final_estimate=estimate)
+            for name, target, estimate in zip(
+                names,
+                targets,
+                candidate_estimates,
+                strict=True,
+            )
+        ),
+        final_loss=builder.relative_error_loss(
+            candidate_estimates,
+            targets,
+            target_loss_weights=configured_weights,
+            target_loss_cap=builder.US_FISCAL_TARGET_LOSS_CAP,
+        ),
+    )
+    incumbent = {
+        name: {"target": target, "final_estimate": 110.0}
+        for name, target in zip(names, targets, strict=True)
+    }
+
+    gate = builder._exact_k_frozen_register_fit_gate(
+        candidate,
+        incumbent,
+        target_registry=registry,
+        target_loss_weights=configured_weights,
+        configured_loss_basis=builder._fiscal_target_loss_basis(
+            registry,
+            configured_weights,
+        ),
+        incumbent_loss_basis=builder._fiscal_target_loss_basis(
+            registry,
+            incumbent_weights,
+        ),
+    )
+
+    assert candidate.final_loss == pytest.approx(0.01818181818181818)
+    assert not gate.passed
+    assert gate.details["candidate_loss"] is None
+    assert gate.details["incumbent_loss"] is None
+    assert gate.failures[0].startswith("IncumbentLossBasisMismatchError:")
+
+
+def test_exact_k_gate_rejects_different_recorded_loss_basis_metadata() -> None:
+    """A surface-identical incumbent cannot substitute weighting metadata."""
+    builder = _load_builder_module()
+    spec = TargetSpec(
+        name="fixture/one",
+        entity="household",
+        value=100.0,
+        measure="one",
+        period=builder.PERIOD,
+        source="fixture",
+        family="fixture_a",
+    )
+    registry = TargetRegistry((spec,), country="us")
+    name = builder._target_row_name(spec)
+    candidate = SimpleNamespace(
+        diagnostics=(SimpleNamespace(name=name, target=100.0, final_estimate=100.0),),
+        final_loss=0.0,
+    )
+    configured_basis = builder._fiscal_target_loss_basis(
+        registry,
+        np.ones(1),
+    )
+    incumbent_basis = {
+        **configured_basis,
+        "target_loss_weighting": "different_weighting_version",
+        "target_loss_family_multipliers": {"fixture_a": 999.0},
+        "target_loss_cap": 0.01,
+    }
+
+    gate = builder._exact_k_frozen_register_fit_gate(
+        candidate,
+        {name: {"target": 100.0, "final_estimate": 200.0}},
+        target_registry=registry,
+        target_loss_weights=np.ones(1),
+        configured_loss_basis=configured_basis,
+        incumbent_loss_basis=incumbent_basis,
+    )
+
+    assert not gate.passed
+    assert gate.failures[0].startswith("IncumbentLossBasisMismatchError:")
+
+
+def test_verified_incumbent_bytes_survive_post_verification_replacement(
+    tmp_path: Path,
+) -> None:
+    """The r1 strong-to-weak replacement cannot change the scored incumbent."""
+    builder = _load_builder_module()
+    spec = TargetSpec(
+        name="fixture/one",
+        entity="household",
+        value=100.0,
+        measure="one",
+        period=builder.PERIOD,
+        source="fixture",
+        family="fixture",
+    )
+    registry = TargetRegistry((spec,), country="us")
+    name = builder._target_row_name(spec)
+    loss_weights = np.ones(1)
+    loss_basis = builder._fiscal_target_loss_basis(registry, loss_weights)
+    incumbent_path = tmp_path / "incumbent.json"
+    strong_payload = {
+        "target_surface": {"sha256": "a" * 64},
+        "build": {"target_loss_basis": loss_basis},
+        "targets": [
+            {"name": name, "target": 100.0, "final_estimate": 105.0},
+        ],
+    }
+    incumbent_path.write_text(json.dumps(strong_payload), encoding="utf-8")
+    expected_sha256 = (
+        __import__("hashlib").sha256(incumbent_path.read_bytes()).hexdigest()
+    )
+
+    pinned_payload, observed_sha256 = (
+        builder._load_verified_incumbent_diagnostics_payload(
+            incumbent_path,
+            expected_sha256=expected_sha256,
+        )
+    )
+    weak_payload = {
+        **strong_payload,
+        "targets": [
+            {"name": name, "target": 100.0, "final_estimate": 200.0},
+        ],
+    }
+    incumbent_path.write_text(json.dumps(weak_payload), encoding="utf-8")
+    candidate = SimpleNamespace(
+        diagnostics=(SimpleNamespace(name=name, target=100.0, final_estimate=110.0),),
+        final_loss=0.1,
+    )
+
+    gate = builder._exact_k_frozen_register_fit_gate(
+        candidate,
+        builder._diagnostics_by_target_name(pinned_payload, path=incumbent_path),
+        target_registry=registry,
+        target_loss_weights=loss_weights,
+        configured_loss_basis=loss_basis,
+        incumbent_loss_basis=pinned_payload["build"]["target_loss_basis"],
+    )
+
+    assert observed_sha256 == expected_sha256
+    assert not gate.passed
+    assert gate.details["incumbent_loss"] == pytest.approx(0.05)
+    assert "did not beat the incumbent" in gate.failures[0]
+
+
+def test_exact_k_frozen_register_gate_fails_closed_on_row_mismatch() -> None:
+    builder = _load_builder_module()
+    spec = TargetSpec(
+        name="fixture/one",
+        entity="household",
+        value=100.0,
+        measure="one",
+        period=builder.PERIOD,
+        source="fixture",
+        family="fixture",
+    )
+    registry = TargetRegistry((spec,), country="us")
+    name = builder._target_row_name(spec)
+    result = SimpleNamespace(
+        diagnostics=(SimpleNamespace(name=name, target=100.0, final_estimate=100.0),),
+        final_loss=0.0,
+    )
+
+    gate = builder._exact_k_frozen_register_fit_gate(
+        result,
+        {},
+        target_registry=registry,
+        target_loss_weights=np.ones(1),
+        configured_loss_basis=builder._fiscal_target_loss_basis(
+            registry,
+            np.ones(1),
+        ),
+        incumbent_loss_basis=builder._fiscal_target_loss_basis(
+            registry,
+            np.ones(1),
+        ),
+    )
+
+    assert not gate.passed
+    assert "do not equal" in gate.failures[0]
+
+
+def test_legacy_cd_provenance_requires_crosswalk_metadata() -> None:
+    scorer = _load_scorer_module()
+
+    with pytest.raises(
+        ValueError,
+        match="requires --congressional-district-vintage-crosswalk",
+    ):
+        scorer._assert_legacy_cd_provenance_options(
+            allow_legacy_cd_provenance=True,
+            congressional_district_vintage_crosswalk_metadata=None,
+        )
+
+    scorer._assert_legacy_cd_provenance_options(
+        allow_legacy_cd_provenance=True,
+        congressional_district_vintage_crosswalk_metadata={"sha256": "x"},
+    )
+
+
+def test_scorer_accepts_legacy_pe_flat_h5_flag(
+    monkeypatch,
+) -> None:
+    scorer = _load_scorer_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "score_us_fiscal_targets.py",
+            "--h5",
+            "enhanced_cps_2024.h5",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "score",
+            "--legacy-pe-flat-h5",
+        ],
+    )
+
+    args = scorer._parse_args()
+
+    assert args.legacy_pe_flat_h5
+
+
+def test_legacy_pe_flat_h5_loads_entity_frame(
+    tmp_path,
+) -> None:
+    scorer = _load_scorer_module()
+    h5_path = tmp_path / "legacy_us_data.h5"
+
+    def write_column(name: str, values: object) -> None:
+        with h5py.File(h5_path, "a") as h5:
+            group = h5.create_group(name)
+            group.create_dataset(str(scorer.release.PERIOD), data=np.asarray(values))
+
+    write_column("person_id", [1, 2, 3, 4])
+    write_column("person_household_id", [10, 10, 20, 20])
+    write_column("person_tax_unit_id", [100, 100, 200, 300])
+    write_column("person_spm_unit_id", [1000, 1000, 1000, 1000])
+    write_column("person_family_id", [2000, 2000, 2001, 2002])
+    write_column("person_marital_unit_id", [3000, 3001, 3002, 3003])
+    write_column("household_id", [10, 20])
+    write_column("household_weight", [100.0, 200.0])
+    write_column("state_fips", [6, 36])
+    write_column("tax_unit_id", [100, 200, 300])
+    write_column("spm_unit_id", [1000])
+    write_column("family_id", [2000, 2001, 2002])
+    write_column("marital_unit_id", [3000, 3001, 3002, 3003])
+    write_column("age", [40, 38, 10, 7])
+    write_column("income_tax", [1_000.0, 2_000.0, 3_000.0])
+    write_column("unknown_household_signal", [1, 0])
+    write_column("bad_matrix", [[1, 2], [3, 4]])
+
+    frame, metadata = scorer._load_legacy_pe_flat_frame(
+        h5_path,
+        variable_entity_by_name={
+            "age": "person",
+            "income_tax": "tax_unit",
+            "state_fips": "household",
+        },
+    )
+
+    assert frame.n("person") == 4
+    assert frame.n("household") == 2
+    assert frame.n("tax_unit") == 3
+    assert frame.table("person")["age"].tolist() == [40, 38, 10, 7]
+    assert frame.table("tax_unit")["income_tax"].tolist() == [
+        1_000.0,
+        2_000.0,
+        3_000.0,
+    ]
+    assert frame.table("household")["unknown_household_signal"].tolist() == [1, 0]
+    assert frame.weights_for("household").values.tolist() == [100.0, 200.0]
+    assert metadata["layout"] == "legacy_pe_flat_h5"
+    assert metadata["inferred_unknown_columns_by_entity"] == {
+        "household": ["unknown_household_signal"]
+    }
+    assert any(
+        skipped["column"] == "bad_matrix" and "not one-dimensional" in skipped["reason"]
+        for skipped in metadata["skipped_columns"]
+    )
+
+
+def test_legacy_pe_flat_h5_drops_zero_weight_households(
+    tmp_path,
+) -> None:
+    scorer = _load_scorer_module()
+    h5_path = tmp_path / "legacy_us_data_zero_weights.h5"
+
+    def write_column(name: str, values: object) -> None:
+        with h5py.File(h5_path, "a") as h5:
+            group = h5.create_group(name)
+            group.create_dataset(str(scorer.release.PERIOD), data=np.asarray(values))
+
+    write_column("person_id", [1, 2, 3, 4])
+    write_column("person_household_id", [10, 10, 20, 20])
+    write_column("person_tax_unit_id", [100, 100, 200, 200])
+    write_column("person_spm_unit_id", [1000, 1000, 2000, 2000])
+    write_column("person_family_id", [3000, 3000, 4000, 4000])
+    write_column("person_marital_unit_id", [5000, 5001, 6000, 6001])
+    write_column("household_id", [10, 20])
+    write_column("household_weight", [100.0, 0.0])
+    write_column("tax_unit_id", [100, 200])
+    write_column("spm_unit_id", [1000, 2000])
+    write_column("family_id", [3000, 4000])
+    write_column("marital_unit_id", [5000, 5001, 6000, 6001])
+    write_column("age", [40, 38, 10, 7])
+
+    frame, metadata = scorer._load_legacy_pe_flat_frame(
+        h5_path,
+        variable_entity_by_name={"age": "person"},
+    )
+
+    assert frame.n("household") == 1
+    assert frame.n("person") == 2
+    assert frame.table("household")["household_id"].tolist() == [10]
+    assert frame.table("person")["person_id"].tolist() == [1, 2]
+    assert frame.weights_for("household").values.tolist() == [100.0]
+    assert metadata["dropped_zero_weight_households"] == 1
+    assert metadata["dropped_zero_weight_persons"] == 2
+
+
+def test_critical_gate_rejects_improved_miss_past_hard_stop() -> None:
+    builder = _load_builder_module()
+    name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
+    target = 82_863_353_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    index = next(
+        i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+    )
+    diagnostics[index] = SimpleNamespace(
+        name=name,
+        target=target,
+        initial_estimate=99_315_000_000.0,
+        final_estimate=105_000_000_000.0,
+        relative_error=(105_000_000_000.0 - target) / target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    incumbent = {
+        name: {
+            "target": target,
+            "final_estimate": 134_904_000_000.0,
+        }
+    }
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        incumbent_diagnostics=incumbent,
+    )
+
+    assert len(failures) == 1
+    assert "Child Tax Credit amount" in failures[0]
+    assert "exceeding 0.15" in failures[0]
+    assert "incumbent_relative_error=" in failures[0]
+    assert "improvement_hard_stop=0.25" in failures[0]
+
+
+def test_critical_gate_rejects_miss_when_incumbent_is_better() -> None:
+    builder = _load_builder_module()
+    name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
+    target = 82_863_353_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    index = next(
+        i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+    )
+    diagnostics[index] = SimpleNamespace(
+        name=name,
+        target=target,
+        initial_estimate=99_315_000_000.0,
+        final_estimate=99_282_300_000.0,
+        relative_error=(99_282_300_000.0 - target) / target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+    incumbent = {
+        name: {
+            "target": target,
+            "final_estimate": 90_000_000_000.0,
+        }
+    }
+
+    failures = builder._release_gate_failures(
+        result,
+        {"dropped_target_names": []},
+        incumbent_diagnostics=incumbent,
+    )
+
+    assert len(failures) == 1
+    assert "Child Tax Credit amount" in failures[0]
+    assert "incumbent_relative_error=" in failures[0]
+
+
+def test_health_input_signal_gate_rejects_degenerate_aca_inputs() -> None:
+    builder = _load_builder_module()
+
+    class FakeFrame:
+        def table(self, name):
+            assert name == "tax_unit"
+            return pd.DataFrame(
+                {
+                    "takes_up_aca_if_eligible": [True, True, True],
+                    "selected_marketplace_plan_benchmark_ratio": [1.0, 1.0, 1.0],
+                }
+            )
+
+    gate = builder._health_input_signal_gate(FakeFrame())
+
+    assert not gate.passed
+    assert gate.name == "health_input_signal"
+    assert len(gate.failures) == 2
+    assert any("takes_up_aca_if_eligible" in failure for failure in gate.failures)
+    assert any(
+        "selected_marketplace_plan_benchmark_ratio" in failure
+        for failure in gate.failures
+    )
+
+
+def test_health_input_signal_gate_accepts_varied_aca_inputs() -> None:
+    builder = _load_builder_module()
+
+    class FakeFrame:
+        def table(self, name):
+            assert name == "tax_unit"
+            return pd.DataFrame(
+                {
+                    "takes_up_aca_if_eligible": [True, False, True],
+                    "selected_marketplace_plan_benchmark_ratio": [1.0, 0.8, 1.2],
+                }
+            )
+
+    gate = builder._health_input_signal_gate(FakeFrame())
+
+    assert gate.passed
+    assert gate.details["unique_counts"] == {
+        "selected_marketplace_plan_benchmark_ratio": 3,
+        "takes_up_aca_if_eligible": 2,
+    }
+    ratio_diagnostics = gate.details["selected_marketplace_plan_benchmark_ratio"]
+    assert ratio_diagnostics["support"] == {"lower": 0.5, "upper": 1.5}
+    assert ratio_diagnostics["all_tax_units"] == {
+        "count": 3,
+        "min": 0.8,
+        "max": 1.2,
+        "mean": 1.0,
+        "neutral_count": 1,
+        "below_benchmark_count": 1,
+        "above_benchmark_count": 1,
+        "below_support_count": 0,
+        "above_support_count": 0,
+    }
+    marketplace_takers = ratio_diagnostics["marketplace_takers"]
+    assert marketplace_takers["count"] == 2
+    assert abs(marketplace_takers["mean"] - 1.1) < 1e-12
+    assert marketplace_takers["below_benchmark_count"] == 0
+    assert marketplace_takers["above_benchmark_count"] == 1
+
+
+def test_aca_source_runtime_refreshes_degenerate_release_inputs(monkeypatch) -> None:
+    builder = _load_builder_module()
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3], dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+            "person_tax_unit_id": np.asarray([10, 10, 20], dtype="int64"),
+            "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+            "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+            "person_marital_unit_id": np.asarray([10000, 10000, 20000], dtype="int64"),
+            "has_marketplace_health_coverage_at_interview": [False, False, True],
+        }
+    )
+    frame = Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([1, 1]),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {
+                    "tax_unit_id": np.asarray([10, 20], dtype="int64"),
+                    "stable_tax_unit_draw": [0.1, 0.2],
+                    "takes_up_aca_if_eligible": [False, False],
+                    "selected_marketplace_plan_benchmark_ratio": [1.0, 1.0],
+                }
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": [100, 200]}),
+            "family": pd.DataFrame({"family_id": [1000, 2000]}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": [10000, 20000]}),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+    specs = (
+        TargetSpec(
+            name="cms_aca.oep2024.state_marketplace.al.aptc_recipients",
+            entity="household",
+            measure="takes_up_aca_if_eligible",
+            value=3.0,
+            source="CMS Marketplace OEP",
+            family="cms_aca",
+            metadata={
+                "target_role": "aca_ptc_recipients",
+                "state_fips": "01",
+                "ledger_geography_level": "state",
+            },
+        ),
+    )
+    values = {
+        "is_aca_ptc_eligible": np.asarray([1.0, 1.0]),
+        "is_aca_ptc_eligible:person": np.asarray([1.0, 1.0, 1.0]),
+        "health_insurance_premiums_without_medicare_part_b": np.asarray(
+            [400.0, 1200.0]
+        ),
+        "assigned_aca_ptc": np.asarray([0.0, 0.0]),
+        "aca_ptc": np.asarray([100.0, 0.0]),
+        "slcsp": np.asarray([1000.0, 1000.0]),
+    }
+
+    def fake_calculate_array(simulation, variable, *, map_to=None):
+        assert simulation is fake_simulation
+        assert map_to in {"tax_unit", "person"}
+        if map_to == "person":
+            return values[f"{variable}:person"]
+        return values[variable]
+
+    fake_simulation = object()
+    monkeypatch.setattr(builder, "_calculate_array", fake_calculate_array)
+
+    refreshed = builder._with_aca_marketplace_source_outputs(
+        frame,
+        specs,
+        seed=42,
+        simulation=fake_simulation,
+    )
+
+    tax_unit = refreshed.table("tax_unit")
+    assigned = tax_unit.set_index("tax_unit_id")["takes_up_aca_if_eligible"]
+    assert bool(assigned.loc[10]) is True
+    assert bool(assigned.loc[20]) is False
+    assert tax_unit["takes_up_aca_if_eligible"].nunique() == 2
+    assert tax_unit["selected_marketplace_plan_benchmark_ratio"].nunique() == 2
+    person_counts = person.assign(
+        assigned=person["person_tax_unit_id"].map(assigned).fillna(False)
+    )
+    assert float(person_counts["assigned"].sum()) == 2.0
+    assert builder._health_input_signal_gate(refreshed).passed
+    assert frame.table("tax_unit")["takes_up_aca_if_eligible"].nunique() == 1
+    assert (
+        frame.table("tax_unit")["selected_marketplace_plan_benchmark_ratio"].nunique()
+        == 1
+    )
+
+
+def test_aca_source_tax_unit_table_batches_policyengine_inputs(monkeypatch) -> None:
+    builder = _load_builder_module()
+    person = pd.DataFrame(
+        {
+            "person_id": np.asarray([1, 2, 3, 4], dtype="int64"),
+            "person_household_id": np.asarray([1, 1, 2, 3], dtype="int64"),
+            "person_tax_unit_id": np.asarray([10, 10, 20, 30], dtype="int64"),
+            "person_spm_unit_id": np.asarray([100, 100, 200, 300], dtype="int64"),
+            "person_family_id": np.asarray([1000, 1000, 2000, 3000], dtype="int64"),
+            "person_marital_unit_id": np.asarray(
+                [10000, 10000, 20000, 30000], dtype="int64"
+            ),
+        }
+    )
+    frame = Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "state_fips": np.asarray([1, 1, 2]),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {
+                    "tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "stable_tax_unit_draw": [0.1, 0.2, 0.3],
+                }
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": [100, 200, 300]}),
+            "family": pd.DataFrame({"family_id": [1000, 2000, 3000]}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": [10000, 20000, 30000]}),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([10.0, 20.0, 30.0]),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+    target_tables = {
+        builder.US_ACA_APTC_TARGET_TABLE: pd.DataFrame(
+            {
+                "state_fips": ["01"],
+                "target": [3.0],
+            }
+        )
+    }
+    tax_values = {
+        10: {
+            "is_aca_ptc_eligible": 1.0,
+            "aca_ptc": 100.0,
+            "health_insurance_premiums_without_medicare_part_b": 400.0,
+            "slcsp": 1000.0,
+        },
+        20: {
+            "is_aca_ptc_eligible": 0.0,
+            "aca_ptc": 200.0,
+            "health_insurance_premiums_without_medicare_part_b": 500.0,
+            "slcsp": 1100.0,
+        },
+        30: {
+            "is_aca_ptc_eligible": 1.0,
+            "aca_ptc": 300.0,
+            "health_insurance_premiums_without_medicare_part_b": 600.0,
+            "slcsp": 1200.0,
+        },
+    }
+    person_eligible = {1: 1.0, 2: 1.0, 3: 1.0, 4: 0.0}
+    seen_tax_unit_batches: list[tuple[int, ...]] = []
+    formula_owned_assertions: list[int] = []
+    dataset_assert_flags: list[bool | None] = []
+
+    class FakeMicrosimulation:
+        def __init__(self, *, dataset):
+            self.dataset = dataset
+            seen_tax_unit_batches.append(
+                tuple(dataset.table("tax_unit")["tax_unit_id"].astype(int))
+            )
+
+        def _invalidate_all_caches(self):
+            pass
+
+    def fake_calculate_array(simulation, variable, *, map_to=None):
+        if map_to == "person":
+            return np.asarray(
+                [
+                    person_eligible[int(person_id)]
+                    for person_id in simulation.dataset.table("person")["person_id"]
+                ],
+                dtype=np.float64,
+            )
+        assert map_to == "tax_unit"
+        return np.asarray(
+            [
+                tax_values[int(tax_unit_id)][variable]
+                for tax_unit_id in simulation.dataset.table("tax_unit")["tax_unit_id"]
+            ],
+            dtype=np.float64,
+        )
+
+    def fake_assert_no_formula_owned_columns(frame_arg):
+        formula_owned_assertions.append(frame_arg.n("household"))
+
+    def fake_dataset_from_frame(frame_arg, **kwargs):
+        dataset_assert_flags.append(kwargs.get("assert_no_formula_owned_columns"))
+        return frame_arg
+
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        fake_assert_no_formula_owned_columns,
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
+    monkeypatch.setattr(builder, "_calculate_array", fake_calculate_array)
+
+    tax_unit = builder._aca_source_tax_unit_table_batched(
+        frame,
+        target_tables,
+        microsimulation_cls=FakeMicrosimulation,
+        maximum_microsim_batch_size=1,
+    ).set_index("tax_unit_id")
+
+    assert seen_tax_unit_batches == [(10,), (20,), (30,)]
+    assert formula_owned_assertions == [3]
+    assert dataset_assert_flags == [False, False, False]
+    assert tax_unit.loc[10, "tax_unit_weight"] == 20.0
+    assert tax_unit.loc[20, "tax_unit_weight"] == 20.0
+    assert tax_unit.loc[30, "tax_unit_weight"] == 0.0
+    assert bool(tax_unit.loc[10, "is_aca_ptc_eligible"]) is True
+    assert bool(tax_unit.loc[20, "is_aca_ptc_eligible"]) is True
+    assert bool(tax_unit.loc[30, "is_aca_ptc_eligible"]) is False
+    assert tax_unit.loc[10, "assigned_aca_ptc"] == 100.0
+    assert (
+        tax_unit.loc[20, "health_insurance_premiums_without_medicare_part_b"] == 500.0
+    )
+    assert tax_unit.loc[30, "slcsp"] == 1200.0
+    assert tax_unit.loc[10, "aca_take_up_rate"] == 0.075
+    assert tax_unit.loc[30, "aca_take_up_rate"] == 0.0
+
+
+def test_aca_source_runtime_rejects_enrollment_only_fallback() -> None:
+    builder = _load_builder_module()
+    specs = (
+        TargetSpec(
+            name="cms_aca.oep2024.state_marketplace.al.marketplace_enrollment",
+            entity="household",
+            measure="has_marketplace_health_coverage_at_interview",
+            value=2.0,
+            source="CMS Marketplace OEP",
+            family="cms_aca",
+            metadata={"target_role": "aca_enrollment", "state_fips": "01"},
+        ),
+    )
+
+    try:
+        builder._with_aca_marketplace_source_outputs(
+            object(),
+            specs,
+            seed=42,
+            simulation=object(),
+        )
+    except RuntimeError as exc:
+        assert "requires an APTC-recipient target" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected enrollment-only ACA source refresh to fail.")
+
+
+def test_aca_source_runtime_uses_bronze_targets_when_available(
+    monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    captured: dict[str, object] = {}
+    tax_unit = pd.DataFrame(
+        {
+            "tax_unit_id": [10, 20],
+            "takes_up_aca_if_eligible": [False, False],
+            "selected_marketplace_plan_benchmark_ratio": [1.0, 1.0],
+        }
+    )
+
+    class FakeFrame:
+        entities = ("tax_unit",)
+        schema = object()
+        weighted_entities = ()
+        strata = None
+
+        def table(self, entity):
+            assert entity == "tax_unit"
+            return tax_unit
+
+    def fake_run_source_stage(
+        stage,
+        *,
+        tables,
+        operation_handlers,
+        config,
+        stop_after,
+    ):
+        captured["stage"] = stage.stage
+        captured["tables"] = tables
+        captured["stop_after"] = stop_after
+        return pd.DataFrame(
+            {
+                "tax_unit_id": [10, 20],
+                "takes_up_aca_if_eligible": [True, False],
+                "selected_marketplace_plan_benchmark_ratio": [0.8, 1.0],
+            }
+        )
+
+    monkeypatch.setattr(builder, "_aca_source_person_table", lambda frame: object())
+    monkeypatch.setattr(
+        builder,
+        "_aca_source_tax_unit_table",
+        lambda frame, target_tables, *, simulation=None, maximum_microsim_batch_size=None: (
+            pd.DataFrame({"tax_unit_id": [10, 20], "state_fips": ["06", "06"]})
+        ),
+    )
+    monkeypatch.setattr(builder, "run_source_stage", fake_run_source_stage)
+    monkeypatch.setattr(
+        builder,
+        "Frame",
+        lambda tables, schema, weights, strata: SimpleNamespace(tables=tables),
+    )
+
+    specs = (
+        TargetSpec(
+            name="cms_aca.oep2024.state_marketplace.ca.aptc_recipients",
+            entity="household",
+            measure="takes_up_aca_if_eligible",
+            value=1.0,
+            source="CMS Marketplace OEP",
+            family="cms_aca",
+            metadata={
+                "target_role": "aca_ptc_recipients",
+                "state_fips": "06",
+                "ledger_geography_level": "state",
+            },
+        ),
+        TargetSpec(
+            name="cms_aca.oep2024.state_metal.ca.bronze_aptc_consumers",
+            entity="household",
+            measure="selected_marketplace_plan_benchmark_ratio",
+            value=1.0,
+            source="CMS Marketplace OEP",
+            family="cms_aca",
+            metadata={
+                "target_role": "aca_bronze_aptc_consumers",
+                "state_fips": "06",
+                "ledger_geography_level": "state",
+            },
+        ),
+    )
+
+    builder._with_aca_marketplace_source_outputs(
+        FakeFrame(),
+        specs,
+        seed=42,
+        simulation=object(),
+    )
+
+    assert captured["stage"] == builder.US_ACA_MARKETPLACE_STAGE
+    assert captured["stop_after"] is None
+    target_tables = captured["tables"]
+    assert set(target_tables) >= {
+        builder.US_ACA_APTC_TARGET_TABLE,
+        "cms_aca_bronze_aptc_consumers_by_state",
+    }
+    bronze_table = target_tables["cms_aca_bronze_aptc_consumers_by_state"]
+    assert bronze_table.to_dict("records") == [
+        {
+            "state_fips": "06",
+            "target": 1.0,
+            "source_record_id": (
+                "cms_aca.oep2024.state_metal.ca.bronze_aptc_consumers"
+            ),
+        }
+    ]
+
+
+def test_aca_source_target_tables_ignore_congressional_district_targets() -> None:
+    builder = _load_builder_module()
+
+    specs = (
+        TargetSpec(
+            name="irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+            "premium_tax_credit_amount",
+            entity="household",
+            measure="assigned_aca_ptc",
+            value=100.0,
+            source="SOI",
+            family="irs_soi",
+            metadata={
+                "target_role": "aca_spending",
+                "state_fips": "06",
+                "ledger_geography_level": "state",
+            },
+        ),
+        TargetSpec(
+            name="irs_soi.ty2023.congressional_district_2022.all_returns."
+            "ca_01.premium_tax_credit_amount",
+            entity="household",
+            measure="assigned_aca_ptc",
+            value=75.0,
+            source="SOI",
+            family="irs_soi",
+            metadata={
+                "target_role": "aca_spending",
+                "state_fips": "06",
+                "ledger_geography_level": "congressional_district",
+                "congressional_district_geoid": "0601",
+            },
+        ),
+        TargetSpec(
+            name="irs_soi.ty2023.congressional_district_2022.all_returns."
+            "ca_total.premium_tax_credit_amount",
+            entity="household",
+            measure="assigned_aca_ptc",
+            value=125.0,
+            source="SOI",
+            family="irs_soi",
+            metadata={
+                "target_role": "aca_spending",
+                "state_fips": "06",
+                "ledger_geography_level": "state",
+                "ledger_layout_groupby_dimension": ("irs_soi.congressional_district"),
+                "ledger_layout_groupby_value_id": "ca_total",
+            },
+        ),
+    )
+
+    tables = builder._aca_source_target_tables(specs)
+
+    amount_table = tables["irs_soi_premium_tax_credit_amount_by_state"]
+    assert amount_table.to_dict("records") == [
+        {
+            "state_fips": "06",
+            "target": 100.0,
+            "source_record_id": (
+                "irs_soi.ty2022.historic_table_2.state_broad.ca.all."
+                "premium_tax_credit_amount"
+            ),
+        }
+    ]
+
+
+def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+                    "person_tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+                    "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+                    "person_marital_unit_id": np.asarray(
+                        [10000, 20000, 30000], dtype="int64"
+                    ),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([6, 36], dtype="int64"),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20, 30], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame(
+                {"spm_unit_id": np.asarray([100, 200], dtype="int64")}
+            ),
+            "family": pd.DataFrame(
+                {"family_id": np.asarray([1000, 2000], dtype="int64")}
+            ),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([10000, 20000, 30000], dtype="int64")}
+            ),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]), kind=WeightKind.DESIGN
+            )
+        },
+    )
+    target = TargetSpec(
+        name=f"jct.mock_tax_expenditure@{builder.PERIOD}",
+        entity="household",
+        measure="jct_mock_tax_expenditure",
+        value=-45.0,
+        source="Mock JCT",
+        family="jct",
+        signed=True,
+    )
+    reform_spec = SimpleNamespace(
+        neutralized_variable="mock_credit", measure="jct_mock_tax_expenditure"
+    )
+    datasets = []
+    simulations = []
+    reform_systems = []
+    formula_owned_assertions: list[int] = []
+
+    class FakeVariable:
+        entity = SimpleNamespace(key="tax_unit")
+
+    class FakeSystem:
+        variables = {
+            "state_income_tax": FakeVariable(),
+            "mock_credit": FakeVariable(),
+        }
+
+        def __init__(self, reform=None):
+            self.reform = reform
+            reform_systems.append(self)
+
+    class FakeMicrosimulation:
+        default_tax_benefit_system = FakeSystem
+
+        def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
+            self.dataset = dataset
+            self.reform = reform
+            self.tax_benefit_system = tax_benefit_system
+            self.cache_invalidations = 0
+            simulations.append(self)
+
+        def calculate(self, variable, *, period, **kwargs):
+            assert period == builder.PERIOD
+            tax_unit_ids = (
+                self.dataset["frame"].table("tax_unit")["tax_unit_id"].to_numpy()
+            )
+            if self.reform is not None:
+                assert variable == "income_tax"
+                assert kwargs == {}
+                reform_income_tax_by_id = {10: 90.0, 20: 25.0, 30: 40.0}
+                return np.asarray(
+                    [reform_income_tax_by_id[id_] for id_ in tax_unit_ids]
+                )
+            arrays_by_id = {
+                "income_tax": {10: 100.0, 20: 30.0, 30: 70.0},
+                "taxable_income": {10: 1000.0, 20: 2000.0, 30: 3000.0},
+                "adjusted_gross_income": {10: 1100.0, 20: 2100.0, 30: 3100.0},
+                "filing_status": {10: "SINGLE", 20: "SINGLE", 30: "SINGLE"},
+                "state_income_tax": {10: 5.0, 20: 6.0, 30: 7.0},
+            }
+            assert kwargs == {}
+            return np.asarray([arrays_by_id[variable][id_] for id_ in tax_unit_ids])
+
+        def get_holder(self, variable):
+            # The batched base pass reads each population-aggregate holder;
+            # this engine never computes one.
+            return SimpleNamespace(get_known_periods=lambda: [])
+
+        def _invalidate_all_caches(self):
+            self.cache_invalidations += 1
+
+    def fake_dataset_from_frame(
+        frame_arg,
+        *,
+        zero_variables=(),
+        system=None,
+        assert_no_formula_owned_columns=True,
+    ):
+        datasets.append(
+            (
+                frame_arg,
+                tuple(zero_variables),
+                system,
+                assert_no_formula_owned_columns,
+            )
+        )
+        return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
+
+    def fake_make_zero_variable_reform(system, variable_name):
+        assert isinstance(system, FakeSystem)
+        assert variable_name == "mock_credit"
+        return object()
+
+    def fake_assert_no_formula_owned_columns(frame_arg):
+        formula_owned_assertions.append(frame_arg.n("household"))
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us",
+        SimpleNamespace(
+            CountryTaxBenefitSystem=FakeSystem,
+            Microsimulation=FakeMicrosimulation,
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        fake_assert_no_formula_owned_columns,
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
+    monkeypatch.setattr(
+        builder, "_make_zero_variable_reform", fake_make_zero_variable_reform
+    )
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", (reform_spec,))
+    monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})
+
+    cache_context = {
+        "base_dataset_sha256": "test-base-sha",
+        "build_commit": "test-commit",
+        "policyengine_us_version": "test-policyengine-us",
+        "seed": 0,
+        "target_period": builder.PERIOD,
+        "target_registry_version": "test-target-registry",
+        # Required declaration (PR #557): the reform-vector projection
+        # fail-closes without it — see the dedicated rejection test.
+        "target_frame_materializer_identity_sha256": "test-materializer-digest",
+    }
+    with pytest.raises(ValueError, match="target_frame_materializer_identity_sha256"):
+        builder._reform_vector_cache_context(
+            {
+                k: v
+                for k, v in cache_context.items()
+                if k != "target_frame_materializer_identity_sha256"
+            }
+        )
+    target_frame, registry, dropped = builder._materialize_target_frame(
+        frame,
+        (target,),
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=cache_context,
+    )
+
+    household = target_frame.table("household")
+    assert np.array_equal(household["income_tax"], np.asarray([130.0, 70.0]))
+    assert np.array_equal(
+        household["jct_mock_tax_expenditure"], np.asarray([-15.0, -30.0])
+    )
+    assert len(registry) == 1
+    assert dropped["dropped_target_names"] == []
+    assert dropped["target_materialization_cache"]["hits"] == 0
+    assert dropped["target_materialization_cache"]["misses"] == 1
+    assert dropped["target_materialization_cache"]["writes"] == 1
+    assert len(list(tmp_path.glob("*.json"))) == 1
+    assert len(list(tmp_path.glob("*.npy"))) == 1
+    # The base simulation runs over the same one-household batches as the
+    # reform family, so both build one dataset per household.
+    assert [dataset[1] for dataset in datasets] == [
+        (),
+        (),
+        ("mock_credit",),
+        ("mock_credit",),
+    ]
+    assert [dataset[0].n("household") for dataset in datasets] == [1, 1, 1, 1]
+    assert [dataset[3] for dataset in datasets] == [False, False, False, False]
+    assert formula_owned_assertions == [2, 2]
+    assert len(simulations) == 4
+    # microcosm#456: one reform system per target family (the metadata system
+    # plus one family system), shared by every batch simulation of the family
+    # — not one engine build per batch.
+    assert len(reform_systems) == 2
+    assert [system.reform is not None for system in reform_systems] == [False, True]
+    assert [simulation.tax_benefit_system for simulation in simulations] == [
+        None,
+        None,
+        reform_systems[1],
+        reform_systems[1],
+    ]
+    # Each simulation was released (dataset reference severed), not merely
+    # cache-invalidated.
+    assert [simulation.dataset for simulation in simulations] == [None] * 4
+    assert [simulation.cache_invalidations for simulation in simulations] == [0] * 4
+    assert dropped["target_materialization_batching"]["batches"] == 2
+    assert (
+        dropped["target_materialization_batching"]["jct_reform_families_simulated"] == 1
+    )
+
+    target_frame_again, registry_again, dropped_again = (
+        builder._materialize_target_frame(
+            frame,
+            (target,),
+            maximum_microsim_batch_size=1,
+            target_materialization_cache_dir=tmp_path,
+            target_materialization_cache_context=cache_context,
+        )
+    )
+
+    household_again = target_frame_again.table("household")
+    assert np.array_equal(
+        household_again["jct_mock_tax_expenditure"], np.asarray([-15.0, -30.0])
+    )
+    assert len(registry_again) == 1
+    assert dropped_again["dropped_target_names"] == []
+    assert dropped_again["target_materialization_cache"]["hits"] == 1
+    assert dropped_again["target_materialization_cache"]["misses"] == 0
+    assert dropped_again["target_materialization_cache"]["writes"] == 0
+    assert [dataset[1] for dataset in datasets] == [
+        (),
+        (),
+        ("mock_credit",),
+        ("mock_credit",),
+        (),
+        (),
+    ]
+    assert [dataset[0].n("household") for dataset in datasets] == [1] * 6
+    assert [dataset[3] for dataset in datasets] == [False] * 6
+    assert formula_owned_assertions == [2, 2, 2]
+    assert len(simulations) == 6
+    # The cache hit skips reform materialization entirely, so the second run
+    # adds only its metadata system — no new family system is built.
+    assert len(reform_systems) == 3
+    assert [system.reform is not None for system in reform_systems] == [
+        False,
+        True,
+        False,
+    ]
+    assert [simulation.dataset for simulation in simulations] == [None] * 6
+    assert [simulation.cache_invalidations for simulation in simulations] == [0] * 6
+    assert (
+        dropped_again["target_materialization_batching"][
+            "jct_reform_families_simulated"
+        ]
+        == 0
+    )
+
+
+def test_target_materialization_cache_rejects_value_hash_mismatch(tmp_path) -> None:
+    builder = _load_builder_module()
+    identity = {
+        "schema_version": builder.TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION,
+        "kind": "jct_reform_income_tax_by_household",
+        "reform_measure": "mock_credit",
+    }
+    _, values_path = builder._write_reform_income_tax_cache(
+        tmp_path,
+        identity,
+        np.asarray([1.0, 2.0]),
+    )
+    with values_path.open("wb") as stream:
+        np.save(stream, np.asarray([3.0, 4.0]), allow_pickle=False)
+
+    with pytest.raises(RuntimeError, match="values hash mismatch"):
+        builder._read_reform_income_tax_cache(
+            tmp_path,
+            identity,
+            n_households=2,
+        )
+
+
+def test_target_materialization_cache_rejects_pre_557_identities(tmp_path) -> None:
+    """Schema-2 and pre-preservation materializer vectors cannot serve."""
+
+    builder = _load_builder_module()
+    assert builder.TARGET_MATERIALIZATION_CACHE_SCHEMA_VERSION == 3
+    reform_spec = SimpleNamespace(
+        measure="jct_mock_tax_expenditure",
+        neutralized_variable="mock_credit",
+    )
+    current_context = {
+        "target_frame_materializer_identity_sha256": "version-10-preserved-surface",
+    }
+    current_identity = builder._target_materialization_cache_identity(
+        context=current_context,
+        reform_spec=reform_spec,
+        n_households=2,
+    )
+
+    for stale_schema in (2, 1):
+        stale_identity = {
+            **current_identity,
+            "schema_version": stale_schema,
+        }
+        builder._write_reform_income_tax_cache(
+            tmp_path,
+            stale_identity,
+            np.asarray([1.0, 2.0]),
+        )
+        assert (
+            builder._read_reform_income_tax_cache(
+                tmp_path,
+                current_identity,
+                n_households=2,
+            )
+            is None
+        )
+
+    pre_557_identity = builder._target_materialization_cache_identity(
+        context={
+            "target_frame_materializer_identity_sha256": (
+                "version-9-release-refitted-surface"
+            ),
+        },
+        reform_spec=reform_spec,
+        n_households=2,
+    )
+    builder._write_reform_income_tax_cache(
+        tmp_path,
+        pre_557_identity,
+        np.asarray([3.0, 4.0]),
+    )
+    assert (
+        builder._read_reform_income_tax_cache(
+            tmp_path,
+            current_identity,
+            n_households=2,
+        )
+        is None
+    )
+
+
+def test_soi_filtered_targets_keep_mortgage_and_broad_interest_distinct(
+    monkeypatch,
+) -> None:
+    from microcosm.build.us_runtime import split_us_puf_e19200_by_agi_band
+
+    builder = _load_builder_module()
+    _installed_variable_metadata_index(builder)
+    e19200_total = np.asarray([100.0, 200.0, 300.0, 400.0])
+    source_year_agi = np.asarray([-5_000.0, 20_000.0, 100_000.0, 10_000_000.0])
+    mortgage_interest, non_mortgage_interest = split_us_puf_e19200_by_agi_band(
+        e19200_total, source_year_agi
+    )
+    assert np.all(non_mortgage_interest > 0)
+    broader_interest = mortgage_interest + non_mortgage_interest
+    np.testing.assert_array_equal(broader_interest, e19200_total)
+
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.asarray([1, 2, 3, 4], dtype="int64"),
+                    "person_household_id": np.asarray([1, 1, 2, 2], dtype="int64"),
+                    "person_tax_unit_id": np.asarray([10, 20, 30, 40], dtype="int64"),
+                    "person_spm_unit_id": np.asarray(
+                        [100, 100, 200, 200], dtype="int64"
+                    ),
+                    "person_family_id": np.asarray(
+                        [1000, 1000, 2000, 2000], dtype="int64"
+                    ),
+                    "person_marital_unit_id": np.asarray(
+                        [10000, 20000, 30000, 40000], dtype="int64"
+                    ),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([6, 6], dtype="int64"),
+                    "congressional_district_geoid": np.asarray(
+                        [601, 602], dtype="int64"
+                    ),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20, 30, 40], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": np.asarray([100, 200])}),
+            "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([10000, 20000, 30000, 40000])}
+            ),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]), kind=WeightKind.DESIGN
+            )
+        },
+    )
+
+    def eitc_spec(name, measure, child_filter, *, count=False, variable="eitc"):
+        metadata = {
+            "variable": variable,
+            "agi_lower_bound": "-inf",
+            "agi_upper_bound": "inf",
+            "filing_status": "All",
+            "source_measure_id": "eitc_returns" if count else "eitc_total",
+            "ledger_filter_eitc_child_count": child_filter,
+            "measure_mode": "indicator_sum" if count else "sum",
+        }
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure=measure,
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata=metadata,
+        )
+
+    targets = (
+        eitc_spec("no_child_amount", "no_child_amount", "0"),
+        eitc_spec("two_child_amount", "two_child_amount", "2"),
+        eitc_spec("three_plus_amount", "three_plus_amount", "3plus"),
+        eitc_spec("two_child_returns", "two_child_returns", "2", count=True),
+        eitc_spec(
+            "three_plus_return_count",
+            "three_plus_return_count",
+            "three_or_more_qualifying_children",
+            count=True,
+        ),
+        TargetSpec(
+            name="eitc_return_agi",
+            entity="household",
+            measure="eitc_return_agi",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "adjusted_gross_income",
+                "source_variable": "adjusted_gross_income",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "adjusted_gross_income",
+                "ledger_domain": (
+                    "individual_income_tax_returns_with_earned_income_credit"
+                ),
+            },
+        ),
+        TargetSpec(
+            name="eitc_return_count",
+            entity="household",
+            measure="eitc_return_count",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "count",
+                "source_variable": "count",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "return_count",
+                "ledger_domain": (
+                    "individual_income_tax_returns_with_earned_income_credit"
+                ),
+                "measure_mode": "indicator_sum",
+            },
+        ),
+        TargetSpec(
+            name="form_w2_social_security_tips",
+            entity="household",
+            measure="form_w2_social_security_tips",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "tip_income",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "return_count",
+                "measure_mode": "indicator_sum",
+            },
+        ),
+        TargetSpec(
+            name="cd_0601_agi",
+            entity="household",
+            measure="cd_0601_agi",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "adjusted_gross_income",
+                "source_variable": "adjusted_gross_income",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "adjusted_gross_income",
+                "congressional_district_geoid": "0601",
+            },
+        ),
+        TargetSpec(
+            name="cd_0601_tax_filer_individual_count",
+            entity="household",
+            measure="cd_0601_tax_filer_individual_count",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "tax_filer_individual_count",
+                "source_variable": "tax_filer_individual_count",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "tax_filer_individual_count",
+                "congressional_district_geoid": "0601",
+            },
+        ),
+        TargetSpec(
+            name="medical_dental_expense_amount",
+            entity="household",
+            measure="medical_dental_expense_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "medical_expense_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "medical_dental_expense_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="medical_dental_expense_returns",
+            entity="household",
+            measure="medical_dental_expense_returns",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "medical_expense_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "medical_dental_expense_returns",
+                "measure_mode": "indicator_sum",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="real_estate_taxes_amount",
+            entity="household",
+            measure="real_estate_taxes_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "real_estate_taxes",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "real_estate_taxes_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="real_estate_taxes_claims",
+            entity="household",
+            measure="real_estate_taxes_claims",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "real_estate_taxes",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "real_estate_taxes_claims",
+                "measure_mode": "indicator_sum",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="limited_state_local_taxes_amount",
+            entity="household",
+            measure="limited_state_local_taxes_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "salt_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "limited_state_local_taxes_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="limited_state_local_taxes_returns",
+            entity="household",
+            measure="limited_state_local_taxes_returns",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "salt_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "limited_state_local_taxes_returns",
+                "measure_mode": "indicator_sum",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="itemized_deductions_amount",
+            entity="household",
+            measure="itemized_deductions_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "itemized_taxable_income_deductions",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "itemized_deductions_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="total_itemized_deductions_amount",
+            entity="household",
+            measure="total_itemized_deductions_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "itemized_taxable_income_deductions",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "total_itemized_deductions_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="charitable_amount",
+            entity="household",
+            measure="charitable_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "charitable_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "charitable_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="interest_paid_deduction_amount",
+            entity="household",
+            measure="interest_paid_deduction_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "interest_deduction",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "interest_paid_deduction_amount",
+                "itemized_only": "true",
+            },
+        ),
+        TargetSpec(
+            name="home_mortgage_interest_amount",
+            entity="household",
+            measure="home_mortgage_interest_amount",
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata={
+                "variable": "deductible_mortgage_interest",
+                "agi_lower_bound": "-inf",
+                "agi_upper_bound": "inf",
+                "filing_status": "All",
+                "source_measure_id": "home_mortgage_interest_amount",
+                "itemized_only": "true",
+            },
+        ),
+    )
+
+    class FakeVariable:
+        entity = SimpleNamespace(key="tax_unit")
+
+    class FakeSystem:
+        variables = {
+            name: FakeVariable()
+            for name in (
+                "income_tax",
+                "taxable_income",
+                "adjusted_gross_income",
+                "filing_status",
+                "state_income_tax",
+                "eitc",
+                "eitc_child_count",
+                "itemized_taxable_income_deductions",
+                "charitable_deduction",
+                "deductible_mortgage_interest",
+                "interest_deduction",
+                "medical_expense_deduction",
+                "real_estate_taxes",
+                "salt_deduction",
+                "tip_income",
+                "tax_unit_size",
+                "tax_unit_itemizes",
+            )
+        }
+
+        def __init__(self, reform=None):
+            self.reform = reform
+
+    class FakeMicrosimulation:
+        default_tax_benefit_system = FakeSystem
+
+        def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
+            self.dataset = dataset
+            self.reform = reform
+            self.tax_benefit_system = tax_benefit_system
+
+        def calculate(self, variable, *, period, **kwargs):
+            assert period == builder.PERIOD
+            assert kwargs == {}
+            arrays = {
+                "income_tax": np.asarray([0.0, 0.0, 0.0, 0.0]),
+                "taxable_income": np.asarray([0.0, 0.0, 0.0, 0.0]),
+                "adjusted_gross_income": np.asarray(
+                    [10_000.0, 20_000.0, 30_000.0, 40_000.0]
+                ),
+                "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE", "SINGLE"]),
+                "state_income_tax": np.asarray([0.0, 0.0, 0.0, 0.0]),
+                "eitc": np.asarray([100.0, 200.0, 300.0, 0.0]),
+                "eitc_child_count": np.asarray([0.0, 2.0, 3.0, 3.0]),
+                "itemized_taxable_income_deductions": np.asarray(
+                    [1_000.0, 2_000.0, 3_000.0, 4_000.0]
+                ),
+                "charitable_deduction": np.asarray([10.0, 20.0, 30.0, 40.0]),
+                "deductible_mortgage_interest": mortgage_interest,
+                "interest_deduction": broader_interest,
+                "medical_expense_deduction": np.asarray([100.0, 200.0, 300.0, 400.0]),
+                "real_estate_taxes": np.asarray([5_000.0, 6_000.0, 7_000.0, 8_000.0]),
+                "salt_deduction": np.asarray([500.0, 600.0, 700.0, 800.0]),
+                "tip_income": np.asarray([0.0, 50.0, 0.0, 0.0]),
+                "tax_unit_size": np.asarray([1.0, 2.0, 3.0, 4.0]),
+                "tax_unit_itemizes": np.asarray([False, True, False, False]),
+            }
+            return arrays[variable]
+
+        def _invalidate_all_caches(self):
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us",
+        SimpleNamespace(
+            CountryTaxBenefitSystem=FakeSystem,
+            Microsimulation=FakeMicrosimulation,
+        ),
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        builder,
+        "SOI_VARIABLE_MAP",
+        {
+            "adjusted_gross_income": "adjusted_gross_income",
+            "eitc": "eitc",
+            "itemized_taxable_income_deductions": (
+                "itemized_taxable_income_deductions"
+            ),
+            "charitable_deduction": "charitable_deduction",
+            "deductible_mortgage_interest": "deductible_mortgage_interest",
+            "interest_deduction": "interest_deduction",
+            "medical_expense_deduction": "medical_expense_deduction",
+            "real_estate_taxes": "real_estate_taxes",
+            "salt_deduction": "salt_deduction",
+            "tip_income": "tip_income",
+            "tax_filer_individual_count": "tax_unit_size",
+        },
+    )
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
+
+    target_frame, registry, compilation = builder._materialize_target_frame(
+        frame, targets
+    )
+
+    household = target_frame.table("household")
+    assert np.array_equal(household["no_child_amount"], np.asarray([100.0, 0.0]))
+    assert np.array_equal(household["two_child_amount"], np.asarray([200.0, 0.0]))
+    assert np.array_equal(household["three_plus_amount"], np.asarray([0.0, 300.0]))
+    assert np.array_equal(household["two_child_returns"], np.asarray([1.0, 0.0]))
+    assert np.array_equal(household["three_plus_return_count"], np.asarray([0.0, 1.0]))
+    assert np.array_equal(
+        household["eitc_return_agi"], np.asarray([30_000.0, 30_000.0])
+    )
+    assert np.array_equal(household["eitc_return_count"], np.asarray([2.0, 1.0]))
+    assert np.array_equal(
+        household["form_w2_social_security_tips"], np.asarray([1.0, 0.0])
+    )
+    assert np.array_equal(household["cd_0601_agi"], np.asarray([30_000.0, 0.0]))
+    assert np.array_equal(
+        household["cd_0601_tax_filer_individual_count"], np.asarray([3.0, 0.0])
+    )
+    assert np.array_equal(
+        household["medical_dental_expense_amount"], np.asarray([200.0, 0.0])
+    )
+    assert np.array_equal(
+        household["medical_dental_expense_returns"], np.asarray([1.0, 0.0])
+    )
+    assert np.array_equal(
+        household["real_estate_taxes_amount"], np.asarray([6_000.0, 0.0])
+    )
+    assert np.array_equal(household["real_estate_taxes_claims"], np.asarray([1.0, 0.0]))
+    assert np.array_equal(
+        household["limited_state_local_taxes_amount"], np.asarray([600.0, 0.0])
+    )
+    assert np.array_equal(
+        household["limited_state_local_taxes_returns"], np.asarray([1.0, 0.0])
+    )
+    assert np.array_equal(
+        household["itemized_deductions_amount"], np.asarray([2_000.0, 0.0])
+    )
+    assert np.array_equal(
+        household["total_itemized_deductions_amount"], np.asarray([2_000.0, 0.0])
+    )
+    assert np.array_equal(household["charitable_amount"], np.asarray([20.0, 0.0]))
+    assert np.array_equal(
+        household["interest_paid_deduction_amount"],
+        np.asarray([broader_interest[1], 0.0]),
+    )
+    assert np.array_equal(
+        household["home_mortgage_interest_amount"],
+        np.asarray([mortgage_interest[1], 0.0]),
+    )
+    np.testing.assert_allclose(
+        household["interest_paid_deduction_amount"]
+        - household["home_mortgage_interest_amount"],
+        np.asarray([non_mortgage_interest[1], 0.0]),
+    )
+    assert not np.array_equal(
+        household["home_mortgage_interest_amount"],
+        household["interest_paid_deduction_amount"],
+    )
+    assert len(registry) == 21
+    assert compilation["dropped_target_names"] == []
+
+
+def test_soi_ctc_targets_materialize_nonrefundable_credit(
+    monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    _installed_variable_metadata_index(builder)
+    assert builder.SOI_VARIABLE_MAP["ctc"] == "ctc"
+    assert builder.SOI_VARIABLE_MAP["refundable_ctc"] == "refundable_ctc"
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+                    "person_tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+                    "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+                    "person_marital_unit_id": np.asarray(
+                        [10000, 20000, 30000], dtype="int64"
+                    ),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([6, 6], dtype="int64"),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20, 30], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": np.asarray([100, 200])}),
+            "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([10000, 20000, 30000])}
+            ),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]), kind=WeightKind.DESIGN
+            )
+        },
+    )
+
+    def soi_spec(name, measure, source_name, source_measure_id, *, count=False):
+        metadata = {
+            "variable": source_name,
+            "agi_lower_bound": "-inf",
+            "agi_upper_bound": "inf",
+            "filing_status": "All",
+            "source_measure_id": source_measure_id,
+            "measure_mode": "indicator_sum" if count else "sum",
+        }
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure=measure,
+            value=1.0,
+            source="fixture",
+            family="irs_soi",
+            metadata=metadata,
+        )
+
+    targets = (
+        soi_spec("ctc_amount", "ctc_amount", "ctc", "ctc_amount"),
+        soi_spec("ctc_claims", "ctc_claims", "ctc", "ctc_claims", count=True),
+        soi_spec(
+            "actc_amount",
+            "actc_amount",
+            "refundable_ctc",
+            "actc_amount",
+        ),
+        soi_spec(
+            "actc_claims",
+            "actc_claims",
+            "refundable_ctc",
+            "actc_claims",
+            count=True,
+        ),
+    )
+
+    class FakeVariable:
+        entity = SimpleNamespace(key="tax_unit")
+
+    class FakeSystem:
+        variables = {
+            name: FakeVariable()
+            for name in (
+                "income_tax",
+                "taxable_income",
+                "adjusted_gross_income",
+                "filing_status",
+                "state_income_tax",
+                "ctc",
+                "ctc_limiting_tax_liability",
+                "refundable_ctc",
+            )
+        }
+
+        def __init__(self, reform=None):
+            self.reform = reform
+
+    class FakeMicrosimulation:
+        default_tax_benefit_system = FakeSystem
+
+        def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
+            self.dataset = dataset
+            self.reform = reform
+            self.tax_benefit_system = tax_benefit_system
+
+        def calculate(self, variable, *, period, **kwargs):
+            assert period == builder.PERIOD
+            assert kwargs == {}
+            arrays = {
+                "income_tax": np.asarray([0.0, 0.0, 0.0]),
+                "taxable_income": np.asarray([0.0, 0.0, 0.0]),
+                "adjusted_gross_income": np.asarray([10_000.0, 20_000.0, 30_000.0]),
+                "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
+                "state_income_tax": np.asarray([0.0, 0.0, 0.0]),
+                "ctc": np.asarray([1_000.0, 2_000.0, 3_000.0]),
+                "ctc_limiting_tax_liability": np.asarray([80.0, 0.0, 20.0]),
+                "refundable_ctc": np.asarray([10.0, 30.0, 0.0]),
+            }
+            return arrays[variable]
+
+        def _invalidate_all_caches(self):
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us",
+        SimpleNamespace(
+            CountryTaxBenefitSystem=FakeSystem,
+            Microsimulation=FakeMicrosimulation,
+        ),
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(
+        builder,
+        "SOI_VARIABLE_MAP",
+        {
+            "ctc": "ctc",
+            "refundable_ctc": "refundable_ctc",
+        },
+    )
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
+
+    target_frame, registry, compilation = builder._materialize_target_frame(
+        frame, targets
+    )
+
+    household = target_frame.table("household")
+    assert np.array_equal(household["ctc_amount"], np.asarray([80.0, 20.0]))
+    assert np.array_equal(household["ctc_claims"], np.asarray([1.0, 1.0]))
+    assert np.array_equal(household["actc_amount"], np.asarray([40.0, 0.0]))
+    assert np.array_equal(household["actc_claims"], np.asarray([2.0, 0.0]))
+    assert len(registry) == 4
+    assert compilation["dropped_target_names"] == []
+
+
+@pytest.mark.parametrize("restatement", ["none", "agreeing", "disagreeing"])
+def test_population_age_targets_materialize_person_age_counts(
+    monkeypatch,
+    restatement,
+) -> None:
+    """Age-banded targets materialize as ``lower <= age < upper`` person counts.
+
+    ``restatement`` adds the ``ledger_filter_age_{lower,upper}_bound`` keys
+    ``ledger_targets._constraint_bound_filters`` stamps from a fact's
+    ``age >=`` / ``age <`` rows. Agreeing restatements must change nothing —
+    same columns, same values, no target dropped — on both age paths: the
+    ``population_age`` materializer and the age-banded
+    ``policyengine_variable`` branch the SSA SSI by-age counts use. A
+    restated upper edge one year off must stop the build at the guard, naming
+    both values, before anything is materialized.
+    """
+
+    builder = _load_builder_module()
+    _installed_variable_metadata_index(builder)
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.asarray([1, 2, 3, 4], dtype="int64"),
+                    "person_household_id": np.asarray([1, 1, 2, 2], dtype="int64"),
+                    "person_tax_unit_id": np.asarray([10, 20, 30, 30], dtype="int64"),
+                    "person_spm_unit_id": np.asarray(
+                        [100, 100, 200, 200], dtype="int64"
+                    ),
+                    "person_family_id": np.asarray(
+                        [1000, 1000, 2000, 2000], dtype="int64"
+                    ),
+                    "person_marital_unit_id": np.asarray(
+                        [10000, 20000, 30000, 30000], dtype="int64"
+                    ),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([6, 12], dtype="int64"),
+                    "congressional_district_geoid": np.asarray(
+                        ["0601", "1201"], dtype=object
+                    ),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20, 30], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame({"spm_unit_id": np.asarray([100, 200])}),
+            "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([10000, 20000, 30000])}
+            ),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]), kind=WeightKind.DESIGN
+            )
+        },
+    )
+
+    def population_age_spec(
+        name,
+        lower,
+        upper,
+        *,
+        state_fips=None,
+        congressional_district_geoid=None,
+    ):
+        metadata = {
+            "materializer": "population_age",
+            "measure_mode": "indicator_sum",
+            "target_role": "population_age",
+            "geography_scope": (
+                "congressional_district"
+                if congressional_district_geoid
+                else "state"
+                if state_fips
+                else "national"
+            ),
+            "age_lower_bound": str(lower),
+            "age_upper_bound": str(upper),
+            _AGE_STAMP_SOURCE: "constraint_rows",
+            **restated_bounds(lower, upper),
+        }
+        if state_fips:
+            metadata["state_fips"] = state_fips
+        if congressional_district_geoid:
+            metadata["congressional_district_geoid"] = congressional_district_geoid
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure=name,
+            value=1.0,
+            source="fixture",
+            family="census_population",
+            metadata=metadata,
+        )
+
+    def restated_bounds(lower, upper):
+        if restatement == "none":
+            return {}
+        restated_upper = upper + 1 if restatement == "disagreeing" else upper
+        restated = {"ledger_filter_age_lower_bound": str(lower)}
+        if upper != "inf":
+            restated["ledger_filter_age_upper_bound"] = str(restated_upper)
+        return restated
+
+    def ssa_age_band_spec(name, lower, upper):
+        # The shape _ssa_ssi_reference_from_fact compiles for an SSA SSI
+        # by-age row (microcosm#470): an age-banded person indicator count.
+        return TargetSpec(
+            name=name,
+            entity="household",
+            measure=name,
+            value=1.0,
+            source="fixture",
+            family="ssa",
+            metadata={
+                "materializer": "policyengine_variable",
+                "measure_mode": "indicator_sum",
+                "base_variable": "ssi",
+                "target_role": builder.SSA_SSI_AGE_BAND_RECIPIENTS_TARGET_ROLE,
+                "age_lower_bound": str(lower),
+                "age_upper_bound": str(upper),
+                _AGE_STAMP_SOURCE: "constraint_rows",
+                **restated_bounds(lower, upper),
+            },
+        )
+
+    targets = (
+        population_age_spec("national_age_0_to_4", 0, 5),
+        population_age_spec("ca_age_0_to_4", 0, 5, state_fips="06"),
+        population_age_spec("ca_age_5_to_9", 5, 10, state_fips="06"),
+        population_age_spec(
+            "ca_01_age_0_to_4",
+            0,
+            5,
+            state_fips="06",
+            congressional_district_geoid="0601",
+        ),
+        ssa_age_band_spec("ssi_under_18", 0, 18),
+        ssa_age_band_spec("ssi_age_8_to_64", 8, 65),
+    )
+
+    class FakeVariable:
+        def __init__(self, entity):
+            self.entity = SimpleNamespace(key=entity)
+
+    class FakeSystem:
+        variables = {
+            "income_tax": FakeVariable("tax_unit"),
+            "taxable_income": FakeVariable("tax_unit"),
+            "adjusted_gross_income": FakeVariable("tax_unit"),
+            "filing_status": FakeVariable("tax_unit"),
+            "state_income_tax": FakeVariable("tax_unit"),
+            "age": FakeVariable("person"),
+            "ssi": FakeVariable("person"),
+        }
+
+        def __init__(self, reform=None):
+            self.reform = reform
+
+    class FakeMicrosimulation:
+        default_tax_benefit_system = FakeSystem
+
+        def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
+            self.dataset = dataset
+            self.reform = reform
+            self.tax_benefit_system = tax_benefit_system
+
+        def calculate(self, variable, *, period, **kwargs):
+            assert period == builder.PERIOD
+            assert kwargs == {}
+            arrays = {
+                "income_tax": np.asarray([0.0, 0.0, 0.0]),
+                "taxable_income": np.asarray([0.0, 0.0, 0.0]),
+                "adjusted_gross_income": np.asarray([0.0, 0.0, 0.0]),
+                "filing_status": np.asarray(["SINGLE", "SINGLE", "SINGLE"]),
+                "state_income_tax": np.asarray([0.0, 0.0, 0.0]),
+                "age": np.asarray([2.0, 7.0, 4.0, 11.0]),
+                "ssi": np.asarray([0.0, 300.0, 0.0, 50.0]),
+            }
+            return arrays[variable]
+
+        def _invalidate_all_caches(self):
+            return None
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us",
+        SimpleNamespace(
+            CountryTaxBenefitSystem=FakeSystem,
+            Microsimulation=FakeMicrosimulation,
+        ),
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", lambda *args, **kwargs: {})
+    monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", ())
+
+    if restatement == "disagreeing":
+        with pytest.raises(RuntimeError) as excinfo:
+            builder._materialize_target_frame(frame, targets)
+        message = str(excinfo.value)
+        assert (
+            "ca_age_5_to_9: ledger_filter_age_upper_bound=11 disagrees with "
+            "age_upper_bound=10"
+        ) in message
+        assert (
+            "ssi_under_18: ledger_filter_age_upper_bound=19 disagrees with "
+            "age_upper_bound=18"
+        ) in message
+        return
+
+    target_frame, registry, compilation = builder._materialize_target_frame(
+        frame, targets
+    )
+
+    household = target_frame.table("household")
+    assert np.array_equal(household["national_age_0_to_4"], np.asarray([1.0, 1.0]))
+    assert np.array_equal(household["ca_age_0_to_4"], np.asarray([1.0, 0.0]))
+    assert np.array_equal(household["ca_age_5_to_9"], np.asarray([1.0, 0.0]))
+    assert np.array_equal(household["ca_01_age_0_to_4"], np.asarray([1.0, 0.0]))
+    # SSI recipients are the age-7 person in household 1 and the age-11 person
+    # in household 2; the 8-to-64 band keeps only the latter.
+    assert np.array_equal(household["ssi_under_18"], np.asarray([1.0, 1.0]))
+    assert np.array_equal(household["ssi_age_8_to_64"], np.asarray([0.0, 1.0]))
+    assert len(registry) == 6
+    assert compilation["dropped_target_names"] == []
+
+
+def test_unknown_ledger_filter_metadata_fails_closed() -> None:
+    builder = _load_builder_module()
+    target = TargetSpec(
+        name="unknown_filter_target",
+        entity="household",
+        measure="income_tax",
+        value=1.0,
+        source="fixture",
+        family="irs_soi",
+        metadata={"ledger_filter_unmodeled_axis": "example"},
+    )
+
+    try:
+        builder._assert_supported_ledger_filter_metadata((target,))
+    except RuntimeError as exc:
+        assert "ledger_filter_unmodeled_axis" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected unknown Ledger filter metadata to fail closed.")
+
+
+def test_build_manifests_emits_policyengine_certifiable_release_manifest(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-abcdef1-20260615"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    ssi_diagnostics_path = release_dir / "us_ssi_take_up.json"
+    ssi_diagnostics_path.write_text('{"variable":"takes_up_ssi_if_eligible"}')
+
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.729.0",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: "a" * 40 if args == ("rev-parse", "HEAD") else "",
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=(
+            SimpleNamespace(
+                name=f"nation/cbo/individual_income_tax@{builder.PERIOD}",
+                target=1.0,
+                initial_estimate=1.0,
+                final_estimate=1.0,
+            ),
+        ),
+        initial_loss=2.0,
+        final_loss=1.0,
+    )
+
+    class FakeRegistry:
+        version = "registry-sha"
+        specs = ()
+
+        def __len__(self):
+            return 1
+
+    registry = FakeRegistry()
+
+    builder._build_manifests(
+        release_id=release_id,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        result=result,
+        registry=registry,
+        dropped={"dropped_target_names": []},
+        target_profile_gate=builder.GateResult(
+            name="target_profile_coverage",
+            passed=True,
+            details={"requirements_checked": 1},
+        ),
+        base_population_gate=builder.GateResult(
+            name="base_population_scale",
+            passed=True,
+            details={
+                "population": 334_200_000.0,
+                "benchmark": 334_200_000.0,
+                "relative_error": 0.0,
+                "mass_repair": {
+                    "method": "rescale_household_weights_to_census_person_population",
+                    "applied": True,
+                    "factor": 5.87,
+                },
+            },
+        ),
+        health_input_gate=builder.GateResult(
+            name="health_input_signal",
+            passed=True,
+            details={
+                "unique_counts": {
+                    "takes_up_aca_if_eligible": 2,
+                    "selected_marketplace_plan_benchmark_ratio": 3,
+                }
+            },
+        ),
+        timing={
+            "target_compilation_seconds": 3.0,
+            "calibration_seconds": 4.0,
+            "total_build_seconds": 7.0,
+        },
+        default_dataset={
+            "method": "l0_refit",
+            "sparse": True,
+            "n_candidate_households": 337_704,
+            "n_selected_households": 57_240,
+            "n_exported_households": 57_240,
+            "l0_lambda_share": 0.8,
+        },
+        acs_predictor_join={
+            "enabled": True,
+            "crosswalk": {"sha256": "c" * 64},
+            "join": {"acs_source_people": 856_626},
+        },
+    )
+
+    manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    expected_acs_join = {
+        "enabled": True,
+        "crosswalk": {"sha256": "c" * 64},
+        "join": {"acs_source_people": 856_626},
+    }
+    assert build_manifest["acs_predictor_join"] == expected_acs_join
+    assert manifest["build"]["acs_predictor_join"] == expected_acs_join
+    assert build_manifest["gates"]["target_profile_coverage"]["passed"]
+    assert (
+        build_manifest["gates"]["target_profile_coverage"]["details"][
+            "requirements_checked"
+        ]
+        == 1
+    )
+    assert build_manifest["gates"]["health_input_signal"]["passed"]
+    assert build_manifest["gates"]["health_input_signal"]["details"][
+        "unique_counts"
+    ] == {
+        "takes_up_aca_if_eligible": 2,
+        "selected_marketplace_plan_benchmark_ratio": 3,
+    }
+    assert build_manifest["gates"]["base_population_scale"]["passed"]
+    assert (
+        build_manifest["gates"]["base_population_scale"]["details"]["relative_error"]
+        == 0.0
+    )
+    assert (
+        build_manifest["gates"]["base_population_scale"]["details"]["mass_repair"][
+            "method"
+        ]
+        == "rescale_household_weights_to_census_person_population"
+    )
+    assert manifest["data_package"] == {"name": "microcosm-data", "version": "0.1.0"}
+    assert manifest["default_datasets"] == {"national": "populace_us_2024"}
+    assert manifest["build"]["built_with_model_package"] == {
+        "name": "policyengine-us",
+        "version": "1.729.0",
+    }
+    assert build_manifest["timing"] == {
+        "target_compilation_seconds": 3.0,
+        "calibration_seconds": 4.0,
+        "total_build_seconds": 7.0,
+    }
+    assert build_manifest["dataset"]["default"] == {
+        "method": "l0_refit",
+        "sparse": True,
+        "n_candidate_households": 337_704,
+        "n_selected_households": 57_240,
+        "n_exported_households": 57_240,
+        "l0_lambda_share": 0.8,
+    }
+    assert "area_artifacts" not in build_manifest
+    assert manifest["build"]["timing"] == {
+        "target_compilation_seconds": 3.0,
+        "calibration_seconds": 4.0,
+        "total_build_seconds": 7.0,
+    }
+    assert manifest["build"]["default_dataset"] == build_manifest["dataset"]["default"]
+    assert (
+        manifest["build"]["base_population_scale"]["details"]["mass_repair"]["factor"]
+        == 5.87
+    )
+    assert manifest["compatible_core_packages"] == [
+        {"name": "policyengine-core", "specifier": "==3.26.11"}
+    ]
+    assert manifest["compatible_model_packages"] == [
+        {"name": "policyengine-us", "specifier": "==1.729.0"}
+    ]
+    assert not any(
+        key.startswith(("states/", "districts/")) for key in manifest["artifacts"]
+    )
+    assert manifest["artifacts"]["us_ssi_take_up"] == {
+        "kind": "diagnostics",
+        "path": "us_ssi_take_up.json",
+        "repo_id": builder.REPO_ID,
+        "revision": release_id,
+        "sha256": builder._sha256(ssi_diagnostics_path),
+    }
+    for artifact in manifest["artifacts"].values():
+        assert artifact["repo_id"] == builder.REPO_ID
+        assert artifact["revision"] == release_id
+        assert artifact["kind"]
+        assert artifact["sha256"]
+
+
+def _minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root):
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=(
+            SimpleNamespace(
+                name=f"nation/cbo/individual_income_tax@{builder.PERIOD}",
+                target=1.0,
+                initial_estimate=1.0,
+                final_estimate=1.0,
+            ),
+        ),
+        initial_loss=2.0,
+        final_loss=1.0,
+    )
+
+    class FakeRegistry:
+        version = "registry-sha"
+        specs = ()
+
+        def __len__(self):
+            return 1
+
+    return dict(
+        release_id=release_id,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        result=result,
+        registry=FakeRegistry(),
+        dropped={"dropped_target_names": []},
+        target_profile_gate=builder.GateResult(
+            name="target_profile_coverage",
+            passed=True,
+            details={"requirements_checked": 1},
+        ),
+        default_dataset={"method": "dense_no_l0", "sparse": False},
+    )
+
+
+def _gate_failed_exact_k_inputs(builder):
+    class FakeFrame:
+        @staticmethod
+        def n(entity):
+            assert entity == "household"
+            return 20_000
+
+    outcome = SimpleNamespace(
+        result=SimpleNamespace(frame=FakeFrame()),
+        selection_receipt={
+            "k": 20_000,
+            "pi_hi": 0.95,
+            "seed": 17,
+            "certainty_count": 3,
+            "boundary_pool_size": 100,
+            "design": "sampford",
+        },
+        refit_baseline_diagnostics={"method": "fixture"},
+    )
+    args = SimpleNamespace(
+        exact_k=20_000,
+        seed=17,
+        pool_release_id="fixture-publication",
+        allow_gate_failed_base_pool=True,
+    )
+    failures = ["asec incidence differs", "puf_tax_detail incidence differs"]
+    pool_manifest = {
+        "status": "gate_failed",
+        "simulation_ready": False,
+        "agreement_diagnostics": {"sha256": "2" * 64},
+        "agreement_gate": {
+            "passed": False,
+            "gates": {
+                "us_by_origin_battery": {
+                    "passed": False,
+                    "failures": failures,
+                    "details": {"fixture": True},
+                }
+            },
+        },
+    }
+    authenticated_pool_h5 = builder.AuthenticatedPoolH5(
+        path=Path("pool.h5"),
+        sha256="1" * 64,
+        size_bytes=123,
+        publication_run_id="fixture-publication",
+        manifest_sha256="a" * 64,
+    )
+    return {
+        "args": args,
+        "outcome": outcome,
+        "pool_manifest": pool_manifest,
+        "authenticated_pool_h5": authenticated_pool_h5,
+        "ledger_artifact": {"facts_sha256": "3" * 64},
+        "target_surface": {"sha256": "4" * 64},
+        "target_loss_basis": {"method": "fixture"},
+        "incumbent_diagnostics_sha256": "5" * 64,
+        "incumbent_fit_gate": builder.GateResult("incumbent_fit", True),
+        "puf_tail_gate": builder.GateResult("puf_tail", True),
+    }
+
+
+def test_exact_k_receipt_stays_strict_even_when_base_h5_opt_in_is_present() -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(RuntimeError, match="lost its passing agreement gate"):
+        builder._exact_k_ladder_manifest_payload(**_gate_failed_exact_k_inputs(builder))
+
+
+def test_exact_k_receipt_carries_current_worker_authentication() -> None:
+    builder = _load_builder_module()
+    inputs = _gate_failed_exact_k_inputs(builder)
+    worker_authentication = {
+        "manifest_schema_version": 10,
+        "execution_config_schema_version": 5,
+        "worker_execution_schema_version": 1,
+        "semantic_identity_sha256": "6" * 64,
+        "audit_aliases": {
+            "sys_executable": "/audit/python",
+            "sys_prefix": "/audit",
+            "argv_template_0": "/audit/python",
+        },
+    }
+    inputs["pool_manifest"]["agreement_gate"] = {"passed": True}
+    inputs["pool_manifest"]["worker_execution_authentication"] = worker_authentication
+    inputs["authenticated_pool_h5"] = builder.AuthenticatedPoolH5(
+        path=Path("pool.h5"),
+        sha256="1" * 64,
+        size_bytes=123,
+        publication_run_id="fixture-publication",
+        manifest_sha256="a" * 64,
+        worker_execution_authentication=worker_authentication,
+    )
+
+    receipt = builder._exact_k_ladder_manifest_payload(**inputs)
+
+    assert receipt["pool"]["worker_execution_authentication"] == (worker_authentication)
+
+
+def _gate_failed_base_pool_receipt() -> dict[str, object]:
+    failures = [
+        {"gate": "us_by_origin_battery", "message": "asec incidence differs"},
+        {
+            "gate": "us_by_origin_battery",
+            "message": "puf_tax_detail incidence differs",
+        },
+    ]
+    verdict = {
+        "passed": False,
+        "gates": {
+            "us_by_origin_battery": {
+                "passed": False,
+                "failures": [entry["message"] for entry in failures],
+                "details": {"fixture": True},
+            }
+        },
+    }
+    return {
+        "artifact_kind": "populace_us_multispine_input_pool",
+        "status": "gate_failed",
+        "simulation_ready": False,
+        "manifest_sha256": "a" * 64,
+        "publication_run_id": "fixture-publication",
+        "pool_h5_sha256": "1" * 64,
+        "pool_h5_size_bytes": 123,
+        "allow_gate_failed_base_pool": True,
+        "agreement_gate_reference": {
+            "battery_status": "red",
+            "passed": False,
+            "gates_json_sha256": "2" * 64,
+            "failure_count": len(failures),
+            "failures": failures,
+            "verdict": verdict,
+        },
+    }
+
+
+def test_gate_failed_base_pool_verdict_is_carried_into_release_manifest(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    receipt = _gate_failed_base_pool_receipt()
+    release_id = "populace-us-2024-gate-failed-fixture"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+
+    builder._build_manifests(
+        base_pool=receipt,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["base_pool"] == receipt
+    assert release_manifest["build"]["base_pool"] == receipt
+
+
+def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-k57240-fixture"
+    dataset_key = "populace_us_2024"
+    calibration_key = "populace_us_2024_calibration"
+    dataset_filename = builder.DATASET_FILENAME
+    calibration_filename = builder.CALIBRATION_FILENAME
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / dataset_filename).write_bytes(b"h5")
+    (artifact_root / calibration_filename).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+    selection_receipt = {
+        "k": 57_240,
+        "pi_hi": 0.95,
+        "seed": 17,
+        "certainty_count": 3,
+        "boundary_pool_size": 100,
+        "design": "sampford",
+    }
+    ladder = {
+        "k": 57_240,
+        "seed": 17,
+        "selection_receipt": selection_receipt,
+        "refit_baseline_diagnostics": {
+            "method": "normalized_horvitz_thompson_w_over_q"
+        },
+        "pool": {
+            "release_id": "fixture-pool",
+            "release_id_source": "pool_manifest.publication_run_id",
+            "manifest_sha256": "c" * 64,
+            "pool_h5_sha256": "d" * 64,
+        },
+        "agreement_gate_reference": {
+            "passed": True,
+            "diagnostics_sha256": "e" * 64,
+        },
+        "frozen_target_register": {
+            "target_surface_sha256": "b" * 64,
+            "incumbent_diagnostics_sha256": "f" * 64,
+            "incumbent_fit": {
+                "passed": True,
+                "failures": [],
+                "details": {
+                    "candidate_loss": 0.1,
+                    "incumbent_loss": 0.2,
+                },
+            },
+        },
+        "invariant_battery": {
+            "puf_capital_gains_tail": {
+                "passed": True,
+                "failures": [],
+                "details": {"status": "retained"},
+            }
+        },
+    }
+
+    builder._build_manifests(
+        dataset_key=dataset_key,
+        dataset_filename=dataset_filename,
+        calibration_key=calibration_key,
+        calibration_filename=calibration_filename,
+        exact_k_ladder=ladder,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["exact_k_ladder"] == ladder
+    assert (
+        build_manifest["gates"]["exact_k_frozen_register_fit"]
+        == (ladder["frozen_target_register"]["incumbent_fit"])
+    )
+    assert (
+        build_manifest["gates"]["exact_k_puf_capital_gains_tail"]
+        == (ladder["invariant_battery"]["puf_capital_gains_tail"])
+    )
+    assert release_manifest["build"]["exact_k_ladder"] == ladder
+    assert (
+        release_manifest["build"]["exact_k_ladder"]["selection_receipt"]
+        == selection_receipt
+    )
+    assert build_manifest["dataset"]["filename"] == dataset_filename
+    assert build_manifest["calibration"]["filename"] == calibration_filename
+    assert release_manifest["default_datasets"] == {"national": dataset_key}
+    assert release_manifest["artifacts"][dataset_key]["path"] == dataset_filename
+    assert (
+        release_manifest["artifacts"][calibration_key]["path"] == calibration_filename
+    )
+
+
+def _gate_evidence_release_dir(builder, monkeypatch, tmp_path, *, coverage):
+    """A release dir with the contract files a manifest build hashes."""
+    release_id = "populace-us-2024-abcdef1-20260923"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text(json.dumps(coverage))
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "2.2.1",
+        },
+    )
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+    return release_id, release_dir, artifact_root
+
+
+def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
+    monkeypatch, tmp_path
+) -> None:
+    """Route A remediation PR-3: a certified waiver must ship with the
+    release. The four gate verdicts become release artifacts, and both
+    manifests record the register the tail gate evaluated, the export-mass
+    reference, the solve's thread geometry and the exclusion receipt."""
+    from microcosm.data.contract import (
+        _check_build_manifest,
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    builder = _load_builder_module()
+    receipt = {
+        "reviewed_exclusion": ["irs_soi.ty2023.fixture_row"],
+        "vintage_bypass_allowlist": ["irs_soi.ty2020.fixture_row"],
+    }
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder,
+        monkeypatch,
+        tmp_path,
+        coverage={builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY: receipt},
+    )
+    register = _qrf_tail_register(
+        tmp_path, {"non_sch_d_capital_gains": "donor-ceiling tail, tracked #481"}
+    )
+    failures: list[str] = []
+    assert (
+        _record_qrf_tail(
+            builder,
+            release_dir,
+            _qrf_export_frame(builder, _qrf_build_m_values()),
+            register=register,
+            allow=False,
+            failures=failures,
+        )[0]
+        == []
+    )
+    assert failures == []
+    for filename in ("input_coverage.json", "input_mass_parity.json"):
+        (release_dir / filename).write_text('{"schema_version": 1, "enforced": true}')
+    (release_dir / "reform_coverage_smoke.json").write_text(
+        '{"schema_version": 1, "enforced": true}'
+    )
+    reference = {
+        "path": "/runtime/forensics/populace_us_2024.h5",
+        "sha256": "c" * 64,
+        "reference_name": "populace_us_2024.h5",
+    }
+    runtime = builder._calibration_runtime()
+    # The register the gate evaluated, then an operator edit during the hours
+    # before the manifest write: the manifests must still bind the evaluated
+    # bytes and entries, never the file as it stands at manifest time.
+    evaluated_register_sha256 = hashlib.sha256(register.read_bytes()).hexdigest()
+    register.write_text(json.dumps({"estate_income": "edited after the gate ran"}))
+
+    builder._build_manifests(
+        export_input_mass_reference=reference,
+        calibration_runtime=runtime,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    for key, filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.items():
+        assert release_manifest["artifacts"][key] == {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": builder.REPO_ID,
+            "revision": release_id,
+            "sha256": hashlib.sha256((release_dir / filename).read_bytes()).hexdigest(),
+        }
+    coverage_bytes = (release_dir / "us_source_coverage.json").read_bytes()
+    tail_surface = json.loads(
+        (release_dir / "qrf_tail_concentration.json").read_text()
+    )["surface"]
+    assert tail_surface["reviewed_exclusions_sha256"] == evaluated_register_sha256
+    assert (
+        evaluated_register_sha256 != hashlib.sha256(register.read_bytes()).hexdigest()
+    )
+    expected = {
+        "gate_evidence": dict.fromkeys(builder.US_RELEASE_GATE_EVIDENCE_FILES, "bound"),
+        "qrf_tail_register": {
+            "path": str(register),
+            "sha256": evaluated_register_sha256,
+            "entries": {"non_sch_d_capital_gains": "donor-ceiling tail, tracked #481"},
+            "mismatch": {"stale": [], "unused": []},
+            "enforced": True,
+        },
+        "export_input_mass_reference": reference,
+        "calibration_runtime": runtime,
+        "fiscal_target_exclusion_receipt": {
+            "artifact": "us_source_coverage",
+            "path": "us_source_coverage.json",
+            "sha256": hashlib.sha256(coverage_bytes).hexdigest(),
+            "key": builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY,
+            "present": True,
+            "receipt_sha256": hashlib.sha256(
+                json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+        },
+    }
+    for key, block in expected.items():
+        assert build_manifest[key] == block
+        assert release_manifest["build"][key] == block
+
+    # The publisher contract accepts the manifests and uploads the evidence.
+    contract_failures: list[str] = []
+    _check_build_manifest(build_manifest, release_id, contract_failures)
+    _check_release_manifest(release_manifest, release_id, contract_failures)
+    _check_local_artifact_hashes(release_dir, release_manifest, contract_failures)
+    assert contract_failures == []
+    assert set(builder.US_RELEASE_GATE_EVIDENCE_FILES.values()) <= set(
+        _release_manifest_release_artifacts(release_dir)
+    )
+    # ...and its local hash check covers each file: an edited verdict fails.
+    for key, filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.items():
+        original = (release_dir / filename).read_bytes()
+        (release_dir / filename).write_bytes(original + b"\n")
+        contract_failures = []
+        _check_local_artifact_hashes(release_dir, release_manifest, contract_failures)
+        assert len(contract_failures) == 1
+        assert f"artifact {key!r} declares sha256" in contract_failures[0]
+        (release_dir / filename).write_bytes(original)
+
+
+def test_build_manifests_records_a_blanket_waiver_without_register_and_absent_receipt(
+    monkeypatch, tmp_path
+) -> None:
+    """A --allow-qrf-tail-concentration run on concentrated values, with no
+    register: the block still says so (null path and sha256, no entries) and
+    records that the tail gate was not enforced, and a coverage file without
+    the PR-1 receipt is referenced as absent rather than silently omitted."""
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+    failures: list[str] = []
+    _record_qrf_tail(
+        builder,
+        release_dir,
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        register=None,
+        allow=True,
+        failures=failures,
+    )
+    assert failures == []
+
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root)
+    )
+
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build = release_manifest["build"]
+    assert build["qrf_tail_register"] == {
+        "path": None,
+        "sha256": None,
+        "entries": {},
+        "mismatch": {"stale": [], "unused": []},
+        "enforced": False,
+    }
+    assert build["fiscal_target_exclusion_receipt"]["present"] is False
+    assert build["fiscal_target_exclusion_receipt"]["receipt_sha256"] is None
+    # A verdict that was not written is named, never silently missing.
+    assert build["gate_evidence"] == {
+        "input_coverage": "not_evaluated",
+        "input_mass_parity": "not_evaluated",
+        "qrf_tail_concentration": "bound",
+        "reform_coverage_smoke": "not_evaluated",
+    }
+    # Only the verdict this run wrote is an artifact; direct callers that
+    # pass no reference or runtime get no such block.
+    evidence_keys = set(builder.US_RELEASE_GATE_EVIDENCE_FILES)
+    assert evidence_keys & set(release_manifest["artifacts"]) == {
+        "qrf_tail_concentration"
+    }
+    assert "export_input_mass_reference" not in build
+    assert "calibration_runtime" not in build
+
+
+def test_build_manifests_without_gate_evidence_binds_none() -> None:
+    builder = _load_builder_module()
+    assert builder._qrf_tail_register_manifest_block(Path("/nonexistent")) is None
+    assert builder._gate_evidence_artifacts(Path("/nonexistent"), revision="r") == {}
+
+
+def test_gate_evidence_status_names_skipped_and_unevaluated_gates() -> None:
+    """A skipped smoke and a gate that crashed under earlier failures both
+    leave no verdict; the status block tells them apart. A gate cannot be
+    both skipped and bound, and only the four bound gates can be skipped."""
+    builder = _load_builder_module()
+    bound = {"input_coverage": {}, "input_mass_parity": {}}
+
+    assert builder._gate_evidence_status(
+        bound, skipped_gates=("reform_coverage_smoke",)
+    ) == {
+        "input_coverage": "bound",
+        "input_mass_parity": "bound",
+        "qrf_tail_concentration": "not_evaluated",
+        "reform_coverage_smoke": "skipped",
+    }
+    with pytest.raises(ValueError, match=r"skipped have a verdict.*input_coverage"):
+        builder._gate_evidence_status(bound, skipped_gates=("input_coverage",))
+    with pytest.raises(ValueError, match=r"Unknown skipped release gates"):
+        builder._gate_evidence_status(bound, skipped_gates=("reform_validation",))
+
+
+def test_release_calibration_diagnostics_record_calibration_runtime(
+    monkeypatch, tmp_path
+) -> None:
+    """Route A PR-3: the diagnostics file is written before the batched
+    pre-export raise, so it is where a gate-failed run keeps the solve's
+    thread geometry. Direct callers that pass none get no block."""
+    builder = _load_builder_module()
+    builds: list[dict] = []
+    monkeypatch.setattr(
+        builder,
+        "write_calibration_diagnostics",
+        lambda result, path, *, target_registry, build: builds.append(build),
+    )
+    gate = SimpleNamespace(passed=True, failures=(), details={})
+    kwargs = dict(
+        result=SimpleNamespace(),
+        release_dir=tmp_path,
+        registry=TargetRegistry((), country="us"),
+        base_dataset_sha256="base-sha",
+        compilation={"dropped_target_names": []},
+        target_profile_gate=gate,
+        health_input_gate=None,
+        base_population_gate=None,
+        support_value_repairs={},
+        audit_export_targets=False,
+        gate_failures=["QRF tail concentration failed: fixture"],
+    )
+    runtime = {"torch": "2.12.0", "torch_num_threads": 16, "omp_num_threads": "16"}
+
+    builder._write_release_calibration_diagnostics(
+        calibration_runtime=runtime, **kwargs
+    )
+    builder._write_release_calibration_diagnostics(**kwargs)
+
+    assert builds[0]["calibration_runtime"] == runtime
+    assert builds[0]["release_gates"]["passed"] is False
+    assert "calibration_runtime" not in builds[1]
+
+
+def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
+    """Structural pin: every bound file name is the literal a gate writes,
+    and _main() clears them all before the first gate writes, so a rename
+    or a reordering cannot silently drop a verdict or bind a stale one."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values():
+        assert f'release_dir / "{filename}"' in source, filename
+    tree = ast.parse(source)
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    [clear_loop] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.For)
+        and ast.unparse(node.iter) == "US_RELEASE_GATE_EVIDENCE_FILES.values()"
+    ]
+    # Unconditional: a statement of _main itself (not under an if/try), whose
+    # whole body is one unlink of every file, so no edit can narrow it to
+    # some gates or some runs without failing here.
+    assert clear_loop in main_fn.body
+    assert [ast.unparse(statement) for statement in clear_loop.body] == [
+        f"(release_dir / {ast.unparse(clear_loop.target)}).unlink(missing_ok=True)"
+    ]
+    assert not clear_loop.orelse
+    first_gate = min(
+        node.lineno
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id
+        in {
+            "us_release_input_coverage_gate",
+            "_export_input_mass_gate",
+            "_record_qrf_tail_concentration_gate",
+            "us_reform_coverage_smoke_gate",
+        }
+    )
+    assert clear_loop.lineno < first_gate
+    [runtime_call] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_calibration_runtime"
+    ]
+    solves = [
+        node.lineno
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id
+        in {"calibrate", "calibrate_l0_refit", "calibrate_exact_k_ladder"}
+    ]
+    assert len(solves) == 3
+    assert runtime_call.lineno < min(solves)
+    [manifest_call] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_build_manifests"
+    ]
+    keywords = {
+        keyword.arg: ast.unparse(keyword.value) for keyword in manifest_call.keywords
+    }
+    assert keywords["export_input_mass_reference"] == "export_input_mass_reference"
+    assert keywords["calibration_runtime"] == "calibration_runtime"
+    assert keywords["skipped_gates"] == (
+        "('reform_coverage_smoke',) if args.skip_reform_coverage_smoke else ()"
+    )
+    [diagnostics_call] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_write_release_calibration_diagnostics"
+    ]
+    assert {
+        keyword.arg: ast.unparse(keyword.value) for keyword in diagnostics_call.keywords
+    }["calibration_runtime"] == "calibration_runtime"
+
+
+def test_fiscal_target_exclusion_receipt_writer_uses_the_manifest_key() -> None:
+    """The manifests look the PR-1 receipt up under
+    US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY. A writer keyed by its own string
+    literal would drift silently on a rename: every manifest would then say
+    present=false. So the coverage write must use the constant, and once the
+    receipt compiler is in the tool, exactly one such write must exist."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    main_fn = next(
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    coverage_keys = [
+        target.slice
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Subscript)
+        and isinstance(target.value, ast.Name)
+        and target.value.id == "coverage"
+    ]
+    assert coverage_keys, "the source-coverage writes moved; re-anchor this pin"
+    assert not [
+        key
+        for key in coverage_keys
+        if isinstance(key, ast.Constant)
+        and key.value == builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY
+    ], "write the receipt under US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY"
+    receipt_writes = [
+        key
+        for key in coverage_keys
+        if isinstance(key, ast.Name)
+        and key.id == "US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY"
+    ]
+    if hasattr(builder, "us_fiscal_target_exclusion_receipt"):
+        assert len(receipt_writes) == 1
+
+
+def test_calibration_runtime_records_the_solve_thread_geometry(monkeypatch) -> None:
+    import torch
+
+    builder = _load_builder_module()
+    monkeypatch.setenv("OMP_NUM_THREADS", "7")
+
+    runtime = builder._calibration_runtime()
+
+    assert runtime == {
+        "torch": str(torch.__version__),
+        "torch_num_threads": torch.get_num_threads(),
+        "omp_num_threads": "7",
+    }
+    json.dumps(runtime, allow_nan=False)
+
+
+def test_pool_owned_fiscal_transforms_are_guarded_for_prepared_pool_input() -> None:
+    """The pool is post-agreement input, so its owned producers run only legacy."""
+    import ast
+
+    from microcosm.build.us_runtime.multispine_pool import POOL_OPERATOR_CONTRACTS
+
+    builder = _load_builder_module()
+    tree = ast.parse(Path(builder.__file__).read_text())
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+
+    def call_name(call: ast.Call) -> str | None:
+        return getattr(call.func, "id", None) or getattr(call.func, "attr", None)
+
+    all_calls = {
+        name
+        for call in ast.walk(main_fn)
+        if isinstance(call, ast.Call)
+        if (name := call_name(call)) is not None
+    }
+    pool_owned_call_sites = {
+        (name, call.lineno)
+        for call in ast.walk(main_fn)
+        if isinstance(call, ast.Call)
+        if (name := call_name(call)) in POOL_OPERATOR_CONTRACTS
+    }
+    guarded_calls: set[str] = set()
+    guarded_call_sites: set[tuple[str, int]] = set()
+    for node in ast.walk(main_fn):
+        if (
+            not isinstance(node, ast.If)
+            or ast.unparse(node.test) != "pool_frame is None"
+        ):
+            continue
+        guarded_calls.update(
+            name
+            for statement in node.body
+            for call in ast.walk(statement)
+            if isinstance(call, ast.Call)
+            if (name := call_name(call)) is not None
+        )
+        guarded_call_sites.update(
+            (name, call.lineno)
+            for statement in node.body
+            for call in ast.walk(statement)
+            if isinstance(call, ast.Call)
+            if (name := call_name(call)) in POOL_OPERATOR_CONTRACTS
+        )
+
+    pool_owned_fiscal_calls = set(POOL_OPERATOR_CONTRACTS) & all_calls
+    assert pool_owned_fiscal_calls
+    assert pool_owned_fiscal_calls <= guarded_calls
+    assert pool_owned_call_sites == guarded_call_sites
+    assert {
+        "with_us_weeks_unemployed",
+        "with_us_qbi_input_reconciliation",
+        "with_us_childcare_inputs",
+        "with_us_energy_subsidy_input",
+        "with_us_retirement_contribution_inputs",
+        "with_us_immigration_inputs",
+        "with_us_take_up_inputs",
+        "with_us_hours_worked_inputs",
+        "with_us_relationship_inputs",
+        "with_us_spm_independence_role",
+        "with_us_medicare_take_up_input",
+        "with_us_retirement_distribution_inputs",
+        "with_us_eligibility_inputs",
+        "with_us_education_inputs",
+        "with_us_pregnancy_inputs",
+        "with_us_wic_claim_input",
+    } <= guarded_calls
+    assert "_with_snap_state_take_up_outputs" in all_calls
+    assert "_with_snap_state_take_up_outputs" not in guarded_calls
+
+
+def test_exact_k_selection_batches_original_puf_tail_failure(monkeypatch) -> None:
+    builder = _load_builder_module()
+    marker = object()
+    monkeypatch.setattr(
+        builder,
+        "_exact_k_original_support_frame",
+        lambda frame, support: marker,
+    )
+
+    def fail_tail(frame, selected, *, require_present):
+        assert frame is marker
+        assert selected is marker
+        assert require_present is True
+        raise ValueError("fixture tail donor missing")
+
+    monkeypatch.setattr(
+        builder,
+        "assert_puf_capital_gains_tail_survives_selection",
+        fail_tail,
+    )
+
+    gate = builder._exact_k_puf_tail_support_gate(marker, np.asarray([0]))
+
+    assert not gate.passed
+    assert gate.failures == ("fixture tail donor missing",)
+    assert gate.details["status"] == "failed"
+
+
+def test_build_manifests_records_selection_source_provenance(
+    monkeypatch, tmp_path
+) -> None:
+    # A frozen-support build records its selection provenance in both manifests
+    # so the informed-L0 step is reproducible from main (microcosm#328).
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-sel-20260706"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: "a" * 40 if args == ("rev-parse", "HEAD") else "",
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+
+    selection_source = {
+        "mode": "frozen_support",
+        "join_key": [
+            "source_year",
+            "source_household_id",
+            "household_support_channel",
+            "household_support_clone_index",
+        ],
+        "source": {
+            "kind": "h5",
+            "path": "certified.h5",
+            "sha256": "c" * 64,
+        },
+        "n_source": 57_240,
+        "n_base_candidates": 337_704,
+        "n_selected": 57_240,
+        "n_unmapped": 0,
+        "n_ambiguous": 0,
+    }
+
+    builder._build_manifests(
+        selection_source=selection_source,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["calibration"]["selection_source"] == selection_source
+    assert release_manifest["build"]["selection_source"] == selection_source
+    assert build_manifest["calibration"]["selection_source"]["n_selected"] == 57_240
+    assert build_manifest["calibration"]["selection_source"]["n_unmapped"] == 0
+
+
+def test_build_manifests_selection_source_absent_by_default(
+    monkeypatch, tmp_path
+) -> None:
+    # A build with no selection source records the disabled sentinel, not None.
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-nosel-20260706"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.752.2",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: "a" * 40 if args == ("rev-parse", "HEAD") else "",
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["calibration"]["selection_source"] == {"enabled": False}
+    assert release_manifest["build"]["selection_source"] == {"enabled": False}
+
+
+def test_build_manifests_uses_incumbent_aware_calibration_gate(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    release_id = "populace-us-2024-abcdef1-20260615"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text("{}")
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "1.729.0",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "_git_output",
+        lambda *args: "a" * 40 if args == ("rev-parse", "HEAD") else "",
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+
+    name = f"irs_soi.ty2022.historic_table_2.us.all.ctc_amount@{builder.PERIOD}"
+    target = 82_863_353_000.0
+    diagnostics = list(_passing_critical_diagnostics(builder))
+    index = next(
+        i for i, diagnostic in enumerate(diagnostics) if diagnostic.name == name
+    )
+    diagnostics[index] = SimpleNamespace(
+        name=name,
+        target=target,
+        initial_estimate=99_315_000_000.0,
+        final_estimate=99_282_300_000.0,
+        relative_error=(99_282_300_000.0 - target) / target,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=tuple(diagnostics),
+        initial_loss=2.0,
+        final_loss=1.0,
+    )
+
+    class FakeRegistry:
+        version = "registry-sha"
+        specs = ()
+
+        def __len__(self):
+            return 1
+
+    builder._build_manifests(
+        release_id=release_id,
+        release_dir=release_dir,
+        artifact_root=artifact_root,
+        result=result,
+        registry=FakeRegistry(),
+        dropped={"dropped_target_names": []},
+        target_profile_gate=builder.GateResult(
+            name="target_profile_coverage",
+            passed=True,
+            details={"requirements_checked": 1},
+        ),
+        incumbent_diagnostics={
+            name: {
+                "target": target,
+                "final_estimate": 134_904_000_000.0,
+            }
+        },
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build_manifest["gates"]["calibration"] == {
+        "passed": True,
+        "failures": [],
+        "initial_loss": 2.0,
+        "final_loss": 1.0,
+        "fraction_within_10pct": 1.0,
+    }
+
+
+def test_export_frame_rejects_formula_owned_columns(monkeypatch, small_frame) -> None:
+    builder = _load_builder_module()
+
+    class FakeVariableMetadataIndex:
+        def _engine_computed_columns(self, tables, *, period):
+            assert period == builder.PERIOD
+            assert "income" in tables["person"]
+            return {"income"}
+
+    monkeypatch.setattr(
+        builder,
+        "PolicyEngineUSVariableMetadataIndex",
+        FakeVariableMetadataIndex,
+    )
+
+    with pytest.raises(ValueError, match="Formula-owned.*income"):
+        builder._with_calibrated_weights(
+            small_frame,
+            np.array([1000.0, 2000.0]),
+        )
+
+
+def test_export_frame_rejects_generated_formula_owned_columns(
+    monkeypatch,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+    index = _installed_variable_metadata_index(builder)
+
+    generated = ("AK", "ar_agi", "mi_surtax")
+    for column in generated:
+        small_frame.table("person")[column] = 0.0
+    monkeypatch.setattr(builder, "_FORMULA_OWNED_GATE_ADAPTER", index)
+
+    with pytest.raises(
+        ValueError,
+        match=r"Formula-owned.*AK.*ar_agi.*mi_surtax",
+    ):
+        builder._with_calibrated_weights(
+            small_frame,
+            np.array([1000.0, 2000.0]),
+        )
+
+
+def test_dataset_from_frame_rejects_formula_owned_columns_by_default(
+    monkeypatch,
+    small_frame,
+) -> None:
+    builder = _load_builder_module()
+
+    def fake_assert_no_formula_owned_columns(frame):
+        assert frame is small_frame
+        raise ValueError("formula-owned guard fired")
+
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        fake_assert_no_formula_owned_columns,
+    )
+
+    with pytest.raises(ValueError, match="formula-owned guard fired"):
+        builder._dataset_from_frame(small_frame)
+
+
+def test_export_frame_accepts_leaf_only_columns(monkeypatch, small_frame) -> None:
+    builder = _load_builder_module()
+
+    class FakeVariableMetadataIndex:
+        def _engine_computed_columns(self, tables, *, period):
+            assert period == builder.PERIOD
+            assert "income" in tables["person"]
+            return set()
+
+    monkeypatch.setattr(
+        builder,
+        "PolicyEngineUSVariableMetadataIndex",
+        FakeVariableMetadataIndex,
+    )
+
+    exported = builder._with_calibrated_weights(
+        small_frame,
+        np.array([1000.0, 2000.0]),
+    )
+
+    assert "income" in exported.table("person")
+    assert exported.weights_for("household").kind == WeightKind.CALIBRATED
+
+
+def test_l0_refit_export_subsets_clean_base_frame(monkeypatch, small_frame) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
+    result = SimpleNamespace(
+        selected_entity_ids=np.asarray([2], dtype="int64"),
+        weight_entity="household",
+        weights=np.asarray([3333.0]),
+    )
+
+    exported = builder._with_l0_refit_weights(small_frame, result)
+
+    assert exported.table("household")["household_id"].to_list() == [2]
+    assert exported.table("person")["person_id"].to_list() == [2, 3]
+    np.testing.assert_allclose(
+        exported.weights_for("household").values,
+        np.asarray([3333.0]),
+    )
+    assert exported.weights_for("household").kind == WeightKind.CALIBRATED
+
+
+def test_post_export_sanity_checks_full_target_surface(monkeypatch, tmp_path) -> None:
+    builder = _load_builder_module()
+
+    class FakeWeights:
+        values = np.asarray([1.0])
+
+    class FakeFrame:
+        def weights_for(self, entity):
+            assert entity == "household"
+            return FakeWeights()
+
+    class FakeTarget:
+        entity = "household"
+        row_name = f"nation/cbo/individual_income_tax@{builder.PERIOD}"
+
+        def __init__(self):
+            self.observed = 2_000_000_000_000.0
+
+        def achieved_value(self, frame, weights):
+            assert isinstance(frame, FakeFrame)
+            assert np.array_equal(weights, np.asarray([1.0]))
+            return self.observed
+
+    target = FakeTarget()
+
+    class FakeRegistry:
+        def to_target_set(self):
+            return (target,)
+
+    monkeypatch.setattr(builder, "_load_frame", lambda path: f"loaded:{path}")
+    monkeypatch.setattr(
+        builder,
+        "_materialize_target_frame",
+        lambda frame, target_specs, **kwargs: (
+            FakeFrame(),
+            FakeRegistry(),
+            {"dropped_target_names": []},
+        ),
+    )
+
+    result = SimpleNamespace(
+        diagnostics=(
+            SimpleNamespace(
+                name=f"nation/cbo/individual_income_tax@{builder.PERIOD}",
+                final_estimate=2_000_000_000_000.0,
+            ),
+        )
+    )
+
+    builder._assert_export_matches_calibration(tmp_path / "candidate.h5", result, ())
+
+    target.observed = 2_000_900_000_000.0
+    builder._assert_export_matches_calibration(tmp_path / "candidate.h5", result, ())
+
+    target.observed = 1_990_000_000_000.0
+    try:
+        builder._assert_export_matches_calibration(
+            tmp_path / "candidate.h5", result, ()
+        )
+    except RuntimeError as exc:
+        assert "Post-export sanity failed" in str(exc)
+        assert "nation/cbo/individual_income_tax@2024 exported value" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected post-export sanity failure.")
+
+
+def test_post_export_sanity_rejects_dropped_export_targets(
+    monkeypatch, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "_load_frame", lambda path: object())
+    monkeypatch.setattr(
+        builder,
+        "_materialize_target_frame",
+        lambda frame, target_specs, **kwargs: (
+            object(),
+            object(),
+            {"dropped_target_names": ["missing"]},
+        ),
+    )
+
+    try:
+        builder._assert_export_matches_calibration(
+            tmp_path / "candidate.h5", SimpleNamespace(diagnostics=()), ()
+        )
+    except RuntimeError as exc:
+        assert "1 fiscal targets were not materialized after export" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected dropped-target post-export sanity failure.")
+
+
+def test_short_term_parity_exclusion_is_reviewed_and_scoped() -> None:
+    """microcosm#567 dense-P3: short_term_capital_gains is an UNTARGETED
+    signed dimension measured against the incumbent's incidental $118B —
+    the #432/#433 rental_income class, called in advance by the preflight.
+    The entry must exist with the adjudication and its lift condition, and
+    the combined-CG surface (which IS pinned) must not be excluded."""
+    builder = _load_builder_module()
+    register = builder.US_EXPORT_INPUT_MASS_REVIEWED_EXCLUSIONS
+    assert "short_term_capital_gains" in register
+    reason = register["short_term_capital_gains"]
+    assert "#432" in reason or "rental_income class" in reason
+    assert "RE-ADJUDICATES" in reason and "Table 1.4A" in reason
+    assert "long_term_capital_gains_before_response" not in register
+    assert "capital_gains" not in register
+    assert "long_term_capital_gains" not in register
+
+
+def test_reviewed_exclusions_are_exact_for_fiscal_refresh() -> None:
+    builder = _load_builder_module()
+
+    exclusions = builder._reviewed_exclusions(builder.DIRECT_ACTIVE_ALIASES)
+
+    assert tuple(exclusions) == builder.REVIEWED_EXCLUDED_ALIASES
+
+
+def test_fiscal_refresh_uses_target_period_medicaid_source() -> None:
+    builder = _load_builder_module()
+
+    assert (
+        "cms-medicaid-chip-monthly-enrollment-december-2024"
+        in builder.DIRECT_ACTIVE_ALIASES
+    )
+    assert (
+        "cms-medicaid-chip-monthly-enrollment-dataset"
+        in builder.REVIEWED_EXCLUDED_ALIASES
+    )
+
+
+def test_fiscal_refresh_keeps_unregistered_aca_state_metal_alias_inactive() -> None:
+    builder = _load_builder_module()
+
+    assert "cms-aca-oep-state-level" in builder.DIRECT_ACTIVE_ALIASES
+    assert "cms-aca-oep-state-metal" not in builder.DIRECT_ACTIVE_ALIASES
+
+
+def test_reviewed_exclusions_fail_when_hard_target_surface_changes(
+    monkeypatch,
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder,
+        "hard_target_package_aliases",
+        lambda: (*builder.DIRECT_ACTIVE_ALIASES, "new-hard-target"),
+    )
+
+    try:
+        builder._reviewed_exclusions(builder.DIRECT_ACTIVE_ALIASES)
+    except RuntimeError as exc:
+        assert "Reviewed hard-target exclusion list is stale" in str(exc)
+        assert "new-hard-target" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected stale reviewed-exclusion failure.")
+
+
+def test_fiscal_target_source_provenance_covers_active_families() -> None:
+    builder = _load_builder_module()
+    specs = (
+        TargetSpec(
+            name="income_tax",
+            entity="household",
+            measure="income_tax",
+            value=1,
+            source="CBO source",
+            family="cbo",
+        ),
+        TargetSpec(
+            name="salt",
+            entity="household",
+            measure="salt",
+            value=1,
+            source="JCT source",
+            family="jct",
+            metadata={"reference_url": "https://example.org/jct"},
+        ),
+        TargetSpec(
+            name="agi",
+            entity="household",
+            measure="agi",
+            value=1,
+            source="SOI source",
+            family="irs_soi",
+        ),
+        TargetSpec(
+            name="state_income_tax",
+            entity="household",
+            measure="state_income_tax",
+            value=1,
+            source="Census source",
+            family="state_income_tax",
+            metadata={"reference_url": "https://example.org/stc"},
+        ),
+    )
+
+    provenance = builder._fiscal_target_source_provenance(specs)
+
+    assert set(provenance) == {"cbo", "irs_soi", "jct", "state_income_tax"}
+    assert provenance["cbo"]["target_count"] == 1
+    assert provenance["jct"]["target_count"] == 1
+    assert provenance["irs_soi"]["sources"]
+    assert provenance["state_income_tax"]["reference_urls"]
+
+
+def test_us_release_id_guard() -> None:
+    builder = _load_builder_module()
+
+    builder._assert_us_release_id("populace-us-2024-base-commit-20260615T000000Z")
+
+    try:
+        builder._assert_us_release_id("populace-uk-2024-base-commit-20260615T000000Z")
+    except ValueError as exc:
+        assert "must start with 'populace-us-'" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("Expected non-US release id to fail.")
+
+
+def test_staging_telemetry_defaults_on_and_no_staging_disables(tmp_path, monkeypatch):
+    module = _load_builder_module()
+
+    # The parser defaults staging uploads ON (overridable by env).
+    monkeypatch.delenv("POPULACE_STAGING_REPO_ID", raising=False)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    args = module._parse_args()
+    assert module.STAGING_REPO_ID == "policyengine/populace-us-staging"
+    assert args.staging_repo_id == module.STAGING_REPO_ID
+    assert not args.no_staging
+
+    def namespace(no_staging: bool) -> SimpleNamespace:
+        # repo_id None keeps the constructed telemetry offline in tests.
+        return SimpleNamespace(
+            no_staging=no_staging,
+            staging_dir=tmp_path / "stage",
+            staging_repo_id=None,
+            staging_run_id=None,
+            staging_prefix=args.staging_prefix,
+            staging_upload_interval_seconds=60.0,
+        )
+
+    telemetry = module._staging_telemetry(
+        namespace(no_staging=False), release_root=tmp_path, release_id="rel-1"
+    )
+    assert telemetry is not None
+    assert telemetry.run_id == "rel-1"
+    assert telemetry.repo_id is None
+
+    # --no-staging wins even when a staging destination is configured.
+    assert (
+        module._staging_telemetry(
+            namespace(no_staging=True), release_root=tmp_path, release_id="rel-1"
+        )
+        is None
+    )
+
+
+def test_blank_staging_repo_id_is_refused_at_parse_time(monkeypatch, capsys) -> None:
+    module = _load_builder_module()
+    argv = [
+        "--ledger-facts",
+        "facts.jsonl",
+        "--out",
+        "release",
+        "--staging-repo-id",
+        "",
+    ]
+
+    with pytest.raises(SystemExit) as excinfo:
+        module._parse_args(argv)
+
+    assert excinfo.value.code == 2
+    assert "--no-staging" in capsys.readouterr().err
+
+
+def test_blank_staging_repo_id_is_accepted_with_a_local_staging_dir(
+    tmp_path,
+) -> None:
+    module = _load_builder_module()
+    argv = [
+        "--ledger-facts",
+        "facts.jsonl",
+        "--out",
+        "release",
+        "--staging-repo-id",
+        "",
+        "--staging-dir",
+        str(tmp_path / "stage"),
+    ]
+
+    args = module._parse_args(argv)
+
+    assert args.staging_repo_id == ""
+    assert args.staging_dir == tmp_path / "stage"
+
+
+def test_a_crashed_build_marks_its_staging_run_failed(monkeypatch) -> None:
+    module = _load_builder_module()
+    recorded: list[BaseException] = []
+
+    class Telemetry:
+        def fail(self, error):
+            recorded.append(error)
+
+    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", Telemetry())
+    monkeypatch.setattr(
+        module,
+        "_main",
+        lambda argv=None: (_ for _ in ()).throw(RuntimeError("build exploded")),
+    )
+
+    with pytest.raises(RuntimeError, match="build exploded"):
+        module.main()
+
+    assert [str(error) for error in recorded] == ["build exploded"]
+
+
+def test_crash_reporting_never_replaces_the_real_traceback(monkeypatch, capsys) -> None:
+    module = _load_builder_module()
+
+    class ExplodingTelemetry:
+        def fail(self, error):
+            raise RuntimeError("telemetry itself is broken")
+
+    monkeypatch.setattr(module, "_ACTIVE_TELEMETRY", ExplodingTelemetry())
+    monkeypatch.setattr(
+        module,
+        "_main",
+        lambda argv=None: (_ for _ in ()).throw(ValueError("the real failure")),
+    )
+
+    with pytest.raises(ValueError, match="the real failure"):
+        module.main()
+
+    assert "could not record the staging run as failed" in capsys.readouterr().err
+
+
+def test_staging_telemetry_clears_any_previous_active_run(tmp_path) -> None:
+    module = _load_builder_module()
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=tmp_path / "stage",
+        staging_repo_id=None,
+        staging_run_id=None,
+        staging_prefix=module.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+    )
+    module._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
+    assert module._ACTIVE_TELEMETRY is not None
+
+    args.no_staging = True
+    assert (
+        module._staging_telemetry(args, release_root=tmp_path, release_id="rel-2")
+        is None
+    )
+    assert module._ACTIVE_TELEMETRY is None
+
+
+def test_staging_manifest_block_distinguishes_opt_out_from_delivery() -> None:
+    module = _load_builder_module()
+
+    assert module._staging_manifest_block(None) == {
+        "enabled": False,
+        "reason": "--no-staging",
+    }
+
+    class Delivered:
+        run_id = "rel-1"
+        repo_id = "policyengine/populace-us-staging"
+        uploads_succeeded = 7
+
+    assert module._staging_manifest_block(Delivered()) == {
+        "enabled": True,
+        "run_id": "rel-1",
+        "repo_id": "policyengine/populace-us-staging",
+        "uploads_succeeded": 7,
+    }
+
+    class Undelivered:
+        run_id = "rel-2"
+        repo_id = None
+        uploads_succeeded = 0
+
+    block = module._staging_manifest_block(Undelivered())
+    assert block["enabled"] is True
+    assert block["uploads_succeeded"] == 0
+    assert block["repo_id"] is None
+
+
+def test_staging_telemetry_refuses_a_destinationless_namespace(tmp_path) -> None:
+    module = _load_builder_module()
+    args = SimpleNamespace(
+        no_staging=False,
+        staging_dir=None,
+        staging_repo_id="",
+        staging_run_id=None,
+        staging_prefix=module.DEFAULT_STAGING_PREFIX,
+        staging_upload_interval_seconds=60.0,
+    )
+
+    with pytest.raises(ValueError, match="no destination"):
+        module._staging_telemetry(args, release_root=tmp_path, release_id="rel-1")
+
+
+# ---------------------------------------------------------------------------
+# #299 / #217: per-reform materialization checkpoint resume + cache-key safety.
+#
+# These prove that a run killed mid target_compilation resumes from the durable
+# per-reform cache (only the un-computed reforms recompute), and that the
+# reform-vector cache key invalidates when the reform vector or the frame
+# identity changes (so a stale checkpoint can never poison a build), while a
+# build-commit-only change reuses the cache (the #217 acceptance criterion).
+# ---------------------------------------------------------------------------
+
+
+class _ReformKillError(RuntimeError):
+    """Sentinel raised to simulate a process kill mid target_compilation."""
+
+
+def _multi_reform_frame(builder):
+    """A 2-household frame with 3 tax units, matching the JCT-loop test shape."""
+    return Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": np.asarray([1, 2, 3], dtype="int64"),
+                    "person_household_id": np.asarray([1, 1, 2], dtype="int64"),
+                    "person_tax_unit_id": np.asarray([10, 20, 30], dtype="int64"),
+                    "person_spm_unit_id": np.asarray([100, 100, 200], dtype="int64"),
+                    "person_family_id": np.asarray([1000, 1000, 2000], dtype="int64"),
+                    "person_marital_unit_id": np.asarray(
+                        [10000, 20000, 30000], dtype="int64"
+                    ),
+                }
+            ),
+            "household": pd.DataFrame(
+                {
+                    "household_id": np.asarray([1, 2], dtype="int64"),
+                    "state_fips": np.asarray([6, 36], dtype="int64"),
+                }
+            ),
+            "tax_unit": pd.DataFrame(
+                {"tax_unit_id": np.asarray([10, 20, 30], dtype="int64")}
+            ),
+            "spm_unit": pd.DataFrame(
+                {"spm_unit_id": np.asarray([100, 200], dtype="int64")}
+            ),
+            "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": np.asarray([10000, 20000, 30000])}
+            ),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.asarray([1.0, 1.0]), kind=WeightKind.DESIGN
+            )
+        },
+    )
+
+
+def _install_multi_reform_fakes(
+    builder,
+    monkeypatch,
+    *,
+    reforms,
+    reform_income_tax_by_id,
+    reform_sim_calls,
+    raise_on_call=None,
+):
+    """Wire fake PE-US so ``_materialize_target_frame`` runs over the tiny frame.
+
+    ``reforms`` is a tuple of ``(measure, neutralized_variable)`` pairs.
+    ``reform_income_tax_by_id`` maps ``neutralized_variable -> {tax_unit_id: tax}``.
+    Every real reform simulation appends its ``neutralized_variable`` to
+    ``reform_sim_calls``; if the resulting call count equals ``raise_on_call`` the
+    fake raises ``_ReformKillError`` before returning (simulating a kill while that
+    reform is being materialized, so it is never cached).
+    """
+    reform_specs = tuple(
+        SimpleNamespace(measure=measure, neutralized_variable=variable)
+        for measure, variable in reforms
+    )
+    base_income_tax_by_id = {10: 100.0, 20: 30.0, 30: 70.0}
+
+    class FakeVariable:
+        entity = SimpleNamespace(key="tax_unit")
+
+    class FakeSystem:
+        variables = {
+            "state_income_tax": FakeVariable(),
+            **{variable: FakeVariable() for _, variable in reforms},
+        }
+
+        def __init__(self, reform=None):
+            self.reform = reform
+
+    class FakeMicrosimulation:
+        default_tax_benefit_system = FakeSystem
+
+        def __init__(self, *, dataset, reform=None, tax_benefit_system=None):
+            self.dataset = dataset
+            self.reform = reform
+            self.tax_benefit_system = tax_benefit_system
+            self.cache_invalidations = 0
+
+        def calculate(self, variable, *, period, **kwargs):
+            assert period == builder.PERIOD
+            tax_unit_ids = (
+                self.dataset["frame"].table("tax_unit")["tax_unit_id"].to_numpy()
+            )
+            if self.reform is not None:
+                assert variable == "income_tax"
+                lookup = reform_income_tax_by_id[self.reform]
+                return np.asarray([lookup[id_] for id_ in tax_unit_ids])
+            arrays_by_id = {
+                "income_tax": base_income_tax_by_id,
+                "taxable_income": {10: 1000.0, 20: 2000.0, 30: 3000.0},
+                "adjusted_gross_income": {10: 1100.0, 20: 2100.0, 30: 3100.0},
+                "filing_status": {10: "SINGLE", 20: "SINGLE", 30: "SINGLE"},
+                "state_income_tax": {10: 5.0, 20: 6.0, 30: 7.0},
+            }
+            return np.asarray([arrays_by_id[variable][id_] for id_ in tax_unit_ids])
+
+        def get_holder(self, variable):
+            # The batched base pass reads each population-aggregate holder;
+            # this engine never computes one.
+            return SimpleNamespace(get_known_periods=lambda: [])
+
+        def _invalidate_all_caches(self):
+            self.cache_invalidations += 1
+
+    def fake_dataset_from_frame(
+        frame_arg,
+        *,
+        zero_variables=(),
+        system=None,
+        assert_no_formula_owned_columns=True,
+    ):
+        return {"frame": frame_arg, "zero_variables": tuple(zero_variables)}
+
+    def fake_make_zero_variable_reform(system, variable_name):
+        # The loop passes the neutralized variable straight through; the fake sim
+        # keys its reform result off this value.
+        return variable_name
+
+    monkeypatch.setitem(
+        sys.modules,
+        "policyengine_us",
+        SimpleNamespace(
+            CountryTaxBenefitSystem=FakeSystem,
+            Microsimulation=FakeMicrosimulation,
+        ),
+    )
+    monkeypatch.setattr(
+        builder,
+        "_assert_no_formula_owned_columns",
+        lambda frame_arg: None,
+    )
+    monkeypatch.setattr(builder, "_dataset_from_frame", fake_dataset_from_frame)
+    monkeypatch.setattr(
+        builder, "_make_zero_variable_reform", fake_make_zero_variable_reform
+    )
+    monkeypatch.setattr(builder, "US_JCT_TAX_EXPENDITURE_REFORMS", reform_specs)
+    monkeypatch.setattr(builder, "SOI_VARIABLE_MAP", {})
+
+    real_reform_household_income_tax = builder._reform_household_income_tax
+
+    def counting_reform_household_income_tax(*, reform_spec, **kwargs):
+        reform_sim_calls.append(reform_spec.neutralized_variable)
+        if raise_on_call is not None and len(reform_sim_calls) == raise_on_call:
+            raise _ReformKillError(
+                f"killed while materializing {reform_spec.measure!r}"
+            )
+        return real_reform_household_income_tax(reform_spec=reform_spec, **kwargs)
+
+    monkeypatch.setattr(
+        builder,
+        "_reform_household_income_tax",
+        counting_reform_household_income_tax,
+    )
+
+    targets = tuple(
+        TargetSpec(
+            name=f"jct.{measure}@{builder.PERIOD}",
+            entity="household",
+            measure=measure,
+            value=-45.0,
+            source="Mock JCT",
+            family="jct",
+            signed=True,
+        )
+        for measure, _ in reforms
+    )
+    return reform_specs, targets
+
+
+def _base_cache_context(builder):
+    return {
+        "base_dataset_sha256": "base-sha-A",
+        "weeks_unemployed_source_sha256": "weeks-source-sha-A",
+        "build_commit": "commit-A",
+        "policyengine_us_version": "pe-us-A",
+        "seed": 0,
+        "target_period": builder.PERIOD,
+        "target_registry_version": "registry-A",
+        "congressional_district_vintage_crosswalk_sha256": None,
+        "target_frame_materializer_identity_sha256": "materializer-sha-A",
+    }
+
+
+def test__given_kill_after_two_reforms__then_restart_only_recomputes_the_third(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    reforms = (
+        ("jct_reform_a", "credit_a"),
+        ("jct_reform_b", "credit_b"),
+        ("jct_reform_c", "credit_c"),
+    )
+    reform_income_tax_by_id = {
+        "credit_a": {10: 90.0, 20: 25.0, 30: 40.0},
+        "credit_b": {10: 80.0, 20: 20.0, 30: 35.0},
+        "credit_c": {10: 70.0, 20: 15.0, 30: 30.0},
+    }
+    context = _base_cache_context(builder)
+    frame = _multi_reform_frame(builder)
+
+    # First pass: die while materializing the 3rd reform. Reforms 1 and 2 complete
+    # and are written to the durable cache; reform 3 never is.
+    first_calls: list[str] = []
+    _, targets = _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=reforms,
+        reform_income_tax_by_id=reform_income_tax_by_id,
+        reform_sim_calls=first_calls,
+        raise_on_call=3,
+    )
+    with pytest.raises(_ReformKillError):
+        builder._materialize_target_frame(
+            frame,
+            targets,
+            maximum_microsim_batch_size=1,
+            target_materialization_cache_dir=tmp_path,
+            target_materialization_cache_context=context,
+        )
+    # Exactly three reform sims were attempted (1, 2 succeeded; 3 raised).
+    assert first_calls == ["credit_a", "credit_b", "credit_c"]
+    # Two durable cache entries exist on disk (reforms 1 and 2 only).
+    assert len(list(tmp_path.glob("*.npy"))) == 2
+    assert len(list(tmp_path.glob("*.json"))) == 2
+
+    # Restart: same inputs, no kill. Reforms 1 and 2 must load from cache; only
+    # reform 3 recomputes.
+    second_calls: list[str] = []
+    _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=reforms,
+        reform_income_tax_by_id=reform_income_tax_by_id,
+        reform_sim_calls=second_calls,
+        raise_on_call=None,
+    )
+    target_frame, registry, compilation = builder._materialize_target_frame(
+        frame,
+        targets,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context,
+    )
+
+    # ONLY the third reform recomputed on restart.
+    assert second_calls == ["credit_c"]
+    stats = compilation["target_materialization_cache"]
+    assert stats["hits"] == 2
+    assert stats["misses"] == 1
+    assert stats["writes"] == 1
+
+    # Results are correct for all three reforms (reform_income_tax - base).
+    household = target_frame.table("household")
+    # base income_tax by household: hh1 = 100+30 = 130, hh2 = 70.
+    np.testing.assert_allclose(
+        household["jct_reform_a"], [90.0 + 25.0 - 130.0, 40.0 - 70.0]
+    )
+    np.testing.assert_allclose(
+        household["jct_reform_b"], [80.0 + 20.0 - 130.0, 35.0 - 70.0]
+    )
+    np.testing.assert_allclose(
+        household["jct_reform_c"], [70.0 + 15.0 - 130.0, 30.0 - 70.0]
+    )
+    assert len(registry) == 3
+
+
+def test__given_changed_reform_vector__then_stale_checkpoint_is_not_reused(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    context = _base_cache_context(builder)
+    frame = _multi_reform_frame(builder)
+
+    # Materialize reform "credit_a" and cache it.
+    calls_one: list[str] = []
+    _, targets_one = _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=(("jct_reform_a", "credit_a"),),
+        reform_income_tax_by_id={"credit_a": {10: 90.0, 20: 25.0, 30: 40.0}},
+        reform_sim_calls=calls_one,
+        raise_on_call=None,
+    )
+    builder._materialize_target_frame(
+        frame,
+        targets_one,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context,
+    )
+    assert calls_one == ["credit_a"]
+
+    # Now the SAME measure name but a DIFFERENT neutralized variable (the reform
+    # vector changed). The old entry must NOT be reused: a different vector means a
+    # different per-household estimate. If the key ignored the vector this would
+    # silently reuse the stale credit_a values and poison the build.
+    calls_two: list[str] = []
+    _, targets_two = _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=(("jct_reform_a", "credit_a_v2"),),
+        reform_income_tax_by_id={"credit_a_v2": {10: 10.0, 20: 5.0, 30: 1.0}},
+        reform_sim_calls=calls_two,
+        raise_on_call=None,
+    )
+    target_frame, _, compilation = builder._materialize_target_frame(
+        frame,
+        targets_two,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context,
+    )
+    # It recomputed rather than reusing the stale entry.
+    assert calls_two == ["credit_a_v2"]
+    assert compilation["target_materialization_cache"]["misses"] == 1
+    assert compilation["target_materialization_cache"]["hits"] == 0
+    household = target_frame.table("household")
+    # Uses the NEW vector: hh1 = 10+5-130 = -115, hh2 = 1-70 = -69.
+    np.testing.assert_allclose(household["jct_reform_a"], [-115.0, -69.0])
+
+
+@pytest.mark.parametrize(
+    ("identity_key", "new_value"),
+    [
+        ("base_dataset_sha256", "base-sha-B"),
+        ("weeks_unemployed_source_sha256", "weeks-source-sha-B"),
+        ("target_frame_materializer_identity_sha256", "materializer-sha-B"),
+    ],
+)
+def test__given_changed_frame_identity__then_stale_checkpoint_is_not_reused(
+    monkeypatch,
+    tmp_path,
+    identity_key,
+    new_value,
+) -> None:
+    builder = _load_builder_module()
+    frame = _multi_reform_frame(builder)
+    reforms = (("jct_reform_a", "credit_a"),)
+    reform_income_tax_by_id = {"credit_a": {10: 90.0, 20: 25.0, 30: 40.0}}
+
+    # Cache under a base H5 identity "base-sha-A".
+    context_a = _base_cache_context(builder)
+    calls_a: list[str] = []
+    _, targets = _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=reforms,
+        reform_income_tax_by_id=reform_income_tax_by_id,
+        reform_sim_calls=calls_a,
+        raise_on_call=None,
+    )
+    builder._materialize_target_frame(
+        frame,
+        targets,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context_a,
+    )
+    assert calls_a == ["credit_a"]
+
+    # A different base H5, measured LKWEEKS source, or complete target-frame
+    # materializer identity must not share vectors at the same record count.
+    context_b = _base_cache_context(builder)
+    context_b[identity_key] = new_value
+    calls_b: list[str] = []
+    _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=reforms,
+        reform_income_tax_by_id=reform_income_tax_by_id,
+        reform_sim_calls=calls_b,
+        raise_on_call=None,
+    )
+    _, _, compilation = builder._materialize_target_frame(
+        frame,
+        targets,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context_b,
+    )
+    assert calls_b == ["credit_a"]
+    assert compilation["target_materialization_cache"]["misses"] == 1
+    assert compilation["target_materialization_cache"]["hits"] == 0
+
+
+def test__given_only_build_commit_changed__then_reform_cache_is_reused(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    # #217 acceptance criterion 1: a rerun that changes only the build commit
+    # must reuse the cached reform vectors rather than recompute them.
+    builder = _load_builder_module()
+    frame = _multi_reform_frame(builder)
+    reforms = (("jct_reform_a", "credit_a"),)
+    reform_income_tax_by_id = {"credit_a": {10: 90.0, 20: 25.0, 30: 40.0}}
+
+    context_a = _base_cache_context(builder)
+    calls_a: list[str] = []
+    _, targets = _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=reforms,
+        reform_income_tax_by_id=reform_income_tax_by_id,
+        reform_sim_calls=calls_a,
+        raise_on_call=None,
+    )
+    builder._materialize_target_frame(
+        frame,
+        targets,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context_a,
+    )
+    assert calls_a == ["credit_a"]
+
+    # Only build_commit changes. The full materializer identity remains equal,
+    # so the reform must load from cache.
+    context_b = _base_cache_context(builder)
+    context_b["build_commit"] = "commit-B"
+    calls_b: list[str] = []
+    _install_multi_reform_fakes(
+        builder,
+        monkeypatch,
+        reforms=reforms,
+        reform_income_tax_by_id=reform_income_tax_by_id,
+        reform_sim_calls=calls_b,
+        raise_on_call=None,
+    )
+    _, _, compilation = builder._materialize_target_frame(
+        frame,
+        targets,
+        maximum_microsim_batch_size=1,
+        target_materialization_cache_dir=tmp_path,
+        target_materialization_cache_context=context_b,
+    )
+    # No reform sim ran on the second pass — it was a pure cache hit.
+    assert calls_b == []
+    assert compilation["target_materialization_cache"]["hits"] == 1
+    assert compilation["target_materialization_cache"]["misses"] == 0
+    assert compilation["target_materialization_cache"]["writes"] == 0
+
+
+def _sentinel_frame(label: str):
+    """A stand-in frame whose only role is object identity.
+
+    The export-gate tests patch ``us_input_mass_totals`` to key off ``id(frame)``
+    and never touch the schema, so a bare tagged object suffices — building a
+    real US-schema Frame (which needs the engine + every entity table) is
+    unnecessary to exercise the #327 reference-selection logic.
+    """
+    return SimpleNamespace(label=label)
+
+
+def test_export_input_mass_gate_defaults_to_base_reference(monkeypatch) -> None:
+    """#327: with no reference_frame, the export gate compares vs the raw base.
+
+    This is the historical behaviour, preserved: a PUF-imputed column that
+    calibration scales far above its raw-base mass (capital gains here) fails
+    the ±50% band against the raw base.
+    """
+    builder = _load_builder_module()
+
+    export = _sentinel_frame("export")
+    base = _sentinel_frame("base")
+
+    totals = {
+        id(export): {"long_term_capital_gains": 7.02e11, "employment_income": 1.1e13},
+        id(base): {"long_term_capital_gains": 2.12e11, "employment_income": 1.1e13},
+    }
+    monkeypatch.setattr(builder, "_engine_input_variables", lambda: ())
+    monkeypatch.setattr(
+        builder,
+        "us_input_mass_totals",
+        lambda frame, columns=None: totals[id(frame)],
+    )
+
+    gate = builder._export_input_mass_gate(
+        export,
+        base,
+        relative_tolerance=0.5,
+        minimum_reference_total=1e9,
+    )
+    assert not gate.passed
+    assert any("long_term_capital_gains" in f for f in gate.failures)
+    # employment_income (unchanged) does not fail.
+    assert not any("employment_income" in f for f in gate.failures)
+
+
+def test_export_input_mass_gate_passes_against_certified_reference(monkeypatch) -> None:
+    """#327: with the live-default reference, calibration gains are in-band.
+
+    The export mass (capital gains scaled up toward SOI/CBO) is far above the
+    raw base but ~equal to the certified live-default reference — so against the
+    reference the gate passes, vindicating the 11/14 mis-referenced columns.
+    """
+    builder = _load_builder_module()
+
+    export = _sentinel_frame("export")
+    base = _sentinel_frame("base")
+    reference = _sentinel_frame("reference")
+
+    totals = {
+        # export >> raw base (the +230% the raw-base gate flagged), but export
+        # is within ±50% of the certified reference (per #327: -18.8%).
+        id(export): {"long_term_capital_gains": 7.02e11},
+        id(base): {"long_term_capital_gains": 2.12e11},
+        id(reference): {"long_term_capital_gains": 8.64e11},
+    }
+    monkeypatch.setattr(builder, "_engine_input_variables", lambda: ())
+    monkeypatch.setattr(
+        builder,
+        "us_input_mass_totals",
+        lambda frame, columns=None: totals[id(frame)],
+    )
+
+    gate = builder._export_input_mass_gate(
+        export,
+        base,
+        relative_tolerance=0.5,
+        minimum_reference_total=1e9,
+        reference_frame=reference,
+        reference_name="populace_us_2024.h5",
+    )
+    assert gate.passed, gate.failures
+
+
+def test_export_input_mass_gate_still_fails_genuine_drift_vs_reference(
+    monkeypatch,
+) -> None:
+    """#327: the loss/zeroing arm stays strict against the reference.
+
+    A genuine #278 zeroing (a sparse selection dropping an untargeted input the
+    reference carries) still fails even when the reference — not the raw base —
+    is the yardstick.
+    """
+    builder = _load_builder_module()
+
+    export = _sentinel_frame("export")
+    base = _sentinel_frame("base")
+    reference = _sentinel_frame("reference")
+
+    totals = {
+        # traditional_ira_contributions zeroed in the export (the #278 signature);
+        # health_savings_account halved (drift beyond ±50% vs the reference).
+        id(export): {
+            "traditional_ira_contributions": 0.0,
+            "health_savings_account_ald": 5.0e9,
+        },
+        id(base): {
+            "traditional_ira_contributions": 3.0e10,
+            "health_savings_account_ald": 1.4e10,
+        },
+        id(reference): {
+            "traditional_ira_contributions": 3.1e10,
+            "health_savings_account_ald": 1.38e10,
+        },
+    }
+    monkeypatch.setattr(builder, "_engine_input_variables", lambda: ())
+    monkeypatch.setattr(
+        builder,
+        "us_input_mass_totals",
+        lambda frame, columns=None: totals[id(frame)],
+    )
+
+    gate = builder._export_input_mass_gate(
+        export,
+        base,
+        relative_tolerance=0.5,
+        minimum_reference_total=1e9,
+        reference_frame=reference,
+        reference_name="populace_us_2024.h5",
+    )
+    assert not gate.passed
+    assert any("traditional_ira_contributions" in f for f in gate.failures)
+    assert any("health_savings_account_ald" in f for f in gate.failures)
+
+
+def test_main_runs_cross_register_and_take_up_contract_preflights() -> None:
+    """main() must call the cheap consistency preflights before source stages.
+
+    microcosm#377 (register consistency) and microcosm#381 (take-up contract
+    engine-drift) both abort a build in seconds when a register is stale. A
+    regression that drops the preflight call would only surface after hours of
+    source staging, so pin the wiring at the code-object level (these globals
+    are looked up by name inside ``main``).
+    """
+    builder = _load_builder_module()
+    called = set(builder._main.__code__.co_names)
+    for preflight in (
+        "assert_release_input_coverage_manifest_current",
+        "us_register_consistency_gate",
+        "assert_take_up_contract_current",
+        "assert_take_up_treatments_consistent",
+    ):
+        assert preflight in called, f"main() no longer calls {preflight}"
+
+
+def _spm_state_frame(states: list[str], *, split_unit: bool = False):
+    import numpy as np
+    import pandas as pd
+
+    from microcosm.frame import Frame, WeightKind, Weights
+    from microcosm.frame.units import US_SCHEMA
+
+    person_rows = []
+    for index in range(len(states)):
+        for member in range(2):
+            person_rows.append(
+                {
+                    "person_id": index * 10 + member,
+                    "person_household_id": index,
+                    # A split unit wires its second member to another
+                    # household (and so another state) to hit the guard.
+                    "person_spm_unit_id": (
+                        (index + 1) % len(states)
+                        if split_unit and index == 0 and member == 1
+                        else index
+                    ),
+                    "person_tax_unit_id": index,
+                    "person_family_id": index,
+                    "person_marital_unit_id": index * 10 + member,
+                    "age": 40,
+                }
+            )
+    person = pd.DataFrame(person_rows)
+    ids = np.arange(len(states), dtype="int64")
+    tables = {
+        "person": person,
+        "household": pd.DataFrame({"household_id": ids, "state_fips": states}),
+        "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+        "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+        "family": pd.DataFrame({"family_id": ids}),
+        "marital_unit": pd.DataFrame(
+            {"marital_unit_id": person["person_marital_unit_id"].to_numpy()}
+        ),
+    }
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                values=np.ones(len(states), dtype=np.float64),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+
+
+def test_spm_unit_state_fips_routes_through_persons() -> None:
+    """SPM-unit state codes come via the person linkage, not broadcast().
+
+    Build M's sparse run died calling ``frame.broadcast(..., to="spm_unit")``
+    — the Frame API only broadcasts to persons, and the SNAP state take-up
+    path (a coverage-campaign restoration) had never run at full scale. The
+    helper now routes household state through persons and collapses per SPM
+    unit, failing closed if a unit ever spans two states.
+    """
+
+    builder = _load_builder_module()
+    frame = _spm_state_frame(["06", "36"])
+    aligned = builder._spm_unit_state_fips(frame)
+    assert list(aligned) == ["06", "36"]
+
+    with pytest.raises(ValueError, match="span multiple state"):
+        builder._spm_unit_state_fips(_spm_state_frame(["06", "36"], split_unit=True))
+
+
+def test_release_h5_write_sits_between_batched_raise_and_smoke() -> None:
+    """microcosm#443: #437 dropped release_engine.write_dataset(...) while
+    inserting the batched pre-export raise, so the smoke gate scored a stale
+    artifact from a prior run (and the manifest would have sha-pinned it).
+    Pin main()'s ordering contract at the AST level until the green-path
+    main() harness exists: exactly one export H5 write, strictly after the
+    single batched pre-export raise and before the reform-coverage smoke
+    reads dataset_path."""
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    tree = ast.parse(source)
+
+    batched_raises: list[int] = []
+    writes: list[int] = []
+    smokes: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Raise):
+            segment = ast.get_source_segment(source, node) or ""
+            if "terminal_gate_failures" in segment:
+                batched_raises.append(node.lineno)
+        elif isinstance(node, ast.Call):
+            func = node.func
+            name = (
+                func.attr
+                if isinstance(func, ast.Attribute)
+                else getattr(func, "id", None)
+            )
+            if name == "write_dataset":
+                writes.append(node.lineno)
+            elif name == "us_reform_coverage_smoke_gate":
+                smokes.append(node.lineno)
+
+    assert len(batched_raises) == 1, batched_raises
+    assert len(writes) == 1, (
+        "main() must write the export H5 exactly once; the smoke gate and "
+        f"release manifest read that file (microcosm#443). Found: {writes}"
+    )
+    assert len(smokes) == 1, smokes
+    assert batched_raises[0] < writes[0] < smokes[0], (
+        "Ordering contract violated: batched pre-export raise "
+        f"(line {batched_raises[0]}) < H5 write ({writes[0]}) < smoke "
+        f"({smokes[0]}) must hold so a gate-failed run never produces the "
+        "H5 and the smoke scores the just-written file."
+    )
+
+
+def test_selection_mass_protection_specs_measure_locked_source_mass(
+    small_frame,
+) -> None:
+    """microcosm#445: the protection target's value is the base pool's own
+    locked-source mass at base weights, measured at build time — and it rides
+    the standard policyengine_variable materializer contract so both the
+    fresh-materialize and checkpoint-reload paths compile it."""
+    builder = _load_builder_module()
+
+    (spec,) = builder._selection_mass_protection_specs(small_frame, ("income",))
+
+    assert spec.name == "selection_mass_protection.income"
+    assert spec.measure == "selection_mass_protection.income"
+    assert spec.entity == "household"
+    assert spec.value == 100.0 * 1000 + 250.0 * 2000 + 50.0 * 2000
+    assert spec.metadata["materializer"] == "policyengine_variable"
+    assert spec.metadata["measure_mode"] == "sum"
+    assert spec.metadata["base_variable"] == "income"
+    assert spec.metadata["target_role"] == "selection_mass_protection"
+    assert spec.metadata["protected_entity"] == "person"
+    assert spec.metadata["base_pool_carriers"] == "3"
+    assert spec.metadata["issue"] == "PolicyEngine/microcosm#445"
+    assert not spec.signed
+
+
+def test_selection_mass_protection_specs_fail_closed(small_frame) -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(RuntimeError, match="absent from every entity table"):
+        builder._selection_mass_protection_specs(small_frame, ("keogh_missing",))
+
+    zeroed = small_frame.table("person").copy()
+    zeroed["income"] = 0.0
+    frame = Frame(
+        {"person": zeroed, "household": small_frame.table("household").copy()},
+        small_frame.schema,
+        {"household": small_frame.weights_for("household")},
+        small_frame.strata,
+    )
+    with pytest.raises(RuntimeError, match="no nonzero carriers"):
+        builder._selection_mass_protection_specs(frame, ("income",))
+
+
+def test_checkpoint_identity_protection_key_and_stale_checkpoint_miss(
+    monkeypatch, tmp_path, small_frame
+) -> None:
+    """microcosm#445: unprotected runs keep their legacy identity (digest
+    bit-identical — the dense arm's warm checkpoints must stay valid), and a
+    protected run MISSES a column-less legacy checkpoint instead of loading
+    it (a load would silently drop the protection spec, because
+    _compile_materialized_target_registry keeps only specs whose measures
+    exist on the materialized household table)."""
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+
+    common = dict(
+        base_dataset_sha256="base-sha",
+        policyengine_us_version="1.2.3",
+        seed=0,
+        target_period=builder.PERIOD,
+        target_registry_version="registry-sha",
+        weeks_unemployed_source_sha256="weeks-source-sha",
+        congressional_district_vintage_crosswalk_sha256="crosswalk-sha",
+        ssi_take_up_assignment_sha256="ssi-flags-sha",
+        selection_identities_sha256=None,
+        staged_frame_sha256="staged-frame-sha",
+    )
+    legacy = builder._target_frame_checkpoint_identity(**common)
+    default_kwarg = builder._target_frame_checkpoint_identity(
+        **common, selection_mass_protections=()
+    )
+    protected = builder._target_frame_checkpoint_identity(
+        **common, selection_mass_protections=("keogh_distributions",)
+    )
+
+    assert "selection_mass_protections" not in legacy
+    assert builder._target_frame_checkpoint_digest(
+        default_kwarg
+    ) == builder._target_frame_checkpoint_digest(legacy)
+    assert protected["selection_mass_protections"] == ["keogh_distributions"]
+
+    # microcosm#507/#508: a retry whose frozen SSI assignment differs (the
+    # --ssi-take-up-prior-weight-basis path) must MISS the previous
+    # attempt's checkpoint — otherwise the solve runs on stale SSI rows
+    # while the export ships fresh ones (split-brain certification).
+    retried = builder._target_frame_checkpoint_identity(
+        **{**common, "ssi_take_up_assignment_sha256": "ssi-flags-sha-retry"}
+    )
+    assert legacy["ssi_take_up_assignment_sha256"] == "ssi-flags-sha"
+    assert builder._target_frame_checkpoint_digest(
+        retried
+    ) != builder._target_frame_checkpoint_digest(legacy)
+    assert builder._target_frame_checkpoint_digest(
+        protected
+    ) != builder._target_frame_checkpoint_digest(legacy)
+
+    path = tmp_path / "target_frame_checkpoint.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=small_frame,
+        identity=legacy,
+        compilation={"declared_targets": 0},
+        build_commit="fixture-commit",
+    )
+    assert (
+        builder._read_target_frame_checkpoint(path, identity=protected, target_specs=())
+        is None
+    )
+
+
+def test_checkpoint_identity_tracks_selection_and_rejects_prefix_shape(
+    monkeypatch, tmp_path, small_frame
+) -> None:
+    """A frozen-support change invalidates the checkpoint identity.
+
+    The assignment digest hashes positional flags, priors, and provenance,
+    but two same-length supports can share those flag bytes. The selected
+    source identities therefore remain an independent checkpoint input, and
+    even the full-pool ``None`` value must reject a pre-fix identity that
+    omitted the key entirely.
+    """
+
+    builder = _load_builder_module()
+    monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
+    common = {
+        "base_dataset_sha256": "base-sha",
+        "policyengine_us_version": "1.2.3",
+        "seed": 0,
+        "target_period": builder.PERIOD,
+        "target_registry_version": "registry-sha",
+        "weeks_unemployed_source_sha256": "weeks-source-sha",
+        "congressional_district_vintage_crosswalk_sha256": None,
+        "ssi_take_up_assignment_sha256": "ssi-flags-sha",
+        "staged_frame_sha256": "staged-frame-sha",
+    }
+    full_pool = builder._target_frame_checkpoint_identity(
+        **common, selection_identities_sha256=None
+    )
+    selected = builder._target_frame_checkpoint_identity(
+        **common, selection_identities_sha256="cd" * 32
+    )
+    selected_other = builder._target_frame_checkpoint_identity(
+        **common, selection_identities_sha256="ef" * 32
+    )
+    digest = builder._target_frame_checkpoint_digest
+    assert digest(full_pool) != digest(selected)
+    assert digest(selected) != digest(selected_other)
+
+    prefix_shape = {
+        key: value
+        for key, value in full_pool.items()
+        if key != "selection_identities_sha256"
+    }
+    path = tmp_path / "target_frame_checkpoint.h5"
+    builder._write_target_frame_checkpoint(
+        path,
+        frame=small_frame,
+        identity=prefix_shape,
+        compilation={},
+        build_commit="fixture-commit",
+    )
+    assert (
+        builder._read_target_frame_checkpoint(
+            path,
+            identity=full_pool,
+            target_specs=(),
+        )
+        is None
+    )
+
+
+def _table_1_4_diagnostic(builder, name: str, target: float, final: float):
+    return SimpleNamespace(
+        name=f"{name}@{builder.PERIOD}",
+        target=target,
+        initial_estimate=target,
+        final_estimate=final,
+        relative_error=(final - target) / target,
+    )
+
+
+def test_release_gate_failures_block_table_1_4_dollar_breaches() -> None:
+    builder = _load_builder_module()
+    breached = (
+        # The live Build M defect pair (microcosm#462): +634.8% on the
+        # capital-gain-distributions dollar row, -25.6% on net capital gains.
+        _table_1_4_diagnostic(
+            builder,
+            "irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount",
+            10_155_465_319.0,
+            74_617_447_202.0,
+        ),
+        _table_1_4_diagnostic(
+            builder,
+            "irs_soi.ty2023.table_1_4.all.net_capital_gains_amount",
+            1_270_864_366_489.0,
+            945_431_772_792.0,
+        ),
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + breached,
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(result, {"dropped_target_names": []})
+
+    assert len(failures) == 2
+    assert all(
+        failure.startswith("SOI Table 1.4 national dollar fit failed: ")
+        for failure in failures
+    )
+    joined = "\n".join(failures)
+    assert "capital_gain_distributions_amount@2024" in joined
+    assert "net_capital_gains_amount@2024" in joined
+    assert "6.3475" in joined
+
+
+def test_release_gate_failures_block_table_1_4_row_outside_irs_prefix() -> None:
+    builder = _load_builder_module()
+    adversarial = _table_1_4_diagnostic(
+        builder,
+        "other.table_1_4.all.bad_amount",
+        100.0,
+        200.0,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + (adversarial,),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(result, {"dropped_target_names": []})
+
+    assert failures == [
+        "SOI Table 1.4 national dollar fit failed: "
+        "other.table_1_4.all.bad_amount@2024: relative_error=1 exceeds 0.25 "
+        "for SOI Pub 1304 Table 1.4 national dollar rows "
+        "(soi_table_1_4_national_dollar_rows); target=100.0, "
+        "final_estimate=200.0."
+    ]
+
+
+def test_release_gate_failures_require_recorded_table_1_4_relative_error() -> None:
+    builder = _load_builder_module()
+    adversarial = SimpleNamespace(
+        name=(f"irs_soi.ty2023.table_1_4.all.adversarial_amount@{builder.PERIOD}"),
+        target=100.0,
+        initial_estimate=100.0,
+        final_estimate=100.0,
+        relative_error=None,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + (adversarial,),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(result, {"dropped_target_names": []})
+
+    assert failures == [
+        "SOI Table 1.4 national dollar fit failed: "
+        "irs_soi.ty2023.table_1_4.all.adversarial_amount@2024: "
+        "missing recorded relative_error; the publish contract requires a "
+        "numeric value."
+    ]
+
+
+def test_release_gate_failures_ignore_table_1_4_returns_rows() -> None:
+    builder = _load_builder_module()
+    # A wildly-missed returns (count) row is outside the dollar blanket: the
+    # live Build M estate_trust_net_loss_returns row landed at +495.9% and is
+    # a distinct defect class, not this gate's scope.
+    returns_row = _table_1_4_diagnostic(
+        builder,
+        "irs_soi.ty2023.table_1_4.all.estate_trust_net_loss_returns",
+        36_592.0,
+        218_052.0,
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=_passing_critical_diagnostics(builder) + (returns_row,),
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    assert builder._release_gate_failures(result, {"dropped_target_names": []}) == []
+
+
+def test_release_gate_failures_require_a_table_1_4_dollar_surface() -> None:
+    builder = _load_builder_module()
+    without_table_1_4 = tuple(
+        diagnostic
+        for diagnostic in _passing_critical_diagnostics(builder)
+        if ".table_1_4." not in diagnostic.name
+    )
+    result = SimpleNamespace(
+        skipped=(),
+        diagnostics=without_table_1_4,
+        initial_loss=10.0,
+        final_loss=5.0,
+    )
+
+    failures = builder._release_gate_failures(result, {"dropped_target_names": []})
+
+    assert any("soi_table_1_4_national_dollar_rows" in failure for failure in failures)
+
+
+def test_qrf_imputed_source_outputs_come_from_the_stage_manifest() -> None:
+    builder = _load_builder_module()
+
+    outputs = builder._qrf_imputed_source_outputs()
+
+    assert "non_sch_d_capital_gains" in outputs
+    assert "taxable_interest_income" in outputs
+    assert len(outputs) >= 60
+    # The capital_gain_distributions stage is a share split, not a QRF fit.
+    assert "schedule_d_capital_gain_distributions" not in outputs
+
+
+def _qrf_export_frame(builder, non_sch_d_values: np.ndarray) -> Frame:
+    n = int(non_sch_d_values.size)
+    ids = np.arange(1, n + 1, dtype="int64")
+    taxable_interest = np.zeros(n)
+    taxable_interest[: n // 2] = 1_000.0
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            "non_sch_d_capital_gains": non_sch_d_values,
+            "taxable_interest_income": taxable_interest,
+        }
+    )
+    return Frame(
+        {
+            "person": person,
+            "household": pd.DataFrame({"household_id": ids}),
+            "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+            "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+            "family": pd.DataFrame({"family_id": ids}),
+            "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+        },
+        builder.US_SCHEMA,
+        {
+            "household": builder.Weights(
+                values=np.ones(n),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+
+
+def test_qrf_tail_concentration_gate_flags_the_build_m_point_mass() -> None:
+    builder = _load_builder_module()
+    # 500 carriers of 12,000 person records (4.2% — sparse); the top 100 carry
+    # the repeated $594,484 donor ceiling, ~98% of the weighted mass.
+    values = np.zeros(12_000)
+    values[:100] = 594_484.0
+    values[100:500] = 2_979.0
+
+    gate, surface = builder._qrf_tail_concentration_gate(
+        _qrf_export_frame(builder, values)
+    )
+
+    assert not gate.passed
+    assert any("non_sch_d_capital_gains" in line for line in gate.failures)
+    assert surface["checked_sparse_columns"] == ["non_sch_d_capital_gains"]
+    assert "taxable_interest_income" in surface["dense_columns"]
+    assert "short_term_capital_gains" in surface["absent_columns"]
+
+
+def test_qrf_tail_concentration_gate_passes_dispersed_sparse_mass() -> None:
+    builder = _load_builder_module()
+    values = np.zeros(12_000)
+    values[:500] = 2_979.0
+
+    gate, _ = builder._qrf_tail_concentration_gate(_qrf_export_frame(builder, values))
+
+    assert gate.passed
+
+
+def test_allow_qrf_tail_concentration_flag_parses(monkeypatch) -> None:
+    builder = _load_builder_module()
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    assert not builder._parse_args().allow_qrf_tail_concentration
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--allow-qrf-tail-concentration",
+        ],
+    )
+    assert builder._parse_args().allow_qrf_tail_concentration
+
+
+# --- QRF tail register mismatch is a batched, evidence-preserving failure ---
+
+
+def _qrf_dispersed_values() -> np.ndarray:
+    # 500 equal carriers of 12,000 person records: top-100 share is 20%.
+    values = np.zeros(12_000)
+    values[:500] = 2_979.0
+    return values
+
+
+def _qrf_build_m_values() -> np.ndarray:
+    # The Build M point mass: the top 100 carriers hold ~98% of the mass.
+    values = np.zeros(12_000)
+    values[:100] = 594_484.0
+    values[100:500] = 2_979.0
+    return values
+
+
+def _qrf_tail_register(tmp_path, entries: dict[str, str]) -> Path:
+    path = tmp_path / "qrf_tail_exclusions.json"
+    path.write_text(json.dumps(entries))
+    return path
+
+
+class _RecordingTelemetry:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, str, dict]] = []
+
+    def stage(self, stage, **details):
+        self.events.append(("stage", stage, dict(details)))
+
+    def attach_artifact(self, name, path, **details):
+        self.events.append(("attach_artifact", name, {"path": Path(path)}))
+
+
+def _record_qrf_tail(builder, tmp_path, frame, *, register, allow, failures):
+    recorder = _RecordingTelemetry()
+    register_failures = builder._record_qrf_tail_concentration_gate(
+        frame,
+        exclusions_path=register,
+        allow_concentration=allow,
+        terminal_gate_failures=failures,
+        release_dir=tmp_path,
+        telemetry=builder._TerminalBatchTelemetry(recorder, failures),
+    )
+    return register_failures, recorder
+
+
+def test_qrf_tail_register_mismatch_splits_stale_and_unused_entries() -> None:
+    builder = _load_builder_module()
+    register = {
+        "non_sch_d_capital_gains": "checked, now dispersed",
+        "taxable_interest_income": "dense in this export",
+        "short_term_capital_gains": "absent from this export",
+        "not_a_qrf_output": "never a checked column",
+    }
+    gate, _ = builder._qrf_tail_concentration_gate(
+        _qrf_export_frame(builder, _qrf_dispersed_values()),
+        reviewed_exclusions=register,
+    )
+
+    mismatch = builder._qrf_tail_register_mismatch(register, gate)
+
+    assert mismatch == {
+        "stale": ["non_sch_d_capital_gains"],
+        "unused": [
+            "not_a_qrf_output",
+            "short_term_capital_gains",
+            "taxable_interest_income",
+        ],
+    }
+    [line] = builder._qrf_tail_register_failures(mismatch)
+    assert line.startswith(builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX)
+    assert "['non_sch_d_capital_gains']" in line
+    assert "'taxable_interest_income'" in line
+    # A register that matches the concentrated surface exactly is clean.
+    concentrated, _ = builder._qrf_tail_concentration_gate(
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        reviewed_exclusions={"non_sch_d_capital_gains": "tracked #481"},
+    )
+    matched = builder._qrf_tail_register_mismatch(
+        {"non_sch_d_capital_gains": "tracked #481"}, concentrated
+    )
+    assert matched == {"stale": [], "unused": []}
+    assert builder._qrf_tail_register_failures(matched) == []
+
+
+def test_qrf_tail_register_mismatch_on_a_clean_run_is_batched_not_raised(
+    tmp_path,
+) -> None:
+    """The route A premortem blocker: a register mismatch that is the run's
+    FIRST terminal failure used to raise before the batched path, losing the
+    tail evidence and the #568 weight sidecar. It must now be one more batched
+    failure with qrf_tail_concentration.json on disk."""
+    builder = _load_builder_module()
+    register = _qrf_tail_register(
+        tmp_path,
+        {
+            "non_sch_d_capital_gains": "checked, now dispersed",
+            "taxable_interest_income": "dense in this export",
+        },
+    )
+    failures: list[str] = []
+
+    register_failures, recorder = _record_qrf_tail(
+        builder,
+        tmp_path,
+        _qrf_export_frame(builder, _qrf_dispersed_values()),
+        register=register,
+        allow=False,
+        failures=failures,
+    )
+
+    assert len(register_failures) == 1
+    assert register_failures[0].startswith(builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX)
+    # The gate's own stale failure and the register line both ride the batch.
+    assert failures == [
+        "QRF tail concentration failed: Stale reviewed exclusions — the "
+        "column is below the concentration threshold now, remove the "
+        "exclusion: ['non_sch_d_capital_gains'].",
+        *register_failures,
+    ]
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["enforced"] is True
+    details = payload["tail_concentration"]["details"]
+    assert details["top_share"]["non_sch_d_capital_gains"] == pytest.approx(0.2)
+    assert details["carrier_counts"] == {"non_sch_d_capital_gains": 500}
+    assert payload["surface"]["register_mismatch"] == {
+        "stale": ["non_sch_d_capital_gains"],
+        "unused": ["taxable_interest_income"],
+    }
+    assert payload["surface"]["reviewed_exclusions_file"] == str(register)
+    assert payload["surface"]["reviewed_exclusions_sha256"] == (
+        hashlib.sha256(register.read_bytes()).hexdigest()
+    )
+    assert [event[:2] for event in recorder.events] == [
+        ("attach_artifact", "qrf_tail_concentration"),
+        ("stage", "export_dataset"),
+    ]
+    stage_details = recorder.events[1][2]
+    assert stage_details["status"] == "failed"
+    assert stage_details["failures"][-1] == register_failures[0]
+
+
+def test_qrf_tail_register_mismatch_under_earlier_failures_keeps_evidence(
+    tmp_path,
+) -> None:
+    """The degraded path: with earlier failures the old raise became an
+    ``evaluation error`` line and nulled the gate, so the JSON and the gate's
+    own failures were dropped. Now both are recorded."""
+    builder = _load_builder_module()
+    register = _qrf_tail_register(
+        tmp_path, {"short_term_capital_gains": "absent from this export"}
+    )
+    failures = ["Input mass parity failed: long_term_capital_gains +230.7%"]
+
+    _record_qrf_tail(
+        builder,
+        tmp_path,
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        register=register,
+        allow=False,
+        failures=failures,
+    )
+
+    assert failures[0].startswith("Input mass parity failed:")
+    assert failures[1].startswith(
+        "QRF tail concentration failed: non_sch_d_capital_gains: top 100"
+    )
+    assert failures[2].startswith(builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX)
+    assert "['short_term_capital_gains']" in failures[2]
+    assert len(failures) == 3
+    assert not any("evaluation" in line for line in failures)
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["tail_concentration"]["details"]["top_share"][
+        "non_sch_d_capital_gains"
+    ] == pytest.approx(0.98, abs=0.01)
+    assert payload["surface"]["register_mismatch"]["unused"] == [
+        "short_term_capital_gains"
+    ]
+
+
+def test_qrf_tail_register_mismatch_refuses_whatever_the_allow_flag_says(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    register = _qrf_tail_register(
+        tmp_path, {"short_term_capital_gains": "absent from this export"}
+    )
+    failures: list[str] = []
+
+    register_failures, recorder = _record_qrf_tail(
+        builder,
+        tmp_path,
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        register=register,
+        allow=True,
+        failures=failures,
+    )
+
+    # --allow-qrf-tail-concentration waives the concentrated column, never
+    # the register mismatch (the replaced raise ignored the flag too).
+    assert failures == register_failures
+    assert len(failures) == 1
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["enforced"] is False
+    assert payload["tail_concentration"]["passed"] is False
+    assert recorder.events[-1][2]["failures"] == register_failures
+
+
+def test_qrf_tail_matching_register_records_a_clean_pass(tmp_path) -> None:
+    builder = _load_builder_module()
+    register = _qrf_tail_register(tmp_path, {"non_sch_d_capital_gains": "#481"})
+    failures: list[str] = []
+
+    register_failures, recorder = _record_qrf_tail(
+        builder,
+        tmp_path,
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        register=register,
+        allow=False,
+        failures=failures,
+    )
+
+    assert register_failures == []
+    assert failures == []
+    payload = json.loads((tmp_path / "qrf_tail_concentration.json").read_text())
+    assert payload["tail_concentration"]["passed"] is True
+    assert payload["surface"]["register_mismatch"] == {"stale": [], "unused": []}
+    assert [event[:2] for event in recorder.events] == [
+        ("attach_artifact", "qrf_tail_concentration")
+    ]
+
+
+def test_qrf_tail_evaluation_crash_keeps_the_degraded_contract(tmp_path) -> None:
+    builder = _load_builder_module()
+    bad_register = _qrf_tail_register(tmp_path, {"non_sch_d_capital_gains": " "})
+    frame = _qrf_export_frame(builder, _qrf_dispersed_values())
+
+    # A clean run still propagates a genuine evaluation crash.
+    with pytest.raises(ValueError, match="non-empty"):
+        _record_qrf_tail(
+            builder, tmp_path, frame, register=bad_register, allow=False, failures=[]
+        )
+
+    failures = ["ctc failed"]
+    assert (
+        _record_qrf_tail(
+            builder,
+            tmp_path,
+            frame,
+            register=bad_register,
+            allow=False,
+            failures=failures,
+        )[0]
+        == []
+    )
+    assert failures[1].startswith(
+        "QRF tail concentration failed: evaluation error under earlier gate "
+        "failures: ValueError:"
+    )
+    assert not (tmp_path / "qrf_tail_concentration.json").exists()
+    # The pre-refactor contract: an evaluation crash under earlier failures
+    # keeps the standing-owned prefix, so --evidence-release ownership of it
+    # is unchanged (only a register mismatch is refused outright).
+    builder._evidence_known_failures(failures[1:], builder.US_EVIDENCE_FAILURE_OWNERS)
+
+
+def test_evidence_release_refuses_a_qrf_tail_register_mismatch_even_when_owned(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    lines = builder._qrf_tail_register_failures(
+        {"stale": ["estate_income"], "unused": ["bond_assets"]}
+    )
+
+    # Never standing-owned: the prefix is not "QRF tail concentration failed:".
+    assert "QRF tail concentration failed:" not in lines[0]
+    with pytest.raises(RuntimeError, match="match no\\s+owner"):
+        builder._evidence_known_failures(lines, builder.US_EVIDENCE_FAILURE_OWNERS)
+    # Even a per-run adjudication that owns the line cannot carry it into an
+    # evidence export: a register mismatch is fixed in the register.
+    owners = tmp_path / "owners.json"
+    owners.write_text(
+        json.dumps(
+            {
+                builder.US_QRF_TAIL_REGISTER_MISMATCH_PREFIX: (
+                    "PolicyEngine/microcosm#900"
+                )
+            }
+        )
+    )
+    patterns = builder._load_evidence_failure_owner_patterns(owners)
+    assert builder._evidence_known_failures(lines, patterns)
+    refusal = builder._qrf_tail_register_evidence_refusal(lines)
+    assert isinstance(refusal, RuntimeError)
+    assert "cannot be owned" in str(refusal)
+    assert lines[0] in str(refusal)
+    assert builder._qrf_tail_register_evidence_refusal([]) is None
+
+
+def test_qrf_tail_register_refusal_is_wired_into_the_evidence_batch() -> None:
+    """Structural pin (the #506/#568 AST pattern): _main() resolves the tail
+    register refusal under --evidence-release, from the helper's return value,
+    before the batched path writes the #568 weight sidecar; and no raise
+    remains between the tail helper and the batched raise."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(main_fn):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    def _calls(name: str) -> list[ast.Call]:
+        return [
+            node
+            for node in ast.walk(main_fn)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == name
+        ]
+
+    def _ancestor_if_tests(node: ast.AST) -> list[str]:
+        tests = []
+        while node in parents:
+            node = parents[node]
+            if isinstance(node, ast.If):
+                tests.append(ast.unparse(node.test))
+        return tests
+
+    [record] = _calls("_record_qrf_tail_concentration_gate")
+    record_assign = parents[record]
+    assert isinstance(record_assign, ast.Assign)
+    assert ast.unparse(record_assign.targets[0]) == "qrf_tail_register_failures"
+    [refusal] = _calls("_qrf_tail_register_evidence_refusal")
+    assert ast.unparse(refusal.args[0]) == "qrf_tail_register_failures"
+    assert "args.evidence_release" in _ancestor_if_tests(refusal)
+    [sidecar] = _calls("_write_final_household_weight_evidence")
+    assert record.lineno < refusal.lineno < sidecar.lineno
+    batched_raise = next(
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
+        and node.lineno > sidecar.lineno
+    )
+    early_raises = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and record.lineno < node.lineno < sidecar.lineno
+        and ast.unparse(node) != "raise evidence_refusal"
+    ]
+    assert not early_raises, [ast.unparse(node) for node in early_raises]
+    assert batched_raise.lineno > sidecar.lineno
+
+
+# --- SSI take-up delivered-weight prior basis + delivery gate (#507/#508) ---
+
+_SSI_BAND_TARGETS = {
+    "under_18": 1_001_922.0,
+    "18_64": 3_905_779.0,
+    "65_plus": 2_382_142.0,
+}
+
+
+def _ssi_prior_final_artifact_payload() -> dict:
+    """A prior attempt's final us_ssi_take_up.json, schema 2 (Build N shape).
+
+    Contract strings are frozen LITERALS on purpose: this fixture documents
+    what Build N's certified artifact actually carries, so drift in the
+    module constants cannot silently redefine what the loader accepts
+    (microcosm#507 sol review finding 10).
+    """
+
+    bands = [
+        ("under_18", 1_001_922.0, 177_582.0, 60_000.0),
+        ("18_64", 3_905_779.0, 6_000_000.0, 2_500_000.0),
+        ("65_plus", 2_382_142.0, 3_995_000.0, 900_000.0),
+    ]
+    return {
+        "schema_version": 2,
+        "classification": "release_diagnostics",
+        "variable": "takes_up_ssi_if_eligible",
+        "candidate_definition": "uncapped_ssi > 0 at 2024-12",
+        "target_table": "ssa_ssi_federal_payment_recipients_by_age",
+        "target_source": (
+            "https://www.ssa.gov/policy/docs/statcomps/ssi_monthly/2024-12/table01.html"
+        ),
+        "target_period": "2024-12",
+        "target_measure": "Total with—Federal payment",
+        "age_bands": [
+            {
+                "age_band": key,
+                "target": target,
+                "candidate_capacity": capacity,
+                "reporter_candidate_floor": floor,
+            }
+            for key, target, capacity, floor in bands
+        ],
+    }
+
+
+def test_ssi_prior_weight_basis_loads_a_prior_final_artifact(tmp_path) -> None:
+    import hashlib
+
+    builder = _load_builder_module()
+    path = tmp_path / "us_ssi_take_up.json"
+    path.write_text(json.dumps(_ssi_prior_final_artifact_payload()))
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+
+    basis = builder._load_ssi_take_up_prior_weight_basis(
+        path, targets=_SSI_BAND_TARGETS, expected_sha256=sha
+    )
+
+    assert basis.kind == "release_artifact"
+    assert basis.source_schema_version == 2
+    assert basis.source_sha256 == sha
+    aged = basis.band("65_plus")
+    assert aged.candidate_capacity == pytest.approx(3_995_000.0)
+    assert aged.reporter_candidate_floor == pytest.approx(900_000.0)
+    assert (
+        builder._load_ssi_take_up_prior_weight_basis(
+            None, targets=_SSI_BAND_TARGETS, expected_sha256=None
+        )
+        is None
+    )
+
+
+def test_ssi_prior_weight_basis_fails_fast_on_bad_artifacts(tmp_path) -> None:
+    import hashlib
+
+    builder = _load_builder_module()
+    valid = tmp_path / "us_ssi_take_up.json"
+    valid.write_text(json.dumps(_ssi_prior_final_artifact_payload()))
+    valid_sha = hashlib.sha256(valid.read_bytes()).hexdigest()
+
+    # The sha256 pin is the trust receipt (microcosm#507 sol review
+    # finding 1): no pin, wrong pin, and a pin without a path all fail fast.
+    with pytest.raises(RuntimeError, match="companion"):
+        builder._load_ssi_take_up_prior_weight_basis(
+            valid, targets=_SSI_BAND_TARGETS, expected_sha256=None
+        )
+    with pytest.raises(RuntimeError, match="not the pinned"):
+        builder._load_ssi_take_up_prior_weight_basis(
+            valid, targets=_SSI_BAND_TARGETS, expected_sha256="ab" * 32
+        )
+    with pytest.raises(RuntimeError, match="requires"):
+        builder._load_ssi_take_up_prior_weight_basis(
+            None, targets=_SSI_BAND_TARGETS, expected_sha256=valid_sha
+        )
+
+    with pytest.raises(RuntimeError, match="does not exist"):
+        builder._load_ssi_take_up_prior_weight_basis(
+            tmp_path / "missing.json",
+            targets=_SSI_BAND_TARGETS,
+            expected_sha256=valid_sha,
+        )
+
+    invalid = tmp_path / "invalid.json"
+    invalid.write_text("{not json")
+    with pytest.raises(RuntimeError, match="not valid JSON"):
+        builder._load_ssi_take_up_prior_weight_basis(
+            invalid,
+            targets=_SSI_BAND_TARGETS,
+            expected_sha256=hashlib.sha256(invalid.read_bytes()).hexdigest(),
+        )
+
+    # A basis measured against a different SSA band target contract must be
+    # refused — one coherent target system (microcosm#508).
+    drifted_payload = _ssi_prior_final_artifact_payload()
+    drifted_payload["age_bands"][2]["target"] = 2_000_000.0
+    drifted = tmp_path / "drifted.json"
+    drifted.write_text(json.dumps(drifted_payload))
+    with pytest.raises(RuntimeError, match="target contract"):
+        builder._load_ssi_take_up_prior_weight_basis(
+            drifted,
+            targets=_SSI_BAND_TARGETS,
+            expected_sha256=hashlib.sha256(drifted.read_bytes()).hexdigest(),
+        )
+
+
+def test_ssi_prior_weight_basis_flag_defaults_to_none(monkeypatch, tmp_path) -> None:
+    builder = _load_builder_module()
+    base_argv = [
+        "build_us_fiscal_refresh_release.py",
+        "--ledger-facts",
+        "facts.jsonl",
+        "--out",
+        "release",
+    ]
+    monkeypatch.setattr(sys, "argv", base_argv)
+    assert builder._parse_args().ssi_take_up_prior_weight_basis is None
+
+    basis_path = tmp_path / "us_ssi_take_up.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            *base_argv,
+            "--ssi-take-up-prior-weight-basis",
+            str(basis_path),
+            "--ssi-take-up-prior-weight-basis-sha256",
+            "ab" * 32,
+        ],
+    )
+    args = builder._parse_args()
+    assert args.ssi_take_up_prior_weight_basis == basis_path
+    assert args.ssi_take_up_prior_weight_basis_sha256 == "ab" * 32
+
+
+def _ssi_delivery_diagnostics(selected: dict[str, float]) -> dict:
+    return {
+        "schema_version": 4,
+        "measurement_phase": "release_final",
+        "age_bands": [
+            {
+                "age_band": key,
+                "target": _SSI_BAND_TARGETS[key],
+                "selected_recipient_weight": selected[key],
+            }
+            for key in _SSI_BAND_TARGETS
+        ],
+    }
+
+
+def test_enforce_ssi_delivery_returns_batch_failures_and_writes_the_basis(
+    tmp_path,
+) -> None:
+    """A delivery miss returns batchable failures instead of raising.
+
+    microcosm#547: the old in-place raise destroyed the failed run's
+    calibration diagnostics and skipped every other terminal gate group.
+    The failures now join the #437 batch; the basis artifact write — the
+    retry remedy — is unchanged.
+    """
+    builder = _load_builder_module()
+    # Build N's measured delivery: 65+ landed 0.98M against 2.38M — the
+    # microcosm#507 collapse — while under-18 stays fenced (#453/#509).
+    diagnostics = _ssi_delivery_diagnostics(
+        {"under_18": 120_000.0, "18_64": 4_100_000.0, "65_plus": 984_000.0}
+    )
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+
+    failures, gate_result = builder._enforce_ssi_take_up_delivery(
+        diagnostics,
+        targets=_SSI_BAND_TARGETS,
+        release_dir=release_dir,
+        telemetry=None,
+    )
+
+    assert failures
+    # The returned gate result is the manifest receipt for this run.
+    assert not gate_result.passed
+    assert all(failure.startswith("SSI take-up deliver") for failure in failures)
+    assert any("--ssi-take-up-prior-weight-basis" in failure for failure in failures)
+    written_path = release_dir / "us_ssi_take_up.json"
+    written = json.loads(written_path.read_text())
+    assert written == diagnostics
+    # The failure itself hands the operator BOTH halves of the retry remedy:
+    # the artifact path and its sha256 pin (a failed attempt never reaches
+    # the release manifest that would otherwise carry the hash).
+    import hashlib
+
+    written_sha = hashlib.sha256(written_path.read_bytes()).hexdigest()
+    assert any(written_sha in failure for failure in failures)
+
+
+def test_enforce_ssi_delivery_passes_in_tolerance_and_writes_nothing(
+    tmp_path,
+) -> None:
+    builder = _load_builder_module()
+    diagnostics = _ssi_delivery_diagnostics(
+        {
+            "under_18": 120_000.0,  # fenced: an 88% miss must not fail
+            "18_64": 3_900_000.0,
+            "65_plus": 2_350_000.0,
+        }
+    )
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+
+    failures, gate_result = builder._enforce_ssi_take_up_delivery(
+        diagnostics,
+        targets=_SSI_BAND_TARGETS,
+        release_dir=release_dir,
+        telemetry=None,
+    )
+
+    assert failures == []
+    assert gate_result.passed
+    # No fences on this sparse-shaped call: full enforcement documented.
+    assert gate_result.details["adjudication_fenced_band_keys"] == []
+    assert not (release_dir / "us_ssi_take_up.json").exists()
+
+
+def test_enforce_ssi_delivery_survives_unwritable_retry_artifact(
+    tmp_path,
+) -> None:
+    """A nonfinite delivery fails the gate AND breaks the retry writer.
+
+    The strict-JSON basis writer (allow_nan=False) raises on the very
+    diagnostics that fail the gate; the reporting crash must not mask the
+    gate failure or destroy the diagnostics artifact downstream
+    (microcosm#547, confirm round 2 finding 1). The failure line tells the
+    retry it must recompute delivery itself.
+    """
+    builder = _load_builder_module()
+    diagnostics = _ssi_delivery_diagnostics(
+        {"under_18": 120_000.0, "18_64": float("nan"), "65_plus": 984_000.0}
+    )
+    release_dir = tmp_path / "release"
+    release_dir.mkdir()
+
+    failures, gate_result = builder._enforce_ssi_take_up_delivery(
+        diagnostics,
+        targets=_SSI_BAND_TARGETS,
+        release_dir=release_dir,
+        telemetry=None,
+    )
+
+    assert failures
+    assert not gate_result.passed
+    assert failures[0].startswith("SSI take-up delivery failed:")
+    assert any("could NOT be written" in failure for failure in failures)
+    # json.dumps runs before write_text, so no partial artifact exists.
+    assert not (release_dir / "us_ssi_take_up.json").exists()
+
+
+def test_final_medicaid_quarantines_on_ssi_law_violation() -> None:
+    """A Bernoulli-law violation must quarantine, never evaluate (#547).
+
+    pe-us Medicaid eligibility consumes the frozen SSI decisions
+    (takes_up_ssi_if_eligible -> ssi -> is_ssi_recipient_for_medicaid ->
+    medicaid_category), so evaluating on corrupted decisions would
+    mis-measure rather than fail.
+    """
+    builder = _load_builder_module()
+
+    def must_not_evaluate() -> dict:
+        raise AssertionError("Medicaid must not be evaluated under quarantine")
+
+    diagnostics, failures = builder._final_medicaid_diagnostics_or_quarantine(
+        ssi_law_degraded=True,
+        degraded=True,
+        evaluate=must_not_evaluate,
+    )
+
+    assert diagnostics == {}
+    assert len(failures) == 1
+    assert "quarantined" in failures[0]
+    assert "Bernoulli-law violation" in failures[0]
+
+
+def test_final_medicaid_guard_records_crash_only_in_degraded_mode() -> None:
+    builder = _load_builder_module()
+
+    def boom() -> dict:
+        raise RuntimeError("medicaid recompute exploded")
+
+    diagnostics, failures = builder._final_medicaid_diagnostics_or_quarantine(
+        ssi_law_degraded=False,
+        degraded=True,
+        evaluate=boom,
+    )
+    assert diagnostics == {}
+    assert len(failures) == 1
+    assert "medicaid recompute exploded" in failures[0]
+
+    with pytest.raises(RuntimeError, match="medicaid recompute exploded"):
+        builder._final_medicaid_diagnostics_or_quarantine(
+            ssi_law_degraded=False,
+            degraded=False,
+            evaluate=boom,
+        )
+
+
+def test_final_medicaid_green_path_evaluates_normally() -> None:
+    builder = _load_builder_module()
+
+    diagnostics, failures = builder._final_medicaid_diagnostics_or_quarantine(
+        ssi_law_degraded=False,
+        degraded=False,
+        evaluate=lambda: {"enrolled": 1},
+    )
+
+    assert diagnostics == {"enrolled": 1}
+    assert failures == []
+
+
+def test_reform_vector_cache_context_tracks_support_and_materializer() -> None:
+    """The reform-vector whitelist carries support and materializer digests.
+
+    Whether a JCT reform income-tax estimate can move with
+    takes_up_ssi_if_eligible is an engine-graph question the build must not
+    answer by assumption, while two selected supports can share positional
+    SSI flag bytes. The assignment, selection, and complete target-frame
+    materializer digests therefore invalidate reform vectors independently."""
+
+    builder = _load_builder_module()
+    base = {
+        "base_dataset_sha256": "b",
+        "weeks_unemployed_source_sha256": "w",
+        "policyengine_us_version": "1",
+        "target_period": 2024,
+        "congressional_district_vintage_crosswalk_sha256": None,
+        "build_commit": "irrelevant-to-reform-vectors",
+        "ssi_take_up_assignment_sha256": "digest-a",
+        "selection_identities_sha256": None,
+        "target_frame_materializer_identity_sha256": "materializer-a",
+    }
+    changed_assignment = {**base, "ssi_take_up_assignment_sha256": "digest-b"}
+    selected = {**base, "selection_identities_sha256": "cd" * 32}
+    selected_other = {**base, "selection_identities_sha256": "ef" * 32}
+    changed_materializer = {
+        **base,
+        "target_frame_materializer_identity_sha256": "materializer-b",
+    }
+    projected = builder._reform_vector_cache_context(base)
+    assert builder._reform_vector_cache_context(
+        base
+    ) != builder._reform_vector_cache_context(changed_assignment)
+    assert projected != builder._reform_vector_cache_context(selected)
+    assert builder._reform_vector_cache_context(
+        selected
+    ) != builder._reform_vector_cache_context(selected_other)
+    assert projected != builder._reform_vector_cache_context(changed_materializer)
+    assert "selection_identities_sha256" in builder.REFORM_VECTOR_CACHE_CONTEXT_KEYS
+    assert projected["selection_identities_sha256"] is None
+    assert (
+        "target_frame_materializer_identity_sha256"
+        in builder.REFORM_VECTOR_CACHE_CONTEXT_KEYS
+    )
+    assert projected["target_frame_materializer_identity_sha256"] == "materializer-a"
+    assert "build_commit" not in projected
+
+
+def test_ssi_assignment_digest_tracks_flags_priors_and_basis(small_frame) -> None:
+    """Any change to the frozen assignment must invalidate checkpoint/cache."""
+
+    from microcosm.build.us_runtime.ssi_take_up import (
+        SSITakeUpBandPriorBasis,
+        SSITakeUpPriorBasis,
+    )
+
+    builder = _load_builder_module()
+
+    def _frame_with_flags(flags):
+        tables = {
+            entity: small_frame.table(entity).copy() for entity in small_frame.entities
+        }
+        tables["person"]["takes_up_ssi_if_eligible"] = np.asarray(flags, dtype=bool)
+        return Frame(
+            tables,
+            small_frame.schema,
+            {
+                entity: small_frame.weights_for(entity)
+                for entity in small_frame.weighted_entities
+            },
+        )
+
+    priors = {"under_18": 0.1, "18_64": 0.2, "65_plus": 0.3}
+    basis = SSITakeUpPriorBasis(
+        kind="current_frame",
+        bands=tuple(
+            SSITakeUpBandPriorBasis(
+                key=key, candidate_capacity=100.0, reporter_candidate_floor=10.0
+            )
+            for key in priors
+        ),
+    )
+    baseline = builder._ssi_take_up_assignment_digest(
+        _frame_with_flags([True, False, True, False]),
+        assignment_priors=priors,
+        prior_basis=basis,
+    )
+    assert baseline == builder._ssi_take_up_assignment_digest(
+        _frame_with_flags([True, False, True, False]),
+        assignment_priors=priors,
+        prior_basis=basis,
+    )
+    assert baseline != builder._ssi_take_up_assignment_digest(
+        _frame_with_flags([True, True, True, False]),
+        assignment_priors=priors,
+        prior_basis=basis,
+    )
+    assert baseline != builder._ssi_take_up_assignment_digest(
+        _frame_with_flags([True, False, True, False]),
+        assignment_priors={**priors, "65_plus": 0.9},
+        prior_basis=basis,
+    )
+    assert baseline != builder._ssi_take_up_assignment_digest(
+        _frame_with_flags([True, False, True, False]),
+        assignment_priors=priors,
+        prior_basis=SSITakeUpPriorBasis(
+            kind="release_artifact",
+            bands=basis.bands,
+            source_sha256="cd" * 32,
+            source_schema_version=2,
+        ),
+    )
+
+
+def test_calibration_diagnostics_schema_lockstep() -> None:
+    """The writer (microcosm-calibrate) and the publish contract (microcosm-data)
+    pin the same diagnostics schema version. They cannot share a constant —
+    microcosm-data must not import microcosm-calibrate — so drift fails here,
+    in the one suite that imports both (the #494 cross-package break class:
+    calibrate moved to schema 5 while the contract still rejected != 4)."""
+    from microcosm.calibrate.diagnostics import (
+        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION as WRITER_SCHEMA_VERSION,
+    )
+    from microcosm.data.contract import (
+        CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION as CONTRACT_SCHEMA_VERSION,
+    )
+
+    assert WRITER_SCHEMA_VERSION == CONTRACT_SCHEMA_VERSION
+
+
+# ---------------------------------------------------------------------------
+# Evidence-tier builder mode (microcosm#506)
+# ---------------------------------------------------------------------------
+
+
+def test_evidence_release_id_reserves_the_segment_for_the_tier() -> None:
+    builder = _load_builder_module()
+
+    builder._assert_us_release_id(
+        "populace-us-2024-evidence-abc1234-20260812T000000Z",
+        evidence_release=True,
+    )
+    builder._assert_us_release_id("populace-us-2024-abc1234-20260812T000000Z")
+
+    with pytest.raises(ValueError, match="must carry"):
+        builder._assert_us_release_id(
+            "populace-us-2024-abc1234-20260812T000000Z",
+            evidence_release=True,
+        )
+    with pytest.raises(ValueError, match="reserved for --evidence-release"):
+        builder._assert_us_release_id(
+            "populace-us-2024-evidence-abc1234-20260812T000000Z"
+        )
+
+
+def test_default_release_id_carries_the_evidence_segment() -> None:
+    builder = _load_builder_module()
+    from datetime import UTC, datetime
+
+    stamp = datetime(2026, 8, 12, 1, 2, 3, tzinfo=UTC)
+    certified = builder._default_release_id(
+        SimpleNamespace(exact_k=None, evidence_release=False),
+        digest="abcdef0",
+        commit="123456789abc",
+        build_timestamp=stamp,
+    )
+    evidence = builder._default_release_id(
+        SimpleNamespace(exact_k=None, evidence_release=True),
+        digest="abcdef0",
+        commit="123456789abc",
+        build_timestamp=stamp,
+    )
+    assert certified == "populace-us-2024-abcdef0-123456789abc-20260812T010203Z"
+    assert evidence == "populace-us-2024-evidence-abcdef0-123456789abc-20260812T010203Z"
+    # The two ids differ ONLY by the tier segment, and each passes its own
+    # tier's assertion while failing the other's.
+    assert evidence.replace("-evidence-", "-") == certified
+    builder._assert_us_release_id(certified)
+    builder._assert_us_release_id(evidence, evidence_release=True)
+
+
+def test_evidence_known_failures_map_the_adjudicated_owner_register() -> None:
+    builder = _load_builder_module()
+    failures = [
+        (
+            "SOI Table 1.4 national dollar fit failed: target "
+            "'irs_soi.ty2023.table_1_4.all.capital_gain_distributions_amount"
+            "@2024' has relative_error=-0.302, exceeding 0.25."
+        ),
+        (
+            "QRF tail concentration failed: 7 sparse QRF-imputed columns "
+            "past the top-k share bound."
+        ),
+    ]
+
+    entries = builder._evidence_known_failures(
+        failures, builder.US_EVIDENCE_FAILURE_OWNERS
+    )
+
+    assert [entry["failure"] for entry in entries] == failures
+    assert entries[0]["owner"] == "PolicyEngine/microcosm#487"
+    assert "PolicyEngine/microcosm#481" in entries[1]["owner"]
+
+
+def test_evidence_known_failures_refuse_unowned_failures() -> None:
+    builder = _load_builder_module()
+    with pytest.raises(RuntimeError, match="match no\\s+owner") as excinfo:
+        builder._evidence_known_failures(
+            ["Some novel gate failed: it broke."],
+            builder.US_EVIDENCE_FAILURE_OWNERS,
+        )
+    # The refusal names the unowned failure verbatim so the operator can
+    # adjudicate exactly what the run recorded.
+    assert "Some novel gate failed: it broke." in str(excinfo.value)
+
+
+def test_evidence_failure_owner_file_takes_precedence(tmp_path) -> None:
+    builder = _load_builder_module()
+    owners_path = tmp_path / "owners.json"
+    owners_path.write_text(
+        json.dumps(
+            {
+                "QRF tail concentration failed:": "PolicyEngine/microcosm#900",
+                "Input coverage failed:": "PolicyEngine/microcosm#368",
+            }
+        )
+    )
+
+    patterns = builder._load_evidence_failure_owner_patterns(owners_path)
+    entries = builder._evidence_known_failures(
+        [
+            "QRF tail concentration failed: whatever.",
+            "Input coverage failed: tip_income missing.",
+        ],
+        patterns,
+    )
+
+    assert entries[0]["owner"] == "PolicyEngine/microcosm#900"
+    assert entries[1]["owner"] == "PolicyEngine/microcosm#368"
+
+
+def test_evidence_failure_owner_file_requires_issue_refs(tmp_path) -> None:
+    builder = _load_builder_module()
+    owners_path = tmp_path / "owners.json"
+    owners_path.write_text(json.dumps({"Input coverage failed:": "Max"}))
+    with pytest.raises(ValueError, match="issue reference"):
+        builder._load_evidence_failure_owner_patterns(owners_path)
+
+    owners_path.write_text(json.dumps({" ": "PolicyEngine/microcosm#1"}))
+    with pytest.raises(ValueError, match="empty pattern"):
+        builder._load_evidence_failure_owner_patterns(owners_path)
+
+
+def test_evidence_manifest_fields_are_structurally_uncertifiable() -> None:
+    """The flag can never mint a certified-shape manifest: the fields carry
+    the evidence schema marker, which the certified contract rejects, and an
+    empty failure record is refused outright."""
+    builder = _load_builder_module()
+    from microcosm.data.contract import (
+        EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION,
+        RELEASE_MANIFEST_SCHEMA_VERSION,
+    )
+
+    entries = [
+        {"failure": "SOI Table 1.4 national dollar fit failed: x.", "owner": "#487"}
+    ]
+    fields = builder._evidence_release_manifest_fields(entries)
+
+    assert fields["schema_version"] == EVIDENCE_RELEASE_MANIFEST_SCHEMA_VERSION
+    assert fields["schema_version"] != RELEASE_MANIFEST_SCHEMA_VERSION
+    assert fields["tier"] == "evidence"
+    assert fields["known_failures"] == entries
+
+    with pytest.raises(ValueError, match="all-green artifact"):
+        builder._evidence_release_manifest_fields([])
+
+
+def test_evidence_release_flags_parse(monkeypatch, tmp_path) -> None:
+    builder = _load_builder_module()
+    owners_path = tmp_path / "owners.json"
+    owners_path.write_text("{}")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+        ],
+    )
+    args = builder._parse_args()
+    assert args.evidence_release is False
+    assert args.evidence_failure_owners is None
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            "release",
+            "--evidence-release",
+            "--evidence-failure-owners",
+            str(owners_path),
+        ],
+    )
+    args = builder._parse_args()
+    assert args.evidence_release is True
+    assert args.evidence_failure_owners == owners_path
+
+
+def test_evidence_owner_file_without_evidence_release_is_refused(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    owners_path = tmp_path / "owners.json"
+    owners_path.write_text("{}")
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            str(tmp_path),
+            "--evidence-failure-owners",
+            str(owners_path),
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="2"):
+        builder._parse_args()
+    assert "requires --evidence-release" in capsys.readouterr().err
+
+
+def test_evidence_release_is_incompatible_with_exact_k(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "build_us_fiscal_refresh_release.py",
+            "--ledger-facts",
+            "facts.jsonl",
+            "--out",
+            str(tmp_path),
+            "--evidence-release",
+            "--exact-k",
+            "20000",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="2"):
+        builder._parse_args()
+    assert "incompatible with --exact-k" in capsys.readouterr().err
+
+
+def test_evidence_mode_conversion_is_pinned_structurally() -> None:
+    """microcosm#506 control-flow guard (the #443/#568 AST pattern): in
+    _main() (the build body under the #563 telemetry wrapper), every
+    terminal 'Release gates failed' raise after the #548 accumulator forms
+    must be conditioned on --evidence-release (the conversion sites), every
+    one BEFORE it must be unconditional (preflight and mid-build gates never
+    convert), the all-green evidence refusal must sit before the manifest
+    write, and _build_manifests must receive the owned failure record."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    tree = ast.parse(source)
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+
+    parents: dict[ast.AST, ast.AST] = {}
+    for parent in ast.walk(main_fn):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+
+    def _ancestor_if_tests(node: ast.AST) -> list[str]:
+        tests = []
+        cursor = node
+        while cursor in parents:
+            cursor = parents[cursor]
+            if isinstance(cursor, ast.If):
+                tests.append(ast.unparse(cursor.test))
+        return tests
+
+    accumulator = next(
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == "terminal_gate_failures"
+    )
+
+    # The exact certified-guard forms — polarity included, so a reversed or
+    # aliased condition cannot pass (round-2 sol mutation probe).
+    certified_guard_tests = {
+        "not args.evidence_release",
+        "not args.evidence_release or evidence_refusal is not None",
+    }
+    gate_raises = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and "Release gates failed: " in (ast.get_source_segment(source, node) or "")
+    ]
+    assert gate_raises, "_main() lost its release-gate raises"
+    for raise_node in gate_raises:
+        ancestor_tests = _ancestor_if_tests(raise_node)
+        guarded = any(test in certified_guard_tests for test in ancestor_tests)
+        mentions_flag = any(
+            "args.evidence_release" in test or "evidence_refusal" in test
+            for test in ancestor_tests
+        )
+        if raise_node.lineno > accumulator.lineno:
+            assert guarded, (
+                f"terminal raise at line {raise_node.lineno} must sit under "
+                f"one of {sorted(certified_guard_tests)}; the conversion "
+                "site regressed or changed polarity"
+            )
+        else:
+            assert not mentions_flag, (
+                f"pre-terminal raise at line {raise_node.lineno} is "
+                "conditioned on --evidence-release; preflight/mid-build "
+                "gates must abort in both modes"
+            )
+
+    refusals = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Raise)
+        and "Evidence release refused: every terminal gate passed"
+        in (ast.get_source_segment(source, node) or "")
+    ]
+    assert len(refusals) == 1, "the all-green evidence refusal must exist once"
+    # Exact guard chain, innermost first: reachable precisely when the flag
+    # is set and no terminal failure was recorded — an extra wrapper (the
+    # unreachability mutation) or a polarity flip breaks the equality.
+    assert _ancestor_if_tests(refusals[0]) == [
+        "not terminal_gate_failures",
+        "args.evidence_release",
+    ]
+
+    manifest_calls = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_build_manifests"
+    ]
+    assert len(manifest_calls) == 1
+    assert refusals[0].lineno < manifest_calls[0].lineno, (
+        "the all-green refusal must precede the manifest write"
+    )
+    manifest_keyword = next(
+        keyword
+        for keyword in manifest_calls[0].keywords
+        if keyword.arg == "evidence_known_failures"
+    )
+    # The kwarg must forward the resolved record, not a constant (the
+    # evidence_known_failures=None mutation).
+    assert isinstance(manifest_keyword.value, ast.Name)
+    assert manifest_keyword.value.id == "evidence_known_failures"
+    owned_assignments = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "evidence_known_failures"
+            for target in node.targets
+        )
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "_evidence_known_failures"
+    ]
+    assert len(owned_assignments) == 1, (
+        "the owned record must be assigned from _evidence_known_failures"
+    )
+    assert "args.evidence_release" in _ancestor_if_tests(owned_assignments[0])
+
+    # Every owner-resolution site: the batched conversion, the reform-smoke
+    # and take-up recordings, the coverage-gate recording, and the final
+    # assignment before the manifest write. A dropped site weakens the
+    # unowned-failure refusal.
+    owner_check_calls = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_evidence_known_failures"
+    ]
+    assert len(owner_check_calls) == 5, (
+        f"expected 5 owner-resolution sites in _main(), found {len(owner_check_calls)}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# The committed US Chronicle feed pin holds the release build's feed
+# ---------------------------------------------------------------------------
+
+
+def _feed_pin(*, bare: bool):
+    from microcosm.build.us_runtime.chronicle_feed import USChronicleFeed
+
+    fields = {f.name for f in dataclasses.fields(USChronicleFeed)}
+    values = {
+        "facts_sha256": "a" * 64,
+        "manifest_sha256": None if bare else "b" * 64,
+    }
+    committed = load_us_chronicle_feed_for_test()
+    for name in fields:
+        if name not in values:
+            values[name] = getattr(committed, name)
+    if bare:
+        values["artifact_schema_version"] = None
+    return USChronicleFeed(**values)
+
+
+def load_us_chronicle_feed_for_test():
+    from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
+
+    return load_us_chronicle_feed()
+
+
+def test_committed_feed_pin_accepts_the_pinned_feed_and_refuses_another() -> None:
+    builder = _load_builder_module()
+    bare = _feed_pin(bare=True)
+    builder._check_committed_us_ledger_feed_pin(
+        "a" * 64, manifest_sha256=None, allow_unpinned_feed=False, pin=bare
+    )
+    # A bare pin says nothing about a manifest, so an artifact feed with the
+    # pinned facts passes too.
+    builder._check_committed_us_ledger_feed_pin(
+        "a" * 64, manifest_sha256="c" * 64, allow_unpinned_feed=False, pin=bare
+    )
+    with pytest.raises(SystemExit, match=r"facts: loaded " + "f" * 64) as excinfo:
+        builder._check_committed_us_ledger_feed_pin(
+            "f" * 64, manifest_sha256=None, allow_unpinned_feed=False, pin=bare
+        )
+    assert "committed " + "a" * 64 in str(excinfo.value)
+    assert "--allow-unpinned-feed" in str(excinfo.value)
+
+
+def test_committed_feed_pin_holds_the_manifest_when_the_pin_is_an_artifact() -> None:
+    builder = _load_builder_module()
+    artifact = _feed_pin(bare=False)
+    builder._check_committed_us_ledger_feed_pin(
+        "a" * 64, manifest_sha256="b" * 64, allow_unpinned_feed=False, pin=artifact
+    )
+    with pytest.raises(SystemExit, match="manifest: loaded None"):
+        builder._check_committed_us_ledger_feed_pin(
+            "a" * 64, manifest_sha256=None, allow_unpinned_feed=False, pin=artifact
+        )
+
+
+def test_committed_feed_pin_is_waived_only_by_the_flag() -> None:
+    builder = _load_builder_module()
+    bare = _feed_pin(bare=True)
+    builder._check_committed_us_ledger_feed_pin(
+        "f" * 64, manifest_sha256=None, allow_unpinned_feed=True, pin=bare
+    )
+    assert builder._parse_args(_minimal_pin_argv()).allow_unpinned_feed is False
+    assert (
+        builder._parse_args(
+            [*_minimal_pin_argv(), "--allow-unpinned-feed"]
+        ).allow_unpinned_feed
+        is True
+    )
+
+
+def _minimal_pin_argv() -> list[str]:
+    return [
+        "--base-h5",
+        "base.h5",
+        "--ledger-facts",
+        "facts.jsonl",
+        "--release-id",
+        "populace-us-2024-pin-test",
+        "--out",
+        "out",
+    ]
+
+
+def test_main_checks_the_committed_feed_pin_before_compiling_targets() -> None:
+    """The pin check sits between loading the feed and compiling on it."""
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    loaded = source.index("ledger_artifact = load_ledger_consumer_artifact(")
+    checked = source.index("_check_committed_us_ledger_feed_pin(")
+    compiled = source.index("target_registry = compile_us_fiscal_target_registry(")
+    assert loaded < checked < compiled
+    assert source.count("_check_committed_us_ledger_feed_pin(") == 1
+
+
+# SPM measurement composition refusal
+# ---------------------------------------------------------------------------
+
+
+def _spm_frame(people: list[dict]) -> Frame:
+    """A US frame from ``{spm, age, **role columns}`` specs, one household."""
+    from microcosm.frame.units import US_SCHEMA
+
+    role_columns = (
+        "is_spm_independent_minor_role",
+        "is_household_head",
+        "is_household_spouse",
+    )
+    rows = []
+    for index, person in enumerate(people, start=1):
+        row = {
+            "person_id": index,
+            "person_household_id": 1,
+            "person_tax_unit_id": 1,
+            "person_spm_unit_id": int(person["spm"]),
+            "person_family_id": 1,
+            "person_marital_unit_id": index,
+            "age": float(person["age"]),
+        }
+        for column in role_columns:
+            if any(column in candidate for candidate in people):
+                row[column] = bool(person.get(column, False))
+        rows.append(row)
+    person_table = pd.DataFrame(rows)
+    return Frame(
+        {
+            "person": person_table,
+            "household": pd.DataFrame({"household_id": [1]}),
+            "tax_unit": pd.DataFrame({"tax_unit_id": [1]}),
+            "spm_unit": pd.DataFrame(
+                {"spm_unit_id": sorted({int(p["spm"]) for p in people})}
+            ),
+            "family": pd.DataFrame({"family_id": [1]}),
+            "marital_unit": pd.DataFrame(
+                {"marital_unit_id": person_table["person_marital_unit_id"].tolist()}
+            ),
+        },
+        US_SCHEMA,
+        {"household": Weights(np.array([100.0]), WeightKind.CALIBRATED)},
+    )
+
+
+def test__spm_composition_gate__minor_only_unit__fails_by_name() -> None:
+    """The release must name the unit and the remedy, not re-raise the engine's
+    anonymous population-wide ``SPM_COMPOSITION_REQUIRED``."""
+    builder = _load_builder_module()
+    frame = _spm_frame([{"spm": 1, "age": 40}, {"spm": 2, "age": 16}])
+
+    failures, details = builder._spm_composition_gate_failures(frame, stage="unit test")
+
+    assert len(failures) == 1
+    # The batched raise prefixes "Release gates failed: " to the joined lines.
+    assert failures[0].startswith("SPM measurement composition failed (unit test): ")
+    assert "SPM_COMPOSITION_REQUIRED" in failures[0]
+    # The single-sourced remedy travels with the refusal.
+    assert "Remedy:" in failures[0]
+    assert "spm_unit_id(s): 2" in failures[0]
+    assert details["evaluated"] is True
+    assert details["n_units_without_classified_adult"] == 1
+
+
+def test__spm_composition_gate__every_unit_classified__contributes_no_failure() -> None:
+    builder = _load_builder_module()
+    frame = _spm_frame([{"spm": 1, "age": 40}, {"spm": 2, "age": 18}])
+
+    failures, details = builder._spm_composition_gate_failures(frame, stage="unit test")
+
+    assert failures == []
+    assert details["evaluated"] is True
+    assert details["n_units"] == 2
+    assert details["n_units_without_classified_adult"] == 0
+
+
+def test__spm_composition_gate__source_role_rescues_the_minor() -> None:
+    builder = _load_builder_module()
+    frame = _spm_frame(
+        [
+            {"spm": 1, "age": 40, "is_spm_independent_minor_role": False},
+            {"spm": 2, "age": 16, "is_spm_independent_minor_role": True},
+        ]
+    )
+
+    failures, details = builder._spm_composition_gate_failures(frame, stage="unit test")
+
+    assert failures == []
+    assert details["role_source"] == "source_column"
+    assert details["n_units_without_classified_adult"] == 0
+
+
+def test__spm_composition_gate__unclassifiable_frame__is_a_named_gate_failure() -> None:
+    """A frame the rule cannot read must not kill the build with a bare
+    ``ValueError`` out of the check.
+
+    policyengine-us registers ``age`` as an input-only variable with
+    ``default_value = 40``, so an export carrying no ``age`` column is not a
+    population the engine would refuse — but it is a population this gate
+    cannot vouch for either. It becomes one more line in the tool's batched
+    ``Release gates failed:`` report, naming the reason, rather than a
+    traceback from inside ``check_spm_composition``.
+    """
+    builder = _load_builder_module()
+    frame = _spm_frame([{"spm": 1, "age": 40}])
+    person = frame.table("person").drop(columns=["age"])
+    stripped = Frame(
+        {
+            entity: (person if entity == "person" else frame.table(entity))
+            for entity in frame.entities
+        },
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+    failures, details = builder._spm_composition_gate_failures(
+        stripped, stage="unit test"
+    )
+
+    assert len(failures) == 1
+    assert failures[0].startswith("SPM measurement composition failed (unit test): ")
+    assert "cannot be classified" in failures[0]
+    assert "no 'age' column" in failures[0]
+    assert details == {
+        "evaluated": False,
+        "error": details["error"],
+    }
+    assert "no 'age' column" in details["error"]
+
+
+def test__spm_composition_report__unclassifiable_frame__raises_for_the_advisory(
+    monkeypatch,
+) -> None:
+    """The pre-calibration advisory catches this; the graded point re-raises it.
+
+    A frame with no ``age`` column cannot be classified at all. The report
+    function must surface that as a ValueError naming the column, so the
+    advisory's ``except (KeyError, ValueError)`` can degrade to a notice while
+    the export-frame assertion still refuses.
+    """
+    builder = _load_builder_module()
+    frame = _spm_frame([{"spm": 1, "age": 40}])
+    person = frame.table("person").drop(columns=["age"])
+    stripped = Frame(
+        {
+            entity: (person if entity == "person" else frame.table(entity))
+            for entity in frame.entities
+        },
+        frame.schema,
+        {entity: frame.weights_for(entity) for entity in frame.weighted_entities},
+    )
+
+    with pytest.raises(ValueError, match="no 'age' column"):
+        builder._spm_composition_report(stripped)
+
+
+def test__spm_composition_report__frame_without_spm_units__raises_for_the_advisory() -> (
+    None
+):
+    """A real frame whose schema declares no ``spm_unit`` raises ``ValueError``.
+
+    ``Frame.table`` refuses an undeclared entity with ``ValueError``, so a
+    household-only pool degrades the pre-calibration advisory to a notice
+    through the same ``except (KeyError, ValueError)`` — no broader catch, and
+    no attribute the real frame lacks, is needed for that.
+    """
+    builder = _load_builder_module()
+    frame = Frame(
+        {
+            "person": pd.DataFrame(
+                {
+                    "person_id": [1, 2],
+                    "person_household_id": [1, 1],
+                    "age": [40.0, 16.0],
+                }
+            ),
+            "household": pd.DataFrame({"household_id": [1]}),
+        },
+        EntitySchema(group_entities=("household",)),
+        {"household": Weights(np.array([100.0]), WeightKind.CALIBRATED)},
+    )
+
+    with pytest.raises(ValueError, match="Unknown entity 'spm_unit'"):
+        builder._spm_composition_report(frame)
+
+
+def test_spm_composition_gate_rides_the_batched_pre_export_raise() -> None:
+    """Pin the WIRING, not just the helper.
+
+    Every other test here calls ``_spm_composition_gate_failures`` directly, so
+    deleting its call from ``_main()`` would leave them all green while the
+    release stopped refusing anything. This is the same AST ordering idiom
+    ``test_release_h5_write_sits_between_batched_raise_and_smoke`` uses, and it
+    pins the three properties the placement exists for: the gate is evaluated
+    exactly once, its verdict joins the single batched pre-export failure list,
+    and that raise precedes both the export H5 write and the calibration NPZ
+    write.
+    """
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    tree = ast.parse(source)
+
+    gate_calls: list[int] = []
+    extends: list[int] = []
+    batched_raises: list[int] = []
+    writes: list[int] = []
+    npz_writes: list[int] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Raise):
+            segment = ast.get_source_segment(source, node) or ""
+            if "terminal_gate_failures" in segment:
+                batched_raises.append(node.lineno)
+        elif isinstance(node, ast.Call):
+            func = node.func
+            name = (
+                func.attr
+                if isinstance(func, ast.Attribute)
+                else getattr(func, "id", None)
+            )
+            if name == "_spm_composition_gate_failures":
+                gate_calls.append(node.lineno)
+            elif name == "write_dataset":
+                writes.append(node.lineno)
+            elif name == "_write_npz":
+                npz_writes.append(node.lineno)
+            elif name == "extend" and "spm_composition_failures" in (
+                ast.get_source_segment(source, node) or ""
+            ):
+                extends.append(node.lineno)
+
+    assert len(gate_calls) == 1, (
+        "main() must classify the export frame's SPM measurement composition "
+        f"exactly once; found {gate_calls}"
+    )
+    assert len(extends) == 1, (
+        "the gate's verdict must join terminal_gate_failures, or a failing "
+        f"export is exported anyway; found {extends}"
+    )
+    assert len(batched_raises) == 1, batched_raises
+    assert len(writes) == 1, writes
+    assert len(npz_writes) == 1, npz_writes
+    assert gate_calls[0] < extends[0] < batched_raises[0] < writes[0] < npz_writes[0], (
+        "Ordering contract violated: the SPM composition gate "
+        f"({gate_calls[0]}) must be evaluated and extended into the batch "
+        f"({extends[0]}) before the batched pre-export raise "
+        f"({batched_raises[0]}), which must precede the export H5 write "
+        f"({writes[0]}) and the calibration NPZ write ({npz_writes[0]})."
+    )
+
+
+def test_spm_composition_gate_is_not_guarded_by_skip_reform_validation() -> None:
+    """The check needs no engine and no reform-validation machinery.
+
+    ``--skip-reform-validation``'s help is "Do not emit reform_validation.json
+    for this release" — nothing in it suggests it also disables a data-integrity
+    gate. Walking the ``if not args.skip_reform_validation:`` bodies proves the
+    gate call is not inside one, rather than trusting indentation.
+    """
+    import ast
+    import inspect
+
+    builder = _load_builder_module()
+    source = inspect.getsource(builder._main)
+    tree = ast.parse(source)
+
+    skipped_lines: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        if "args.skip_reform_validation" not in (
+            ast.get_source_segment(source, node.test) or ""
+        ):
+            continue
+        for branch in (*node.body, *node.orelse):
+            for inner in ast.walk(branch):
+                if hasattr(inner, "lineno"):
+                    skipped_lines.add(inner.lineno)
+
+    assert skipped_lines, "expected at least one --skip-reform-validation guard"
+    gate_calls = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", None) == "_spm_composition_gate_failures"
+    ]
+    assert gate_calls and not skipped_lines.intersection(gate_calls), (
+        "--skip-reform-validation must not disable the SPM composition gate; "
+        f"gate call at {gate_calls} sits inside one of its branches"
+    )
+
+
+# ---------------------------------------------------------------------------
+# eCPS parity: the pinned reference's retired layer names are graded under the
+# live engine names (route A, 2026-09-23: the first fresh-base release on
+# policyengine-us 2.2.1 refused "would_claim_wic: reference populates 100.0%
+# of records, candidate is all-zero" although takes_up_wic_if_eligible was
+# populated).
+# ---------------------------------------------------------------------------
+
+
+def test_ecps_reference_layers_project_the_wic_rename() -> None:
+    builder = _load_builder_module()
+
+    projected, applied = builder._project_ecps_reference_layers(
+        {"would_claim_wic": 1.0, "employment_income": 0.5}
+    )
+
+    assert projected == {"takes_up_wic_if_eligible": 1.0, "employment_income": 0.5}
+    assert applied == {"would_claim_wic": "takes_up_wic_if_eligible"}
+
+
+def test_ecps_reference_projection_refuses_to_merge_two_layers() -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(ValueError, match="would merge two layers"):
+        builder._project_ecps_reference_layers(
+            {"would_claim_wic": 1.0, "takes_up_wic_if_eligible": 0.4}
+        )
+
+
+def _parity_reference(builder, shares):
+    from microcosm.build.us_runtime.parity_reference import (
+        EcpsParityReference,
+        EcpsParitySource,
+    )
+
+    return EcpsParityReference(
+        source=EcpsParitySource(
+            repo_id="synthetic/ecps-parity-fixture",
+            repo_type="model",
+            filename="enhanced_cps_2024.h5",
+            revision="synthetic",
+            sha256="0" * 64,
+            vintage="synthetic",
+            period="2024",
+        ),
+        nonzero_shares=shares,
+    )
+
+
+def test_ecps_parity_gate_grades_the_renamed_wic_layer_live(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder, "_engine_input_variables", lambda: ("takes_up_wic_if_eligible",)
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_nonzero_shares",
+        lambda frame, *, columns: {"takes_up_wic_if_eligible": 0.42},
+    )
+
+    gate = builder._ecps_parity_gate(
+        object(),
+        reference=_parity_reference(builder, {"would_claim_wic": 1.0}),
+        known_gaps=(),
+    )
+
+    assert gate.passed, gate.failures
+    assert gate.details["reference_layer_renames"] == {
+        "would_claim_wic": "takes_up_wic_if_eligible"
+    }
+
+
+def test_ecps_parity_gate_still_fails_an_empty_renamed_layer(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder, "_engine_input_variables", lambda: ("takes_up_wic_if_eligible",)
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_nonzero_shares",
+        lambda frame, *, columns: {"takes_up_wic_if_eligible": 0.0},
+    )
+
+    gate = builder._ecps_parity_gate(
+        object(),
+        reference=_parity_reference(builder, {"would_claim_wic": 1.0}),
+        known_gaps=(),
+    )
+
+    assert not gate.passed
+    assert gate.failures[0].startswith("takes_up_wic_if_eligible:")
+
+
+# Known-gap exemptions resolve through the same rename register (gate peer P2
+# on #994): a register entry spelled with the reference's retired name must
+# exempt, go stale on, and go dormant on the live layer exactly as the
+# live-name entry does.
+
+_WIC_SPELLINGS = ("would_claim_wic", "takes_up_wic_if_eligible")
+
+
+#: Reference vintages the exemption projection must not depend on: the pinned
+#: historical spelling, a re-pinned reference already on the live name (no
+#: layer rename applies), and one that does not populate WIC at all.
+_WIC_REFERENCES = (
+    {"would_claim_wic": 1.0},
+    {"takes_up_wic_if_eligible": 1.0},
+    {"employment_income": 0.5},
+)
+
+
+def _wic_parity_gate(monkeypatch, *, candidate_share, gap_names, reference=None):
+    builder = _load_builder_module()
+    reference_shares = {"would_claim_wic": 1.0} if reference is None else reference
+    # The candidate populates every non-WIC reference layer, so only the WIC
+    # layer and its exemption decide the verdict.
+    candidate_shares = {
+        name: share
+        for name, share in reference_shares.items()
+        if name not in _WIC_SPELLINGS
+    }
+    candidate_shares["takes_up_wic_if_eligible"] = candidate_share
+    monkeypatch.setattr(
+        builder, "_engine_input_variables", lambda: tuple(candidate_shares)
+    )
+    monkeypatch.setattr(
+        builder, "us_nonzero_shares", lambda frame, *, columns: candidate_shares
+    )
+    return builder._ecps_parity_gate(
+        object(),
+        reference=_parity_reference(builder, reference_shares),
+        known_gaps=tuple(
+            builder.ParityKnownGap(
+                variable=name,
+                reason=f"reason filed as {name}",
+                issue="PolicyEngine/microcosm#994",
+            )
+            for name in gap_names
+        ),
+    )
+
+
+@pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+def test_ecps_parity_gate_exempts_an_empty_wic_layer_under_either_spelling(
+    monkeypatch, spelling
+) -> None:
+    gate = _wic_parity_gate(monkeypatch, candidate_share=0.0, gap_names=(spelling,))
+
+    assert gate.passed, gate.failures
+    assert gate.details["gaps"] == 0
+    assert gate.details["exempted"] == ["takes_up_wic_if_eligible"]
+    assert gate.details["stale_exemptions"] == []
+    assert gate.details["dormant_exemptions"] == []
+    entry = {
+        "reason": f"reason filed as {spelling}",
+        "issue": "PolicyEngine/microcosm#994",
+    }
+    if spelling == "would_claim_wic":
+        entry["register_name"] = "would_claim_wic"
+        assert gate.details["known_gap_renames"] == {
+            "would_claim_wic": "takes_up_wic_if_eligible"
+        }
+    else:
+        assert gate.details["known_gap_renames"] == {}
+    assert gate.details["known_gaps"] == {"takes_up_wic_if_eligible": entry}
+
+
+@pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+def test_ecps_parity_gate_flags_a_stale_wic_exemption_under_either_spelling(
+    monkeypatch, spelling
+) -> None:
+    gate = _wic_parity_gate(monkeypatch, candidate_share=0.42, gap_names=(spelling,))
+
+    assert not gate.passed
+    assert len(gate.failures) == 1
+    assert gate.failures[0].startswith("Stale known-gap exemptions")
+    assert "takes_up_wic_if_eligible" in gate.failures[0]
+    assert gate.details["stale_exemptions"] == ["takes_up_wic_if_eligible"]
+    assert gate.details["dormant_exemptions"] == []
+
+
+@pytest.mark.parametrize("reference", _WIC_REFERENCES)
+@pytest.mark.parametrize("candidate_share", (0.0, 0.42))
+def test_ecps_parity_gate_grades_a_historical_exemption_like_the_live_one(
+    monkeypatch, candidate_share, reference
+) -> None:
+    # The exemption resolves through the rename register on its own, not only
+    # when the reference itself carried the retired name.
+    historical, live = (
+        _wic_parity_gate(
+            monkeypatch,
+            candidate_share=candidate_share,
+            gap_names=(spelling,),
+            reference=reference,
+        )
+        for spelling in _WIC_SPELLINGS
+    )
+
+    provenance_keys = {"known_gaps", "known_gap_renames"}
+    assert historical.passed == live.passed
+    assert historical.failures == live.failures
+    assert {
+        key: value
+        for key, value in historical.details.items()
+        if key not in provenance_keys
+    } == {
+        key: value for key, value in live.details.items() if key not in provenance_keys
+    }
+
+
+@pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+def test_ecps_parity_gate_reports_a_wic_exemption_dormant_under_either_spelling(
+    monkeypatch, spelling
+) -> None:
+    # A reference that does not populate WIC: the exemption is dormant on the
+    # live layer, never on the retired name.
+    gate = _wic_parity_gate(
+        monkeypatch,
+        candidate_share=0.0,
+        gap_names=(spelling,),
+        reference={"employment_income": 0.5},
+    )
+
+    assert gate.passed, gate.failures
+    assert gate.details["exempted"] == ["takes_up_wic_if_eligible"]
+    assert gate.details["dormant_exemptions"] == ["takes_up_wic_if_eligible"]
+    assert gate.details["stale_exemptions"] == []
+
+
+@pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+def test_ecps_parity_gate_projects_the_exemption_against_a_live_name_reference(
+    monkeypatch, spelling
+) -> None:
+    # A re-pinned reference already on the live name applies no layer rename;
+    # the historical exemption must still exempt the empty live layer.
+    reference = {"takes_up_wic_if_eligible": 1.0}
+    empty = _wic_parity_gate(
+        monkeypatch, candidate_share=0.0, gap_names=(spelling,), reference=reference
+    )
+    populated = _wic_parity_gate(
+        monkeypatch, candidate_share=0.42, gap_names=(spelling,), reference=reference
+    )
+
+    assert empty.details["reference_layer_renames"] == {}
+    assert empty.passed, empty.failures
+    assert empty.details["exempted"] == ["takes_up_wic_if_eligible"]
+    assert not populated.passed
+    assert populated.details["stale_exemptions"] == ["takes_up_wic_if_eligible"]
+
+
+@pytest.mark.parametrize("gap_names", (_WIC_SPELLINGS, _WIC_SPELLINGS[::-1]))
+def test_ecps_parity_gate_refuses_one_layer_exempted_under_both_spellings(
+    monkeypatch, gap_names
+) -> None:
+    with pytest.raises(ValueError, match="would merge two exemptions"):
+        _wic_parity_gate(monkeypatch, candidate_share=0.0, gap_names=gap_names)
+
+
+def test_ecps_known_gap_projection_refuses_identical_entries_too() -> None:
+    # Mirrors the reference-layer collision rule: two register entries for one
+    # live layer are refused even when they agree, so the register names the
+    # gap once.
+    builder = _load_builder_module()
+    gaps = tuple(
+        builder.ParityKnownGap(
+            variable=name, reason="same reason", issue="PolicyEngine/microcosm#994"
+        )
+        for name in _WIC_SPELLINGS
+    )
+
+    with pytest.raises(ValueError, match="would merge two exemptions"):
+        builder._project_ecps_known_gaps(gaps)
+
+
+def test_checked_in_known_gap_register_projects_without_collision() -> None:
+    builder = _load_builder_module()
+    register = builder.load_ecps_parity_known_gaps()
+
+    projected, applied = builder._project_ecps_known_gaps(register)
+
+    assert len(projected) == len(register)
+    assert all(
+        builder.REFERENCE_ECPS_LAYER_RENAMES[historical] == live
+        for historical, live in applied.items()
+    )
+
+
+def test_shipped_registers_pass_the_register_consistency_preflight() -> None:
+    # The exact preflight main() runs (microcosm#377). The parity known-gap
+    # register now reaches it by name (it used to arrive as ParityKnownGap
+    # objects and never intersect a column), so pin that the shipped
+    # registers are consistent with it in play.
+    builder = _load_builder_module()
+
+    gate = builder.us_register_consistency_gate(
+        degenerate_reviewed_exclusions=builder.US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
+        documented_absent_inputs=builder.US_DOCUMENTED_ABSENT_INPUTS,
+        nonconstant_required_columns=builder.US_HEALTH_INPUT_NONCONSTANT_COLUMNS,
+    )
+
+    assert gate.passed, gate.failures
+
+
+# ---------------------------------------------------------------------------
+# --target-surface: calibrate the national release to national + state targets
+# (Max, 2026-09-23, route A d122). The parity and profile-coverage gates keep
+# running on the full compiled surface; only the calibrated specs narrow.
+# ---------------------------------------------------------------------------
+
+
+def _surface_spec(name: str, **metadata) -> TargetSpec:
+    return TargetSpec(
+        name=name,
+        entity="household",
+        value=1.0,
+        measure=f"{name}_measure",
+        source="synthetic",
+        metadata=metadata,
+    )
+
+
+def test_target_surface_defaults_to_full_and_accepts_national_state() -> None:
+    builder = _load_builder_module()
+    base = ["--ledger-facts", "facts.jsonl", "--out", "release"]
+
+    assert builder._parse_args(base).target_surface == "full"
+    assert (
+        builder._parse_args(
+            [*base, "--target-surface", "national_state"]
+        ).target_surface
+        == "national_state"
+    )
+    with pytest.raises(SystemExit):
+        builder._parse_args([*base, "--target-surface", "state"])
+
+
+def test_national_state_surface_drops_every_cd_classified_target() -> None:
+    builder = _load_builder_module()
+    specs = (
+        _surface_spec("us_income_tax", ledger_geography_level="us"),
+        _surface_spec("ca_agi", ledger_geography_level="state", state_fips="06"),
+        _surface_spec(
+            "cd_0601_agi",
+            ledger_geography_level="congressional_district",
+            congressional_district_geoid="0601",
+        ),
+        # A state-geography row sourced from the SOI CD file is CD-classified.
+        _surface_spec(
+            "ca_total_from_cd_file",
+            ledger_geography_level="state",
+            ledger_source_record_id="irs_soi.ty2023.congressional_district_2022.ca_total",
+        ),
+    )
+
+    kept, receipt = builder._select_target_surface(specs, "national_state")
+
+    assert [spec.name for spec in kept] == ["us_income_tax", "ca_agi"]
+    assert receipt == {
+        "mode": "national_state",
+        "compiled_targets": 4,
+        "calibrated_targets": 2,
+        "dropped_congressional_district_targets": 2,
+    }
+
+
+def test_full_surface_keeps_every_target() -> None:
+    builder = _load_builder_module()
+    specs = (
+        _surface_spec("us_income_tax"),
+        _surface_spec("cd_0601_agi", congressional_district_geoid="0601"),
+    )
+
+    kept, receipt = builder._select_target_surface(specs, "full")
+
+    assert kept == specs
+    assert receipt["dropped_congressional_district_targets"] == 0
+
+
+def test_target_surface_refuses_an_unknown_mode_or_an_empty_surface() -> None:
+    builder = _load_builder_module()
+    cd_only = (_surface_spec("cd_0601_agi", congressional_district_geoid="0601"),)
+
+    with pytest.raises(ValueError, match="Unknown target surface"):
+        builder._select_target_surface(cd_only, "state")
+    with pytest.raises(ValueError, match="keeps no targets"):
+        builder._select_target_surface(cd_only, "national_state")
+
+
+def _surface_source_coverage(builder, target_surface_selection):
+    # The composition _main writes to us_source_coverage.json.
+    active, surface_exclusions = builder._source_coverage_aliases(
+        target_surface_selection
+    )
+    return builder.us_source_coverage_diagnostics(
+        active_target_aliases=active,
+        reviewed_exclusions={
+            **builder._reviewed_exclusions(active),
+            **surface_exclusions,
+        },
+    )
+
+
+def test_full_surface_source_coverage_counts_cd_sources_active() -> None:
+    builder = _load_builder_module()
+
+    active, surface_exclusions = builder._source_coverage_aliases(None)
+    coverage = _surface_source_coverage(builder, None)
+
+    assert surface_exclusions == {}
+    for alias in builder.CONGRESSIONAL_DISTRICT_SOURCE_ALIASES:
+        assert alias in active
+        assert alias in coverage["active_target_aliases"]
+        assert alias not in coverage["reviewed_exclusions"]
+    assert coverage["gate"]["passed"] is True
+
+
+def test_national_state_surface_source_coverage_excludes_dropped_cd_sources() -> None:
+    from microcosm.data.contract import _check_source_coverage_diagnostics
+
+    builder = _load_builder_module()
+    specs = (
+        _surface_spec("us_income_tax", ledger_geography_level="us"),
+        _surface_spec(
+            "cd_0601_agi",
+            ledger_geography_level="congressional_district",
+            congressional_district_geoid="0601",
+        ),
+    )
+    _, receipt = builder._select_target_surface(specs, "national_state")
+
+    coverage = _surface_source_coverage(builder, receipt)
+
+    assert coverage["gate"] == {
+        "name": "us_source_coverage",
+        "passed": True,
+        "failures": [],
+    }
+    for alias in builder.CONGRESSIONAL_DISTRICT_SOURCE_ALIASES:
+        assert alias not in coverage["active_target_aliases"]
+        reason = coverage["reviewed_exclusions"][alias]
+        assert "--target-surface national_state dropped all 1 " in reason
+        assert "build.target_surface_selection" in reason
+    population = coverage["hard_target_families"]["population_age_sex"]
+    assert (
+        "census-acs-s0101-congressional-district-age-2024"
+        not in population["covered_package_aliases"]
+    )
+    # Every other alias keeps its fiscal-refresh standing.
+    full = _surface_source_coverage(builder, None)
+    assert set(full["active_target_aliases"]) - set(
+        coverage["active_target_aliases"]
+    ) == set(builder.CONGRESSIONAL_DISTRICT_SOURCE_ALIASES)
+    # The publisher's contract check accepts the artifact.
+    failures: list[str] = []
+    _check_source_coverage_diagnostics(
+        {**coverage, "fiscal_target_sources": {}}, failures
+    )
+    assert failures == []
+
+
+def test_main_derives_source_coverage_aliases_from_the_target_surface() -> None:
+    builder = _load_builder_module()
+    main_source = inspect.getsource(builder._main)
+
+    assert "_source_coverage_aliases(\n        target_surface_selection\n    )" in (
+        main_source
+    )
+    assert '"soi-congressional-district-2022",' not in main_source

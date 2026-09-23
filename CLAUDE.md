@@ -16,41 +16,27 @@ the PEP 420 namespace `microcosm.<x>`: `frame`, `fit`, `calibrate`, `build`,
 
 ```bash
 uv sync --all-packages   # set up the whole workspace
-uv sync --all-packages --locked --extra us --extra uk  # CI engine env
-uv run pytest            # behavioral contract suite + unit tests (all shards)
+uv sync --all-packages --locked --extra us  # US engine environment
+uv sync --all-packages --locked --extra uk  # UK engine environment
+uv run pytest            # engine-free tests; integration tests remain excluded
 uv run ruff check .      # lint
 ```
 
-PR CI (`.github/workflows/test.yml`) has four lanes — `lint`, `fast`,
-`engine` (three jobs), and `wheels` — fed by a `changes` job that classifies
-the diff into `shared`/`us`/`uk`. `lint` verifies
-`tools/ci_test_groups.py --verify`, syncs with `--locked`, and runs ruff.
-`fast` runs the full tracked test-file inventory without engine extras in
-three groups (`trade`, `spine-uk`, `rest`); engine-gated tests skip there
-through whichever guard they carry — the `requires_*` markers, or the
-`importorskip` calls that remain the norm on the US side. `engine-shared` always syncs
-`--extra us --extra uk` and runs the shared/spec group. `engine-us` and
-`engine-uk` use statically named matrix jobs and job-level `if` conditions
-based only on the `changes` job outputs: country jobs run on main pushes or
-when that country or shared paths changed. A country PR that merges over a
-fresh change to the other country is certified by main's push run; watch main
-after merging. The `wheels` lane is a focused packaging check: it builds every
-shard's real wheel once and compares each archive with its source tree. The
-behavioral test jobs provide the runtime coverage; the wheel job does not
-execute the test suite again. The `fast` and engine jobs pass `--durations=25`,
-so each job log reports its slowest tests.
+PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
+`engine-uk`, and `wheels` jobs. `tools/classify_ci_changes.py` classifies the
+complete changed-path inventory as shared, US, or UK. Each behavioral job has
+only a Python 3.13/3.14 matrix; pytest distributes files across two workers with
+`--dist loadfile`. The engine-free job installs no country extra and always
+runs shared tests plus the affected countries' engine-free tests. The country
+jobs install only their own extra and run only their country directory. Main
+pushes run every environment. Native numerical libraries receive one thread per
+worker. The wheels job builds each wheel once and compares its archive with its
+source tree; it does not repeat behavioral tests. Behavioral jobs pass
+`--durations=25`, so each job log reports its 25 slowest tests.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
 remain independent and can finish validating their merged changes.
-
-`requires_us` and `requires_uk` are registered pytest markers. Mark new tests
-that need a live PolicyEngine engine with the appropriate marker; the root
-collection hook skips them when that engine is absent, and the marker also
-makes `-m requires_uk` a real selector. Do not add new module-local skip
-aliases. Existing `importorskip` guards (still the norm across the US files)
-keep working and were deliberately left in place — convert one only when you
-are already editing that test for another reason.
 
 `load_country_spec("<code>")` loads each packaged country spec once per
 process and hands every caller the same immutable object; a `Path` argument is
@@ -59,31 +45,46 @@ then loads a packaged spec by code must call
 `country_spec._load_packaged_country_spec.cache_clear()` before and after that
 load, or it silently receives the spec an earlier test cached.
 
-**Adding a test file.** It must sit directly in `packages/<shard>/tests/` — flat,
-no subdirectories; `fixtures/` and `golden/` hold data only — and be named
-`test_*.py`. The lanes run explicit file lists built from a flat pathspec, while
-local `uv run pytest` discovers recursively, so a test parked next to its
-fixtures would run locally and stay green in CI without ever executing there.
-`--verify` fails on such a file rather than letting it hide. Build tests that
-exercise a country engine must be named `test_us_*` or
-`test_uk_*` so they land in that country's lane; an engine-dependent file named
-anything else falls into the always-on `shared-spec` group and runs on every PR.
-After adding one, check `tools/ci_test_groups.py --verify`: your file should
-appear in the group you expect and never under `[defaulted]`. `tools/ci_test_groups.py` is the partition
-authority for CI file groups; update it and keep `--verify` green whenever
-test files move or new grouped lanes are added. Spec identities
+**Adding or moving tests.** Every `test_*.py` module must live directly in one
+of these directories below its package's `tests/` directory:
+
+- `engine_free/shared/`: does not import a country engine and is country-neutral.
+- `engine_free/us/` or `engine_free/uk/`: does not import a country engine but
+  tests country-specific code or data.
+- `engine/us/` or `engine/uk/`: imports or executes that country engine.
+- `integration/uk/`: runs only through the dedicated integration workflow.
+
+The directory is the execution authority. Do not create `both/`,
+`engine/shared/`, another category, or a module-local country-engine
+`importorskip`, `find_spec`, skip alias, or `requires_*` decorator. Pytest
+excludes unavailable engine directories before module import and adds the
+registered `requires_us`, `requires_uk`, and `integration` markers from paths.
+If one source module contains tests for different environments, split its test
+functions between files with the same basename in the appropriate directories.
+Move fixtures and helper functions shared by those files to
+`test_support/<shard>/`; do not copy their implementations. Use
+`test_support.paths.paths_for()` for repository, package, and fixture locations
+instead of deriving them from a test module's `__file__`. Keep fixture data in
+the package's root `tests/fixtures/` or `tests/golden/` directory.
+
+`tools/ci_test_groups.py` recursively enumerates and validates this layout.
+Run `python3 tools/ci_test_groups.py --verify` after adding, moving, or splitting
+tests. `--import-mode=importlib` permits the same basename in more than one
+category. Spec identities
 (`spec_sha256` pins, seed digests) attest kernel source and locked
 RNG-library versions, so they legitimately move when main changes an attested
 module or dependency. CI tests the merge ref, so merge main and re-pin rather
 than hunting for an environment leak. Editable installs hide packaging breaks;
 if you touch packaging, build wheels locally before pushing.
 
-The separate `.github/workflows/integration-tests.yml` workflow runs integration
-coverage on every pull request to `main` and on manual dispatch. Its current UK
-job runs the real spine command against the complete committed synthetic fixture
-with seed 42, uses `--smoke --staging-local-only`, writes only under the runner's
-temporary directory, and is not part of
-`ci-ok`. The job has `contents: read`, does not persist checkout credentials,
+The separate `.github/workflows/integration-tests.yml` workflow runs the
+`integration/uk/` directory serially on Python 3.13 for every pull request to
+`main` and on manual dispatch. Integration tests must not also run in the
+ordinary UK job; they require the explicit `--run-integration` option. The
+current UK job runs the real spine command against the complete committed
+synthetic fixture with seed 42, uses `--smoke --staging-local-only`, writes only
+under the runner's temporary directory, and is not part of `ci-ok`. The job has
+`contents: read`, does not persist checkout credentials,
 does not reference a protected GitHub environment, and receives no external
 writer credential. Fork pull requests run the synthetic test without secrets.
 An optional repository-level `HF_STAGING_READ_TOKEN` permits a separate

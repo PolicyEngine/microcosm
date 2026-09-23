@@ -363,13 +363,13 @@ older installed producer module is refused.
 
 ```bash
 python -m pytest \
-  packages/microcosm-build/tests/test_us_spm_role_source.py \
-  packages/microcosm-build/tests/test_us_spm_role_enrichment_builder.py \
-  packages/microcosm-data/tests/test_h5_enrichment.py \
-  packages/microcosm-data/tests/test_source_enrichment.py \
-  packages/microcosm-data/tests/test_contract.py \
-  packages/microcosm-data/tests/test_release.py \
-  packages/microcosm-data/tests/test_publish_guard.py
+  packages/microcosm-build/tests/engine_free/us/test_us_spm_role_source.py \
+  packages/microcosm-build/tests/engine_free/us/test_us_spm_role_enrichment_builder.py \
+  packages/microcosm-data/tests/engine_free/shared/test_h5_enrichment.py \
+  packages/microcosm-data/tests/engine_free/shared/test_source_enrichment.py \
+  packages/microcosm-data/tests/engine_free/shared/test_contract.py \
+  packages/microcosm-data/tests/engine_free/shared/test_release.py \
+  packages/microcosm-data/tests/engine_free/shared/test_publish_guard.py
 python tools/ci_test_groups.py --verify
 ruff check .
 ```
