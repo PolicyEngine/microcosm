@@ -17,6 +17,7 @@ import subprocess
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -87,6 +88,7 @@ from microcosm.build.us_runtime import (
     load_congressional_district_vintage_crosswalk,
     load_us_block_ladder,
     puf_tax_unit_donor_from_arrays,
+    resolve_asec_spm_role_source_paths,
     source_year_puf_adjusted_gross_income,
     support_channel_column,
     transfer_puf_capital_gains_tail,
@@ -340,9 +342,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help=(
             "Optional INCOME_YEAR=PATH mapping to a local copy of the "
             "SHA-pinned official ASEC survey archive (zip or extracted "
-            "pppub member) restoring that pooled income year's ED_VAL and "
-            "PAW_TYP (income year YYYY maps to the survey-year YYYY+1 "
-            "archive). Years without a mapping are fetched from the "
+            "pppub member) for that pooled income year (income year YYYY "
+            "maps to the survey-year YYYY+1 archive). Source construction "
+            "restores from it the reviewed Census person columns the "
+            "--asec-h5 input lacks (microcosm #720); the raw-stage mapping "
+            "restores ED_VAL and PAW_TYP; the SPM independence role stage "
+            "derives the role. Years without a mapping are fetched from the "
             "official Census archive and verified against the same pins."
         ),
     )
@@ -3250,6 +3255,33 @@ def _support_spine_spec_from_args(args: argparse.Namespace) -> SupportSpineSpec 
 
 
 def _asec_sources_from_args(
+    args: argparse.Namespace,
+    *,
+    support_spine_spec: SupportSpineSpec | None,
+) -> tuple[AsecSource, ...]:
+    """Pooled ASEC sources, each bound to its pinned Census person file.
+
+    Every source carries ``census_person_source`` so the pool restores the
+    reviewed Census person columns its H5 lacks (microcosm #720). The files
+    are the ``--asec-education-source`` mappings, with any pooled income year
+    left unmapped fetched from the official Census archive and verified,
+    exactly as the SPM independence role stage resolves them.
+    """
+
+    sources = _pooled_asec_sources_from_args(
+        args, support_spine_spec=support_spine_spec
+    )
+    census_person_sources = resolve_asec_spm_role_source_paths(
+        _asec_education_source_paths(args),
+        income_years=tuple(sorted({source.year for source in sources})),
+    )
+    return tuple(
+        replace(source, census_person_source=census_person_sources[source.year])
+        for source in sources
+    )
+
+
+def _pooled_asec_sources_from_args(
     args: argparse.Namespace,
     *,
     support_spine_spec: SupportSpineSpec | None,

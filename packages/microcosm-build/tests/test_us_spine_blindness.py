@@ -234,6 +234,11 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         "acs_release_predictors.py",  # Pinned release join; provenance owner.
         "acs_sources.py",
         "acs_transfer_bank.py",  # Bounded checkpoint I/O; no population treatment.
+        # Reviewed Census person columns restored into each raw ASEC vintage by
+        # exact pinned PERIDNUM identity before pooling (#720), through
+        # spm_role_source's pinned reader; no population treatment. Remains
+        # subject to the all-runtime source-identity scan.
+        "asec_census_person_columns.py",
         "asec_checkpoint.py",  # Bounded checkpoint I/O; no population treatment.
         "asec_pool.py",
         # Pinned ASEC source coordinates and verified fetch; no population
