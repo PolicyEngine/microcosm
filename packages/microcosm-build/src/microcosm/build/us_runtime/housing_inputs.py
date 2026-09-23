@@ -66,6 +66,8 @@ __all__ = [
     "impute_us_pre_subsidy_rent",
     "impute_us_housing_assistance_to_puf_support",
     "load_acs_2022_rent_donor",
+    "load_acs_pums_rent_donor",
+    "ACS_RENT_DONOR_PUMS_VINTAGE",
     "us_housing_inputs_signal_gate",
     "us_housing_inputs_stage_spec",
     "us_housing_inputs_summary",
@@ -420,6 +422,182 @@ def load_acs_2022_rent_donor(
             "ACS 2022 rent donor has no unallocated real-estate-tax observations."
         )
     return donor
+
+
+#: The raw ACS PUMS vintage the rent donor reads. It is the base year's own
+#: one-year file, so donor rents and property taxes need no aging.
+ACS_RENT_DONOR_PUMS_VINTAGE = 2024
+_PUMS_DOLLAR_ADJUSTMENT_DENOMINATOR = 1_000_000.0
+_PUMS_RENT_HOUSEHOLD_COLUMNS = (
+    "SERIALNO",
+    "WGTP",
+    "TEN",
+    "RNTP",
+    "FRNTP",
+    "TAXAMT",
+    "FTAXP",
+    "ADJHSG",
+)
+# Census renamed the state column from ST to STATE in the 2024 files.
+_PUMS_STATE_COLUMNS = ("ST", "STATE")
+_PUMS_RENT_PERSON_COLUMNS = (
+    "SERIALNO",
+    "SPORDER",
+    "AGEP",
+    "SEX",
+    "ADJINC",
+    "WAGP",
+    "SEMP",
+    "SSP",
+    "RETP",
+)
+# ACS TEN: 1 owned with a mortgage or loan, 2 owned free and clear, 3 rented,
+# 4 occupied without payment of rent; blank for vacant units and group quarters.
+# Owned-free-and-clear collapses into the owned-with-mortgage category exactly
+# as the 2022 donor loader collapses OWNED_OUTRIGHT.
+_PUMS_TENURE = {1: "OWNED_WITH_MORTGAGE", 2: "OWNED_WITH_MORTGAGE", 3: "RENTED"}
+
+
+def load_acs_pums_rent_donor(
+    household_zip: str | Path,
+    person_zip: str | Path,
+    *,
+    expected_household_sha256: str | None = None,
+    expected_person_sha256: str | None = None,
+    chunksize: int = 200_000,
+) -> pd.DataFrame:
+    """Build the household-head rent donor from raw Census ACS PUMS archives.
+
+    Reads the one-year ``csv_hus.zip`` and ``csv_pus.zip`` archives Census
+    publishes and returns the same frame :func:`load_acs_2022_rent_donor`
+    returns, one row per household reference person (``SPORDER == 1``).
+
+    Rent is monthly contract rent (``RNTP``) times twelve, and property taxes
+    are ``TAXAMT``, both in the survey's housing dollars (``ADJHSG``). Incomes
+    are in its income dollars (``ADJINC``). Census blanks, which mark units
+    outside a question's universe, become zero, as the retired processed file
+    stored them. ``FRNTP`` and ``FTAXP`` mark allocated values. Group-quarters
+    heads keep their zero household weight.
+
+    Args:
+        household_zip: Census ``csv_hus.zip``.
+        person_zip: Census ``csv_pus.zip``.
+        expected_household_sha256, expected_person_sha256: Pinned digests.
+            ``None`` uses the packaged ACS 2024 one-year source manifest.
+        chunksize: CSV rows read at a time.
+
+    Raises:
+        ValueError: On a digest mismatch, a household without exactly one
+            reference person, or a person without a household.
+    """
+
+    from microcosm.build.us_runtime.acs_pums import _read_archive
+    from microcosm.build.us_runtime.acs_sources import load_acs_source_manifest
+
+    manifest = load_acs_source_manifest()
+    if manifest.vintage != ACS_RENT_DONOR_PUMS_VINTAGE:
+        raise ValueError(
+            f"ACS source manifest is vintage {manifest.vintage}; the rent donor "
+            f"reads {ACS_RENT_DONOR_PUMS_VINTAGE}."
+        )
+    household_path, person_path = Path(household_zip), Path(person_zip)
+    for path, expected, role in (
+        (household_path, expected_household_sha256, "household"),
+        (person_path, expected_person_sha256, "person"),
+    ):
+        pinned = expected if expected is not None else manifest.artifact(role).sha256
+        actual = _sha256(path)
+        if actual != pinned:
+            raise ValueError(
+                f"ACS PUMS {role} archive SHA-256 mismatch: {actual} != {pinned}."
+            )
+
+    household, _ = _read_archive(
+        household_path,
+        member_prefix="psam_hus",
+        required=_PUMS_RENT_HOUSEHOLD_COLUMNS,
+        optional=_PUMS_STATE_COLUMNS,
+        chunksize=chunksize,
+    )
+    state_column = next((c for c in _PUMS_STATE_COLUMNS if c in household), None)
+    if state_column is None:
+        raise ValueError("ACS household archive has no ST or STATE column.")
+    person, _ = _read_archive(
+        person_path,
+        member_prefix="psam_pus",
+        required=_PUMS_RENT_PERSON_COLUMNS,
+        optional=(),
+        chunksize=chunksize,
+    )
+    if household["SERIALNO"].duplicated().any():
+        raise ValueError("ACS household archive repeats a SERIALNO.")
+    household = household.set_index("SERIALNO")
+    orphans = ~person["SERIALNO"].isin(household.index)
+    if orphans.any():
+        examples = person.loc[orphans, "SERIALNO"].head().tolist()
+        raise ValueError(f"ACS persons reference missing households: {examples}.")
+
+    household_size = person.groupby("SERIALNO").size()
+    heads = person.loc[pd.to_numeric(person["SPORDER"]) == 1]
+    if heads["SERIALNO"].duplicated().any():
+        raise ValueError("ACS PUMS has multiple reference persons in a household.")
+    if len(heads) != len(household_size):
+        missing = sorted(set(household_size.index) - set(heads["SERIALNO"]))[:5]
+        raise ValueError(f"ACS households without a reference person: {missing}.")
+    heads = heads.set_index("SERIALNO")
+    units = household.loc[heads.index]
+
+    def number(frame: pd.DataFrame, column: str) -> np.ndarray:
+        values = pd.to_numeric(frame[column], errors="coerce").fillna(0.0)
+        return values.to_numpy(dtype=np.float64)
+
+    income_adjustment = number(heads, "ADJINC") / _PUMS_DOLLAR_ADJUSTMENT_DENOMINATOR
+    housing_adjustment = number(units, "ADJHSG") / _PUMS_DOLLAR_ADJUSTMENT_DENOMINATOR
+    if (income_adjustment <= 0).any() or (housing_adjustment <= 0).any():
+        raise ValueError("ACS PUMS ADJINC and ADJHSG must be positive.")
+    tenure_codes = pd.to_numeric(units["TEN"], errors="coerce")
+    donor = pd.DataFrame(
+        {
+            "is_household_head": np.ones(len(heads), dtype=np.float64),
+            "age": number(heads, "AGEP"),
+            "is_male": (pd.to_numeric(heads["SEX"]) == 1).to_numpy(dtype=np.float64),
+            "tenure_type": tenure_codes.map(_PUMS_TENURE)
+            .fillna("NONE")
+            .to_numpy(dtype=object)
+            .astype(str),
+            "employment_income": number(heads, "WAGP") * income_adjustment,
+            "self_employment_income": number(heads, "SEMP") * income_adjustment,
+            "social_security": number(heads, "SSP") * income_adjustment,
+            "pension_income": number(heads, "RETP") * income_adjustment,
+            "state_code_str": units[state_column]
+            .astype(str)
+            .str.zfill(2)
+            .to_numpy(dtype=object),
+            "household_size": household_size.reindex(heads.index).to_numpy(
+                dtype=np.float64
+            ),
+            "rent": number(units, "RNTP") * 12.0 * housing_adjustment,
+            _DONOR_ALLOCATION_COLUMN: number(units, "FRNTP") != 0,
+            _DONOR_REAL_ESTATE_TAX_COLUMN: number(units, "TAXAMT") * housing_adjustment,
+            _DONOR_REAL_ESTATE_TAX_ALLOCATION_COLUMN: number(units, "FTAXP") != 0,
+            _DONOR_WEIGHT_COLUMN: number(units, "WGTP"),
+        }
+    )
+    if (donor["rent"] < 0.0).any() or (
+        donor[_DONOR_REAL_ESTATE_TAX_COLUMN] < 0.0
+    ).any():
+        raise ValueError("ACS PUMS rent donor contains negative housing costs.")
+    if (donor[_DONOR_WEIGHT_COLUMN] < 0.0).any():
+        raise ValueError("ACS PUMS rent donor contains negative weights.")
+    if float(donor[_DONOR_WEIGHT_COLUMN].sum()) <= 0.0:
+        raise ValueError("ACS PUMS rent donor has no positive household weight.")
+    if not (~donor[_DONOR_ALLOCATION_COLUMN]).any():
+        raise ValueError("ACS PUMS rent donor has no unallocated rent observations.")
+    if not (~donor[_DONOR_REAL_ESTATE_TAX_ALLOCATION_COLUMN]).any():
+        raise ValueError(
+            "ACS PUMS rent donor has no unallocated real-estate-tax observations."
+        )
+    return donor.reset_index(drop=True)
 
 
 def _required_columns(

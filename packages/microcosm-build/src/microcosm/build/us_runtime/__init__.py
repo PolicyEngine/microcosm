@@ -344,6 +344,7 @@ from microcosm.build.us_runtime.hours_worked import (
 )
 from microcosm.build.us_runtime.housing_inputs import (
     ACS_2022_RENT_ARTIFACT_SHA256,
+    ACS_RENT_DONOR_PUMS_VINTAGE,
     HOUSING_INPUTS_ARCHIVED_ACS_DERIVATION_URL,
     HOUSING_INPUTS_ARCHIVED_CPS_RENT_URL,
     HOUSING_INPUTS_ARCHIVED_CPS_SPM_URL,
@@ -365,6 +366,7 @@ from microcosm.build.us_runtime.housing_inputs import (
     impute_us_housing_assistance_to_puf_support,
     impute_us_pre_subsidy_rent,
     load_acs_2022_rent_donor,
+    load_acs_pums_rent_donor,
     us_housing_inputs_signal_gate,
     us_housing_inputs_stage_spec,
     us_housing_inputs_summary,
@@ -1205,6 +1207,8 @@ __all__ = [
     "impute_us_housing_assistance_to_puf_support",
     "impute_us_pre_subsidy_rent",
     "load_acs_2022_rent_donor",
+    "load_acs_pums_rent_donor",
+    "ACS_RENT_DONOR_PUMS_VINTAGE",
     "us_housing_inputs_signal_gate",
     "us_housing_inputs_stage_spec",
     "us_housing_inputs_summary",

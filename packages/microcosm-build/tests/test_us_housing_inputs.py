@@ -27,6 +27,7 @@ from microcosm.build.us_runtime.housing_inputs import (
     derive_us_housing_inputs,
     impute_us_housing_assistance_to_puf_support,
     load_acs_2022_rent_donor,
+    load_acs_pums_rent_donor,
     us_housing_inputs_signal_gate,
     us_housing_inputs_stage_spec,
     with_us_housing_inputs,
@@ -604,3 +605,153 @@ def test_policyengine_us_live_housing_take_up_neutralization() -> None:
     assert baseline.calculate("is_eligible_for_housing_assistance", 2024)[0]
     assert baseline.calculate("housing_assistance", 2024)[0] == pytest.approx(11_975)
     assert neutralized.calculate("housing_assistance", 2024)[0] == 0
+
+
+def _write_tiny_pums(root: Path, *, state_column: str = "STATE") -> tuple[Path, Path]:
+    import zipfile
+
+    household_csv = (
+        f"SERIALNO,{state_column},WGTP,TEN,RNTP,FRNTP,TAXAMT,FTAXP,ADJHSG\n"
+        "A1,06,100,3,1000,0,,0,1000000\n"
+        "A2,36,200,2,,0,8000,1,1000000\n"
+        "A3,48,300,1,,0,4000,0,1100000\n"
+        "GQ1,48,0,,,0,,0,1000000\n"
+    )
+    person_csv = (
+        "SERIALNO,SPORDER,AGEP,SEX,ADJINC,WAGP,SEMP,SSP,RETP\n"
+        "A1,1,40,1,1010000,50000,0,0,0\n"
+        "A1,2,38,2,1010000,20000,0,0,0\n"
+        "A2,1,50,1,1010000,0,5000,10000,3000\n"
+        "A3,1,60,2,1010000,10000,0,12000,4000\n"
+        "GQ1,1,20,1,1010000,,,,\n"
+    )
+    household_zip = root / "csv_hus.zip"
+    person_zip = root / "csv_pus.zip"
+    with zipfile.ZipFile(household_zip, "w") as archive:
+        archive.writestr("psam_husa.csv", household_csv)
+    with zipfile.ZipFile(person_zip, "w") as archive:
+        archive.writestr("psam_pusa.csv", person_csv)
+    return household_zip, person_zip
+
+
+def _digest(path: Path) -> str:
+    import hashlib
+
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _load_tiny_pums(tmp_path: Path, **kwargs: object) -> pd.DataFrame:
+    household_zip, person_zip = _write_tiny_pums(tmp_path, **kwargs)
+    return load_acs_pums_rent_donor(
+        household_zip,
+        person_zip,
+        expected_household_sha256=_digest(household_zip),
+        expected_person_sha256=_digest(person_zip),
+    )
+
+
+def test_pums_rent_donor_matches_the_processed_donor_schema(tmp_path: Path) -> None:
+    processed = tmp_path / "acs_2022.h5"
+    _write_tiny_acs(processed)
+    reference = load_acs_2022_rent_donor(processed, expected_sha256=None)
+
+    donor = _load_tiny_pums(tmp_path)
+
+    assert list(donor.columns) == list(reference.columns)
+    assert dict(donor.dtypes.astype(str)) == dict(reference.dtypes.astype(str))
+
+
+def test_pums_rent_donor_derives_one_row_per_reference_person(tmp_path: Path) -> None:
+    donor = _load_tiny_pums(tmp_path)
+
+    assert len(donor) == 4
+    assert donor["household_size"].tolist() == [2.0, 1.0, 1.0, 1.0]
+    assert donor["age"].tolist() == [40.0, 50.0, 60.0, 20.0]
+    assert donor["is_male"].tolist() == [1.0, 1.0, 0.0, 1.0]
+    assert donor["state_code_str"].tolist() == ["06", "36", "48", "48"]
+    # TEN 1 and 2 are both owned (free-and-clear collapses into owned);
+    # a blank TEN is a group-quarters or vacant unit.
+    assert donor["tenure_type"].tolist() == [
+        "RENTED",
+        "OWNED_WITH_MORTGAGE",
+        "OWNED_WITH_MORTGAGE",
+        "NONE",
+    ]
+
+
+def test_pums_rent_donor_applies_census_dollar_adjustments(tmp_path: Path) -> None:
+    donor = _load_tiny_pums(tmp_path)
+
+    # Monthly contract rent times twelve, in ADJHSG housing dollars.
+    assert donor["rent"].tolist() == [12_000.0, 0.0, 0.0, 0.0]
+    assert donor["real_estate_taxes"].tolist() == pytest.approx(
+        [0.0, 8_000.0, 4_400.0, 0.0]
+    )
+    # Incomes in ADJINC dollars; blanks are out of universe and become zero.
+    assert donor["employment_income"].tolist() == pytest.approx(
+        [50_500.0, 0.0, 10_100.0, 0.0]
+    )
+    assert donor["social_security"].tolist() == pytest.approx(
+        [0.0, 10_100.0, 12_120.0, 0.0]
+    )
+    assert donor["pension_income"].tolist() == pytest.approx(
+        [0.0, 3_030.0, 4_040.0, 0.0]
+    )
+    assert donor["self_employment_income"].tolist() == pytest.approx(
+        [0.0, 5_050.0, 0.0, 0.0]
+    )
+
+
+def test_pums_rent_donor_marks_allocations_and_keeps_zero_weight_heads(
+    tmp_path: Path,
+) -> None:
+    donor = _load_tiny_pums(tmp_path)
+
+    assert donor["rent_is_allocated"].tolist() == [False, False, False, False]
+    assert donor["real_estate_taxes_is_allocated"].tolist() == [
+        False,
+        True,
+        False,
+        False,
+    ]
+    assert donor["household_weight"].tolist() == [100.0, 200.0, 300.0, 0.0]
+
+
+def test_pums_rent_donor_reads_the_older_state_column(tmp_path: Path) -> None:
+    donor = _load_tiny_pums(tmp_path, state_column="ST")
+
+    assert donor["state_code_str"].tolist() == ["06", "36", "48", "48"]
+
+
+def test_pums_rent_donor_rejects_unpinned_archives(tmp_path: Path) -> None:
+    household_zip, person_zip = _write_tiny_pums(tmp_path)
+
+    with pytest.raises(ValueError, match="household archive SHA-256 mismatch"):
+        load_acs_pums_rent_donor(household_zip, person_zip)
+    with pytest.raises(ValueError, match="person archive SHA-256 mismatch"):
+        load_acs_pums_rent_donor(
+            household_zip,
+            person_zip,
+            expected_household_sha256=_digest(household_zip),
+            expected_person_sha256="0" * 64,
+        )
+
+
+def test_pums_rent_donor_rejects_orphan_persons(tmp_path: Path) -> None:
+    import zipfile
+
+    household_zip, person_zip = _write_tiny_pums(tmp_path)
+    with zipfile.ZipFile(person_zip, "a") as archive:
+        archive.writestr(
+            "psam_pusb.csv",
+            "SERIALNO,SPORDER,AGEP,SEX,ADJINC,WAGP,SEMP,SSP,RETP\n"
+            "Z9,1,30,1,1010000,0,0,0,0\n",
+        )
+
+    with pytest.raises(ValueError, match="missing households"):
+        load_acs_pums_rent_donor(
+            household_zip,
+            person_zip,
+            expected_household_sha256=_digest(household_zip),
+            expected_person_sha256=_digest(person_zip),
+        )
