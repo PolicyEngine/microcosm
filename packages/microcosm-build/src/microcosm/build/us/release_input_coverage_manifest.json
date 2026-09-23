@@ -333,6 +333,18 @@
   "receives_housing_assistance": {
    "status": "required"
   },
+  "receives_snap": {
+   "note": "ASEC reported SNAP receipt (maximum member SPM_SNAPSUB > 0 per SPM unit), carried by cps_carried.derive_us_cps_carried_inputs; a formula-less monthly boolean spm_unit input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#978 option 1: the ACS local-area transfer requires it in its donor, and a local-area release must name a published donor, so a national default that drops it cannot serve the local chain. The published populace-us-2024-spm-20260915 default does not persist it (its Build P parent, built 2026-07-28 at cae8640, predates the ASEC receipt carry of PolicyEngine/microcosm#600) — the intended red gate until a national build persists it.",
+   "status": "required"
+  },
+  "receives_tanf": {
+   "note": "ASEC reported TANF receipt (any member with PAW_VAL > 0 and PAW_TYP 1 or 3, per SPM unit), carried by cps_carried.derive_us_cps_carried_inputs; a formula-less monthly boolean spm_unit input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#978 option 1: the ACS local-area transfer requires it in its donor, and a local-area release must name a published donor, so a national default that drops it cannot serve the local chain. The published populace-us-2024-spm-20260915 default does not persist it (its Build P parent, built 2026-07-28 at cae8640, predates the ASEC receipt carry of PolicyEngine/microcosm#600) — the intended red gate until a national build persists it.",
+   "status": "required"
+  },
+  "receives_wic": {
+   "note": "ASEC reported WIC receipt (WICYN == 1), stored on the reporting adult as her SPM unit's receipt carrier by cps_carried.derive_us_cps_carried_inputs; a formula-less monthly boolean person input in PolicyEngine-US 2.2.1. Required with NO reviewed exclusion per PolicyEngine/microcosm#978 option 1: the ACS local-area transfer requires it in its donor, and a local-area release must name a published donor, so a national default that drops it cannot serve the local chain. The published populace-us-2024-spm-20260915 default does not persist it (its Build P parent, built 2026-07-28 at cae8640, predates the ASEC receipt carry of PolicyEngine/microcosm#600) — the intended red gate until a national build persists it.",
+   "status": "required"
+  },
   "rental_income": {
    "status": "required"
   },
@@ -538,11 +550,11 @@
   }
  },
  "counts": {
-  "required": 164,
+  "required": 167,
   "reviewed_exclusion": 7,
-  "total": 171
+  "total": 174
  },
- "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, and the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462), and the engine's declared dataset source input is_spm_independent_minor_role (the spm_independence_role base-builder stage; PolicyEngine/microcosm#893). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
+ "derivation": "Required surface = input columns in the pinned, sha-verified ecps_parity_reference.json populated layers, plus the documented post-reference fsla_overtime_premium, qualified_passenger_vehicle_loan_interest, five desired retirement-contribution inputs, meets_ssi_disability_criteria required by shipped validation probes, the #282 Schedule-D capital-gain-distributions route leg schedule_d_capital_gain_distributions (PolicyEngine/microcosm#462), the three ASEC reported-receipt inputs receives_wic, receives_snap, receives_tanf that the ACS local-area transfer requires in its donor (PolicyEngine/microcosm#978 option 1), and the engine's declared dataset source input is_spm_independent_minor_role (the spm_independence_role base-builder stage; PolicyEngine/microcosm#893). status='reviewed_exclusion' for ecps_parity_known_gaps.json entries (reason+issue from that register); EXCEPT every primary-source restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS (including the Section 199A QBI family), and the SSI countable-resource asset inputs (bank_account_assets, stock_assets, bond_assets), which are status='required' with NO exclusion per PolicyEngine/microcosm#368 so the gate fails on today's artifacts and asset restoration (Deliverable 2) turns it green. All other populated layers are 'required'. Regenerate with tools/build_us_release_input_coverage_manifest.py.",
  "description": "Declared full-coverage contract for a US release: every input column the reference eCPS exports must be persisted as a key with non-default signal, or carry a reviewed exclusion. Enforced as a hard release gate (microcosm.build.us_runtime.release_input_coverage) that generalizes assert_required_us_release_source_columns from 5 columns to the full eCPS input surface.",
  "issue": "PolicyEngine/microcosm#368",
  "reference": {

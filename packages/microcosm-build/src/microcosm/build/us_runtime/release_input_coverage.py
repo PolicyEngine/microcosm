@@ -30,6 +30,15 @@ inputs (``bank_account_assets``, ``stock_assets``, ``bond_assets``) are
 the gate ships RED for today's artifacts; asset restoration (Deliverable 2) turns
 it green. A gate that fails the current default is the point, not a bug.
 
+PolicyEngine/microcosm#978 option 1 applies the same pattern to the three ASEC
+reported-receipt inputs (``receives_wic``, ``receives_snap``, ``receives_tanf``,
+:data:`US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS`). The base build derives them
+and the ACS local-area transfer requires them in its donor, but nothing national
+required them, so the published default shipped without them and the local chain
+could only stage from an unpublished receipt-qualified child that the publish
+contract refuses as a donor. They are ``required`` with no reviewed exclusion so
+no future national default can ship without them.
+
 :func:`assert_release_input_coverage_manifest_current` proves the manifest against
 the pinned eCPS surface and the live PolicyEngine-US graph, so the register
 cannot silently rot: it must cover exactly the reference eCPS populated layers,
@@ -109,6 +118,7 @@ from microcosm.build.us_runtime.workers_compensation import (
 )
 
 __all__ = [
+    "US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS",
     "US_CGD_ROUTE_REQUIRED_INPUTS",
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
     "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
@@ -160,6 +170,14 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = frozenset(
         "is_incapable_of_self_care",
         "health_insurance_premiums",
         "is_self_employed",
+        # PolicyEngine/microcosm#978 option 1: the three ASEC reported-receipt
+        # inputs the base build derives (cps_carried) and the ACS local-area
+        # transfer requires in its donor. Hard requirements so no national
+        # default can ship without them and the local chain can stage from a
+        # published donor instead of an unpublished receipt-qualified child.
+        "receives_wic",
+        "receives_snap",
+        "receives_tanf",
         # The engine's one declared dataset source input
         # (policyengine_us.spm.DATASET_SOURCE_INPUTS): without it a 15-to-17-
         # year-old heading an SPM unit is unclassified and the whole
@@ -243,6 +261,27 @@ SSI_COUNTABLE_RESOURCE_ASSETS = (
 US_CGD_ROUTE_REQUIRED_INPUTS = (
     "non_sch_d_capital_gains",
     "schedule_d_capital_gain_distributions",
+)
+
+#: The three ASEC reported-receipt inputs (PolicyEngine/microcosm#978 option
+#: 1). PolicyEngine-US 2.2.1 declares all three as formula-less monthly boolean
+#: inputs (default ``False``): ``receives_wic`` on person, ``receives_snap`` and
+#: ``receives_tanf`` on spm_unit. The base build derives them from ASEC
+#: (``cps_carried.derive_us_cps_carried_inputs``: WICYN, SPM_SNAPSUB, PAW_VAL/
+#: PAW_TYP) and the ACS local-area transfer requires them in its donor
+#: (``acs_transfer_donor_requirements``), but no national gate required them, so
+#: the published default shipped without them and the local chain had to stage
+#: from an unpublished receipt-qualified child (#972) that the publish contract
+#: rightly refuses as a donor. All three ship as hard requirements with NO
+#: reviewed exclusion, so a national release whose export drops or defaults any
+#: of them fails the coverage gate. The published populace-us-2024-spm-20260915
+#: default persists none of the three (its Build P parent predates the receipt
+#: carry of #600), so the gate is red on it by design until a national build
+#: persists them.
+US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS = (
+    "receives_wic",
+    "receives_snap",
+    "receives_tanf",
 )
 
 
@@ -671,6 +710,10 @@ def assert_release_input_coverage_manifest_current(
       reform probes. A change to either surface must be reflected here.
     - The three SSI countable-resource asset inputs must be ``required`` with no
       reviewed exclusion — the #368 red-gate guarantee cannot be quietly undone.
+    - The three ASEC reported-receipt inputs (``receives_wic``,
+      ``receives_snap``, ``receives_tanf``) must be ``required`` with no
+      reviewed exclusion — #978 option 1: a national default that drops them
+      cannot serve as the ACS local-area donor.
     - Every declared column must be a real PolicyEngine-US input leaf, and every
       probe's ``binding_inputs`` / ``budget_measure`` must resolve on the live
       engine, so the contract cannot guard names the engine no longer has.
@@ -728,6 +771,20 @@ def assert_release_input_coverage_manifest_current(
             failures.append(
                 f"{route_leg}: capital-gain-distributions route leg must be a "
                 "required manifest column (#462)."
+            )
+
+    for receipt_input in US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS:
+        if receipt_input in reviewed:
+            failures.append(
+                f"{receipt_input}: ASEC reported-receipt input is a reviewed "
+                "exclusion, but #978 requires all three receipt inputs be hard "
+                "requirements with no exclusion so a national default cannot "
+                "ship without the columns the ACS local-area donor needs."
+            )
+        elif receipt_input not in required:
+            failures.append(
+                f"{receipt_input}: ASEC reported-receipt input must be a "
+                "required manifest column (#978)."
             )
 
     for column in RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS:

@@ -7,11 +7,12 @@ release as a real key with non-default signal, or carry a reviewed exclusion.
 Derivation (fully from checked-in, sha-pinned facts — no transient artifact):
 
 - Required surface = every input-variable column the pinned reference eCPS
-  populates, i.e. the ``nonzero_shares`` keys of ``ecps_parity_reference.json``,
-  plus explicit later inputs needed by shipped reform probes
+  populates, i.e. the ``nonzero_shares`` keys of ``ecps_parity_reference.json``
   (computed once from the sha-verified ``enhanced_cps_2024.h5``; an input the
   incumbent exports but leaves all-zero is not a coverage requirement, the same
-  rule the parity gate uses).
+  rule the parity gate uses), plus explicit later inputs needed by shipped
+  reform probes or by the ACS local-area donor (the #978 reported-receipt
+  inputs).
 - Status per column:
     * ``reviewed_exclusion`` — the column is a documented incumbent-parity gap
       (an entry in ``ecps_parity_known_gaps.json``, carrying that register's
@@ -81,6 +82,24 @@ POST_REFERENCE_ECPS_REQUIRED_INPUTS = (
     "pre_subsidy_care_expenses",
     "is_incapable_of_self_care",
     "is_spm_independent_minor_role",
+    # PolicyEngine/microcosm#978 option 1: the ASEC reported-receipt inputs the
+    # ACS local-area transfer requires in its donor.
+    "receives_wic",
+    "receives_snap",
+    "receives_tanf",
+)
+
+# Shared tail of the three #978 reported-receipt notes: why each is a hard
+# requirement and why today's published default fails it.
+_RECEIPT_INPUT_NOTE_TAIL = (
+    "Required with NO reviewed exclusion per PolicyEngine/microcosm#978 "
+    "option 1: the ACS local-area transfer requires it in its donor, and a "
+    "local-area release must name a published donor, so a national default "
+    "that drops it cannot serve the local chain. The published "
+    "populace-us-2024-spm-20260915 default does not persist it (its Build P "
+    "parent, built 2026-07-28 at cae8640, predates the ASEC receipt carry of "
+    "PolicyEngine/microcosm#600) — the intended red gate until a national "
+    "build persists it."
 )
 
 # Per-column annotations for post-reference hard requirements whose absence
@@ -147,6 +166,24 @@ POST_REFERENCE_COLUMN_NOTES = {
         "2.2.1. "
         "Currently absent — the intended red gate until the next base "
         "rebuild carries the stage through."
+    ),
+    "receives_wic": (
+        "ASEC reported WIC receipt (WICYN == 1), stored on the reporting "
+        "adult as her SPM unit's receipt carrier by "
+        "cps_carried.derive_us_cps_carried_inputs; a formula-less monthly "
+        "boolean person input in PolicyEngine-US 2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
+    ),
+    "receives_snap": (
+        "ASEC reported SNAP receipt (maximum member SPM_SNAPSUB > 0 per SPM "
+        "unit), carried by cps_carried.derive_us_cps_carried_inputs; a "
+        "formula-less monthly boolean spm_unit input in PolicyEngine-US "
+        "2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
+    ),
+    "receives_tanf": (
+        "ASEC reported TANF receipt (any member with PAW_VAL > 0 and PAW_TYP "
+        "1 or 3, per SPM unit), carried by "
+        "cps_carried.derive_us_cps_carried_inputs; a formula-less monthly "
+        "boolean spm_unit input in PolicyEngine-US 2.2.1. " + _RECEIPT_INPUT_NOTE_TAIL
     ),
 }
 
@@ -1540,11 +1577,15 @@ def build_manifest() -> dict:
             "qualified_passenger_vehicle_loan_interest, five desired "
             "retirement-contribution inputs, "
             "meets_ssi_disability_criteria required by shipped validation "
-            "probes, and the #282 Schedule-D capital-gain-distributions "
+            "probes, the #282 Schedule-D capital-gain-distributions "
             "route leg schedule_d_capital_gain_distributions "
-            "(PolicyEngine/microcosm#462), and the engine's declared dataset "
-            "source input is_spm_independent_minor_role (the spm_independence_"
-            "role base-builder stage; PolicyEngine/microcosm#893). "
+            "(PolicyEngine/microcosm#462), the three ASEC reported-receipt "
+            "inputs receives_wic, receives_snap, receives_tanf that the ACS "
+            "local-area transfer requires in its donor "
+            "(PolicyEngine/microcosm#978 option 1), and the engine's declared "
+            "dataset source input is_spm_independent_minor_role (the "
+            "spm_independence_role base-builder stage; "
+            "PolicyEngine/microcosm#893). "
             "status='reviewed_exclusion' for ecps_parity_known_gaps.json entries "
             "(reason+issue from that register); EXCEPT every primary-source "
             "restoration pinned by RESTORED_REFERENCE_ECPS_REQUIRED_INPUTS "
