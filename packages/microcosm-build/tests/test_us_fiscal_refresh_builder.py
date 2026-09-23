@@ -14673,3 +14673,85 @@ def test_target_surface_refuses_an_unknown_mode_or_an_empty_surface() -> None:
         builder._select_target_surface(cd_only, "state")
     with pytest.raises(ValueError, match="keeps no targets"):
         builder._select_target_surface(cd_only, "national_state")
+
+
+def _surface_source_coverage(builder, target_surface_selection):
+    # The composition _main writes to us_source_coverage.json.
+    active, surface_exclusions = builder._source_coverage_aliases(
+        target_surface_selection
+    )
+    return builder.us_source_coverage_diagnostics(
+        active_target_aliases=active,
+        reviewed_exclusions={
+            **builder._reviewed_exclusions(active),
+            **surface_exclusions,
+        },
+    )
+
+
+def test_full_surface_source_coverage_counts_cd_sources_active() -> None:
+    builder = _load_builder_module()
+
+    active, surface_exclusions = builder._source_coverage_aliases(None)
+    coverage = _surface_source_coverage(builder, None)
+
+    assert surface_exclusions == {}
+    for alias in builder.CONGRESSIONAL_DISTRICT_SOURCE_ALIASES:
+        assert alias in active
+        assert alias in coverage["active_target_aliases"]
+        assert alias not in coverage["reviewed_exclusions"]
+    assert coverage["gate"]["passed"] is True
+
+
+def test_national_state_surface_source_coverage_excludes_dropped_cd_sources() -> None:
+    from microcosm.data.contract import _check_source_coverage_diagnostics
+
+    builder = _load_builder_module()
+    specs = (
+        _surface_spec("us_income_tax", ledger_geography_level="us"),
+        _surface_spec(
+            "cd_0601_agi",
+            ledger_geography_level="congressional_district",
+            congressional_district_geoid="0601",
+        ),
+    )
+    _, receipt = builder._select_target_surface(specs, "national_state")
+
+    coverage = _surface_source_coverage(builder, receipt)
+
+    assert coverage["gate"] == {
+        "name": "us_source_coverage",
+        "passed": True,
+        "failures": [],
+    }
+    for alias in builder.CONGRESSIONAL_DISTRICT_SOURCE_ALIASES:
+        assert alias not in coverage["active_target_aliases"]
+        reason = coverage["reviewed_exclusions"][alias]
+        assert "--target-surface national_state dropped all 1 " in reason
+        assert "build.target_surface_selection" in reason
+    population = coverage["hard_target_families"]["population_age_sex"]
+    assert (
+        "census-acs-s0101-congressional-district-age-2024"
+        not in population["covered_package_aliases"]
+    )
+    # Every other alias keeps its fiscal-refresh standing.
+    full = _surface_source_coverage(builder, None)
+    assert set(full["active_target_aliases"]) - set(
+        coverage["active_target_aliases"]
+    ) == set(builder.CONGRESSIONAL_DISTRICT_SOURCE_ALIASES)
+    # The publisher's contract check accepts the artifact.
+    failures: list[str] = []
+    _check_source_coverage_diagnostics(
+        {**coverage, "fiscal_target_sources": {}}, failures
+    )
+    assert failures == []
+
+
+def test_main_derives_source_coverage_aliases_from_the_target_surface() -> None:
+    builder = _load_builder_module()
+    main_source = inspect.getsource(builder._main)
+
+    assert "_source_coverage_aliases(\n        target_surface_selection\n    )" in (
+        main_source
+    )
+    assert '"soi-congressional-district-2022",' not in main_source

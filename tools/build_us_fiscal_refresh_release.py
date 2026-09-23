@@ -7242,6 +7242,39 @@ def _select_target_surface(
     }
 
 
+CONGRESSIONAL_DISTRICT_SOURCE_ALIASES = (
+    "census-acs-s0101-congressional-district-age-2024",
+    "soi-congressional-district-2022",
+)
+
+
+def _source_coverage_aliases(
+    target_surface_selection: Mapping[str, object] | None,
+) -> tuple[tuple[str, ...], dict[str, str]]:
+    """Return ``us_source_coverage.json``'s active aliases and surface exclusions.
+
+    The congressional-district sources count as active coverage only when the
+    release calibrates to them. A surface that dropped every CD-classified
+    target (``target_surface_selection`` is recorded only for such surfaces)
+    lists them as reviewed exclusions naming the drop, so the coverage artifact
+    agrees with ``build.target_surface_selection`` in the manifests.
+    """
+
+    if target_surface_selection is None:
+        return DIRECT_ACTIVE_ALIASES + CONGRESSIONAL_DISTRICT_SOURCE_ALIASES, {}
+    dropped = int(target_surface_selection["dropped_congressional_district_targets"])
+    reason = (
+        "Not calibrated by this release: --target-surface "
+        f"{target_surface_selection['mode']} dropped all {dropped:,} "
+        "congressional-district-classified targets after the target-parity and "
+        "profile-coverage gates ran on the full compiled surface; see "
+        "build.target_surface_selection in the manifests."
+    )
+    return DIRECT_ACTIVE_ALIASES, {
+        alias: reason for alias in CONGRESSIONAL_DISTRICT_SOURCE_ALIASES
+    }
+
+
 def _target_is_congressional_district(target: object | None) -> bool:
     return is_congressional_district_target(
         _target_row_name(target) if target is not None else "",
@@ -12604,13 +12637,15 @@ def _main(argv: Sequence[str] | None = None) -> None:
         telemetry.stage(
             "source_coverage", message="Writing source coverage diagnostics."
         )
-    active_aliases = DIRECT_ACTIVE_ALIASES + (
-        "census-acs-s0101-congressional-district-age-2024",
-        "soi-congressional-district-2022",
+    active_aliases, surface_exclusions = _source_coverage_aliases(
+        target_surface_selection
     )
     coverage = us_source_coverage_diagnostics(
         active_target_aliases=active_aliases,
-        reviewed_exclusions=_reviewed_exclusions(active_aliases),
+        reviewed_exclusions={
+            **_reviewed_exclusions(active_aliases),
+            **surface_exclusions,
+        },
     )
     coverage["fiscal_target_sources"] = _fiscal_target_source_provenance(target_specs)
     if congressional_district_vintage_crosswalk_metadata is not None:
