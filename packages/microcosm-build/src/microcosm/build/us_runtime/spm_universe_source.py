@@ -217,6 +217,7 @@ SPM_UNIVERSE_REFUSALS = (
     "SPM_UNIVERSE_UNIT_SPANS_KINDS",
     "SPM_UNIVERSE_DEGRADED_PARTITION",
     "SPM_UNIVERSE_ASEC_RECORD_TYPE_UNREVIEWED",
+    "SPM_UNIVERSE_INVALID_CLONE_INDEX",
 )
 
 _MAX_REPORTED_EXAMPLES = 5
@@ -397,23 +398,36 @@ def _assert_one_kind_per_household(
 
 
 def _person_clone_copies(person: pd.DataFrame) -> np.ndarray:
-    """Each person's support-clone copy, with a missing index read as native.
+    """Each person's support-clone copy; refuses an undecidable clone index.
 
     A support clone deep-copies every column of a table and remaps only the
     structural id and membership columns
     (``puf_support._clone_entity_table``), so clone copy ``k`` carries the
-    native row's source fields under new ids. Reading an absent or missing
-    clone index as the native copy can only make the checks that use it
-    stricter: it merges rows *into* the native copy, where they can collide
-    with native rows, and never separates rows the truth would merge.
+    native row's source fields under new ids. With no clone-index column the
+    frame was never support-cloned and every person is native. When the column
+    is present, a missing, non-finite, negative or non-integral value is
+    undecidable provenance, and the module refuses it rather than guess a copy:
+    reading it as native could merge a genuine cross-copy collision into an
+    apparent bijection in the degraded-partition check. The maintained readers
+    of this column refuse the same values (``acs_transfer`` raises on an
+    invalid clone index; ``stacked_spine`` and ``puf_support`` parse it with
+    ``errors="raise"`` or refuse a missing one).
     """
     if _PERSON_CLONE_INDEX_COLUMN not in person.columns:
         return np.full(len(person), _NATIVE_CLONE_INDEX, dtype=float)
-    return (
-        pd.to_numeric(person[_PERSON_CLONE_INDEX_COLUMN], errors="coerce")
-        .fillna(_NATIVE_CLONE_INDEX)
-        .to_numpy(dtype=float)
+    values = pd.to_numeric(
+        person[_PERSON_CLONE_INDEX_COLUMN], errors="coerce"
+    ).to_numpy(dtype=float)
+    invalid = ~np.isfinite(values) | (values < 0) | (values != np.floor(values))
+    _require(
+        not invalid.any(),
+        "SPM_UNIVERSE_INVALID_CLONE_INDEX",
+        f"{int(invalid.sum())} person row(s) carry a missing, non-finite, "
+        f"negative or non-integral {_PERSON_CLONE_INDEX_COLUMN}; the row's "
+        "support-clone copy is undecidable, so neither the group-quarters nor "
+        "the degraded-partition check can be judged.",
     )
+    return values
 
 
 def _assert_group_quarters_are_single_native_records(
@@ -430,9 +444,9 @@ def _assert_group_quarters_are_single_native_records(
     source (``acs_pums._occupied_households``), and the stacked assembly
     re-asserts it. Clones of such a placeholder are expected and are not
     counted here; more than one *native* person in one is not. A person
-    whose clone index is missing counts as native (see
-    :func:`_person_clone_copies`), so a pool that lost the index on one arm
-    cannot pass this check vacuously.
+    whose clone index is missing or invalid is refused before this check runs
+    (see :func:`_person_clone_copies`), so a pool that lost the index on one
+    arm cannot pass it vacuously.
     """
     gq = (arm.eq(ACS_ARM) & kind.isin(ACS_GROUP_QUARTERS_KINDS)).to_numpy()
     gq_ids = pd.Index(household_ids.to_numpy()[gq]).unique()

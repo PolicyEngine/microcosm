@@ -80,6 +80,7 @@ Every refusal is a named, fail-closed `ValueError`:
 | `SPM_UNIVERSE_UNIT_SPANS_KINDS` | one SPM unit whose members sit in households of different kinds |
 | `SPM_UNIVERSE_DEGRADED_PARTITION` | the ASEC arm's SPM partition is not the native one: `SPM_ID` absent, missing, or not one-to-one with the frame's units per support-clone copy |
 | `SPM_UNIVERSE_ASEC_RECORD_TYPE_UNREVIEWED` | the frame carries an ASEC record-type field the spine-level ruling was not derived against |
+| `SPM_UNIVERSE_INVALID_CLONE_INDEX` | the person table carries a support-clone index that is missing, non-finite, negative or non-integral, so a row's clone copy is undecidable |
 
 `SPM_UNIVERSE_UNIT_SPANS_KINDS` is natively unreachable — ACS group-quarters
 households are one-person placeholders — and earns its keep the moment a
@@ -104,9 +105,13 @@ person table and remaps only the id and membership columns, so clone copy 1
 carries the native `SPM_ID` under new SPM unit ids; keyed on `SPM_ID` alone,
 every support-cloned ASEC frame would read as degraded.
 `test_the_real_support_clone_operator_output_is_accepted` runs the real clone
-operator on invented rows to pin that. A missing clone index is read as the
-native copy, which can only add collisions, so it never relaxes this check or
-the one-native-person group-quarters check.
+operator on invented rows to pin that. When the frame carries a clone-index
+column, a missing, non-finite, negative or non-integral value is refused
+(`SPM_UNIVERSE_INVALID_CLONE_INDEX`) before either this check or the
+one-native-person group-quarters check runs: the row's copy is undecidable,
+and reading it as native could merge a genuine cross-copy collision into an
+apparent bijection. A frame with no clone-index column was never
+support-cloned, and every person in it is native.
 
 ## What is wired, and what is not
 

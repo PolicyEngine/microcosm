@@ -68,9 +68,14 @@ def _tables(
             "person_tax_unit_id": hid,
             "person_family_id": hid,
             "person_marital_unit_id": index,
-            # ``"clone": None`` models a pool that lost the index on one arm.
+            # ``"clone": None`` models a pool that lost the index on one arm;
+            # a float passes through unchanged so invalid indices can be tested.
             "person_support_clone_index": (
-                np.nan if spec.get("clone", 0) is None else int(spec.get("clone", 0))
+                np.nan
+                if spec.get("clone", 0) is None
+                else spec.get("clone", 0)
+                if isinstance(spec.get("clone", 0), float)
+                else int(spec.get("clone", 0))
             ),
         }
         if "spm_id" in spec:
@@ -587,9 +592,9 @@ def test_the_clone_copy_key_still_refuses_a_degraded_clone_copy(clone_rows):
         _classify(native + [dict(row, clone=1) for row in clone_rows])
 
 
-def test_a_missing_clone_index_is_read_as_native_on_the_asec_arm():
-    """A clone row that lost its index collides with its native row: refused."""
-    with _refuses("SPM_UNIVERSE_DEGRADED_PARTITION"):
+def test_a_missing_clone_index_is_refused_on_the_asec_arm():
+    """A clone row that lost its index has an undecidable copy: refused."""
+    with _refuses("SPM_UNIVERSE_INVALID_CLONE_INDEX"):
         _classify(
             [
                 {"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 11, "clone": 0},
@@ -604,13 +609,47 @@ def test_a_missing_clone_index_is_read_as_native_on_the_asec_arm():
         )
 
 
-def test_a_missing_clone_index_counts_as_native_in_group_quarters():
+def test_a_missing_clone_index_is_refused_in_group_quarters():
     """A lost clone index cannot make the one-person GQ check pass vacuously."""
-    with _refuses("SPM_UNIVERSE_GQ_MULTI_PERSON"):
+    with _refuses("SPM_UNIVERSE_INVALID_CLONE_INDEX"):
         _classify(
             [
                 {"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 2, "clone": None},
                 {"hid": 1, "unit": 1, "chan": _ACS_CHANNEL, "kind": 2, "clone": None},
+            ]
+        )
+
+
+def test_a_missing_clone_index_cannot_collapse_a_cross_copy_collision():
+    """The gate's counterexample: two copies sharing one frame unit.
+
+    With both indices present the rows are two native keys in one frame unit
+    and the partition check refuses. Reading the missing indices as native
+    would merge them into one key and accept; the module refuses first.
+    """
+    rows = [
+        {"hid": 1, "unit": 5, "chan": _ASEC_CHANNEL, "spm_id": 11},
+        {"hid": 1, "unit": 5, "chan": _ASEC_CHANNEL, "spm_id": 11},
+    ]
+    with _refuses("SPM_UNIVERSE_DEGRADED_PARTITION"):
+        _classify([dict(rows[0], clone=1), dict(rows[1], clone=2)])
+    with _refuses("SPM_UNIVERSE_INVALID_CLONE_INDEX"):
+        _classify([dict(row, clone=None) for row in rows])
+
+
+@pytest.mark.parametrize("bad", [-1.0, 0.5, float("inf")])
+def test_an_invalid_clone_index_is_refused(bad):
+    with _refuses("SPM_UNIVERSE_INVALID_CLONE_INDEX"):
+        _classify(
+            [
+                {"hid": 1, "unit": 1, "chan": _ASEC_CHANNEL, "spm_id": 11, "clone": 0},
+                {
+                    "hid": 2,
+                    "unit": 2,
+                    "chan": _ASEC_CHANNEL,
+                    "spm_id": 11,
+                    "clone": bad,
+                },
             ]
         )
 
