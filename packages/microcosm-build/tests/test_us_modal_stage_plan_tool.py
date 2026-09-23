@@ -1402,3 +1402,13 @@ def test_app_main_exits_nonzero_unless_the_stage_completed(
     else:
         app.main(run=True)
     assert json.loads(capsys.readouterr().out)["stopped_at_budget"] is stopped
+
+
+@pytest.mark.parametrize("key", plan_lib.THREAD_ENV_KEYS)
+def test_every_documented_thread_count_is_allowlisted(key) -> None:
+    assert plan_lib._ENV_KEY.fullmatch(key)
+
+
+@pytest.mark.parametrize("key", ["VECLIB_MAXIMUM_THREADS", "FOO_NUM_THREADS"])
+def test_an_undocumented_thread_variable_is_refused_by_name(key) -> None:
+    assert not plan_lib._ENV_KEY.fullmatch(key)

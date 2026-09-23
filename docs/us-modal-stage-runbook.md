@@ -28,8 +28,10 @@ release directory onto the runs volume. Publication stays the human step in
    `docs/us-modal-stage-example-plan.json`). It names the tool, the stage, a
    `run_id`, a full 40-hex commit and the branch it was pushed on, and every
    input as `{uri, sha256}`. Options (`soi_mode`, `hh_chunk`, `epochs` and
-   so on) and environment overrides (`MICROCOSM_*`, `POPULACE_*`,
-   `*_NUM_THREADS`) come from allowlists; an environment variable whose name
+   so on) and environment overrides (`MICROCOSM_*`, `POPULACE_*`, and the
+   thread counts `OMP_NUM_THREADS`, `MKL_NUM_THREADS`,
+   `OPENBLAS_NUM_THREADS`, `NUMEXPR_NUM_THREADS` and `BLIS_NUM_THREADS`)
+   come from allowlists; an environment variable whose name
    looks like a credential (`KEY`, `TOKEN`, `SECRET`, `PASSW`, `SIGNING`,
    `CREDENTIAL`) is refused even under an allowed prefix. The runner sets the
    flags for input paths, checkpoints and outputs, and a plan cannot pass

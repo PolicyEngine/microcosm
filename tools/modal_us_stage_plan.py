@@ -80,8 +80,17 @@ _BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}")
 _FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 _HF_REPO_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*")
 _HF_REVISION = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
+#: The thread-count variables a plan may override. BLIS is here because Modal
+#: sets BLIS_NUM_THREADS in the container alongside the other three.
+THREAD_ENV_KEYS = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "BLIS_NUM_THREADS",
+)
 _ENV_KEY = re.compile(
-    r"(?:MICROCOSM|POPULACE)_[A-Z0-9_]+|(?:OMP|MKL|OPENBLAS|NUMEXPR)_NUM_THREADS"
+    r"(?:MICROCOSM|POPULACE)_[A-Z0-9_]+|(?:OMP|MKL|OPENBLAS|NUMEXPR|BLIS)_NUM_THREADS"
 )
 # Names that look like credentials. A plan may not set one, even under an
 # allowlisted prefix (its value would be copied into every receipt), and the
@@ -614,7 +623,8 @@ def parse_plan(data: object) -> Plan:
     for key in sorted(raw_env):
         if not isinstance(key, str) or not _ENV_KEY.fullmatch(key):
             raise PlanError(
-                f"env {key!r} is not allowlisted (MICROCOSM_*, POPULACE_*, *_NUM_THREADS)"
+                f"env {key!r} is not allowlisted (MICROCOSM_*, POPULACE_*, or one "
+                f"of {', '.join(THREAD_ENV_KEYS)})"
             )
         if is_credential_env_key(key):
             raise PlanError(
