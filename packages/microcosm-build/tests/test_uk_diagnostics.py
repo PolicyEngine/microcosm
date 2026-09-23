@@ -777,6 +777,34 @@ def test_writer_round_trips_strict_json(tmp_path: Path) -> None:
     assert list(tmp_path.glob(f".{path.name}.*.tmp")) == []
 
 
+@pytest.mark.parametrize(
+    "value",
+    [float("nan"), float("inf"), float("-inf")],
+    ids=["nan", "positive-infinity", "negative-infinity"],
+)
+def test_writer_rejects_nested_non_finite_build_provenance(
+    tmp_path: Path,
+    value: float,
+) -> None:
+    result, frame, registry, geography = _diagnostics_case()
+    path = tmp_path / "calibration_diagnostics.json"
+    path.write_text("stale")
+
+    outcome = write_uk_calibration_diagnostics(
+        result,
+        path,
+        frame,
+        target_geography_levels=geography,
+        target_registry=registry,
+        build={"nested": [{"value": value}]},
+    )
+
+    assert isinstance(outcome, DiagnosticsWriteFailure)
+    assert outcome.error_code == "validation_error"
+    assert not path.exists()
+    assert list(tmp_path.glob(f".{path.name}.*.tmp")) == []
+
+
 def test_writer_reports_canonical_atomic_replace_failure(
     tmp_path: Path,
     monkeypatch,

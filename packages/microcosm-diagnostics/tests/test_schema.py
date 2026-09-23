@@ -425,6 +425,67 @@ def test_schema_8_reconciles_target_surface_matrix_shape() -> None:
         parse_calibration_diagnostics(payload)
 
 
+@pytest.mark.parametrize(
+    "value",
+    [float("nan"), float("inf"), float("-inf")],
+    ids=["nan", "positive-infinity", "negative-infinity"],
+)
+@pytest.mark.parametrize(
+    "location",
+    [
+        "top-level scalar",
+        "target scalar",
+        "loss trajectory",
+        "nested solver option",
+        "nested target metadata",
+        "nested build provenance",
+        "UK extension",
+    ],
+)
+def test_schema_8_rejects_non_finite_numbers_recursively(
+    location: str,
+    value: float,
+) -> None:
+    payload = _uk_payload() if location == "UK extension" else _payload()
+    if location == "top-level scalar":
+        payload["final_loss"] = value
+    elif location == "target scalar":
+        payload["targets"][0]["relative_error"] = value
+    elif location == "loss trajectory":
+        payload["loss_trajectory"][0] = value
+    elif location == "nested solver option":
+        payload["options"]["nested"] = [{"value": value}]
+    elif location == "nested target metadata":
+        payload["targets"][0]["metadata"]["nested"] = [{"value": value}]
+    elif location == "nested build provenance":
+        payload["build"] = {"nested": [{"value": value}]}
+    else:
+        payload["uk_diagnostics"]["weights"]["total_weight"] = value
+
+    with pytest.raises(ValidationError, match="must be finite or null"):
+        parse_calibration_diagnostics(payload)
+
+
+def test_writer_strict_serialization_rejects_a_non_finite_mutated_mapping(
+    tmp_path: Path,
+) -> None:
+    payload = _payload()
+    payload["build"] = {"nested": {"value": 1.0}}
+    model = CalibrationDiagnosticsV8.model_validate(payload)
+    assert model.build is not None
+    nested = model.build["nested"]
+    assert isinstance(nested, dict)
+    nested["value"] = float("nan")
+    path = tmp_path / "calibration_diagnostics.json"
+    path.write_text("stale")
+
+    outcome = write_calibration_diagnostics(model, path)
+
+    assert outcome.status == "failed"
+    assert outcome.error_code == "serialization_error"
+    assert not path.exists()
+
+
 def test_writer_is_atomic_and_removes_stale_output_on_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

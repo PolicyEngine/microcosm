@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from typing import Annotated, Final, Literal
 
 from pydantic import (
@@ -46,10 +47,33 @@ PositiveInt = Annotated[int, Field(gt=0)]
 JsonScalar = str | bool | int | FiniteFloat | None
 
 
+def _require_finite_numbers(value: object, *, path: str = "$") -> None:
+    """Reject non-finite floats anywhere in a current diagnostics value."""
+
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError(f"diagnostic number at {path} must be finite or null")
+        return
+    if isinstance(value, BaseModel):
+        value = value.model_dump(mode="python")
+    if isinstance(value, Mapping):
+        for key, nested in value.items():
+            _require_finite_numbers(nested, path=f"{path}.{key}")
+    elif isinstance(value, (list, tuple)):
+        for index, nested in enumerate(value):
+            _require_finite_numbers(nested, path=f"{path}[{index}]")
+
+
 class DiagnosticsModel(BaseModel):
     """Base for immutable schema records with no undeclared fields."""
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_non_finite_numbers(cls, value: object) -> object:
+        _require_finite_numbers(value)
+        return value
 
 
 class Selector(DiagnosticsModel):
@@ -657,7 +681,7 @@ class CalibrationDiagnosticsV8(DiagnosticsModel):
         return self
 
 
-class LegacyCalibrationDiagnostics(DiagnosticsModel):
+class LegacyCalibrationDiagnostics(BaseModel):
     """Typed common envelope retained for immutable schema-6/7 releases."""
 
     model_config = ConfigDict(extra="allow", frozen=True, strict=False)

@@ -91,6 +91,12 @@ document before an atomic write. The writer returns either `available` with the
 file digest or `failed` with a structured error. A failed diagnostics attempt
 does not invalidate the calibrated dataset.
 
+Producer code converts an unavailable calculated measurement to `None` before
+model construction. Schema 8 otherwise rejects non-finite numbers recursively,
+including values nested in solver options, target metadata, or build provenance.
+The writer repeats this requirement during strict JSON serialization and never
+converts a surviving `NaN` or infinity to `null`.
+
 Dimensions are not manually enumerated in the target declaration. A single
 fact or fan-out target inherits all Chronicle dimensions, with
 `layout.groupby_dimension` first and all remaining ids sorted. A target that

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import uuid
@@ -100,9 +101,13 @@ def write_calibration_diagnostics(
     temporary = output.with_name(f".{output.name}.{uuid.uuid4().hex}.tmp")
     try:
         validated = CalibrationDiagnosticsV8.model_validate(diagnostics)
-        encoded = validated.model_dump_json(indent=1, exclude_defaults=True).encode(
-            "utf-8"
-        )
+        payload = validated.model_dump(mode="python", exclude_defaults=True)
+        encoded = json.dumps(
+            payload,
+            indent=1,
+            ensure_ascii=False,
+            allow_nan=False,
+        ).encode("utf-8")
         temporary.write_bytes(encoded)
         os.replace(temporary, output)
     except ValidationError as error:

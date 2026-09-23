@@ -18,3 +18,11 @@ mappings because their keys are producer-defined; every stable diagnostics
 record has a declared model. Historical schema-6 and schema-7 UK documents
 retain a read-only compatibility validator in `microcosm-data`; it is not used
 for schema-8 production or validation.
+
+Every current model rejects `NaN`, positive infinity, and negative infinity at
+any nesting depth. Producers may convert a calculated value to `null` when
+`null` explicitly means that the measurement is unavailable, but values that
+reach validation as non-finite numbers fail construction. The writer also uses
+strict JSON serialization with non-finite output disabled, so a value introduced
+after model construction returns a structured serialization failure instead of
+silently becoming `null`.
