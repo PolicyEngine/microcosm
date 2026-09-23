@@ -71,6 +71,7 @@ import contextvars
 import csv
 import hashlib
 import hmac
+import importlib
 import json
 import json.decoder
 import json.encoder
@@ -81,6 +82,7 @@ import platform
 import re
 import secrets
 import stat
+import struct
 import sys
 import sysconfig
 import tempfile
@@ -93,6 +95,9 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from types import CodeType, FunctionType
+
+import numpy as np
+import pandas as pd
 
 PROTOCOL = "microcosm.us.source-memo.v1"
 ROOT_ENV = "MICROCOSM_US_SOURCE_MEMO"
@@ -283,7 +288,7 @@ def _immutable(value, depth=0):
     return _SKIP
 
 
-def _function(value, module, codes, seen):
+def _function(value, module, codes: dict, seen: set) -> list:
     """Identity of one bound function, checking code the module itself defines."""
     if id(value) in seen:
         return ["seen", value.__qualname__]
@@ -597,10 +602,10 @@ class _Memo:
             _private_directory(self.root / name)
 
     # Paths are derived only from validated lowercase hex digests.
-    def _index_path(self, key):
+    def _index_path(self, key: str) -> Path:
         return self.root / "index" / key[:2] / f"{key}.json"
 
-    def _blob_path(self, digest):
+    def _blob_path(self, digest: str) -> Path:
         return self.root / "blobs" / digest[:2] / digest
 
     def _mac(self, body: bytes) -> str:
@@ -682,6 +687,8 @@ class _Memo:
             return False
 
     def store(self, namespace, key, document, blobs):
+        # lookup() refuses any other count, so such an entry would never hit.
+        _require(type(blobs) is list and 0 < len(blobs) <= _BLOBS_MAX, "BLOB_COUNT")
         described = []
         for value in blobs:
             _require(
@@ -839,13 +846,591 @@ def encode_json(value):
     return [ordered(value)]
 
 
-def decode_json(blobs):
+def decode_json(blobs: list[bytes]):
     _require(len(blobs) == 1, "BLOB_COUNT")
     return json.loads(blobs[0])
 
 
-def prove_json(value, blobs):
+def prove_json(value, blobs: list[bytes]) -> bool:
     """``encode_json`` admits only JSON-native values, which ``ordered`` round-trips
     exactly; decoding again would only repeat that guarantee at the cost of a
     second copy of the value."""
     return len(blobs) == 1 and json_native(value)
+
+
+# -- exact typed values ------------------------------------------------------------
+
+_TYPED_DEPTH = 64
+
+
+def _to_typed(value, depth: int):
+    _require(depth <= _TYPED_DEPTH, "TYPED_DEPTH")
+    kind = type(value)
+    if value is None or kind in (bool, int):
+        return value
+    if kind is str:
+        _require(exact_text(value), "TYPED_TEXT")
+        return value
+    if kind is float:
+        return ["F", struct.pack(">d", value).hex()]
+    if kind is bytes:
+        return ["B", value.hex()]
+    if kind in (list, tuple):
+        tag = "L" if kind is list else "T"
+        return [tag, *(_to_typed(item, depth + 1) for item in value)]
+    if kind is dict:
+        _require(
+            all(type(key) is str and exact_text(key) for key in value), "TYPED_KEY"
+        )
+        return [
+            "D",
+            *([key, _to_typed(item, depth + 1)] for key, item in value.items()),
+        ]
+    raise SourceMemoError("TYPED_VALUE")
+
+
+def _from_typed(value, depth: int):
+    _require(depth <= _TYPED_DEPTH, "TYPED_DEPTH")
+    if type(value) is not list:
+        _require(value is None or type(value) in (bool, int, str), "TYPED_TAG")
+        return value
+    _require(bool(value), "TYPED_TAG")
+    tag, items = value[0], value[1:]
+    if tag in ("F", "B"):
+        _require(len(items) == 1 and type(items[0]) is str, "TYPED_TAG")
+        raw = bytes.fromhex(items[0])
+        return struct.unpack(">d", raw)[0] if tag == "F" else raw
+    if tag in ("L", "T"):
+        decoded = [_from_typed(item, depth + 1) for item in items]
+        return decoded if tag == "L" else tuple(decoded)
+    _require(tag == "D", "TYPED_TAG")
+    result = {}
+    for pair in items:
+        _require(type(pair) is list and len(pair) == 2, "TYPED_KEY")
+        key = pair[0]
+        _require(type(key) is str and key not in result, "TYPED_KEY")
+        result[key] = _from_typed(pair[1], depth + 1)
+    return result
+
+
+def encode_typed(value) -> bytes:
+    """Exact JSON of None/bool/int/str/float/bytes/list/tuple/dict (str keys).
+
+    Every container is a tagged list, so tuples stay tuples, mapping order
+    survives and floats retain their IEEE-754 bits, including NaN payloads.
+    """
+    return ordered(_to_typed(value, 0))
+
+
+def decode_typed(raw: bytes):
+    return _from_typed(json.loads(raw), 0)
+
+
+# -- exact data frames ------------------------------------------------------------
+
+_NUMPY_KINDS = frozenset("biuf")
+_STRING_STORAGES = frozenset({"python", "pyarrow"})
+
+
+def _string_form(dtype) -> list | None:
+    """``[storage, na]`` of an exact pandas StringDtype, else None."""
+    if type(dtype) is not pd.StringDtype or dtype.storage not in _STRING_STORAGES:
+        return None
+    na = dtype.na_value
+    if na is pd.NA:
+        return [dtype.storage, "NA"]
+    if type(na) is float and math.isnan(na):
+        return [dtype.storage, "nan"]
+    return None
+
+
+def _string_dtype(form: list):
+    _require(
+        type(form) is list
+        and len(form) == 2
+        and form[0] in _STRING_STORAGES
+        and form[1] in ("NA", "nan"),
+        "FRAME_DTYPE",
+    )
+    return pd.StringDtype(form[0], na_value=pd.NA if form[1] == "NA" else np.nan)
+
+
+def _numpy_dtype(form: str):
+    _require(type(form) is str, "FRAME_DTYPE")
+    dtype = np.dtype(form)
+    _require(dtype.kind in _NUMPY_KINDS and dtype.str == form, "FRAME_DTYPE")
+    return dtype
+
+
+def _string_values(series) -> list:
+    values = series.array.to_numpy(dtype=object, na_value=None).tolist()
+    missing = series.isna().to_numpy(dtype=bool)
+    _require(len(values) == len(missing), "FRAME_VALUES")
+    for value, absent in zip(values, missing.tolist(), strict=True):
+        if absent:
+            _require(value is None, "FRAME_VALUES")
+        else:
+            _require(type(value) is str and exact_text(value), "FRAME_VALUES")
+    return values
+
+
+def _object_values(series) -> list:
+    """Encode only inert scalar cells; never serialize arbitrary Python objects.
+
+    Object columns can contain distinct missing markers. Keep None, pd.NA
+    and every float's bits separate rather than normalizing through isna().
+    """
+    values = []
+    for value in series.to_numpy(copy=False):
+        if value is pd.NA:
+            values.append(["NA"])
+        else:
+            _require(
+                value is None or type(value) in (bool, int, float, str, bytes),
+                "FRAME_OBJECT",
+            )
+            values.append(_to_typed(value, 0))
+    return values
+
+
+def _decode_object_values(raw: bytes, rows: int) -> list:
+    values = json.loads(raw)
+    _require(type(values) is list and len(values) == rows, "FRAME_ROWS")
+    decoded = []
+    for value in values:
+        if value == ["NA"]:
+            decoded.append(pd.NA)
+        else:
+            item = _from_typed(value, 0)
+            _require(
+                item is None or type(item) in (bool, int, float, str, bytes),
+                "FRAME_OBJECT",
+            )
+            decoded.append(item)
+    return decoded
+
+
+def encode_frame(frame) -> list[bytes]:
+    """A header blob, then one blob per column; refuses any other frame shape.
+
+    Admits exactly: a plain DataFrame with no attrs, a RangeIndex, unique str
+    column labels held in an object or StringDtype index, and columns that are
+    numpy bool/int/uint/float (stored as their raw bytes, so NaN payloads and
+    signed zeros survive) or a python/pyarrow StringDtype with either missing
+    marker (stored as JSON text or null), or object columns of exact Python
+    scalar cells (None/bool/int/float/str/bytes/pd.NA, with tagged encoding).
+    """
+    _require(type(frame) is pd.DataFrame, "FRAME_TYPE")
+    _require(not frame.attrs and frame.flags.allows_duplicate_labels, "FRAME_FLAGS")
+    index = frame.index
+    _require(
+        type(index) is pd.RangeIndex
+        and (index.name is None or type(index.name) is str),
+        "FRAME_INDEX",
+    )
+    columns = frame.columns
+    names = list(columns)
+    _require(
+        type(columns) is pd.Index
+        and columns.name is None
+        and all(type(name) is str and exact_text(name) for name in names)
+        and len(set(names)) == len(names),
+        "FRAME_COLUMNS",
+    )
+    if isinstance(columns.dtype, np.dtype) and columns.dtype.kind == "O":
+        _require(columns.dtype.metadata is None, "FRAME_DTYPE")
+        labels = "object"
+    else:
+        labels = _string_form(columns.dtype)
+        _require(labels is not None, "FRAME_COLUMNS")
+    header = {
+        "format": "microcosm.us.source-memo.frame.v1",
+        "rows": len(frame),
+        "index": [index.start, index.stop, index.step, index.name],
+        "labels": labels,
+        "columns": [],
+    }
+    blobs = []
+    for position, name in enumerate(names):
+        series = frame.iloc[:, position]
+        dtype = series.dtype
+        if isinstance(dtype, np.dtype):
+            _require(dtype.metadata is None, "FRAME_DTYPE")
+        if isinstance(dtype, np.dtype) and dtype.kind == "O":
+            header["columns"].append([name, "object", None])
+            blobs.append(ordered(_object_values(series)))
+            continue
+        if type(dtype) is not pd.StringDtype:
+            _require(
+                isinstance(dtype, np.dtype) and dtype.kind in _NUMPY_KINDS,
+                "FRAME_DTYPE",
+            )
+            array = series.to_numpy(copy=False)
+            _require(array.dtype == dtype and array.ndim == 1, "FRAME_VALUES")
+            header["columns"].append([name, "numpy", dtype.str])
+            blobs.append(np.ascontiguousarray(array).tobytes())
+            continue
+        form = _string_form(dtype)
+        _require(form is not None, "FRAME_DTYPE")
+        header["columns"].append([name, "string", form])
+        blobs.append(ordered(_string_values(series)))
+    return [ordered(header), *blobs]
+
+
+def _frame_header(raw: bytes) -> dict:
+    header = json.loads(raw)
+    _require(
+        type(header) is dict
+        and list(header) == ["format", "rows", "index", "labels", "columns"]
+        and header["format"] == "microcosm.us.source-memo.frame.v1"
+        and type(header["rows"]) is int
+        and header["rows"] >= 0
+        and type(header["index"]) is list
+        and len(header["index"]) == 4
+        and all(type(v) is int for v in header["index"][:3])
+        and (header["index"][3] is None or type(header["index"][3]) is str)
+        and type(header["columns"]) is list
+        and all(
+            type(column) is list and len(column) == 3 and type(column[0]) is str
+            for column in header["columns"]
+        ),
+        "FRAME_HEADER",
+    )
+    return header
+
+
+def decode_frame(blobs: list[bytes]):
+    """Rebuild exactly the frame ``encode_frame`` described, one block per column."""
+    _require(type(blobs) is list and blobs, "FRAME_BLOBS")
+    header = _frame_header(blobs[0])
+    columns = header["columns"]
+    _require(len(blobs) == 1 + len(columns), "FRAME_BLOBS")
+    start, stop, step, index_name = header["index"]
+    index = pd.RangeIndex(start, stop, step, name=index_name)
+    rows = header["rows"]
+    _require(len(index) == rows, "FRAME_ROWS")
+    names = [column[0] for column in columns]
+    _require(len(set(names)) == len(names), "FRAME_COLUMNS")
+    data = {}
+    for (name, kind, form), raw in zip(columns, blobs[1:], strict=True):
+        if kind == "numpy":
+            dtype = _numpy_dtype(form)
+            _require(len(raw) == rows * dtype.itemsize, "FRAME_ROWS")
+            array = np.frombuffer(raw, dtype=dtype).copy()
+            data[name] = pd.Series(array, index=index, name=name, copy=False)
+        elif kind == "object":
+            _require(form is None, "FRAME_DTYPE")
+            data[name] = pd.Series(
+                _decode_object_values(raw, rows),
+                dtype=object,
+                index=index,
+                name=name,
+            )
+        else:
+            _require(kind == "string", "FRAME_DTYPE")
+            values = json.loads(raw)
+            _require(
+                type(values) is list
+                and len(values) == rows
+                and all(v is None or type(v) is str for v in values),
+                "FRAME_VALUES",
+            )
+            data[name] = pd.Series(
+                pd.array(values, dtype=_string_dtype(form)),
+                index=index,
+                name=name,
+                copy=False,
+            )
+    labels = header["labels"]
+    label_dtype = object if labels == "object" else _string_dtype(labels)
+    return pd.DataFrame(
+        data, index=index, columns=pd.Index(names, dtype=label_dtype), copy=False
+    )
+
+
+def decode_frames(blobs: list[bytes]) -> list:
+    """Consecutive ``encode_frame`` encodings, consumed exactly."""
+    frames, position = [], 0
+    while position < len(blobs):
+        width = 1 + len(_frame_header(blobs[position])["columns"])
+        _require(position + width <= len(blobs), "FRAME_BLOBS")
+        frames.append(decode_frame(blobs[position : position + width]))
+        position += width
+    return frames
+
+
+def frames_identical(left, right) -> bool:
+    """Type-, dtype-, label- and bit-exact equality of two data frames.
+
+    Beyond ``encode_frame``'s shapes this is simply False, never an error.
+    """
+    if type(left) is not pd.DataFrame or type(right) is not pd.DataFrame:
+        return False
+    if left.shape != right.shape or left.attrs or right.attrs:
+        return False
+    if left.flags.allows_duplicate_labels != right.flags.allows_duplicate_labels:
+        return False
+    a_index, b_index = left.index, right.index
+    if not (
+        type(a_index) is pd.RangeIndex
+        and type(b_index) is pd.RangeIndex
+        and (a_index.start, a_index.stop, a_index.step, a_index.name)
+        == (b_index.start, b_index.stop, b_index.step, b_index.name)
+    ):
+        return False
+    a_columns, b_columns = left.columns, right.columns
+    if any(
+        isinstance(columns.dtype, np.dtype) and columns.dtype.metadata is not None
+        for columns in (a_columns, b_columns)
+    ):
+        return False
+    if not (
+        type(a_columns) is type(b_columns)
+        and a_columns.name is None
+        and b_columns.name is None
+        and list(a_columns) == list(b_columns)
+        and all(type(name) is str for name in a_columns)
+        and all(type(name) is str for name in b_columns)
+        and type(a_columns.dtype) is type(b_columns.dtype)
+        and a_columns.dtype == b_columns.dtype
+        and repr(a_columns.dtype) == repr(b_columns.dtype)
+    ):
+        return False
+    for position in range(left.shape[1]):
+        a, b = left.iloc[:, position], right.iloc[:, position]
+        if any(
+            isinstance(series.dtype, np.dtype) and series.dtype.metadata is not None
+            for series in (a, b)
+        ):
+            return False
+        if not (
+            type(a.dtype) is type(b.dtype)
+            and a.dtype == b.dtype
+            and repr(a.dtype) == repr(b.dtype)
+            and type(a.array) is type(b.array)
+            and a.name == b.name
+        ):
+            return False
+        if isinstance(a.dtype, np.dtype) and a.dtype.kind == "O":
+            try:
+                if ordered(_object_values(a)) != ordered(_object_values(b)):
+                    return False
+            except SourceMemoError:
+                return False
+        elif type(a.dtype) is pd.StringDtype:
+            if _string_form(a.dtype) is None:
+                return False
+            try:
+                if _string_values(a) != _string_values(b):
+                    return False
+            except SourceMemoError:
+                return False
+        else:
+            if not (isinstance(a.dtype, np.dtype) and a.dtype.kind in _NUMPY_KINDS):
+                return False
+            x, y = a.to_numpy(copy=False), b.to_numpy(copy=False)
+            if (
+                x.dtype != y.dtype
+                or np.ascontiguousarray(x).tobytes()
+                != np.ascontiguousarray(y).tobytes()
+            ):
+                return False
+    return True
+
+
+# -- third-party parser identity ----------------------------------------------------
+
+# pandas options that choose the string dtypes a CSV read produces.
+_PANDAS_OPTIONS = ("future.infer_string", "mode.string_storage")
+# Parsing, type inference, hashing (isin/duplicated) and sorting code of the
+# libraries a frame derivation runs, digested once per process as loaded.
+_LIBRARY_MODULES = (
+    "numpy._core._multiarray_umath",
+    "pandas._libs.algos",
+    "pandas._libs.hashtable",
+    "pandas._libs.lib",
+    "pandas._libs.parsers",
+    "pandas.io.parsers.base_parser",
+    "pandas.io.parsers.c_parser_wrapper",
+    "pandas.io.parsers.readers",
+    "pyarrow.lib",
+)
+_LIBRARIES = None
+
+
+def _parser_value(value):
+    """Exact JSON identity of the defaults used by the CSV parser."""
+    from enum import Enum
+
+    immutable = _immutable(value)
+    if immutable is not _SKIP:
+        return immutable
+    if isinstance(value, Enum):
+        return [
+            "enum",
+            type(value).__module__,
+            type(value).__qualname__,
+            value.name,
+            _parser_value(value.value),
+        ]
+    if type(value) is dict:
+        _require(all(type(key) is str for key in value), "MEMO_PARSER_DEFAULT")
+        return ["dict", [[key, _parser_value(value[key])] for key in sorted(value)]]
+    if type(value) in (list, tuple, set, frozenset):
+        items = [_parser_value(item) for item in value]
+        if type(value) in (set, frozenset):
+            items.sort(key=canonical)
+        return [type(value).__name__, items]
+    raise SourceMemoError("MEMO_PARSER_DEFAULT")
+
+
+def _parser_module_identity(module, class_name):
+    """Bind source-defined parser functions/methods to their live code.
+
+    A replacement is refused even when it forges the original function's
+    name. Check the defining globals as well as the code, since the same code
+    executed with other globals need not parse the same bytes. Overloads share
+    a qualified name; only the final definition is the runtime implementation.
+    """
+    payload = Path(module.__file__).read_bytes()
+    codes = _compiled(module.__file__, payload)
+    owner = getattr(module, class_name)
+    _require(
+        isinstance(owner, type) and type(owner) is type(owner.__bases__[0]),
+        "MEMO_LIVE_PARSER",
+    )
+    functions = {}
+    for name, candidates in codes.items():
+        parts = name.split(".")
+        if (
+            "<" in name
+            or parts[-1] == "__annotate__"
+            or not candidates[-1].co_flags & 1  # CO_OPTIMIZED: function, not class
+            or not (len(parts) == 1 or len(parts) == 2 and parts[0] == class_name)
+        ):
+            continue
+        value = vars(module if len(parts) == 1 else owner).get(parts[-1])
+        if isinstance(value, (staticmethod, classmethod)):
+            value = value.__func__
+        _require(
+            type(value) is FunctionType
+            and value.__globals__ is vars(module)
+            and value.__code__ == candidates[-1]
+            and (
+                not value.__closure__
+                or value.__code__.co_freevars == ("__class__",)
+                and len(value.__closure__) == 1
+                and value.__closure__[0].cell_contents is owner
+            ),
+            "MEMO_LIVE_PARSER",
+        )
+        functions[name] = {
+            "defaults": _parser_value(value.__defaults__),
+            "kwdefaults": _parser_value(value.__kwdefaults__),
+        }
+    # An added special method (for example __getattribute__) can alter the
+    # dispatch of all the checked methods without replacing any of them.
+    for name, value in vars(owner).items():
+        if isinstance(value, FunctionType):
+            _require(f"{class_name}.{name}" in functions, "MEMO_LIVE_PARSER")
+    return {"sha256": _sha(payload), "functions": functions}
+
+
+def _live_parser_identity():
+    """The pandas C-engine dispatch chain used by ACS archive reads.
+
+    Provider file digests alone cannot authenticate live Python bindings.
+    Verify these on every lookup, including calls made before a first memo
+    entry exists, rather than trusting a lazily captured reference snapshot.
+    """
+    from collections.abc import Iterator
+
+    import pandas.io.parsers as exports
+    import pandas.io.parsers.base_parser as base
+    import pandas.io.parsers.c_parser_wrapper as cparser
+    import pandas.io.parsers.readers as readers
+    from pandas._libs import parsers
+
+    _require(
+        pd.read_csv is readers.read_csv
+        and exports.read_csv is readers.read_csv
+        and exports.TextFileReader is readers.TextFileReader
+        and readers.CParserWrapper is cparser.CParserWrapper
+        and readers.ParserBase is base.ParserBase
+        and cparser.ParserBase is base.ParserBase
+        and cparser.parsers is parsers
+        and readers.TextFileReader.__bases__ == (Iterator,)
+        and cparser.CParserWrapper.__bases__ == (base.ParserBase,)
+        and base.ParserBase.__bases__ == (object,),
+        "MEMO_LIVE_PARSER",
+    )
+    # Native constructors must still belong to this exact extension type,
+    # rejecting a Python substitute or subclass. Cython may expose a mutable
+    # extension type, so check its read methods as well as its module binding.
+    native = parsers.TextReader
+    _require(
+        type(native) is type
+        and native.__module__ == "pandas._libs.parsers"
+        and native.__name__ == "TextReader"
+        and getattr(native.__new__, "__self__", None) is native
+        and getattr(native.__init__, "__objclass__", None) is native,
+        "MEMO_LIVE_PARSER",
+    )
+    for name in ("read", "read_low_memory", "close"):
+        method = getattr(native, name)
+        _require(
+            getattr(method, "__objclass__", None) is native
+            or (
+                type(method).__name__ == "cython_function_or_method"
+                and type(method).__module__.startswith("_cython_")
+                and method.__module__ == "pandas._libs.parsers"
+                and method.__qualname__ == f"TextReader.{name}"
+            ),
+            "MEMO_LIVE_PARSER",
+        )
+    return {
+        "modules": {
+            module.__name__: _parser_module_identity(module, class_name)
+            for module, class_name in (
+                (readers, "TextFileReader"),
+                (cparser, "CParserWrapper"),
+                (base, "ParserBase"),
+            )
+        },
+        "defaults": {
+            "readers.parser_defaults": _parser_value(readers.parser_defaults),
+            "readers._c_parser_defaults": _parser_value(readers._c_parser_defaults),
+            "base.parser_defaults": _parser_value(base.parser_defaults),
+            "readers.STR_NA_VALUES": _parser_value(readers.STR_NA_VALUES),
+        },
+    }
+
+
+def library_identity() -> dict:
+    """numpy/pandas/pyarrow versions and file digests plus the current pandas
+    string options and source-verified live CSV parser bindings/defaults.
+    Mutable parser state is checked on every call, including the first one."""
+    global _LIBRARIES
+    with _LOCK:
+        if _LIBRARIES is None:
+            import pyarrow  # an absent pyarrow leaves the identity unformable
+
+            _LIBRARIES = {
+                "versions": {
+                    "numpy": np.__version__,
+                    "pandas": pd.__version__,
+                    "pyarrow": pyarrow.__version__,
+                },
+                "files_sha256": {
+                    name: file_sha256(
+                        os.path.realpath(importlib.import_module(name).__file__)
+                    )[0]
+                    for name in _LIBRARY_MODULES
+                },
+            }
+        static = json.loads(canonical(_LIBRARIES))
+    return {
+        **static,
+        "pandas_options": {name: pd.get_option(name) for name in _PANDAS_OPTIONS},
+        "live_csv_parser": _live_parser_identity(),
+    }

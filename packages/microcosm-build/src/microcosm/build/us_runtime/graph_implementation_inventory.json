@@ -175,7 +175,7 @@
         "numpy",
         "pandas"
       ],
-      "unbound_uses_sha256": "ed4ca6ee36b38732b9fbe1d64aec5021ee4eb281e86353da416dda016f558d15",
+      "unbound_uses_sha256": "20315b5c25d0031736d7beec20791b6c5ece96508b989da90a8ef14b0d56fc30",
       "resource_accesses_sha256": "62fb460f6e9e83950ebde58268452ef422125abc9cab4ba9e3baf891faaf8c8a"
     },
     "microcosm.build/us_runtime/acs_person_coverage_columns.py": {
@@ -200,6 +200,7 @@
         "microcosm.build.acs_spm_source_assembly",
         "microcosm.build.serialization_dtypes",
         "microcosm.build.us_runtime.operator_column_contracts",
+        "microcosm.build.us_runtime.source_memo",
         "microcosm.frame",
         "microcosm.frame.units",
         "numpy",
@@ -886,9 +887,18 @@
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
     "microcosm.build/us_runtime/source_memo.py": {
-      "imports": [],
+      "imports": [
+        "numpy",
+        "pandas",
+        "pandas._libs",
+        "pandas.io.parsers",
+        "pandas.io.parsers.base_parser",
+        "pandas.io.parsers.c_parser_wrapper",
+        "pandas.io.parsers.readers",
+        "pyarrow"
+      ],
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
-      "resource_accesses_sha256": "ef63c979814ce7123792c51c7808a1c8bf41bd07b4dc29fbd66cd30df705afb9"
+      "resource_accesses_sha256": "5c214a95c416b738f5e10530113290d1d853b79b194ec5d7302208555703e13b"
     },
     "microcosm.build/us_runtime/spine_assembly.py": {
       "imports": [
@@ -1526,7 +1536,7 @@
     "microcosm.build.us_runtime.retirement_distributions": "live registry projection; other shared-module routes inactive",
     "microcosm.build.us_runtime.scf_wealth": "live registry projection; other shared-module routes inactive",
     "microcosm.build.us_runtime.source_csv_builtin": "Whole-module in acs_housing_universe_2024; stdlib-only checked CSV builtin capture, without source or resource access.",
-    "microcosm.build.us_runtime.source_memo": "Whole-module opt-in persistent memo of deterministic ACS source derivations, bound wherever the ACS housing, coverage or catalogue owners are included. Off unless explicitly activated; keys bind exact input SHA-256s, runtime and owner code identity; entries are HMAC-signed and content-addressed, and any unverifiable entry is a miss.",
+    "microcosm.build.us_runtime.source_memo": "Whole-module opt-in persistent memo of deterministic ACS source derivations, bound wherever the ACS table, housing, coverage or catalogue owners are included. Off unless explicitly activated; keys bind exact input SHA-256s, runtime and owner code identity, frame-library identity and live parser bindings where applicable; entries are HMAC-signed and content-addressed, and any unverifiable entry is a miss.",
     "microcosm.build.us_runtime.spine_assembly": "whole-module in explicit stages",
     "microcosm.build.us_runtime.stacked_spine": "whole-module in explicit stages",
     "microcosm.build.us_runtime.support_provenance": "whole-module in explicit stages",
@@ -1585,13 +1595,19 @@
     "microunit.units.tax": "whole-module in explicit stages",
     "numpy": "versioned dependency in explicit stages",
     "pandas": "versioned dependency in explicit stages",
+    "pandas._libs": "Versioned pandas dependency in every source_memo stage; the opt-in memo verifies the live ACS C-engine parser dispatch, function code and defaults before reuse.",
     "pandas.api.types": "versioned dependency in explicit stages",
+    "pandas.io.parsers": "Versioned pandas dependency in every source_memo stage; the opt-in memo verifies the live ACS C-engine parser dispatch, function code and defaults before reuse.",
+    "pandas.io.parsers.base_parser": "Versioned pandas dependency in every source_memo stage; the opt-in memo verifies the live ACS C-engine parser dispatch, function code and defaults before reuse.",
+    "pandas.io.parsers.c_parser_wrapper": "Versioned pandas dependency in every source_memo stage; the opt-in memo verifies the live ACS C-engine parser dispatch, function code and defaults before reuse.",
+    "pandas.io.parsers.readers": "Versioned pandas dependency in every source_memo stage; the opt-in memo verifies the live ACS C-engine parser dispatch, function code and defaults before reuse.",
     "policyengine_core.enums": "Optional explicit PolicyEngineUSEngine.validate_input_representation metadata route only; inactive in US source stages. Scoped Enum uses remain in the unbound-use contract, without a new stage dependency or runtime attestation.",
     "policyengine_core.periods": "Optional explicit PolicyEngineUSEngine.validate_input_representation metadata route only; inactive in US source stages. Scoped parse_period uses remain in the unbound-use contract, without a new stage dependency or runtime attestation.",
     "policyengine_uk": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "policyengine_uk.data": "inactive shared-module or optional-adapter route; scoped-use tripwire retained",
     "policyengine_us": "live evaluation only, explicitly pinned installed runtime and parameter identity; inactive in other shared adapter routes",
     "policyengine_us.data": "live evaluation dataset adapter only, bound by pinned installed PE-US runtime identity; inactive in other stages",
+    "pyarrow": "Versioned dependency in every source_memo stage; its extension file and version participate in the opt-in dtype-exact frame memo identity.",
     "spm_calculator": "Optional explicit ACS development construction only; default v1 never imports it. Captured source owner requires the reviewed PR45 defining-file SHA and native verifier checks the actual loaded callable. No global installed-package dependency or lock migration.",
     "yaml": "versioned dependency in explicit stages"
   },
@@ -1668,7 +1684,7 @@
     "operator_boundary": "Resolved output/formula registries projected; provider bodies are not called by source construction.",
     "other_imports": "Canonical non-stdlib import modules are explicitly classified. Ordinary symbols from a module/dependency bound in every using scope need no inventory edit. Only unbound-helper uses retain a lexical-scope fingerprint; resource-access expressions retain their own fingerprint. Expanded AST details are audit output, not packaged data. Neither fingerprint is a proof of dynamic closure.",
     "resources": "Microunit rule YAML is bound. Default packaged geography/source-stage resources belong to inactive legacy entrypoints; graph lookups are explicit SourceRefs.",
-    "source_memo": "The ACS housing owner's full lexical projection and selection, the coverage owner's member inventories and the catalogue's collection may be recalled from an explicitly activated source memo only under the same exact archive bytes, parameters, runtime and owner implementation/producer identity. Captures, pins, issuance, seals and live checks are unchanged; recalled values are proven to decode exactly before they are recorded. Module bytes change implementation identities; historical receipts are not byte-parity claims across this revision."
+    "source_memo": "The ACS table loader, housing owner full lexical projection and selection, coverage owner member inventories and literal coverage-column read, and catalogue collection may be recalled from an explicitly activated source memo only under the same exact archive bytes, parameters, runtime and owner implementation/producer identity. Frame entries also bind numpy/pandas/pyarrow providers, current string options and the live C-engine parser dispatch and defaults. Dtype-exact frame encoding preserves supported object scalars and missing markers; unsupported shapes bypass reuse. Captures, pins, issuance, seals and live checks are unchanged; recalled values are proven to decode exactly before they are recorded. The memo module is bound in every stage containing an ACS reader that calls it. Module bytes change implementation identities; historical receipts are not byte-parity claims across this revision."
   },
   "stages": {
     "acs_codec_2024": {
@@ -1690,6 +1706,7 @@
         "microcosm.build/us_runtime/graph_sources.py",
         "microcosm.build/us_runtime/operator_boundary.py",
         "microcosm.build/us_runtime/operator_column_contracts.py",
+        "microcosm.build/us_runtime/source_memo.py",
         "microcosm.frame/__init__.py",
         "microcosm.frame/accounting.py",
         "microcosm.frame/adapters/__init__.py",
@@ -2061,6 +2078,7 @@
         "microcosm.build/us_runtime/operator_column_contracts.py",
         "microcosm.build/us_runtime/puf_support.py",
         "microcosm.build/us_runtime/reported_coverage_source.py",
+        "microcosm.build/us_runtime/source_memo.py",
         "microcosm.build/us_runtime/spine_assembly.py",
         "microcosm.build/us_runtime/stacked_spine.py",
         "microcosm.build/us_runtime/support_provenance.py",
@@ -2295,6 +2313,7 @@
         "microcosm.build/us_runtime/puma_ladder.py",
         "microcosm.build/us_runtime/puma_ladder_sources.py",
         "microcosm.build/us_runtime/reported_coverage_source.py",
+        "microcosm.build/us_runtime/source_memo.py",
         "microcosm.build/us_runtime/spine_assembly.py",
         "microcosm.build/us_runtime/stacked_spine.py",
         "microcosm.build/us_runtime/support_provenance.py",
@@ -2417,6 +2436,7 @@
         "microcosm.build/us_runtime/puma_ladder.py",
         "microcosm.build/us_runtime/puma_ladder_sources.py",
         "microcosm.build/us_runtime/reported_coverage_source.py",
+        "microcosm.build/us_runtime/source_memo.py",
         "microcosm.build/us_runtime/spine_assembly.py",
         "microcosm.build/us_runtime/stacked_spine.py",
         "microcosm.build/us_runtime/support_provenance.py",

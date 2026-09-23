@@ -41,10 +41,10 @@ MAX_EVIDENCE_BYTES = 2 * 1024**2
 # Exact accepted direct AGEP -> A_AGE and AGEP -> age implementation, and owners.
 # A new transform/owner version requires explicit review of this successor.
 _ACCEPTED = {
-    "acs_pums.py": "82fc2d3ca969b0c9f68f86efeb0a68a58271fb5d141f1b2eee93106e1b002814",
+    "acs_pums.py": "ecb1d3754bc88d8ca4bed7166ac66006490288e34cfcf6c4992e80a9d93fed89",
     "acs_inputs.py": "aa4a8aeaba63dfef2f3e04fb89de59766deb088ed7f4d290aeba0425739916da",
-    "acs_housing_universe_source.py": "4a537c613b00acfdabc256c98f56b4483ba666449f15c31bd7362744c89d85d5",
-    "acs_person_coverage_authentication.py": "102b1cee7e43cb732cd25b775a31f27d42e67b7d93af3e9762c01f07cfc69676",
+    "acs_housing_universe_source.py": "58f461279075d138a14ce29bc7c5b0de64c37be97ef8f07e073c9b2d0eadc2d2",
+    "acs_person_coverage_authentication.py": "3d74389049fcc9280bd7c9f34840eabac97c1dc98853e8f39cf41c60ceaff92b",
 }
 _TOKEN = object()
 _ISSUED = WeakKeyDictionary()

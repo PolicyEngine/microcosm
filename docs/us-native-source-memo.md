@@ -1,9 +1,10 @@
 # Persistent memo for US source derivations
 
-A native US run spends most of its CPU outside the graph, re-deriving the same
-values from the same pinned source archives. This note records where that cost
-is, what `microcosm.build.us_runtime.source_memo` memoizes, the rules that keep
-a recalled value exactly equal to a recomputed one, and what was measured.
+The historical native US profile below spent most of its CPU outside the
+graph, re-deriving values from pinned source archives. This note records what
+`microcosm.build.us_runtime.source_memo` memoizes and the rules that keep a
+recalled value equal to a recomputed one. The resumed 2026-09-23 session did
+not run an actual-archive benchmark or a 1/1000 graph measurement.
 
 ## Where the outside-graph CPU goes
 
@@ -11,9 +12,10 @@ a recalled value exactly equal to a recomputed one, and what was measured.
 every sampled stack in the `outside_graph_executor_calls` bucket of the
 2026-09-19 1/1000 attribution run at `9af56aa8a`. The input is the harness's
 `completed-aggregate-report.json`, SHA-256 `4e7be8ad…`. The script's output,
-`attribution-9af56aa8a-1-1000.json`, reproduces byte for byte from that report.
-The values are statistical process-CPU estimates at a 0.25 s sampling
-interval, not exact function CPU.
+`attribution-9af56aa8a-1-1000.json`, is checked in with the attribution script.
+This is inherited evidence; the resumed session did not rerun the graph or
+reproduce the report. The values are statistical process-CPU estimates at a
+0.25 s sampling interval, not exact function CPU.
 
 | Phase | Process CPU-s | Outside graph | Share |
 |---|---:|---:|---:|
@@ -50,13 +52,11 @@ dominated by work that is a pure function of the archive bytes:
 The ASEC figures predate the CSV guard fast path (`b4f9b8eeb`), which this
 branch's base `47960af43` carries. In the `9af56aa8a` profile,
 `asec_coverage_authentication._capture` took 221 inclusive CPU-s across its two
-call sites. Re-timed on the same staged inputs at this branch, each of the three
-ASEC person-member captures (about 280 MB each) took 1.65 to 1.68 CPU-s. The
-ACS work is what remains.
+call sites. No new ASEC timing is reported here.
 
 ## What is memoized
 
-Four derivations, each keyed by the exact bytes it reads:
+Six derivations, each keyed by the exact bytes it reads:
 
 | Namespace | Stands in for | Key inputs |
 |---|---|---|
@@ -64,11 +64,14 @@ Four derivations, each keyed by the exact bytes it reads:
 | `acs_housing_universe_source.selection` | `_select` and the receipt built from it | full projection and inventory digests, pins, the exact selection tuple's digest, implementation and definition digests |
 | `acs_person_coverage_authentication._inventory` | one archive's member inventory and selected rows | archive SHA-256, role, digest of the sorted selection |
 | `acs_population_catalogue._collect` | the catalogue records, vacancies and counts | full projection digest, both archive SHA-256s |
+| `acs_pums.load_acs_pums_tables` | household and person tables, with read metadata | both archive SHA-256s, vintage, household limit, chunk size, ordered selection digest, live owner and parser identities |
+| `acs_person_coverage_authentication._coverage_columns` | selected literal coverage columns and their receipt | person archive SHA-256, exact encoded person-key frame, chunk size, live owner and parser identities |
 
 In one cold 1/1000 preparation, the housing owner runs twice: once for the
 catalogue and once for the selected native population. The second
 `_archive` pair and the repeated selected inventories are recalled within the
-run. A later run recalls all four derivations.
+run. A later run can recall all six derivations when their inputs and identities
+match and their completed values pass the encoding proof.
 
 Owners change nothing else. They still capture and pin-check their sources,
 write and re-read the projection file, construct and seal every issued
@@ -110,6 +113,17 @@ derivation executes, which records:
 A monkeypatched constant or function changes the key. Loaded code that no
 longer matches its file raises, and the memo is bypassed.
 
+Frame derivations also include NumPy, pandas and PyArrow versions, digests of
+the selected parser and array-provider modules, and the pandas options that
+choose string dtypes. The live parser binding is checked on every identity
+formation, including the first lookup. The pandas C-engine path binds
+`read_csv`, the source-defined functions and methods in `TextFileReader`,
+`CParserWrapper` and `ParserBase`, their dispatch aliases and class bases, and
+the native `TextReader` constructor and read/close methods. Changed parser
+bindings bypass the memo; parser
+defaults and NA tokens participate in the key. This covers the ACS CSV parser
+path, not arbitrary monkeypatches throughout pandas or NumPy.
+
 **Entries fail closed.** An index file `index/<kk>/<key>.json` names
 content-addressed `blobs/<dd>/<sha256>` files. It carries an HMAC-SHA256 made
 with a per-user key that must live outside the memo root, so a copied or
@@ -128,9 +142,26 @@ source, and the fresh entry atomically replaces the rejected one.
 from the computation propagates unchanged and records nothing, so every refusal
 keeps its code. After a miss, the code identity and file inputs are
 recomputed. A value is stored only if neither moved and the owner's proof shows
-that the encoding decodes to exactly the computed value. The proof checks exact
-types: tuples, lists, str, int and dict order. A value outside those types, or
-one with a lone surrogate, is not stored.
+that the encoding decodes to exactly the computed value. The lexical owners
+check their exact tuple, list, string, integer and ordered-dict shapes. The
+frame owners also prove their metadata with a typed codec and compare each
+decoded frame's dtypes, labels, index and values. A value outside the owner's
+supported shapes, or one with a lone surrogate, is not stored.
+
+**Exact frame scope.** The codec accepts plain pandas DataFrames without attrs,
+with duplicate labels allowed by the frame flags, a RangeIndex, and unique
+string column names in an object or pandas StringDtype index. Numeric columns
+are NumPy bool, integer, unsigned integer or floating dtypes; their raw bytes
+preserve byte order, signed zero and NaN payloads. StringDtype columns retain
+their Python or PyArrow storage and their `pd.NA` or NaN missing-value mode.
+Object columns retain exact Python `None`, bool, int, float, str and bytes
+values, plus the `pd.NA` singleton. Floating values use their IEEE bits, so
+signed zero and NaN payloads survive there too. Arbitrary objects and NumPy
+scalar objects are refused. The typed metadata codec preserves tuple versus
+list, dict insertion order and float bits.
+NumPy dtype metadata, unsupported extension dtypes, frame subclasses and other
+index shapes bypass storage rather than being converted into a different
+representation.
 
 **Trust boundary.** Whoever holds the HMAC key is trusted to have run these
 owners. A MAC-valid entry whose blobs decode wrongly is caught only if decoding
@@ -187,21 +218,37 @@ removed.
   - A monkeypatched limit, or changed archive bytes, is never answered from
     the memo.
 
-`experiments/native-source-auth-memo/bench_acs_owners.py` times the ACS owners
-on the actual staged archives, in one process per phase. The receipts,
-`acs-owner-bench-{off,cold,warm}.json`, are summarised under "Measured" below.
+Additional fixture suites cover the frame derivations:
+
+- `test_us_source_memo_codec.py`: exact numeric, string and object columns,
+  missing markers, float bits, typed metadata and refusals outside the codec's
+  supported shapes.
+- `test_us_source_memo_frames.py`: off/cold/warm table and coverage equality,
+  warm reads skipping their parser or scan, parameter and archive-byte changes,
+  unsupported key dtypes and invalid selections.
+- `test_us_source_memo_parser_identity.py`: live parser replacements before
+  the first lookup and after warming, changed defaults and string options,
+  forged function identities and changed class dispatch.
+
+The resumed-session test commands and results are recorded in
+[`experiments/native-source-auth-memo/README.md`](../experiments/native-source-auth-memo/README.md).
+They use invented fixtures and do not certify actual-data artifacts.
+
+`experiments/native-source-auth-memo/bench_acs_owners.py` can time the ACS owners
+on staged archives, in one process per phase. No successful off/cold/warm
+receipt set was produced in the resumed session.
 
 ## Measured
 
-See `experiments/native-source-auth-memo/README.md` for the owner-level
-benchmark on the actual archives, the machine conditions it ran under and the
-status of the 1/1000 graph-run measurement.
+The actual-archive owner benchmark and 1/1000 graph-run measurement remain
+pending. Process inspection was blocked by the sandbox, so the required check
+that no other native run was active could not be completed. The task's explicit
+admission rule therefore prohibited both runs even though the initial
+available-memory reading was about 79 GiB. See the experiment README for the
+measurement status and reproduction procedure; no speedup is claimed.
 
 ## Not memoized
 
-- `acs_pums.load_acs_pums_tables` (148.9 inclusive CPU-s in the profile) and
-  `read_acs_person_coverage_columns`. They return pandas frames. An exact frame
-  codec and proof would need dtype-exact round trips, including string storage.
 - The ASEC owners. Their capture cost was already cut at the base.
 - Every live-frame seal and requalification. These digest live objects, not
   source bytes, so there is nothing persistent to key on.

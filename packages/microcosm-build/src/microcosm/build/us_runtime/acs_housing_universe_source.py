@@ -695,7 +695,13 @@ def _full_projection(paths):
         parsed.append(full)
         return _json(full), {"household": hi, "person": pi}
 
-    def prove(value, blobs):
+    def encode(value: tuple) -> list[bytes]:
+        return [value[0], _ordered(value[1])]
+
+    def decode(blobs: list[bytes]) -> tuple:
+        return blobs[0], json.loads(blobs[1])
+
+    def prove(value: tuple, blobs: list[bytes]) -> bool:
         full_bytes, members = value
         return (
             len(blobs) == 2
@@ -713,15 +719,22 @@ def _full_projection(paths):
         ),
         parameters={"format": "acs-housing-lexical-projection/1"},
         compute=compute,
-        encode=lambda value: [value[0], _ordered(value[1])],
-        decode=lambda blobs: (blobs[0], json.loads(blobs[1])),
+        encode=encode,
+        decode=decode,
         proof=prove,
     )
     # A miss hands back the dict it built; a hit parses only if selection misses.
     return full_bytes, members, parsed
 
 
-def _selection(full_bytes, members, parsed, pins, serialnos, implementation):
+def _selection(
+    full_bytes: bytes,
+    members: dict,
+    parsed: list,
+    pins: tuple,
+    serialnos: tuple | None,
+    implementation: str,
+) -> tuple:
     """Selected projection and receipt: a pure function of the full projection,
     member inventories, pins, selection, definition and implementation."""
 

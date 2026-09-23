@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import heapq
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -35,6 +36,20 @@ import pandas as pd
 from microcosm.build.serialization_dtypes import canonicalize_frame_string_dtypes
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 from microcosm.frame.units import assign_us_unit_structure
+
+from .source_memo import (
+    FileInput,
+    decode_frames,
+    decode_typed,
+    encode_frame,
+    encode_typed,
+    frames_identical,
+    library_identity,
+    live_code,
+    memoized,
+    ordered,
+    strict_equal,
+)
 
 if TYPE_CHECKING:
     from microcosm.build.acs_spm_source_assembly import AcsSpmSourceAssemblyOptions
@@ -212,6 +227,10 @@ class AcsPumsSource:
         return serialnos
 
 
+_MEMO_NAMESPACE = "acs_pums.load_acs_pums_tables"
+_MEMO_TABLES = ("household", "person")
+
+
 def load_acs_pums_tables(
     source: AcsPumsSource,
     *,
@@ -222,7 +241,124 @@ def load_acs_pums_tables(
 
     Only selected native columns are materialized. Census blanks remain
     missing; this stage never converts an out-of-universe blank to zero.
+
+    With a source memo active (see ``source_memo``), a completed read is
+    recorded under the exact bytes of both archives, the exact parameters,
+    this module's live code and constants, and the numpy/pandas/pyarrow
+    identity, and is recalled only when all of them are identical. Refusals
+    are never recorded. With no memo active this is exactly
+    ``_load_acs_pums_tables``.
     """
+
+    def inputs():
+        return (
+            FileInput("household_archive", source.household_zip),
+            FileInput("person_archive", source.person_zip),
+        )
+
+    return memoized(
+        _MEMO_NAMESPACE,
+        code=_memo_code,
+        inputs=inputs,
+        parameters=lambda: _memo_parameters(source, chunksize, serialnos),
+        compute=lambda: _load_acs_pums_tables(
+            source, chunksize=chunksize, serialnos=serialnos
+        ),
+        encode=_encode_tables,
+        decode=_decode_tables,
+        proof=_prove_tables,
+    )
+
+
+def _memo_code() -> dict:
+    """Live code, bound functions and constants of this module, its mutable
+    code tables by value, and the parser libraries; see ``source_memo``."""
+    return {
+        "owner": _MEMO_NAMESPACE,
+        "live": live_code(sys.modules[__name__]),
+        "mappings": [
+            [name, [[key, value] for key, value in mapping.items()]]
+            for name, mapping in (
+                ("_HOUSEHOLD_AXIS_KINDS", _HOUSEHOLD_AXIS_KINDS),
+                ("_MICROUNIT_INCOME_ALIASES", _MICROUNIT_INCOME_ALIASES),
+                ("_ACS_TO_CPS_MARITAL_STATUS", _ACS_TO_CPS_MARITAL_STATUS),
+                ("_ACS_TO_CPS_RELATIONSHIP", _ACS_TO_CPS_RELATIONSHIP),
+            )
+        ],
+        "libraries": library_identity(),
+    }
+
+
+def _memo_parameters(source: AcsPumsSource, chunksize: int, serialnos) -> dict:
+    """The exact read parameters, or a refusal that leaves the read unmemoized.
+
+    The selection is keyed by the digest of its ordered keys, because the
+    metadata records the requested order.
+    """
+    if (
+        type(source) is not AcsPumsSource
+        or type(source.vintage) is not int
+        or not (source.max_households is None or type(source.max_households) is int)
+        or type(chunksize) is not int
+    ):
+        raise ValueError("ACS PUMS memo parameters are not exact.")
+    selection = None
+    if serialnos is not None:
+        if type(serialnos) is not tuple or not all(
+            type(key) is str for key in serialnos
+        ):
+            raise ValueError("ACS PUMS memo selection is not exact.")
+        raw = ordered(list(serialnos))
+        selection = {
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "bytes": len(raw),
+            "keys": len(serialnos),
+        }
+    return {
+        "vintage": source.vintage,
+        "max_households": source.max_households,
+        "chunksize": chunksize,
+        "selection": selection,
+    }
+
+
+def _encode_tables(value: tuple) -> list[bytes]:
+    tables, metadata = value
+    if type(tables) is not dict or tuple(tables) != _MEMO_TABLES:
+        raise ValueError("ACS PUMS memo tables are not exact.")
+    blobs = [encode_typed(metadata)]
+    for name in _MEMO_TABLES:
+        blobs.extend(encode_frame(tables[name]))
+    return blobs
+
+
+def _decode_tables(blobs: list[bytes]) -> tuple:
+    metadata = decode_typed(blobs[0])
+    household, person = decode_frames(blobs[1:])
+    if type(metadata) is not dict:
+        raise ValueError("ACS PUMS memo metadata is not a mapping.")
+    return {"household": household, "person": person}, metadata
+
+
+def _prove_tables(value: tuple, blobs: list[bytes]) -> bool:
+    """The decoded tables and metadata are exactly the computed ones."""
+    tables, metadata = value
+    decoded, decoded_metadata = _decode_tables(blobs)
+    return (
+        type(tables) is dict
+        and tuple(tables) == _MEMO_TABLES
+        and all(frames_identical(decoded[name], tables[name]) for name in _MEMO_TABLES)
+        and strict_equal(decoded_metadata, metadata)
+    )
+
+
+def _load_acs_pums_tables(
+    source: AcsPumsSource,
+    *,
+    chunksize: int = DEFAULT_CHUNKSIZE,
+    serialnos: tuple[str, ...] | None = None,
+) -> tuple[dict[str, pd.DataFrame], dict[str, Any]]:
+    """The unmemoized read behind ``load_acs_pums_tables``."""
 
     serialnos = AcsPumsSource.snapshot_serialnos(serialnos)
     if serialnos is not None and source.max_households is not None:

@@ -33,11 +33,18 @@ from .acs_pums import AcsPumsSource
 from .source_csv_builtin import csv_reader_bound
 from .source_memo import (
     FileInput,
+    decode_frame,
+    decode_typed,
+    encode_frame,
+    encode_typed,
     exact_text,
+    frames_identical,
     json_native,
+    library_identity,
     live_code,
     memoized,
     ordered,
+    strict_equal,
 )
 
 PROTOCOL = "microcosm.acs-person-coverage-authentication.v1"
@@ -432,7 +439,7 @@ def _members(archive, role):
     return sorted(members, key=lambda m: m.filename), prefix
 
 
-def _selection_parameters(role, serialnos):
+def _selection_parameters(role: str, serialnos: set) -> dict:
     keys = sorted(serialnos)
     _require(
         all(type(key) is str and exact_text(key) for key in keys), "SELECTION_KEYS"
@@ -441,7 +448,7 @@ def _selection_parameters(role, serialnos):
     return {"role": role, "selection_sha256": _sha(raw), "selection_keys": len(keys)}
 
 
-def _encode_inventory(value):
+def _encode_inventory(value: tuple) -> list[bytes]:
     inventory, selected = value
     pairs = [
         [*key, *item] if type(key) is tuple else [key, item]
@@ -450,8 +457,8 @@ def _encode_inventory(value):
     return [ordered(inventory), ordered(pairs)]
 
 
-def _decoder(role):
-    def decode(blobs):
+def _decoder(role: str):
+    def decode(blobs: list[bytes]) -> tuple:
         _require(len(blobs) == 2, "MEMO_BLOBS")
         inventory, pairs = json.loads(blobs[0]), json.loads(blobs[1])
         if role == "household":
@@ -464,13 +471,13 @@ def _decoder(role):
 def _prove_inventory(role):
     """The decoded value is exactly this one when every cell has its exact type."""
 
-    def text(value):
+    def text(value: object) -> bool:
         return type(value) is str and exact_text(value)
 
-    def household(key, value):
+    def household(key: object, value: object) -> bool:
         return text(key) and type(value) is int
 
-    def person(key, value):
+    def person(key: tuple, value: list) -> bool:
         return (
             type(key) is tuple
             and len(key) == 2
@@ -484,7 +491,7 @@ def _prove_inventory(role):
 
     check = household if role == "household" else person
 
-    def prove(value, blobs):
+    def prove(value: tuple, blobs: list[bytes]) -> bool:
         return (
             len(blobs) == 2
             and type(value) is tuple
@@ -523,6 +530,70 @@ def _inventory(path, role, serialnos):
         encode=_encode_inventory,
         decode=_decoder(role),
         proof=_prove_inventory(role),
+    )
+
+
+_COLUMNS_NAMESPACE = "acs_person_coverage_authentication._coverage_columns"
+
+
+def _columns_code() -> dict:
+    """The inventory's code identity plus the frame libraries the read runs."""
+    return {**_memo_code(), "libraries": library_identity()}
+
+
+def _columns_parameters(keys, chunksize: int) -> dict:
+    """The exact native keys, by digest of their dtype-exact frame encoding."""
+    _require(type(chunksize) is int, "MEMO_CHUNKSIZE")
+    return {
+        "person_keys": [
+            {"sha256": _sha(blob), "bytes": len(blob)} for blob in encode_frame(keys)
+        ],
+        "chunksize": chunksize,
+    }
+
+
+def _encode_columns(value: tuple) -> list[bytes]:
+    table, receipt = value
+    return [encode_typed(receipt), *encode_frame(table)]
+
+
+def _decode_columns(blobs: list[bytes]) -> tuple:
+    receipt = decode_typed(blobs[0])
+    _require(type(receipt) is dict, "MEMO_RECEIPT")
+    return decode_frame(blobs[1:]), receipt
+
+
+def _prove_columns(value: tuple, blobs: list[bytes]) -> bool:
+    table, receipt = value
+    decoded, decoded_receipt = _decode_columns(blobs)
+    return frames_identical(decoded, table) and strict_equal(decoded_receipt, receipt)
+
+
+def _coverage_columns(paths: dict, keys, chunksize: int) -> tuple:
+    """The literal coverage columns of exact native keys, memoized.
+
+    ``read_acs_person_coverage_columns`` streams only the person archive, so
+    an entry is keyed by that archive's bytes, the dtype-exact keys, the
+    chunk size and this owner's code and libraries; see ``source_memo``.
+    Refusals are unchanged and never recorded.
+    """
+
+    def compute():
+        return literal.read_acs_person_coverage_columns(
+            AcsPumsSource(paths["household"], paths["person"], vintage=2024),
+            person_keys=keys,
+            chunksize=chunksize,
+        )
+
+    return memoized(
+        _COLUMNS_NAMESPACE,
+        code=_columns_code,
+        inputs=lambda: (FileInput("person_archive", paths["person"]),),
+        parameters=lambda: _columns_parameters(keys, chunksize),
+        compute=compute,
+        encode=_encode_columns,
+        decode=_decode_columns,
+        proof=_prove_columns,
     )
 
 
@@ -847,10 +918,8 @@ def load_authenticated_acs_person_coverage(
                 set(lineage) == set(zip(keys.SERIALNO, keys.SPORDER, strict=True)),
                 "SOURCE_PERSON_ROSTER",
             )
-            table, original_receipt = literal.read_acs_person_coverage_columns(
-                AcsPumsSource(paths["household"], paths["person"], vintage=2024),
-                person_keys=keys,
-                chunksize=min(1000, len(keys)),
+            table, original_receipt = _coverage_columns(
+                paths, keys, min(1000, len(keys))
             )
             # One line per selected person, accumulated in segments no larger
             # than MAX_BODY_BYTES and materialised once, because the payload
