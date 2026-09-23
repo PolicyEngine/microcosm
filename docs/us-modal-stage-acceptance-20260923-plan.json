@@ -1,0 +1,39 @@
+{
+  "schema": "microcosm-modal-us-stage-plan/1",
+  "tool": "us-acs-local-release",
+  "stage": "materialize",
+  "run_id": "overnight-20260923-materialize-state",
+  "source": {
+    "commit": "767312d60430893617af57034f62edfb4920dca3",
+    "branch": "overnight-acs-local-20260923"
+  },
+  "inputs": {
+    "staging_h5": {
+      "uri": "volume://cas/sha256/ed2e63080aa39ab3681637590dc3dbac4bc9d01d163be9ee3c2ed28adc98d6ca/acs_multispine_staging.h5",
+      "sha256": "ed2e63080aa39ab3681637590dc3dbac4bc9d01d163be9ee3c2ed28adc98d6ca"
+    },
+    "staging_summary": {
+      "uri": "volume://cas/sha256/3aab5e5e0a6e226b90adf3c48f5f4d45fe51d716430be82b3455e88eafb6728d/acs_multispine_staging.summary.json",
+      "sha256": "3aab5e5e0a6e226b90adf3c48f5f4d45fe51d716430be82b3455e88eafb6728d"
+    },
+    "feed": {
+      "uri": "volume://cas/sha256/4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f/consumer_facts.jsonl",
+      "sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f"
+    },
+    "ladder": {
+      "uri": "volume://cas/sha256/39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8/us_puma_ladder_2020.npz",
+      "sha256": "39a2ab2abeab07a88362af7ab2940e0e1d50a297c919e4bbc6fb65bab51147d8"
+    }
+  },
+  "options": {
+    "soi_mode": "state",
+    "hh_chunk": 20000
+  },
+  "env": {
+    "MICROCOSM_ACS_POOL_PEAK_LIMIT_BYTES": "100000000000",
+    "MICROCOSM_STAGING_EXPORT_PEAK_LIMIT_BYTES": "100000000000",
+    "POPULACE_ACS_POOL_PEAK_LIMIT_BYTES": "100000000000",
+    "POPULACE_STAGING_EXPORT_PEAK_LIMIT_BYTES": "100000000000"
+  },
+  "max_wall_seconds": 26400
+}
