@@ -16,6 +16,7 @@ from microcosm.build.spm_input_contract import ROLE_INPUT, UNIVERSE_INPUT
 from microcosm.build.us_runtime import policyengine_h5_readback as readback
 from microcosm.build.us_runtime.common_frame_export_contract import (
     RetainedFrameExportError,
+    verify_retained_frame_export,
 )
 from microcosm.frame import Frame, MassChange, WeightKind, Weights
 from microcosm.frame.units import US_SCHEMA
@@ -650,3 +651,119 @@ def test_readback_added_default_and_changed_file_are_not_success(tmp_path, monke
         readback.write_verified_policyengine_h5_export(
             parent, candidate, _InventedWriter(), tmp_path / "changed.h5", **arguments
         )
+
+
+def _wrong_parent(change):
+    """The candidate's true parent, altered as a different supplied parent."""
+    parent, candidate, arguments = _case("pruned")
+    tables = {e: parent.table(e).copy(deep=True) for e in parent.entities}
+    strata = parent.strata.copy(deep=True)
+    metadata = parent.metadata
+    if change == "retained_cell":
+        # Person 3 lies in retained household 20.
+        tables["person"].loc[2, "employment_income_before_lsr"] = 3.5
+    elif change == "retained_role":
+        tables["person"].loc[3, ROLE_INPUT] = False
+    elif change == "household_ids":
+        tables["household"]["household_id"] = np.array([10, 20, 40], dtype=np.int64)
+        tables["person"]["person_household_id"] = np.array(
+            [10, 10, 20, 20, 40, 40], dtype=np.int64
+        )
+    elif change == "membership":
+        tables["person"]["person_tax_unit_id"] = np.array(
+            [100, 100, 200, 200, 300, 300], dtype=np.int64
+        )
+        tables["tax_unit"] = tables["tax_unit"][tables["tax_unit"].tax_unit_id != 201]
+    elif change == "extra_column":
+        tables["household"]["invented_extra"] = np.array([1.0, 2.0, 3.0])
+    elif change == "id_dtype":
+        tables["household"]["household_id"] = tables["household"][
+            "household_id"
+        ].astype(np.int32)
+        tables["person"]["person_household_id"] = tables["person"][
+            "person_household_id"
+        ].astype(np.int32)
+    elif change == "strata":
+        strata = _strings(["invented-a"] * 2 + ["invented-c"] * 4)
+    else:
+        metadata = {"basis": "a different invented parent"}
+    wrong = Frame(
+        {entity: tables[entity] for entity in US_SCHEMA.entities},
+        US_SCHEMA,
+        {"household": parent.weights_for("household")},
+        strata=strata,
+        metadata=metadata,
+    )
+    return wrong, candidate, arguments
+
+
+@pytest.mark.parametrize(
+    "change,code",
+    [
+        ("retained_cell", "RETAINED_INPUT:person.employment_income_before_lsr"),
+        ("retained_role", "RETAINED_INPUT:person." + ROLE_INPUT),
+        ("household_ids", "COMPLETE_ORDERED_HOUSEHOLD_IDS"),
+        ("membership", "RETAINED_INPUT:person.person_tax_unit_id"),
+        ("extra_column", "COLUMN_ROSTER:household"),
+        ("id_dtype", "HOUSEHOLD_ID_VECTOR"),
+        ("strata", "RETAINED_STRATA"),
+        ("metadata", "FRAME_METADATA"),
+    ],
+)
+def test_wrong_parent_refuses_before_writer(tmp_path, monkeypatch, change, code):
+    wrong, candidate, arguments = _wrong_parent(change)
+    _mock_reader(monkeypatch, candidate)
+    writer = _InventedWriter()
+    path = tmp_path / "export.h5"
+    with pytest.raises(RetainedFrameExportError) as refused:
+        readback.write_verified_policyengine_h5_export(
+            wrong, candidate, writer, path, **arguments
+        )
+    assert str(refused.value) == code
+    assert writer.calls == [] and not path.exists()
+
+
+def test_wrong_parent_readback_cannot_reuse_the_true_parent_binding(monkeypatch):
+    parent, candidate, arguments = _case("pruned")
+    arguments = {k: v for k, v in arguments.items() if k != "period"}
+    binding = verify_retained_frame_export(parent, candidate, **arguments)
+    wrong, _, _ = _wrong_parent("retained_cell")
+    tables = _logical_tables(candidate)
+    readback_frame, _ = readback.verify_policyengine_h5_readback(
+        candidate, tables, _period(), period=2024
+    )
+    with pytest.raises(RetainedFrameExportError):
+        verify_retained_frame_export(
+            wrong,
+            readback_frame,
+            comparison="frame-checkpoint-readback",
+            expected_binding=binding,
+            **arguments,
+        )
+
+
+def test_comparator_alone_cannot_identify_a_parent_outside_the_scope():
+    """Host responsibility: bind the parent object and ancestry, not just bytes.
+
+    The pure comparator checks only retained rows, so a parent that differs
+    solely in an excluded household yields the same binding. The native release
+    entry therefore passes the projected parent object it retains, binds the
+    owner and whole-projection digests in parent_reference, and rechecks the
+    whole projection after its final owner check; it never relies on this
+    comparison alone to identify the parent.
+    """
+    parent, candidate, arguments = _case("local")
+    arguments = {k: v for k, v in arguments.items() if k != "period"}
+    tables = {e: parent.table(e).copy(deep=True) for e in parent.entities}
+    # Person 1 is in excluded household 10.
+    tables["person"].loc[0, "employment_income_before_lsr"] = 123.0
+    other = Frame(
+        {entity: tables[entity] for entity in US_SCHEMA.entities},
+        US_SCHEMA,
+        {"household": parent.weights_for("household")},
+        strata=parent.strata.copy(deep=True),
+        metadata=parent.metadata,
+    )
+    assert verify_retained_frame_export(
+        parent, candidate, **arguments
+    ) == verify_retained_frame_export(other, candidate, **arguments)

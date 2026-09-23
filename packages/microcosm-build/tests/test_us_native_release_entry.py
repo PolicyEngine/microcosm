@@ -205,6 +205,8 @@ def _forbid(monkeypatch, target, names, reached):
 # Legacy base/pool/download/source-stage/writer/manifest paths and the native
 # steps that must follow owner authentication.
 _BUILDER_SENTINELS = (
+    "main",
+    "_main",
     "_parse_args",
     "_parse_native_release_args",
     "_admit_native_release_consumer",

@@ -159,6 +159,14 @@ The native survey development handoff is documented in
 accepts a live issued enrichment owner and returns a verified Frame checkpoint
 plus missing-input/gate inventory. This development checkpoint is not accepted
 as native authority, a legacy pool manifest, or a certified dataset.
+`build_native_survey_release` in the same tool is the separate in-process
+native release entry ([guide](docs/us-native-release-entry.md)). It checks the
+live owner first, refuses every option it does not consume, compares the
+consumer with an expected identity, and writes one verified logical H5
+candidate with `native_release_manifest.json`. That manifest is never
+release-eligible and lists outstanding qualifications. The entry never runs
+the legacy source block, never downloads or stages, and never writes
+`release_manifest.json`.
 
 ## Root journals are history, not state
 

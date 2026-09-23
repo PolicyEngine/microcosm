@@ -142,6 +142,14 @@ admission is still unsupported. Its concrete successors are:
 Serialization proves none of those scientific or publication gates. This entry
 writes no release manifest, certification or publication pointer.
 
+Step 4 now has an in-process consumer:
+[`build_native_survey_release`](us-native-release-entry.md). It takes the live
+owner, a closed projection declaration and an exactly identified consumer, and
+writes a verified H5 candidate that is never release-eligible. It covers the
+projection half of step 3 (root admission of the runtime is still separate)
+and the target-fit and export-readback parts of step 5. Steps 1 and 2 and the
+rest of step 5 remain outstanding; that entry's manifest lists them.
+
 ## Development base and verification
 
 This continuation starts from `5258a4c7f6d05cb1e68806d51b38996ea116bfb5` after
