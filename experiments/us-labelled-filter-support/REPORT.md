@@ -640,9 +640,9 @@ most one per side, and no fact has an age-like dimension key. Counted by a
 throwaway scan of the two JSONL files, not committed.
 
 **Counts.** From `age_band_rule_receipt.json`, written by the committed
-`measure_age_band_rule.py` (receipt `script_sha256` `9a7a77ac…`). It ran at
-`b43aec644` with only the receipt untracked, took 35.4 s and 32.6 s to
-compile, and peaked at 2.9 GB RSS. The whole compiled registry
+`measure_age_band_rule.py` (receipt `script_sha256` `db5dcb68…`). It ran at
+`622486abb` (the operator-attestation commit) with a clean tree, took
+14.1 s and 15.6 s to compile, and peaked at 2.9 GB RSS. The whole compiled registry
 (`compile_us_fiscal_target_registry(..., age_targets=True)`) has 32,866
 targets on each feed:
 
@@ -659,3 +659,24 @@ are the targets carrying a restated age key: 936 `census_population` /
 `ledger_filter_age*` keys present are `_lower_bound` (939) and
 `_upper_bound` (886). The `without_age_band` and `reverted` rows equal the
 section 8 receipt's `rule` and `reverted` rows.
+
+### The operator is attested at compile
+
+A restated `ledger_filter_age_{lower,upper}_bound` key carries the operator of
+the mask only when `_constraint_bound_filters` stamped it from a `>=` / `<`
+constraint row. `_ledger_metadata` stamps the fact's dimensions first and the
+constraint edges only through `setdefault`, so a dimension named `age`, or
+`age` plus a bound suffix (`age_upper_bound`, …), can put an operator-less
+value under the same key; and `age < 10` and `age <= 10` differ by everyone
+aged exactly ten. The key name alone therefore does not settle the operator.
+
+The compile now settles it. `ledger_targets.constraint_bound_shadowing_dimensions`
+names any such dimension on a fact, and `fiscal_targets` records the answer on
+every compiled `population_age` and SSA SSI age-band spec as
+`age_bound_stamp_source`: `constraint_rows` when no dimension could have
+shadowed the age rows' stamp, otherwise `dimensions:<names>`. The builder's
+restated age-band rule accepts a restatement only when that key reads
+`constraint_rows`; anything else is refused with the reason. Measured on both
+pinned feeds (receipt above, `by_age_bound_stamp_source`): all 939 targets
+carrying a restated age key read `constraint_rows`, so the attestation refuses
+none of them today, and the `rule` row stays at 0.

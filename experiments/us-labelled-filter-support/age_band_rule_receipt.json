@@ -1,22 +1,23 @@
 {
-  "head": "b43aec644af520afdefb33b63be6be6dc2daec89",
-  "worktree_status": [
-    "?? experiments/us-labelled-filter-support/age_band_rule_receipt.json"
-  ],
-  "script_sha256": "9a7a77acfd3a39bda2eb162e74c8be09ab4a6088ee2a6a8a7135be9d45ce04a8",
+  "head": "622486abbe65c06ea348c5d4885193c073721344",
+  "worktree_status": [],
+  "script_sha256": "db5dcb680ac1af0c55dad996f0f1abe33b6ef78e5e9b19cb02f0b7551ec9a143",
   "target_period": 2024,
-  "max_rss_bytes": 2876620800,
+  "max_rss_bytes": 2875359232,
   "results": [
     {
       "feed": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/consumer_facts_us_c5e5bf8.jsonl",
       "feed_sha256": "b85437390021777e746f507c5890305496baf5fc7f2c78ba08ddb090f4839801",
-      "compile_seconds": 35.4,
+      "compile_seconds": 14.1,
       "targets": 32866,
       "age_key_census": {
         "targets_carrying_restated_age_key": 939,
         "by_family_role_materializer": {
           "census_population|population_age|population_age": 936,
           "ssa|ssa_ssi_age_band_recipients|policyengine_variable": 3
+        },
+        "by_age_bound_stamp_source": {
+          "constraint_rows": 939
         },
         "ledger_filter_age_keys": {
           "ledger_filter_age_lower_bound": 939,
@@ -64,13 +65,16 @@
     {
       "feed": "/Users/maxghenis/PolicyEngine/_buildh-runtime/inputs/chronicle_us_b571381/artifact/consumer_facts.jsonl",
       "feed_sha256": "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f",
-      "compile_seconds": 32.6,
+      "compile_seconds": 15.6,
       "targets": 32866,
       "age_key_census": {
         "targets_carrying_restated_age_key": 939,
         "by_family_role_materializer": {
           "census_population|population_age|population_age": 936,
           "ssa|ssa_ssi_age_band_recipients|policyengine_variable": 3
+        },
+        "by_age_bound_stamp_source": {
+          "constraint_rows": 939
         },
         "ledger_filter_age_keys": {
           "ledger_filter_age_lower_bound": 939,
