@@ -7,6 +7,7 @@ frames or H5 files and does not import an incumbent data package.
 
 from __future__ import annotations
 
+import importlib.util
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -20,6 +21,9 @@ from microcosm.build.uk_runtime.geography_ladder import (
     UkOaLadder,
     assign_uk_geography_ladder,
     uk_geography_ladder_gate,
+)
+from microcosm.build.uk_runtime.local_authority_input import (
+    verify_local_authority_engine_domain,
 )
 from microcosm.build.uk_runtime.national_frame import (
     _mass_log_from_stored,
@@ -444,6 +448,13 @@ def clone_uk_dataset_tables_with_ladder_geography(
             "UK geography ladder gate failed on the cloned assignment: "
             + "; ".join(gate.failures)
         )
+    # Fail closed against the installed engine: every assigned local_authority
+    # member name must exist in this pin's LocalAuthority enum. Only the
+    # assigned keys are checked here, so a toy ladder stays evaluable and an
+    # engine-free unit lane is not asked to import the engine; the whole
+    # roster is asserted by test_uk_local_authority_input.py (microcosm#953).
+    if importlib.util.find_spec("policyengine_uk") is not None:
+        verify_local_authority_engine_domain(assigned["local_authority"].unique())
 
     validate_uk_ladder_rowwise_dataset_tables(cloned_person, cloned_benunit, assigned)
     # The frame construction re-runs linkage validation and binds the typed

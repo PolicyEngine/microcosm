@@ -16,8 +16,10 @@ Each failure-path test asserts the specific verdict, so deleting a check's logic
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -26,6 +28,10 @@ import pytest
 
 import microcosm.build.us_runtime.h5_io as h5_io
 import microcosm.build.us_runtime.release_gate_preflight as preflight_module
+from microcosm.build.us_runtime.congressional_district_vintage import (
+    default_congressional_district_vintage_crosswalk_path,
+    load_congressional_district_vintage_crosswalk,
+)
 from microcosm.build.us_runtime.h5_io import AuthenticatedPoolH5
 from microcosm.build.us_runtime.release_gate_preflight import (
     MAX_REPORTED_SPM_UNITS_HARD_CAP,
@@ -1183,9 +1189,12 @@ def test__load_ledger_target_specs__hands_fact_rows_to_the_compiler(
     )
     captured: dict[str, object] = {}
 
-    def fake_compile(facts, *, target_period, age_targets):
+    def fake_compile(
+        facts, *, target_period, congressional_district_vintage_crosswalk, age_targets
+    ):
         captured["facts"] = facts
         captured["target_period"] = target_period
+        captured["crosswalk"] = congressional_district_vintage_crosswalk
         captured["age_targets"] = age_targets
         return SimpleNamespace(specs=expected_specs)
 
@@ -1193,14 +1202,174 @@ def test__load_ledger_target_specs__hands_fact_rows_to_the_compiler(
         fiscal_targets, "compile_us_fiscal_target_registry", fake_compile
     )
 
+    crosswalk_path = default_congressional_district_vintage_crosswalk_path()
     specs = _load_ledger_target_specs(
-        feed, target_period=2024, ledger_facts_sha256=feed_sha
+        feed,
+        target_period=2024,
+        ledger_facts_sha256=feed_sha,
+        congressional_district_vintage_crosswalk=crosswalk_path,
     )
 
     assert captured["facts"] == (fact_row,)
     assert captured["target_period"] == 2024
     assert captured["age_targets"] is True
+    # The compiler gets the loaded crosswalk, as the release tool passes it.
+    pd.testing.assert_frame_equal(
+        captured["crosswalk"],
+        load_congressional_district_vintage_crosswalk(crosswalk_path),
+    )
     assert specs == expected_specs
+
+
+def test__run_preflight__compiles_through_the_release_tools_default_crosswalk(
+    monkeypatch, tmp_path
+) -> None:
+    """Regression (route A, 2026-09-23): the preview compiled the feed with no
+    congressional-district vintage crosswalk while the release tool always
+    translates through the packaged one, so the pinned c5e5bf8 feed (TY2023
+    SOI still lists West Virginia's three pre-2022 districts) raised in the
+    CD hierarchy rule before any check ran. The preview must resolve the
+    release tool's default, pass it to the compiler and record it."""
+
+    captured: dict[str, object] = {}
+
+    def fake_load(path, *, target_period, ledger_facts_sha256, **kwargs):
+        captured.update(kwargs)
+        return ()
+
+    monkeypatch.setattr(
+        preflight_module,
+        "_load_preflight_base",
+        lambda path, *, allow_gate_failed_base_pool: (
+            _new_lineage_frame(),
+            None,
+            None,
+        ),
+    )
+    monkeypatch.setattr(preflight_module, "_load_ledger_target_specs", fake_load)
+
+    report = preflight_module.run_preflight(
+        base_h5=tmp_path / "base.h5",
+        new_lineage=True,
+        ledger_facts=tmp_path / "consumer_facts.jsonl",
+    )
+
+    default = default_congressional_district_vintage_crosswalk_path()
+    assert captured["congressional_district_vintage_crosswalk"] == default
+    recorded = report.to_dict()["inputs"]["congressional_district_vintage_crosswalk"]
+    assert recorded == {
+        "path": str(default),
+        "sha256": hashlib.sha256(default.read_bytes()).hexdigest(),
+    }
+
+
+def test__run_preflight__an_explicit_crosswalk_replaces_the_default(
+    monkeypatch, tmp_path
+) -> None:
+    replacement = tmp_path / "crosswalk.csv"
+    replacement.write_bytes(
+        default_congressional_district_vintage_crosswalk_path().read_bytes()
+    )
+    captured: dict[str, object] = {}
+
+    def fake_load(path, *, target_period, ledger_facts_sha256, **kwargs):
+        captured.update(kwargs)
+        return ()
+
+    monkeypatch.setattr(
+        preflight_module,
+        "_load_preflight_base",
+        lambda path, *, allow_gate_failed_base_pool: (
+            _new_lineage_frame(),
+            None,
+            None,
+        ),
+    )
+    monkeypatch.setattr(preflight_module, "_load_ledger_target_specs", fake_load)
+
+    report = preflight_module.run_preflight(
+        base_h5=tmp_path / "base.h5",
+        new_lineage=True,
+        ledger_facts=tmp_path / "consumer_facts.jsonl",
+        congressional_district_vintage_crosswalk=replacement,
+    )
+
+    assert captured["congressional_district_vintage_crosswalk"] == replacement
+    assert report.to_dict()["inputs"]["congressional_district_vintage_crosswalk"][
+        "path"
+    ] == str(replacement)
+
+
+def test__run_preflight__records_no_crosswalk_without_a_feed(
+    monkeypatch, tmp_path
+) -> None:
+    monkeypatch.setattr(
+        preflight_module,
+        "_load_preflight_base",
+        lambda path, *, allow_gate_failed_base_pool: (
+            _new_lineage_frame(),
+            None,
+            None,
+        ),
+    )
+
+    report = preflight_module.run_preflight(
+        base_h5=tmp_path / "base.h5", new_lineage=True
+    )
+
+    assert "congressional_district_vintage_crosswalk" not in report.to_dict()["inputs"]
+
+
+def test__cli__passes_the_crosswalk_option_through(monkeypatch, tmp_path) -> None:
+    tool = _load_preflight_cli()
+    replacement = tmp_path / "crosswalk.csv"
+    captured: dict[str, object] = {}
+
+    def fake_run_preflight(**kwargs):
+        captured.update(kwargs)
+        raise SystemExit(0)
+
+    monkeypatch.setattr(tool, "run_preflight", fake_run_preflight)
+    with pytest.raises(SystemExit):
+        tool.main(
+            [
+                "--base-h5",
+                str(tmp_path / "base.h5"),
+                "--new-lineage",
+                "--congressional-district-vintage-crosswalk",
+                str(replacement),
+            ]
+        )
+    assert captured["congressional_district_vintage_crosswalk"] == replacement
+
+    captured.clear()
+    with pytest.raises(SystemExit):
+        tool.main(["--base-h5", str(tmp_path / "base.h5"), "--new-lineage"])
+    assert captured["congressional_district_vintage_crosswalk"] is None
+
+
+def test__load_ledger_target_specs__compiles_the_pinned_feed() -> None:
+    """On the real pinned feed: the preview compiles the release tool's
+    surface (the West Virginia CD hierarchy case included). The feed is a
+    164 MB public aggregate export no CI lane carries, so this runs only when
+    ``MICROCOSM_US_CHRONICLE_FACTS`` points at it."""
+
+    feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
+    if not feed or not Path(feed).exists():
+        pytest.skip(
+            "set MICROCOSM_US_CHRONICLE_FACTS to the pinned consumer-facts feed"
+        )
+    specs = preflight_module._load_ledger_target_specs(
+        Path(feed),
+        target_period=2024,
+        ledger_facts_sha256=None,
+        congressional_district_vintage_crosswalk=(
+            default_congressional_district_vintage_crosswalk_path()
+        ),
+    )
+    assert any("wv_total.net_capital_gains_returns" in spec.name for spec in specs), (
+        "the WV state parent of the CD hierarchy must compile"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1790,7 +1959,7 @@ def _run_synthetic_preflight(monkeypatch, tmp_path, *, frame: Frame, **mode):
     monkeypatch.setattr(
         preflight_module,
         "_load_ledger_target_specs",
-        lambda path, *, target_period, ledger_facts_sha256: (spec,),
+        lambda path, *, target_period, ledger_facts_sha256, **kwargs: (spec,),
     )
     monkeypatch.setattr(l0_refit_export, "load_us_frame", lambda path: frame)
     return preflight_module.run_preflight(

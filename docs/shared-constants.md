@@ -51,3 +51,13 @@ from microcosm.calibrate.geography_constants import (
 Do not add another state FIPS/postal mapping to a country runtime or diagnostics
 module. Extend the shared definition and its consistency test when supported
 geographies change.
+
+The engine's `local_authority` member names are not a constants table: the 361
+April 2023 authority names are published ONS data, held in the sha-pinned
+resource `microcosm/build/uk/local_authority_names.json` (regenerate with
+`tools/generate_uk_local_authority_names.py`). Only the mechanical key rule and
+its declared aliases are code, in
+[`microcosm.build.uk_runtime.local_authority_input`](../packages/microcosm-build/src/microcosm/build/uk_runtime/local_authority_input.py);
+derive an engine key through `local_authority_engine_key` rather than
+re-implementing the rule, and resolve codes through
+`resolve_local_authority_engine_keys`, which fails closed (microcosm#953).
