@@ -275,7 +275,9 @@ def test_final_owner_return_cannot_mutate_materialized_geography(known_financial
             and frame.f_code
             is financial.verify_materialized_current_survey_predictors.__code__
             and caller is not None
-            and caller.f_code is runner.run_atomic_survey_financial.__code__
+            # The public entry is a thin wrapper since 48ce5251e; the owner
+            # check returns into the shared runner that holds ``result``.
+            and caller.f_code is runner._run_survey_financial.__code__
             and "result" in caller.f_locals
             and not fired
         ):
