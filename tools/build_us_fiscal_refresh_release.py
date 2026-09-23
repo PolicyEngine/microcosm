@@ -274,6 +274,9 @@ from microcosm.build.us_runtime.reform_validation import (
 from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: TC001
     CheckResult,
 )
+from microcosm.build.us_runtime.release_input_coverage import (
+    REFERENCE_ECPS_LAYER_RENAMES,
+)
 from microcosm.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_AGE_TARGETS,
     US_SSI_TAKE_UP_ENFORCED_BAND_KEYS,
@@ -5722,6 +5725,36 @@ def _input_mass_reference_gate(
     )
 
 
+def _project_ecps_reference_layers(
+    nonzero_shares: Mapping[str, float],
+) -> tuple[dict[str, float], dict[str, str]]:
+    """Grade the pinned eCPS layers under the live engine's input names.
+
+    The frozen reference keeps the incumbent's historical variable names
+    (its evidence bytes are sha-pinned), so a layer the engine has since
+    renamed would read as an all-zero candidate layer. Project each renamed
+    layer onto its live input leaf with the same register the release
+    input-coverage manifest uses (``REFERENCE_ECPS_LAYER_RENAMES``; the WIC
+    input became ``takes_up_wic_if_eligible`` in PolicyEngine-US 1.777.0), and
+    refuse a projection that would merge two reference layers.
+    """
+
+    projected: dict[str, float] = {}
+    applied: dict[str, str] = {}
+    for name, share in nonzero_shares.items():
+        live = REFERENCE_ECPS_LAYER_RENAMES.get(str(name), str(name))
+        if live in projected:
+            raise ValueError(
+                f"eCPS parity reference layer {name!r} projects onto {live!r}, "
+                "which the reference already carries; the rename register "
+                "would merge two layers."
+            )
+        projected[live] = float(share)
+        if live != name:
+            applied[str(name)] = live
+    return projected, applied
+
+
 def _ecps_parity_gate(
     base_frame: Frame,
     *,
@@ -5747,12 +5780,18 @@ def _ecps_parity_gate(
     known_gaps = known_gaps if known_gaps is not None else load_ecps_parity_known_gaps()
     input_variables = _engine_input_variables()
     candidate_shares = us_nonzero_shares(base_frame, columns=input_variables)
+    reference_shares, applied_renames = _project_ecps_reference_layers(
+        reference.nonzero_shares
+    )
     gate = parity_gate(
         candidate_shares,
-        reference.nonzero_shares,
+        reference_shares,
         known_gaps=tuple(gap.variable for gap in known_gaps),
     )
     details = dict(gate.details)
+    # The pinned reference predates engine input renames; its layers are graded
+    # under the live names, and the projection is recorded, not hidden.
+    details["reference_layer_renames"] = applied_renames
     details["reference"] = {
         "repo_id": reference.source.repo_id,
         "repo_type": reference.source.repo_type,
