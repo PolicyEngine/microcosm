@@ -155,7 +155,13 @@ def _minimal_us_frame() -> Frame:
     return Frame(tables, US_SCHEMA, weights, strata)
 
 
-def _raw_asec_predictor_frame() -> Frame:
+def _raw_asec_predictor_frame(*, with_tax_unit_roles: bool = False) -> Frame:
+    """Raw ASEC person fields, optionally with the constructed tax-unit roles.
+
+    The roles, age and sex are what the tax-unit construction stage hands the
+    PUF imputation; the PUF demographic predictors read them (microcosm#982).
+    """
+
     tables = {
         "person": pd.DataFrame(
             {
@@ -224,6 +230,12 @@ def _raw_asec_predictor_frame() -> Frame:
         "family": pd.DataFrame({"family_id": np.asarray([1000, 2000])}),
         "marital_unit": pd.DataFrame({"marital_unit_id": np.asarray([10000, 20000])}),
     }
+    if with_tax_unit_roles:
+        tables["person"] = tables["person"].assign(
+            age=[65, 40, 61],
+            is_female=[False, True, True],
+            tax_unit_role_input=["HEAD", "SPOUSE", "HEAD"],
+        )
     return Frame(
         tables,
         US_SCHEMA,
@@ -364,7 +376,11 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
     assert "employment_income" not in donor
     assert donor["qualified_dividend_income"].tolist() == [9.0, 6.0]
     assert donor["non_qualified_dividend_income"].tolist() == [3.0, 3.0]
-    assert donor["puf_predictor_dividend_income"].tolist() == [12.0, 9.0]
+    # The donor's own income outputs are never copied into predictor columns:
+    # a donor predictor equal to a donor output is a self-prediction
+    # (microcosm#982).
+    assert "puf_predictor_dividend_income" not in donor
+    assert "puf_predictor_employment_income" not in donor
     assert donor["social_security_retirement"].tolist() == [300.0, 300.0]
     assert donor["social_security_disability"].tolist() == [0.0, 0.0]
     assert donor["social_security_dependents"].tolist() == [0.0, 0.0]
@@ -381,7 +397,6 @@ def test_puf_tax_unit_donor_from_arrays_aggregates_person_values() -> None:
     assert donor["educator_expense"].tolist() == [300.0, 300.0]
     assert "interest_deduction" not in donor
     assert "state_withheld_income_tax" not in donor
-    assert donor["puf_predictor_employment_income"].tolist() == [12.0, 11.0]
     assert donor["puf_predictor_filing_status_code"].tolist() == [1.0, 2.0]
     assert donor[
         puf_support_module.PUF_DONOR_SOURCE_ADJUSTED_GROSS_INCOME_COLUMN
@@ -1291,16 +1306,12 @@ def test_policyengine_broadcasts_annual_reported_enrollment_to_each_month(
         "spm_units": {
             "unit_100": {
                 "members": ["person_1", "person_2"],
-                "receives_tanf": {
-                    "2024": bool(spm_flags.loc[100, "receives_tanf"])
-                },
+                "receives_tanf": {"2024": bool(spm_flags.loc[100, "receives_tanf"])},
                 "receives_snap": {"2024": bool(spm_flags.loc[100, "receives_snap"])},
             },
             "unit_200": {
                 "members": ["person_3"],
-                "receives_tanf": {
-                    "2024": bool(spm_flags.loc[200, "receives_tanf"])
-                },
+                "receives_tanf": {"2024": bool(spm_flags.loc[200, "receives_tanf"])},
                 "receives_snap": {"2024": bool(spm_flags.loc[200, "receives_snap"])},
             },
         },
@@ -1365,18 +1376,19 @@ def test_cps_carried_preserves_existing_spm_unit_childcare_values() -> None:
 
 def test_cps_carried_derivations_unblock_default_puf_predictors() -> None:
     expanded = clone_us_frame_for_puf_support(
-        derive_us_cps_carried_inputs(_raw_asec_predictor_frame())
+        derive_us_cps_carried_inputs(
+            _raw_asec_predictor_frame(with_tax_unit_roles=True)
+        )
     )
     donor = pd.DataFrame(
         {
             "puf_predictor_filing_status_code": [1.0, 2.0, 4.0, 1.0],
             "puf_predictor_tax_unit_person_count": [1.0, 2.0, 1.0, 2.0],
-            "puf_predictor_employment_income": [100.0, 200.0, 300.0, 400.0],
-            "puf_predictor_self_employment_income": [10.0, 20.0, 30.0, 40.0],
-            "puf_predictor_taxable_interest_income": [1.0, 2.0, 3.0, 4.0],
-            "puf_predictor_dividend_income": [5.0, 6.0, 7.0, 8.0],
-            "puf_predictor_short_term_capital_gains": [13.0, 14.0, 15.0, 16.0],
-            "puf_predictor_long_term_capital_gains": [17.0, 18.0, 19.0, 20.0],
+            "puf_predictor_head_age": [30.0, 45.0, 60.0, 75.0],
+            "puf_predictor_spouse_age": [0.0, 43.0, 0.0, 70.0],
+            "puf_predictor_head_is_female": [0.0, 1.0, 0.0, 1.0],
+            "puf_predictor_dependent_count": [0.0, 1.0, 0.0, 0.0],
+            "puf_predictor_income_rank_share": [0.875, 0.625, 0.375, 0.125],
             "taxable_interest_income": [100.0, 200.0, 300.0, 400.0],
             "qualified_dividend_income": [10.0, 20.0, 30.0, 40.0],
             "non_qualified_dividend_income": [50.0, 60.0, 70.0, 80.0],
