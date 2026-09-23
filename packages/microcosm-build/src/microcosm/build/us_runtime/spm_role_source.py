@@ -9,6 +9,7 @@ weight, calibration, or period-aging operation is performed here.
 from __future__ import annotations
 
 import hashlib
+import zipfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -152,6 +153,51 @@ def _reconcile_units(persons: pd.DataFrame, key: str, label: str) -> pd.DataFram
     return units
 
 
+def _read_source_columns(source: Path | Any) -> pd.DataFrame:
+    return pd.read_csv(
+        source,
+        usecols=list(_SOURCE_COLUMNS),
+        dtype={"PERIDNUM": str, "SPM_ID": str},
+        low_memory=False,
+    )
+
+
+def _read_archive_member(
+    path: Path, pin: AsecSpmRoleSource, label: str
+) -> pd.DataFrame:
+    """Read the pinned person CSV from inside the official Census archive.
+
+    ``--asec-education-source`` names either that archive or its extracted
+    person CSV (``education_assistance_source._load_one_source`` accepts both),
+    so the role stage accepts both too. The archive must be the pinned one and
+    hold exactly one pinned member whose size and SHA-256 equal the CSV pins;
+    the archive is re-hashed after reading.
+    """
+
+    _require(_sha256(path) == pin.archive_sha256, f"{label} archive SHA-256 mismatch.")
+    with zipfile.ZipFile(path) as archive:
+        members = [info for info in archive.infolist() if info.filename == pin.member]
+        _require(
+            len(members) == 1,
+            f"{label} archive must contain exactly one {pin.member!r} member.",
+        )
+        info = members[0]
+        _require(
+            info.file_size == pin.csv_size_bytes, f"{label} CSV byte length mismatch."
+        )
+        digest = hashlib.sha256()
+        with archive.open(info) as member:
+            for chunk in iter(lambda: member.read(8 * 1024 * 1024), b""):
+                digest.update(chunk)
+        _require(digest.hexdigest() == pin.csv_sha256, f"{label} CSV SHA-256 mismatch.")
+        with archive.open(info) as member:
+            source = _read_source_columns(member)
+    _require(
+        _sha256(path) == pin.archive_sha256, f"{label} archive changed while reading."
+    )
+    return source
+
+
 def _load_source(
     path: Path, pin: AsecSpmRoleSource
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
@@ -159,17 +205,16 @@ def _load_source(
     _require(
         pin.survey_year == pin.income_year + 1, f"{label} income/survey year mismatch."
     )
-    _require(
-        path.stat().st_size == pin.csv_size_bytes, f"{label} CSV byte length mismatch."
-    )
-    _require(_sha256(path) == pin.csv_sha256, f"{label} CSV SHA-256 mismatch.")
-    source = pd.read_csv(
-        path,
-        usecols=list(_SOURCE_COLUMNS),
-        dtype={"PERIDNUM": str, "SPM_ID": str},
-        low_memory=False,
-    )
-    _require(_sha256(path) == pin.csv_sha256, f"{label} CSV changed while reading.")
+    if zipfile.is_zipfile(path):
+        source = _read_archive_member(path, pin, label)
+    else:
+        _require(
+            path.stat().st_size == pin.csv_size_bytes,
+            f"{label} CSV byte length mismatch.",
+        )
+        _require(_sha256(path) == pin.csv_sha256, f"{label} CSV SHA-256 mismatch.")
+        source = _read_source_columns(path)
+        _require(_sha256(path) == pin.csv_sha256, f"{label} CSV changed while reading.")
     _require(len(source) == pin.persons, f"{label} CSV person count mismatch.")
     source["PERIDNUM"] = _exact_person_keys(source.PERIDNUM, label)
     _require(bool(source.PERIDNUM.is_unique), f"{label} has duplicate PERIDNUM keys.")
