@@ -6162,6 +6162,164 @@ def _qrf_tail_concentration_gate(
     return gate, surface
 
 
+#: Failure-line prefix for a per-run QRF tail-concentration register that does
+#: not match the checked surface. Deliberately distinct from the standing
+#: evidence owner "QRF tail concentration failed:" (US_EVIDENCE_FAILURE_OWNERS):
+#: a register mismatch is an operator input error, not the #481/#487 tail
+#: defect, and --evidence-release refuses it outright.
+US_QRF_TAIL_REGISTER_MISMATCH_PREFIX = "QRF tail-concentration register mismatch:"
+
+
+def _qrf_tail_register_mismatch(
+    register: Mapping[str, str],
+    gate: GateResult,
+) -> dict[str, list[str]]:
+    """Register entries the checked tail surface did not use.
+
+    The per-run register must exactly match the concentrated columns.
+    ``stale`` entries were checked and sit at or below the threshold (the
+    gate itself also fails them); ``unused`` entries were never checked —
+    the column is dense, thin, absent, non-numeric, or not a QRF output.
+    Both lists empty means the register matches.
+    """
+    used = set(gate.details.get("reviewed_exclusions", ()))
+    stale = sorted(set(register) & set(gate.details.get("stale_exclusions", ())))
+    unused = sorted(set(register) - used - set(stale))
+    return {"stale": stale, "unused": unused}
+
+
+def _qrf_tail_register_failures(mismatch: Mapping[str, Sequence[str]]) -> list[str]:
+    """One batched failure line for a register mismatch, or none."""
+    stale = list(mismatch.get("stale", ()))
+    unused = list(mismatch.get("unused", ()))
+    if not stale and not unused:
+        return []
+    return [
+        f"{US_QRF_TAIL_REGISTER_MISMATCH_PREFIX} the per-run exclusion "
+        "register must exactly match the concentrated columns; stale "
+        f"(checked, at or below the threshold) = {stale}; unused (dense, "
+        f"thin, absent, or not a checked QRF output) = {unused}. Remove these "
+        "entries; qrf_tail_concentration.json records the measured surface."
+    ]
+
+
+def _qrf_tail_register_evidence_refusal(
+    register_failures: Sequence[str],
+) -> RuntimeError | None:
+    """--evidence-release refusal for a register mismatch, owned or not.
+
+    A register mismatch is corrected in the register, never owned: the
+    pre-batch raise this replaced refused every mode, so no per-run
+    adjudication may carry a stale or unused entry into an evidence export.
+    """
+    if not register_failures:
+        return None
+    return RuntimeError(
+        "Evidence release refused: a QRF tail-concentration register "
+        "mismatch cannot be owned; correct the register from "
+        "qrf_tail_concentration.json and rerun. " + "; ".join(register_failures)
+    )
+
+
+def _record_qrf_tail_concentration_gate(
+    export_frame: Frame,
+    *,
+    exclusions_path: Path | None,
+    allow_concentration: bool,
+    terminal_gate_failures: list[str],
+    release_dir: Path,
+    telemetry: _TerminalBatchTelemetry,
+) -> list[str]:
+    """Evaluate the terminal QRF tail gate and record everything it measured.
+
+    Appends the gate's failures (unless ``allow_concentration``) and any
+    register-mismatch line (always — the register must match whatever the
+    flag says) to ``terminal_gate_failures``, so the batched pre-export raise
+    refuses the run with the #568 weight sidecar on disk. Whenever the gate
+    evaluated, ``qrf_tail_concentration.json`` is written with the per-column
+    shares, carrier counts, and the mismatch. Only a genuine evaluation crash
+    escapes: it propagates on an otherwise-clean run and becomes one unowned
+    failure line under earlier failures.
+
+    Returns the register-mismatch failure lines (empty when the register
+    matches) so --evidence-release can refuse them.
+    """
+    try:
+        register = _load_qrf_tail_concentration_exclusions(exclusions_path)
+        gate, surface = _qrf_tail_concentration_gate(
+            export_frame,
+            reviewed_exclusions=register,
+        )
+        mismatch = _qrf_tail_register_mismatch(register, gate)
+        surface = {
+            **surface,
+            "reviewed_exclusions_file": (
+                str(exclusions_path) if exclusions_path is not None else None
+            ),
+            "reviewed_exclusions_sha256": (
+                _sha256(exclusions_path) if exclusions_path is not None else None
+            ),
+            "reviewed_exclusions": dict(register),
+            "register_mismatch": mismatch,
+        }
+    except Exception as exc:
+        # Same degraded-mode contract as the coverage gate: with earlier
+        # failures on record, an evaluation crash becomes one more line
+        # instead of masking them. The prefix is not the standing-owned
+        # "QRF tail concentration failed:", so --evidence-release needs a
+        # per-run adjudication for a crash.
+        if not terminal_gate_failures:
+            raise
+        terminal_gate_failures.append(
+            "QRF tail-concentration evaluation failed under earlier gate "
+            f"failures: {type(exc).__name__}: {exc}"
+        )
+        return []
+    gate_failures = (
+        [f"QRF tail concentration failed: {failure}" for failure in gate.failures]
+        if not gate.passed and not allow_concentration
+        else []
+    )
+    register_failures = _qrf_tail_register_failures(mismatch)
+    terminal_gate_failures.extend(gate_failures)
+    terminal_gate_failures.extend(register_failures)
+    qrf_tail_path = release_dir / "qrf_tail_concentration.json"
+    qrf_tail_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "enforced": not allow_concentration,
+                "surface": surface,
+                "tail_concentration": {
+                    "passed": gate.passed,
+                    "failures": list(gate.failures),
+                    "details": dict(gate.details),
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    telemetry.attach_artifact("qrf_tail_concentration", qrf_tail_path)
+    if gate_failures or register_failures:
+        telemetry.stage(
+            "export_dataset",
+            status="failed",
+            message=(
+                "QRF tail-concentration gate failed."
+                if not register_failures
+                else "QRF tail-concentration gate or register failed."
+            ),
+            failures=[
+                *(gate.failures if gate_failures else ()),
+                *register_failures,
+            ],
+            force_upload=True,
+        )
+    return register_failures
+
+
 def _person_population(frame: Frame) -> float:
     return float(frame.resolve_weights("person").values.sum())
 
@@ -12224,90 +12382,17 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # $594,484 donor-ceiling value — is invisible to support clipping (every
     # draw inside donor range), count targets (carrier count exact), and mass
     # parity (column excluded from the reference band), but is unmistakable as
-    # top-k weighted-mass share.
-    try:
-        qrf_tail_exclusions = _load_qrf_tail_concentration_exclusions(
-            args.qrf_tail_concentration_exclusions
-        )
-        qrf_tail_gate, qrf_tail_surface = _qrf_tail_concentration_gate(
-            export_frame,
-            reviewed_exclusions=qrf_tail_exclusions,
-        )
-        register_dormant = sorted(
-            set(qrf_tail_exclusions)
-            - set(qrf_tail_gate.details.get("reviewed_exclusions", ()))
-        )
-        if register_dormant:
-            raise RuntimeError(
-                "QRF tail-concentration exclusion register carries entries "
-                "the checked surface did not use (column dense, thin, "
-                f"absent, or below threshold): {register_dormant}. The "
-                "per-run register must exactly match the concentrated "
-                "columns — remove the stale entries."
-            )
-        qrf_tail_surface = {
-            **qrf_tail_surface,
-            "reviewed_exclusions_file": (
-                str(args.qrf_tail_concentration_exclusions)
-                if args.qrf_tail_concentration_exclusions is not None
-                else None
-            ),
-            "reviewed_exclusions_sha256": (
-                _sha256(args.qrf_tail_concentration_exclusions)
-                if args.qrf_tail_concentration_exclusions is not None
-                else None
-            ),
-            "reviewed_exclusions": dict(qrf_tail_exclusions),
-        }
-    except Exception as exc:
-        # Same degraded-mode contract as the coverage gate above.
-        if not terminal_gate_failures:
-            raise
-        terminal_gate_failures.append(
-            "QRF tail concentration failed: evaluation error under earlier "
-            f"gate failures: {type(exc).__name__}: {exc}"
-        )
-        qrf_tail_gate = None
-        qrf_tail_surface = None
-    if qrf_tail_gate is not None:
-        qrf_tail_failed = (
-            not qrf_tail_gate.passed and not args.allow_qrf_tail_concentration
-        )
-        if qrf_tail_failed:
-            terminal_gate_failures.extend(
-                f"QRF tail concentration failed: {failure}"
-                for failure in qrf_tail_gate.failures
-            )
-        qrf_tail_path = release_dir / "qrf_tail_concentration.json"
-        qrf_tail_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "enforced": not args.allow_qrf_tail_concentration,
-                    "surface": qrf_tail_surface,
-                    "tail_concentration": {
-                        "passed": qrf_tail_gate.passed,
-                        "failures": list(qrf_tail_gate.failures),
-                        "details": dict(qrf_tail_gate.details),
-                    },
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n"
-        )
-        terminal_batch_telemetry.attach_artifact(
-            "qrf_tail_concentration",
-            qrf_tail_path,
-        )
-        if qrf_tail_failed:
-            terminal_batch_telemetry.stage(
-                "export_dataset",
-                status="failed",
-                message="QRF tail-concentration gate failed.",
-                failures=list(qrf_tail_gate.failures),
-                force_upload=True,
-            )
+    # top-k weighted-mass share. A per-run register that does not match the
+    # checked surface is a batched failure (never an early raise), so the
+    # measured tail evidence and the #568 weight sidecar survive it.
+    qrf_tail_register_failures = _record_qrf_tail_concentration_gate(
+        export_frame,
+        exclusions_path=args.qrf_tail_concentration_exclusions,
+        allow_concentration=args.allow_qrf_tail_concentration,
+        terminal_gate_failures=terminal_gate_failures,
+        release_dir=release_dir,
+        telemetry=terminal_batch_telemetry,
+    )
     # Batched pre-export raise: the calibration battery, SPM measurement
     # composition, input coverage,
     # export-mass parity, and QRF tail concentration have ALL been evaluated
@@ -12333,6 +12418,10 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 )
             except RuntimeError as error:
                 evidence_refusal = error
+            if evidence_refusal is None:
+                evidence_refusal = _qrf_tail_register_evidence_refusal(
+                    qrf_tail_register_failures
+                )
         if not args.evidence_release or evidence_refusal is not None:
             # Gate-failure path ONLY (microcosm#568 review): a batched
             # pre-export failure mints no H5, so the exact calibrated weight
