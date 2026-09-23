@@ -3067,10 +3067,12 @@ def _tax_unit_feature_frame(
                 )
             result[column] = demographics[source_column].to_numpy(dtype=np.float64)
         elif source_column == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
-            # The unit's weighted rank within the whole survey population in
-            # the frame (microcosm#982). Clone copies carry identical survey
-            # income and split one household's weight, so ranking every row
-            # ranks the survey population; copies tie and share one rank.
+            # The unit's weighted rank within the PUF-detail recipient rows
+            # (microcosm#982). Those rows hold each survey unit exactly once,
+            # so this is its rank in the survey population, independent of any
+            # other spine or clone channel the frame carries. The donor is
+            # ranked in the PUF population the same way; other rows get NaN.
+            recipient_rows = puf_tax_detail_clone_mask(tax_unit, entity="tax_unit")
             total = np.zeros(len(tax_unit), dtype=np.float64)
             for component in PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS:
                 component_plan = (
@@ -3085,6 +3087,7 @@ def _tax_unit_feature_frame(
                 total += np.asarray(
                     resolve(component, component_plan), dtype=np.float64
                 )
+            total[~recipient_rows] = np.nan
             result[column] = _weighted_top_rank_share(
                 total,
                 frame.resolve_weights("tax_unit").values,
@@ -4195,11 +4198,16 @@ _TAX_UNIT_ROLES = ("HEAD", "SPOUSE", "DEPENDENT")
 
 
 def _weighted_top_rank_share(values: Any, weights: Any) -> np.ndarray:
-    """Return each row's weighted share of units with a strictly greater value.
+    """Return each row's weighted mid-rank share, counted from the top.
 
-    The top unit gets 0.0 and tied values share one rank, so survey topcode ties
-    stay tied. Rows with a non-finite value get NaN and are excluded from the
-    population total, which lets strict recipient validation fail them by name.
+    A unit with weight ``w`` stands for the population slice between the weight
+    strictly above it and that plus ``w``; its share is the slice's midpoint
+    divided by the total weight. Tied values form one slice and share its
+    midpoint, so survey topcode ties and clone copies stay tied. The midpoint,
+    not the top edge, keeps a heavily weighted survey unit from being ranked
+    with the single most extreme donor (microcosm#982). Rows with a non-finite
+    value get NaN and are excluded from the population total, which lets
+    strict recipient validation fail them by name.
     """
 
     value_array = np.asarray(values, dtype=np.float64)
@@ -4223,8 +4231,10 @@ def _weighted_top_rank_share(values: Any, weights: Any) -> np.ndarray:
     weight_before = np.cumsum(sorted_weights) - sorted_weights
     first_of_tie = np.r_[True, sorted_values[1:] != sorted_values[:-1]]
     tie_group = np.cumsum(first_of_tie) - 1
+    tie_weight = np.bincount(tie_group, weights=sorted_weights)
+    midpoint = weight_before[first_of_tie] + tie_weight / 2.0
     shares = np.empty(len(ranked_values), dtype=np.float64)
-    shares[order] = weight_before[first_of_tie][tie_group] / total
+    shares[order] = midpoint[tie_group] / total
     result[finite] = shares
     return result
 
@@ -4331,8 +4341,13 @@ def _puf_donor_demographics(
     return demographics
 
 
-def _donor_rank_component_values(table: pd.DataFrame, source: str) -> np.ndarray:
-    """One donor income-rank component, resolved like its predictor alias."""
+def _donor_rank_component_values(table: pd.DataFrame, source: str) -> np.ndarray | None:
+    """One donor income-rank component, resolved like its predictor alias.
+
+    Returns None when the donor table cannot supply the component, so the rank
+    predictor stays absent exactly like any other unresolvable alias and the
+    imputation's missing-donor-column check fails closed by name.
+    """
 
     if source in table.columns:
         values = table[source]
@@ -4354,7 +4369,7 @@ def _donor_rank_component_values(table: pd.DataFrame, source: str) -> np.ndarray
             if leaf in table.columns
         )
     else:
-        raise ValueError(f"PUF donor cannot resolve income-rank component {source!r}.")
+        return None
     return (
         pd.to_numeric(pd.Series(values), errors="coerce")
         .fillna(0.0)
@@ -4373,11 +4388,15 @@ def _add_predictor_aliases(
         if source == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
             # The donor's rank in the PUF population, on the same six income
             # concepts the survey recipient is ranked on (microcosm#982).
-            if "weight" not in table.columns:
-                raise ValueError("PUF donor income rank requires a weight column.")
-            total = np.zeros(len(table), dtype=np.float64)
-            for component in PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS:
-                total += _donor_rank_component_values(table, component)
+            components = [
+                _donor_rank_component_values(table, component)
+                for component in PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS
+            ]
+            if "weight" not in table.columns or any(
+                values is None for values in components
+            ):
+                continue
+            total = np.sum(components, axis=0, dtype=np.float64)
             table[predictor] = _weighted_top_rank_share(
                 total,
                 pd.to_numeric(table["weight"], errors="coerce").fillna(0.0),
