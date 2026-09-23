@@ -331,7 +331,17 @@ The original receipts below exercise `derive_spm_role_source` directly through
 `experiments/spm_role_stage_proof.py`. They prove source derivation and
 composition repair, but do not exercise the new stage wrapper, temporary
 projection, provenance transport or weighted signal gate. Wrapper acceptance
-is recorded separately; these historical receipts are preserved unchanged.
+is recorded separately. These historical receipts are preserved except for
+one redaction on 2026-09-23. Each receipt's `before` and `after` blocks
+listed up to 20 internal `spm_unit_id` values of minor-only SPM units
+(`offending_unit_ids_reported`). They now carry only the count
+(`n_offending_units_reported`: 20 before, 0 after), as
+`experiments/893-spm-composition-base-q3-receipt.json` does, and
+`spm_role_stage_proof.py` now emits the count. Each redacted receipt records
+its pre-redaction SHA-256 under `redaction`. That digest is the
+`historical_receipt_sha256` the wrapper receipts below recorded. Their
+`original_proof_script_sha256` likewise names the proof script before this
+one-line change.
 
 **Phase-2 base** (`experiments/893-spm-role-stage-base-q3-receipt.json`),
 read-only, digest verified against its sidecar before and after:
@@ -365,7 +375,8 @@ lane's pin records as resolved.
 populations. The final v2 receipts test committed source
 `6a6d53b2fb2cad7ac7b84634decc2a41125efa92` with an empty source diff, including
 the complete gate-details JSON serialization and ordered role binding.
-The original derivation and first wrapper receipts remain unchanged.
+The first wrapper receipts remain unchanged. The original derivation receipts
+changed only by the 2026-09-23 unit-id redaction described above.
 
 | Population | Persons compared | Unresolved SPM units before → after | Wrapper seconds | Peak process RSS |
 |---|---:|---:|---:|---:|
