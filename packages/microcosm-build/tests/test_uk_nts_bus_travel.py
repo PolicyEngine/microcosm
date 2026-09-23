@@ -27,6 +27,7 @@ from microcosm.build.uk_runtime.nts_bus_travel import (
     REST_OF_ENGLAND_GROUP,
     SERIES_TRIP_COLUMNS,
     UK_NTS_BUS_TRAVEL_OUTPUT_COLUMNS,
+    UK_NTS_PERSON_OUTPUT_COLUMNS,
     WEEKS_IN_YEAR,
     NTSBusTravelError,
     NTSColumns,
@@ -481,15 +482,21 @@ def test_eligibility_follows_the_declared_statutory_rules() -> None:
         "wales",
         "northern_ireland",
     }
-    ages = np.array([10.0, 17.0, 18.0, 21.0, 22.0, 59.0, 60.0, 65.0, 66.0])
+    # Under-5s ride free everywhere; Northern Ireland's SmartPass is 60+ (the
+    # 65+ pass adds all-Ireland travel only); England outside London is State
+    # Pension age.
+    ages = np.array([4.0, 10.0, 17.0, 18.0, 21.0, 22.0, 59.0, 60.0, 65.0, 66.0])
     for region, expected in (
-        ("SOUTH_EAST", [False, False, False, False, False, False, False, False, True]),
-        ("LONDON", [True, True, False, False, False, False, True, True, True]),
-        ("SCOTLAND", [True, True, True, True, False, False, True, True, True]),
-        ("WALES", [False, False, False, False, False, False, True, True, True]),
+        (
+            "SOUTH_EAST",
+            [True, False, False, False, False, False, False, False, False, True],
+        ),
+        ("LONDON", [True, True, True, False, False, False, False, True, True, True]),
+        ("SCOTLAND", [True, True, True, True, True, False, False, True, True, True]),
+        ("WALES", [True, False, False, False, False, False, False, True, True, True]),
         (
             "NORTHERN_IRELAND",
-            [False, False, False, False, False, False, False, True, True],
+            [True, False, False, False, False, False, False, True, True, True],
         ),
     ):
         eligible, receipt = assign_bus_pass_eligibility(
@@ -570,10 +577,21 @@ def test_stage_transform_end_to_end_on_synthetic_inputs() -> None:
         out_household.set_index("household_id")["region"]
     )
     assert (person.loc[london & (person["age"] < 18), "bus_pass_eligible"]).all()
-    # Outside London and Scotland no under-60 is eligible (England's rule is
-    # State Pension age, Wales 60, Northern Ireland 65); Scotland's under-22s are.
+    # Outside London and Scotland nobody aged 5 to 59 is eligible (England's
+    # rule is State Pension age, Wales and Northern Ireland 60); under-5s are
+    # everywhere, and Scotland's under-22s are.
     plain = region.isin(["SOUTH_EAST", "NORTH_WEST", "WALES", "NORTHERN_IRELAND"])
-    assert (~person.loc[plain & (person["age"] < 60), "bus_pass_eligible"]).all()
+    grown = plain & (person["age"] >= 5) & (person["age"] < 60)
+    assert (~person.loc[grown, "bus_pass_eligible"]).all()
+    assert person.loc[person["age"] < 5, "bus_pass_eligible"].all()
+    assert person.loc[
+        region.isin(["WALES", "NORTHERN_IRELAND"]) & (person["age"] >= 60),
+        "bus_pass_eligible",
+    ].all()
+    # The stage's outputs sit at the end of the person table in the declared
+    # order (the graph's cell order; the H2 parity identity depends on it).
+    tail = list(person.columns)[-len(UK_NTS_PERSON_OUTPUT_COLUMNS) :]
+    assert tail == list(UK_NTS_PERSON_OUTPUT_COLUMNS)
     assert (
         person.loc[(region == "SCOTLAND") & (person["age"] < 22), "bus_pass_eligible"]
     ).all()

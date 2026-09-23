@@ -1351,7 +1351,7 @@ stages:
       less_than_once_a_year_or_never: 0
   - kind: assign_bus_pass_eligibility
     output: bus_pass_eligible
-    basis: statutory concessionary travel by area (ENCTS at State Pension age outside London; London 60+ Oyster and under-18 Zip; Scotland National Entitlement Card 60+ and under-22; Wales 60+; Northern Ireland SmartPass 65+); disabled passes, under-5s and child fares are absorbed by the yield
+    basis: statutory concessionary travel by area (ENCTS at State Pension age outside London; London 60+ Oyster and under-18 Zip; Scotland National Entitlement Card 60+ and under-22; Wales 60+; Northern Ireland 60+ SmartPass, free on all Translink services within Northern Ireland from age 60, the 65+ pass adding all-Ireland travel only) and under-5s free everywhere; disabled passes and child half-fares are absorbed by the yield
     rules:
       england_outside_london:
         regions:
@@ -1364,6 +1364,7 @@ stages:
         - SOUTH_EAST
         - SOUTH_WEST
         min_age: 66
+        max_age_exclusive: 5
       london:
         regions:
         - LONDON
@@ -1378,10 +1379,12 @@ stages:
         regions:
         - WALES
         min_age: 60
+        max_age_exclusive: 5
       northern_ireland:
         regions:
         - NORTHERN_IRELAND
-        min_age: 65
+        min_age: 60
+        max_age_exclusive: 5
   - kind: support_clip
     range: donor_realized
   - kind: record_mass_conservation_receipt

@@ -96,25 +96,32 @@ diagnostics. This is the never-measured #890 acceptance line (England bus-fare m
 households stretched more than 3x) and #930's measurement, to be read on the first calibration
 round after the tabs land.
 
-## Part D — the stage, the pricing and the support-side fence (C4–C7, unit-level receipts)
+## Part D — the stage, the pricing and the support-side fence (C4–C7, unit-level receipts; superseded)
+
+Written on 2026-09-18 before the tabs landed. Parts E to K supersede it where they differ: the
+artifact pins are real (Part E), the stage count is 33 declared and 31 on the fixture (Part A), the
+ETB support rake retired (Part H, `uk_runtime/bus_support_pricing.py` replaced the diagnostic module
+named below), and Northern Ireland's concession age is 60 (Part K). Kept as the record of the
+declarations as first written.
 
 Declarations and runtime, every publisher number reaching the stages through `vendored_rows`:
 
 - `nts_bus_travel` (person grain, between `was_wealth` and `lcfs_consumption`; 32 declared
-  stages, 30 on the H2 fixture): `clean_nts_travel_tables` on the Household, Individual and Trip
+  stages, 30 on the H2 fixture at the time, 33 and 31 since the rebase): `clean_nts_travel_tables` on the Household, Individual and Trip
   tabs (UKDS SN 5340, End User Licence; England residents only since 2013) through a declared
   codebook; one regime-gated QRF on the interview frequency band (`impute_bus_use_band`,
   identity-keyed uniforms, rounded to the ordinal; devolved recipients on a declared proxy
   region); `assign_trips_from_band_means` (W5 × JJXSC trips over W2 persons, × 52.14, per band ×
   residence group, split into `bus_in_london_trips` and `other_local_bus_trips`, summed to
   `household_local_bus_trips`); `assign_bus_pass_eligibility` (England outside London 66+,
-  London under 18 or 60+, Scotland under 22 or 60+, Wales 60+, Northern Ireland 65+). If the
+  London under 18 or 60+, Scotland under 22 or 60+, Wales 60+, Northern Ireland 65+ as first
+  declared, 60+ with under-5s free everywhere since Part K). If the
   extract carries no frequency column the band is drawn from the vendored NTS0313/NTS0621 shares
   and declared midpoints scaled to the vendored NTS0303 rate, receipted. Gates
   `uk_stage_nts_bus_travel_support` (support clip) and `uk_stage_nts_bus_travel_facts`
   (`bus_travel_facts`, population fact check: user share within 0.05 of NTS0313, trips per
   person within 15 % of NTS0303, period 2024); NTS0205 car availability is a receipt line.
-  The artifact pins are zero placeholders refused at runtime until the tabs land.
+  The artifact pins were zero placeholders refused at runtime until the tabs landed (Part E).
 - `lcfs_consumption`: `assign_bus_use_incidence` and the fare cells of `rake_to_vendored_facts`
   leave the declaration; `price_bus_journeys` (`uk_runtime/bus_fare_pricing.py`) sets
   `bus_fare_spending` as Σ over the household's non-eligible persons of trips × k × y per
@@ -122,12 +129,13 @@ Declarations and runtime, every publisher number reaching the stages through `ve
   clip precedes it; every other LCFS column is byte-identical on the fixture). Wales keeps the
   clipped raw draw. Gate `uk_stage_lcfs_consumption_bus_pricing` (`bus_pricing`, population fact
   check, tolerance 1e-9) recomputes every factor from the vendored rows.
-- `etb_services`: the `bus_subsidy_spending` rake stays; gate
+- `etb_services` (as first written; the rake retired in Part H): the `bus_subsidy_spending` rake stays; gate
   `uk_stage_etb_services_support_rake` (`fact_rake`, population fact check) recomputes every
   cell's published net support through the stage's own declaration, requires the receipt's
   cells and each cell's design-weighted total after the rake to match (Northern Ireland jointly
   over bus and rail), and fails closed on a skipped cell; `record_support_per_journey`
-  (`uk_runtime/bus_support_per_journey.py`) records the value-side alternative, `applied: false`.
+  (`uk_runtime/bus_support_per_journey.py`, since renamed `bus_support_pricing.py`) records the
+  value-side alternative, `applied: false`.
 
 Factors resolved from the vendored rows at FY2024-25 (`fiscal_start: 2024-04-01`; y = receipts
 over fare-paying boardings; k = boardings over resident trips, i.e. BUS01 over NTS0705a trips
@@ -146,8 +154,10 @@ publisher's concessionary boarding share):
   covers under-22s since 2022, so its boarding share is twice England's; the eligibility rule
   matches it).
 - Northern Ireland (Translink receipts summed over services GBP 150.1m; 67.8m journeys; DfI
-  full-fare-concession journeys 8.96m, the 65+ SmartPass series, so half-fare 60–64 boardings
-  are not deducted, declared; proxy rate; population 1.93m): k 1.253, y GBP 2.551, fare per
+  journeys on the full-fare-concession travel status 8.96m, the count of free-travel boardings
+  across every concession, not an age series: the only travel status the feed carries (Vahid's
+  round-one correction; the receipts first called it a 65+ series and inferred a half-fare tier
+  that does not exist); proxy rate; population 1.93m): k 1.253, y GBP 2.551, fare per
   trip GBP 3.20, C/B 0.132.
 - Wales: unpriced (María's ruling); its imputed trips are receipted, not priced.
 

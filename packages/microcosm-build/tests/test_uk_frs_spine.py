@@ -2041,6 +2041,18 @@ def test_refuses_sha_mismatch(tmp_path: Path) -> None:
         build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
+def test_read_pinned_tab_refuses_a_zero_placeholder_pin(tmp_path) -> None:
+    """A 64-zero digest with size 0 (the pre-landing NTS placeholder) never reads."""
+
+    from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+
+    tab = tmp_path / "trip_eul_2002-2024.tab"
+    tab.write_text("TripID\tW5\n1\t1.0\n", encoding="utf-8")
+    placeholder = {"sha256": "0" * 64, "size_bytes": 0}
+    with pytest.raises(ValueError, match="not the pinned"):
+        read_pinned_tab(tab, placeholder)
+
+
 def test_refuses_nan_in_produced_weight_column(tmp_path: Path) -> None:
     tables = _fixture_tables()
     tables["househol"][0]["GROSS4"] = ""

@@ -154,7 +154,8 @@ UK_LCFS_VEHICLE_COUNT_RANGE = (0, 5)
 UK_LCFS_ROAD_FUEL_RESOURCE = "road_fuel_anchors.json"
 UK_LCFS_LICENSED_CARS_RESOURCE = "licensed_cars_fuel_type.json"
 UK_LCFS_DFT_BUS_VALUE_RESOURCE = "dft_bus_value_anchors.json"
-# The register names this module as a reader of dft_bus_journeys.json.
+# Re-exported for the allowed-resource set; the pricing module is the reader
+# the register names.
 UK_LCFS_DFT_BUS_JOURNEYS_RESOURCE = UK_DFT_BUS_JOURNEYS_RESOURCE
 UK_LCFS_DEVOLVED_BUS_FINANCE_RESOURCE = "devolved_bus_finance.json"
 UK_LCFS_VENDORED_RESOURCES = (

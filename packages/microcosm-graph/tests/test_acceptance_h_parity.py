@@ -280,7 +280,7 @@ def test_h2_uk_spine_parity(tmp_path: Path) -> None:
     graph = uk_spine_graph()
     assert graph_from_json((UK_SPINE_PARITY / "uk_spine.json").read_text()) == graph
     compiled = compile_graph(graph)
-    assert len(compiled.order) >= 31, "a CREATE node plus the 30 spine stages"
+    assert len(compiled.order) >= 31, "a CREATE node plus the 31 spine stages"
     assert all(
         set(compiled.predecessors[node_id]) <= set(compiled.order[:index])
         for index, node_id in enumerate(compiled.order)
