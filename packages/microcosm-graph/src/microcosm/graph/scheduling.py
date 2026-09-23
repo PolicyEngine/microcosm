@@ -167,12 +167,13 @@ class PreparedKernel:
 class Speculation:
     """A bounded thread pool that runs ready kernels ahead of admission.
 
-    ``max_workers`` bounds the kernel calls running at once; the coordinator
-    thread runs none while this is active. It also bounds how many prepared
-    contexts and unconsumed results may wait for their turn, so memory beyond
-    the sequential run's is at most ``max_workers`` projected contexts and
-    their results -- plus whatever the kernels themselves allocate, which no
-    worker count can bound.
+    ``max_workers`` is the pool's thread count, so it bounds the kernel calls
+    running at once; the coordinator thread runs none while this is active.
+    It also bounds how many prepared contexts may wait for their turn with
+    their results, so memory beyond the sequential run's is at most
+    ``max_workers`` early contexts and their results, plus any discarded call
+    still finishing on its worker -- and whatever the kernels themselves
+    allocate, which no worker count can bound.
 
     Every method runs on the coordinator thread. Workers run only
     :func:`invoke_kernel`.

@@ -2694,13 +2694,19 @@ def run_graph(
     receipts, cache records, stored bytes and the manifest key are therefore
     those of the sequential run, and so is a failure: the exception a run
     raises, and what it has written by then, are the sequential run's, since
-    a worker's result is only ever read at its node's turn. That holds for
-    kernels honouring their declared contract -- output a function of the
-    projected context, declared sources and node seed -- and it asks one more
-    thing of the caller: every registered kernel must be safe to call from a
-    worker thread while others run. ``resume="require"`` runs sequentially:
-    every node restores a record. Workers are joined before the run settles a
-    failure or re-derives its sources.
+    a worker's result is only ever read at its node's turn. A worker that
+    finished for a node the run never admits publishes nothing. That holds
+    for kernels honouring their declared contract -- output a function of the
+    projected context, declared sources and node seed, and no write to a
+    declared source -- and it asks one more thing of the caller: every
+    registered kernel must be safe to call from a worker thread while others
+    run, including any module state it shares with them. Kernels run on
+    threads, so only work that releases the interpreter lock runs in
+    parallel. ``resume="require"`` runs sequentially: every node restores a
+    record. Workers are joined before the run settles a failure or re-derives
+    its sources. Beyond what the kernels allocate, the extra memory is at
+    most ``max_workers`` early contexts with their results, plus any
+    discarded call still finishing.
 
     The private concurrency record, when given, is filled with this run's
     scheduling counts and per-node kernel timings. It is operational only and
