@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -552,6 +553,132 @@ def _lineage_expand_result(*, bad_source: bool = False) -> KernelResult:
             WeightKind.IMPORTANCE,
         ),
     )
+
+
+def _population_with_equal_stored_person_weights() -> Population:
+    frame = _frame()
+    return Population.from_frame(
+        Frame(
+            {entity: frame.table(entity).copy() for entity in frame.entities},
+            frame.schema,
+            {
+                "household": frame.weights_for("household"),
+                "person": frame.resolve_weights("person"),
+            },
+            frame.strata.copy(),
+        ),
+        "source",
+    )
+
+
+@pytest.mark.parametrize("cached", [False, True], ids=("cold", "cached"))
+def test_expand_sole_weight_opt_in_refuses_equal_stored_person_vector(cached):
+    population = _population_with_equal_stored_person_weights()
+    ordinary = replace(_lineage_expand_node(), mass="free")
+    node = replace(
+        ordinary,
+        params={**ordinary.params, "expand_require_sole_weight_entity": True},
+    )
+    result = _lineage_expand_result()
+    if cached:
+        # The old declaration is intentionally permissive. The new opt-in
+        # must inspect explicit topology even when effective values coincide.
+        expanded = patch(population, ordinary, result)
+        result = KernelResult(
+            frame=expanded.frame,
+            weights=result.weights,
+            receipt={"expand": expand_lineage_receipt(result.expand)},
+        )
+    before = population.frame.person.copy(deep=True)
+    with pytest.raises(PopulationError, match="sole stored weight entity"):
+        if cached:
+            restore_cached_expand(population, node, result)
+        else:
+            patch(population, node, result)
+    pd.testing.assert_frame_equal(population.frame.person, before)
+
+
+@pytest.mark.parametrize("required", [False, True])
+@pytest.mark.parametrize("cached", [False, True], ids=("cold", "cached"))
+def test_expand_sole_weight_opt_in_accepts_single_stored_entity(required, cached):
+    population = _population()
+    original = _lineage_expand_node()
+    node = replace(
+        original,
+        params={**original.params, "expand_require_sole_weight_entity": required},
+    )
+    result = _lineage_expand_result()
+    expected = patch(population, node, result)
+    if cached:
+        actual = restore_cached_expand(
+            population,
+            node,
+            KernelResult(
+                frame=expected.frame,
+                weights=result.weights,
+                receipt={"expand": expand_lineage_receipt(result.expand)},
+            ),
+        )
+        np.testing.assert_array_equal(
+            actual.frame.weights_for("household").values,
+            expected.frame.weights_for("household").values,
+        )
+
+
+@pytest.mark.parametrize("value", [1, 0, "true", "false", None])
+@pytest.mark.parametrize("cached", [False, True], ids=("cold", "cached"))
+def test_expand_sole_weight_flag_requires_exact_boolean(value, cached):
+    population = _population()
+    original = _lineage_expand_node()
+    result = _lineage_expand_result()
+    if cached:
+        expected = patch(population, original, result)
+        result = KernelResult(
+            frame=expected.frame,
+            weights=result.weights,
+            receipt={"expand": expand_lineage_receipt(result.expand)},
+        )
+    node = replace(
+        original, params={**original.params, "expand_require_sole_weight_entity": value}
+    )
+    with pytest.raises(PopulationError, match="requires a boolean"):
+        if cached:
+            restore_cached_expand(population, node, result)
+        else:
+            patch(population, node, result)
+
+
+def test_expand_without_sole_weight_opt_in_keeps_existing_multiweight_behavior():
+    population = _population_with_equal_stored_person_weights()
+    node = replace(_lineage_expand_node(), mass="free")
+    result = patch(population, node, _lineage_expand_result())
+    assert set(result.frame.weighted_entities) == {"household", "person"}
+
+
+def test_cached_expand_sole_weight_opt_in_refuses_extra_output_vector():
+    population = _population()
+    original = _lineage_expand_node()
+    node = replace(
+        original, params={**original.params, "expand_require_sole_weight_entity": True}
+    )
+    result = _lineage_expand_result()
+    expanded = patch(population, node, result).frame
+    changed = Frame(
+        {entity: expanded.table(entity).copy() for entity in expanded.entities},
+        expanded.schema,
+        {
+            "household": expanded.weights_for("household"),
+            "person": expanded.resolve_weights("person"),
+        },
+        expanded.strata.copy(),
+    )
+    cached = KernelResult(
+        frame=changed,
+        weights=result.weights,
+        receipt={"expand": expand_lineage_receipt(result.expand)},
+    )
+    with pytest.raises(PopulationError, match="sole stored weight entity"):
+        restore_cached_expand(population, node, cached)
 
 
 def _membership_overlay_result(target: int) -> KernelResult:
