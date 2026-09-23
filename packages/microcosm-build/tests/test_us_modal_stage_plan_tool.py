@@ -461,3 +461,88 @@ def test_example_plan_in_the_runbook_parses() -> None:
     example = ROOT / "docs" / "us-modal-stage-example-plan.json"
     plan = plan_lib.parse_plan(json.loads(example.read_text()))
     assert plan.tool is plan_lib.US_ACS_LOCAL_RELEASE
+
+
+def test_every_stage_uses_a_resource_class_the_app_can_run() -> None:
+    # tools/modal_us_stage.py defines one Modal function per class.
+    for tool in plan_lib.TOOLS.values():
+        for stage in tool.stages.values():
+            assert stage.resources is plan_lib.RESOURCE_CLASSES[stage.resources.name]
+
+
+@pytest.mark.parametrize(
+    ("value", "ok"),
+    [(60, True), (10_800, True), (59, False), (8 * 3600, False), (True, False)],
+)
+def test_max_wall_seconds_is_bounded_below_the_hard_timeout(value, ok) -> None:
+    data = _plan_data(max_wall_seconds=value)
+    if ok:
+        assert plan_lib.parse_plan(data).max_wall_seconds == value
+    else:
+        with pytest.raises(plan_lib.PlanError, match="max_wall_seconds"):
+            plan_lib.parse_plan(data)
+
+
+def test_budget_stop_marks_the_receipt_failed(tmp_path: Path) -> None:
+    data = _plan_data(max_wall_seconds=3600)
+    plan = plan_lib.parse_plan(data)
+    receipt = plan_lib.build_receipt(
+        plan,
+        data,
+        argv=["python"],
+        returncode=0,
+        started_at="t0",
+        finished_at="t1",
+        wall_seconds=3600.0,
+        peak_rss_bytes=None,
+        inputs_verified=[],
+        outputs=[],
+        git={},
+        runner={},
+        stopped_at_budget=True,
+    )
+    assert receipt["status"] == "FAILED"
+    assert (receipt["max_wall_seconds"], receipt["stopped_at_budget"]) == (3600, True)
+
+
+def _smoke_plan_data() -> dict:
+    return {
+        "schema": plan_lib.PLAN_SCHEMA,
+        "tool": "runner-smoke",
+        "stage": "smoke",
+        "run_id": "runner-smoke-20260923",
+        "source": {"commit": COMMIT, "branch": "us-modal-stage-runner"},
+        "inputs": {
+            "ladder": {
+                "uri": f"volume://cas/sha256/{LADDER_SHA}/us_puma_ladder_2020.npz",
+                "sha256": LADDER_SHA,
+            },
+        },
+    }
+
+
+def test_runner_smoke_is_inline_small_and_runs_the_synced_environment(
+    tmp_path: Path,
+) -> None:
+    plan = plan_lib.parse_plan(_smoke_plan_data())
+    assert plan.resources is plan_lib.CHECK
+    argv = plan_lib.planned_argv(plan)
+    assert argv[:3] == ["/opt/venv/bin/python", "-B", "-c"]
+    assert argv[4:] == [
+        "/work/state",
+        "/work/inputs/ladder/us_puma_ladder_2020.npz",
+    ]
+    # The inline code runs as written: it writes the state file the receipt
+    # lists (executed here against a local stand-in input).
+    code = argv[3]
+    assert "import microcosm.build" in code
+    ladder = tmp_path / "inputs" / "ladder" / "us_puma_ladder_2020.npz"
+    ladder.parent.mkdir(parents=True)
+    ladder.write_bytes(b"npz")
+    state = tmp_path / "state"
+    import subprocess
+
+    subprocess.run([sys.executable, "-c", code, str(state), str(ladder)], check=True)
+    payload = json.loads((state / "smoke" / "inputs.json").read_text())
+    assert payload["inputs"] == [{"input": "ladder", "bytes": 3}]
+    assert payload["policyengine_us"]

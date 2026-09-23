@@ -36,6 +36,7 @@ import resource
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -137,7 +138,8 @@ def _git_state(plan: plan_lib.Plan) -> dict[str, object]:
         "head_matches_plan": head == plan.commit,
         "tree_clean": clean,
         "branch_checked_out": _git("branch", "--show-current"),
-        "tool_present": (Path(plan_lib.IMAGE_REPO_ROOT) / plan.tool.script).is_file(),
+        "tool_present": plan.tool.script is None
+        or (Path(plan_lib.IMAGE_REPO_ROOT) / plan.tool.script).is_file(),
     }
 
 
@@ -253,6 +255,8 @@ print(json.dumps({"stages": list(getattr(args, "stages", [])) or None}))
 def _parse_check(plan: plan_lib.Plan, argv: list[str]) -> dict[str, object]:
     """Run the pinned tool's own argument parser on the built argv."""
 
+    if plan.tool.script is None:
+        return {"returncode": 0, "skipped": "inline tool; nothing to parse"}
     python, _, script, *tool_argv = argv
     if plan.tool.parse_function is None:
         cmd = [python, "-B", script, "--help"]
@@ -267,6 +271,28 @@ def _parse_check(plan: plan_lib.Plan, argv: list[str]) -> dict[str, object]:
         "stdout_tail": proc.stdout[-2000:],
         "stderr_tail": proc.stderr[-4000:],
     }
+
+
+class _BudgetWatch(threading.Thread):
+    """Stop the tool once the plan's max_wall_seconds has passed."""
+
+    def __init__(self, proc: subprocess.Popen, max_wall_seconds: int | None) -> None:
+        super().__init__(daemon=True)
+        self.proc = proc
+        self.max_wall_seconds = max_wall_seconds
+        self.done = threading.Event()
+        self.fired = False
+
+    def run(self) -> None:
+        if self.max_wall_seconds is None or self.done.wait(self.max_wall_seconds):
+            return
+        self.fired = True
+        print(f"BUDGET: stopping the tool after {self.max_wall_seconds}s", flush=True)
+        self.proc.terminate()
+        try:
+            self.proc.wait(timeout=60)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
 
 
 def _load_json(path: Path) -> dict | None:
@@ -394,11 +420,14 @@ def _run_stage(plan_data: dict) -> dict:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
+        budget = _BudgetWatch(proc, plan.max_wall_seconds)
+        budget.start()
         assert proc.stdout is not None
         for line in proc.stdout:
             log.write(line)
             print(line, end="", flush=True)
         returncode = proc.wait()
+        budget.done.set()
     wall = time.time() - started
     peak_kib = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     finished_at = _now()
@@ -420,6 +449,7 @@ def _run_stage(plan_data: dict) -> dict:
         git=git,
         runner={**_runner_identity(), "state_pulled": pulled, "state_pushed": pushed},
         prior_receipts=prior,
+        stopped_at_budget=budget.fired,
     )
     receipts_dir.mkdir(parents=True, exist_ok=True)
     name = f"{plan.stage}-{started_at.replace(':', '')}.json"
@@ -456,7 +486,24 @@ def run_stage_light(plan_data: dict) -> dict:
     return _run_stage(plan_data)
 
 
-RUNNERS = {"heavy": run_stage_heavy, "light": run_stage_light}
+@app.function(
+    image=image,
+    volumes=VOLUMES,
+    secrets=_secrets(),
+    cpu=plan_lib.CHECK.cpu,
+    memory=plan_lib.CHECK.memory_mib,
+    timeout=plan_lib.CHECK.timeout_s,
+    retries=0,
+)
+def run_stage_small(plan_data: dict) -> dict:
+    return _run_stage(plan_data)
+
+
+RUNNERS = {
+    "heavy": run_stage_heavy,
+    "light": run_stage_light,
+    "check": run_stage_small,
+}
 
 
 @app.local_entrypoint()

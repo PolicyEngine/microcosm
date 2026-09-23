@@ -174,7 +174,8 @@ class StageSpec:
 @dataclass(frozen=True)
 class ToolSpec:
     name: str
-    script: str
+    # Path of the tool in the pinned tree; None for an inline ``-c`` tool.
+    script: str | None
     inputs: tuple[str, ...]
     stages: Mapping[str, StageSpec]
     options: Mapping[str, OptionFlag]
@@ -269,7 +270,54 @@ US_ACS_LOCAL_RELEASE = ToolSpec(
     parse_function="_parse_args",
 )
 
-TOOLS: dict[str, ToolSpec] = {US_ACS_LOCAL_RELEASE.name: US_ACS_LOCAL_RELEASE}
+# A near-free end-to-end proof of the run path (inputs staged and verified,
+# the synced environment imported, a state file written, mirrored to the
+# runs volume and listed in a receipt) on any pushed commit, because the
+# code is inline rather than a file in the pinned tree.
+_RUNNER_SMOKE_CODE = """\
+import importlib.metadata as metadata
+import json
+import pathlib
+import sys
+
+import microcosm.build  # noqa: F401 - proves the synced environment imports
+
+state = pathlib.Path(sys.argv[1])
+rows = [
+    {"input": pathlib.Path(p).parent.name, "bytes": pathlib.Path(p).stat().st_size}
+    for p in sys.argv[2:]
+]
+payload = {"inputs": rows, "policyengine_us": metadata.version("policyengine-us")}
+(state / "smoke").mkdir(parents=True, exist_ok=True)
+(state / "smoke" / "inputs.json").write_text(json.dumps(payload, indent=2) + "\\n")
+print("runner smoke ok:", json.dumps(payload))
+"""
+
+
+def _runner_smoke_argv(
+    plan: Plan, input_paths: Mapping[str, str], state_dir: str
+) -> list[str]:
+    return [
+        "-c",
+        _RUNNER_SMOKE_CODE,
+        state_dir,
+        *(input_paths[name] for name in sorted(plan.inputs)),
+    ]
+
+
+RUNNER_SMOKE = ToolSpec(
+    name="runner-smoke",
+    script=None,
+    inputs=("feed", "ladder", "staging_summary", "hub_file"),
+    stages={"smoke": StageSpec("smoke", CHECK, ())},
+    options={},
+    owned_flags=frozenset(),
+    argv_builder=_runner_smoke_argv,
+)
+
+TOOLS: dict[str, ToolSpec] = {
+    tool.name: tool for tool in (US_ACS_LOCAL_RELEASE, RUNNER_SMOKE)
+}
 
 
 # --------------------------------------------------------------------------- #
@@ -416,6 +464,9 @@ class Plan:
     inputs: Mapping[str, InputRef]
     options: Mapping[str, object] = field(default_factory=dict)
     env: Mapping[str, str] = field(default_factory=dict)
+    # Runner-side budget: the tool is stopped after this many seconds, so a
+    # stage's cost is bounded below the resource class's hard timeout.
+    max_wall_seconds: int | None = None
 
     @property
     def stage_spec(self) -> StageSpec:
@@ -426,7 +477,19 @@ class Plan:
         return self.stage_spec.resources
 
 
-_PLAN_KEYS = {"schema", "tool", "stage", "run_id", "source", "inputs", "options", "env"}
+_PLAN_KEYS = {
+    "schema",
+    "tool",
+    "stage",
+    "run_id",
+    "source",
+    "inputs",
+    "options",
+    "env",
+    "max_wall_seconds",
+}
+# Time the container keeps for staging inputs, hashing and mirroring state.
+_RUNNER_OVERHEAD_SECONDS = 15 * 60
 
 
 def parse_plan(data: object) -> Plan:
@@ -528,6 +591,18 @@ def parse_plan(data: object) -> Plan:
             raise PlanError(f"env {key!r} must be a string")
         env[key] = raw_env[key]
 
+    max_wall = data.get("max_wall_seconds")
+    ceiling = tool.stages[stage].resources.timeout_s - _RUNNER_OVERHEAD_SECONDS
+    if max_wall is not None and (
+        not isinstance(max_wall, int)
+        or isinstance(max_wall, bool)
+        or not 60 <= max_wall <= ceiling
+    ):
+        raise PlanError(
+            f"max_wall_seconds must be an integer from 60 to {ceiling} for "
+            f"stage {stage!r}"
+        )
+
     return Plan(
         tool=tool,
         stage=stage,
@@ -538,6 +613,7 @@ def parse_plan(data: object) -> Plan:
         inputs=inputs,
         options=options,
         env=env,
+        max_wall_seconds=max_wall,
     )
 
 
@@ -607,7 +683,8 @@ def build_stage_argv(
         raise PlanError(f"no staged path for inputs {missing}")
     tool_argv = plan.tool.argv_builder(plan, input_paths, state_dir)
     tool_argv += option_argv(plan)
-    return [python, "-B", plan.tool.script, *tool_argv]
+    script = [] if plan.tool.script is None else [plan.tool.script]
+    return [python, "-B", *script, *tool_argv]
 
 
 def planned_argv(plan: Plan, work_root: str = WORK_ROOT) -> list[str]:
@@ -734,11 +811,14 @@ def build_receipt(
     git: Mapping[str, object],
     runner: Mapping[str, object],
     prior_receipts: Sequence[Mapping[str, object]] = (),
+    stopped_at_budget: bool = False,
 ) -> dict[str, object]:
     resources = plan.resources
     return {
         "schema": RECEIPT_SCHEMA,
-        "status": "COMPLETED" if returncode == 0 else "FAILED",
+        "status": "COMPLETED"
+        if returncode == 0 and not stopped_at_budget
+        else "FAILED",
         "tool": plan.tool.name,
         "stage": plan.stage,
         "run_id": plan.run_id,
@@ -759,6 +839,8 @@ def build_receipt(
         },
         "argv": list(argv),
         "returncode": returncode,
+        "max_wall_seconds": plan.max_wall_seconds,
+        "stopped_at_budget": stopped_at_budget,
         "started_at": started_at,
         "finished_at": finished_at,
         "wall_seconds": round(wall_seconds, 1),
