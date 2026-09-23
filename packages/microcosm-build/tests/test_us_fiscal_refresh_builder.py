@@ -13941,3 +13941,96 @@ def test_spm_composition_gate_is_not_guarded_by_skip_reform_validation() -> None
         "--skip-reform-validation must not disable the SPM composition gate; "
         f"gate call at {gate_calls} sits inside one of its branches"
     )
+
+
+# ---------------------------------------------------------------------------
+# eCPS parity: the pinned reference's retired layer names are graded under the
+# live engine names (route A, 2026-09-23: the first fresh-base release on
+# policyengine-us 2.2.1 refused "would_claim_wic: reference populates 100.0%
+# of records, candidate is all-zero" although takes_up_wic_if_eligible was
+# populated).
+# ---------------------------------------------------------------------------
+
+
+def test_ecps_reference_layers_project_the_wic_rename() -> None:
+    builder = _load_builder_module()
+
+    projected, applied = builder._project_ecps_reference_layers(
+        {"would_claim_wic": 1.0, "employment_income": 0.5}
+    )
+
+    assert projected == {"takes_up_wic_if_eligible": 1.0, "employment_income": 0.5}
+    assert applied == {"would_claim_wic": "takes_up_wic_if_eligible"}
+
+
+def test_ecps_reference_projection_refuses_to_merge_two_layers() -> None:
+    builder = _load_builder_module()
+
+    with pytest.raises(ValueError, match="would merge two layers"):
+        builder._project_ecps_reference_layers(
+            {"would_claim_wic": 1.0, "takes_up_wic_if_eligible": 0.4}
+        )
+
+
+def _parity_reference(builder, shares):
+    from microcosm.build.us_runtime.parity_reference import (
+        EcpsParityReference,
+        EcpsParitySource,
+    )
+
+    return EcpsParityReference(
+        source=EcpsParitySource(
+            repo_id="policyengine/policyengine-us-data",
+            repo_type="model",
+            filename="enhanced_cps_2024.h5",
+            revision="synthetic",
+            sha256="0" * 64,
+            vintage="synthetic",
+            period="2024",
+        ),
+        nonzero_shares=shares,
+    )
+
+
+def test_ecps_parity_gate_grades_the_renamed_wic_layer_live(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder, "_engine_input_variables", lambda: ("takes_up_wic_if_eligible",)
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_nonzero_shares",
+        lambda frame, *, columns: {"takes_up_wic_if_eligible": 0.42},
+    )
+
+    gate = builder._ecps_parity_gate(
+        object(),
+        reference=_parity_reference(builder, {"would_claim_wic": 1.0}),
+        known_gaps=(),
+    )
+
+    assert gate.passed, gate.failures
+    assert gate.details["reference_layer_renames"] == {
+        "would_claim_wic": "takes_up_wic_if_eligible"
+    }
+
+
+def test_ecps_parity_gate_still_fails_an_empty_renamed_layer(monkeypatch) -> None:
+    builder = _load_builder_module()
+    monkeypatch.setattr(
+        builder, "_engine_input_variables", lambda: ("takes_up_wic_if_eligible",)
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_nonzero_shares",
+        lambda frame, *, columns: {"takes_up_wic_if_eligible": 0.0},
+    )
+
+    gate = builder._ecps_parity_gate(
+        object(),
+        reference=_parity_reference(builder, {"would_claim_wic": 1.0}),
+        known_gaps=(),
+    )
+
+    assert not gate.passed
+    assert gate.failures[0].startswith("takes_up_wic_if_eligible:")
