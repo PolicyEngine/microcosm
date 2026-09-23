@@ -1,0 +1,1 @@
+Organize tests by engine requirement and country, run each environment in one job per supported Python version, and distribute ordinary tests across two pytest workers instead of creating a matrix job for each alphabetical file group.
