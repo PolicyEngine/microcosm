@@ -655,6 +655,66 @@ IDENTITY_LEDGER_FILTER_METADATA_KEYS = frozenset(
     }
 )
 
+#: Restated constraints, a third class distinct from both sets above: a
+#: labelled feed re-expresses a fact's universe constraint in the Ledger's own
+#: concept vocabulary (``us:statutes/26/62#adjusted_gross_income_lower_bound``)
+#: alongside the compiled metadata the materializer actually slices on
+#: (``agi_lower_bound``). These keys are NOT inert — they restrict the
+#: microdata — so they can never join the supported set outright: a future
+#: feed whose labelled bound disagreed with the compiled one would then be
+#: silently ignored, materializing a wider population than the published cell
+#: covers, which is the failure the guard exists to stop. Each key here is
+#: accepted only per spec, and only when that spec also carries the filter the
+#: materializer applies and the two select the same population; a restatement
+#: that disagrees, or that has no compiled counterpart, stays fatal and the
+#: refusal names the values. Values are the restated-constraint rule that
+#: decides the comparison (see ``_restated_ledger_filter_refusal``).
+RESTATED_LEDGER_FILTER_CONCEPTS = {
+    "us:statutes/26/62#adjusted_gross_income": "agi_band",
+    "us.tax.earned_income_credit_qualifying_children": "eitc_child_count",
+}
+
+#: Bound-side suffixes a restated constraint key may carry. A key with no
+#: suffix restates an exact value of the concept.
+RESTATED_LEDGER_FILTER_BOUND_SIDES = (
+    ("_lower_bound", "lower"),
+    ("_upper_bound", "upper"),
+)
+
+#: Compiled metadata the materializer slices the AGI band on, by bound
+#: side: the ``irs_soi`` loop in :func:`_materialize_target_frame` reads
+#: both through :func:`_as_bound` into one half-open mask. A restated AGI
+#: bound is accepted only against its own side; the sibling side is judged
+#: by its own key.
+RESTATED_AGI_BAND_COMPILED_KEYS = {
+    "lower": "agi_lower_bound",
+    "upper": "agi_upper_bound",
+}
+
+#: Qualifying-child counts probed when deciding whether a restated EITC
+#: child-count bound selects the same returns as the compiled filter.
+#: :func:`_eitc_child_count_mask` resolves every compiled value to ``== 0``,
+#: ``== 1``, ``== 2`` or ``>= 3``, and a compared restatement is ``>= n`` or
+#: ``== n`` (an upper bound is refused before any comparison; see
+#: :data:`RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES`); evaluating both over
+#: 0..16 separates every such pair, so equal masks over the probe mean equal
+#: populations. Counts above the probe are refused rather than compared.
+RESTATED_EITC_CHILD_COUNT_PROBE_MAX = 16
+
+#: Bound sides on which a restated EITC qualifying-child key is refused
+#: outright, whatever its value and whatever the spec compiles. What an upper
+#: bound selects turns on the Ledger's operator — ``< 1`` is the childless
+#: returns, ``<= 1`` adds the one-child returns — and that operator is
+#: unconfirmed for count constraints. The metadata key does not settle it:
+#: :func:`microcosm.build.ledger_targets._constraint_bound_filters` stamps a
+#: ``<`` row as ``_upper_bound`` (``<=`` becomes ``_upper_bound_inclusive``,
+#: which no restated concept names, so it is refused by bare key), but the
+#: dimension stamp in ``_ledger_metadata`` runs first and wins through
+#: ``setdefault``, and can carry the same key with no operator at all. So no
+#: reading is guessed until the Ledger confirms one (Max, 2026-09-22). Lower
+#: and exact restatements stay under the agreement rule.
+RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES = frozenset({"upper"})
+
 FISCAL_TARGET_SOURCE_KEYS = {
     "cbo": "Congressional Budget Office revenue projections",
     "cms_aca": "CMS ACA marketplace enrollment public use files",
@@ -4343,6 +4403,17 @@ def _is_noop_ledger_filter_value(value: str) -> bool:
 
 
 def _unsupported_soi_ledger_filters(metadata: Mapping[str, str]) -> tuple[str, ...]:
+    """Ledger filter keys the SOI slice does not act on, for one spec.
+
+    A non-empty result drops the spec from SOI materialization silently in
+    the ``irs_soi`` loop of :func:`_materialize_target_frame`, so an
+    accepted restatement must clear here too — otherwise
+    accepting it at the fatal guard would only move the spec from a refusal
+    to a silent disappearance. A restatement that disagrees stays listed, and
+    :func:`_assert_supported_ledger_filter_metadata` refuses it before the
+    materializer ever reaches this skip.
+    """
+
     return tuple(
         sorted(
             key
@@ -4350,6 +4421,8 @@ def _unsupported_soi_ledger_filters(metadata: Mapping[str, str]) -> tuple[str, .
             if key.startswith("ledger_filter_")
             and key not in SUPPORTED_SOI_LEDGER_FILTERS
             and not _is_noop_ledger_filter_value(str(value))
+            and _restated_ledger_filter_refusal(str(key), str(value), metadata)
+            is not None
         )
     )
 
@@ -4419,6 +4492,157 @@ def _population_age_household_values(
     return values
 
 
+def _restated_ledger_filter_concept(key: str) -> tuple[str, str | None]:
+    """Split a ``ledger_filter_*`` key into its concept and bound side.
+
+    ``ledger_filter_us:statutes/26/62#adjusted_gross_income_lower_bound``
+    splits into ``("us:statutes/26/62#adjusted_gross_income", "lower")``; a
+    key with no bound suffix keeps the whole concept and side ``None``,
+    meaning it restates an exact value.
+    """
+
+    if not key.startswith("ledger_filter_"):
+        return "", None
+    concept = key[len("ledger_filter_") :]
+    for suffix, side in RESTATED_LEDGER_FILTER_BOUND_SIDES:
+        if concept.endswith(suffix) and len(concept) > len(suffix):
+            return concept[: -len(suffix)], side
+    return concept, None
+
+
+def _restated_bound_value(value: str) -> float | None:
+    try:
+        return _as_bound(value.strip())
+    except ValueError:
+        return None
+
+
+def _restated_count_value(value: str) -> float | None:
+    try:
+        count = float(value.strip())
+    except ValueError:
+        return None
+    if not count.is_integer() or not 0 <= count <= RESTATED_EITC_CHILD_COUNT_PROBE_MAX:
+        return None
+    return count
+
+
+def _restated_agi_band_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side is None:
+        return (
+            f"{key}={value} restates an exact AGI, but the materializer "
+            "slices a half-open AGI band and applies no exact-value AGI filter"
+        )
+    compiled_key = RESTATED_AGI_BAND_COMPILED_KEYS[side]
+    compiled = metadata.get(compiled_key)
+    if compiled is None:
+        return f"{key}={value} restates a bound the spec does not compile: no {compiled_key}"
+    restated = _restated_bound_value(value)
+    applied = _restated_bound_value(str(compiled))
+    if restated is None or applied is None or restated != applied:
+        return f"{key}={value} disagrees with {compiled_key}={compiled}"
+    return None
+
+
+def _restated_eitc_child_count_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+    *,
+    side: str | None,
+) -> str | None:
+    if side in RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES:
+        return (
+            f"{key}={value} restates a qualifying-child {side} bound, refused "
+            "outright: the Ledger's operator for it (< or <=) is unconfirmed, "
+            "and the two readings select different returns"
+        )
+    compiled = _soi_eitc_child_count_filter(metadata)
+    if compiled is None:
+        return (
+            f"{key}={value} restates a qualifying-child bound on a spec that "
+            "carries no child-count filter for the materializer to apply"
+        )
+    bound = _restated_count_value(value)
+    if bound is None:
+        return (
+            f"{key}={value} is not a qualifying-child count in "
+            f"0..{RESTATED_EITC_CHILD_COUNT_PROBE_MAX}"
+        )
+    counts = np.arange(RESTATED_EITC_CHILD_COUNT_PROBE_MAX + 1, dtype=np.float64)
+    if side == "lower":
+        restated_mask = counts >= bound
+    elif side is None:
+        restated_mask = counts == bound
+    else:
+        raise ValueError(
+            f"{key}: bound side {side!r} reached the qualifying-child "
+            "comparison, which reads only lower and exact restatements"
+        )
+    try:
+        applied_mask = _eitc_child_count_mask(counts, compiled)
+    except ValueError:
+        return (
+            f"{key}={value} cannot be compared: compiled child-count filter "
+            f"{compiled!r} is not one the materializer understands"
+        )
+    if not np.array_equal(restated_mask, applied_mask):
+        return (
+            f"{key}={value} selects different returns than the compiled "
+            f"child-count filter {compiled!r}"
+        )
+    return None
+
+
+def _restated_ledger_filter_refusal(
+    key: str,
+    value: str,
+    metadata: Mapping[str, str],
+) -> str | None:
+    """Judge one otherwise-unsupported ``ledger_filter_*`` key for one spec.
+
+    Returns ``None`` only when *key* restates, in the labelled feed's concept
+    vocabulary, a constraint the materializer already applies to this spec,
+    and the two select the same population — ignoring that restatement then
+    changes nothing. Every other key returns the entry to refuse with: the
+    bare key for a filter the materializer does not model (unchanged from
+    before this rule existed), or the key with both values when a restatement
+    disagrees with its compiled counterpart, or has none, or — for a
+    qualifying-child upper bound, whose operator is unconfirmed (see
+    :data:`RESTATED_EITC_CHILD_COUNT_REFUSED_SIDES`) — the key with that
+    reason, whatever the spec compiles.
+
+    Both compiled counterparts — the AGI band in
+    :data:`RESTATED_AGI_BAND_COMPILED_KEYS` and
+    :func:`_soi_eitc_child_count_filter` — are the ``irs_soi`` slice's, read
+    in the loop :func:`_materialize_target_frame` runs over ``irs_soi``
+    specs, and this rule reads them off metadata without consulting the
+    spec's family. That family-blindness is the guard's existing shape:
+    ``ledger_filter_eitc_child_count`` is likewise a blanket supported key. A
+    spec of another family carries neither counterpart, so it refuses on the
+    "does not compile" arm rather than being accepted by accident.
+    """
+
+    concept, side = _restated_ledger_filter_concept(key)
+    rule = RESTATED_LEDGER_FILTER_CONCEPTS.get(concept) if concept else None
+    if rule is None:
+        return key
+    if rule == "agi_band":
+        return _restated_agi_band_refusal(key, value, metadata, side=side)
+    if rule == "eitc_child_count":
+        return _restated_eitc_child_count_refusal(key, value, metadata, side=side)
+    raise ValueError(
+        f"RESTATED_LEDGER_FILTER_CONCEPTS maps {concept!r} to rule {rule!r}, "
+        "which has no comparison implemented."
+    )
+
+
 def _unsupported_ledger_filter_metadata(
     target_specs: Iterable[object],
 ) -> dict[str, tuple[str, ...]]:
@@ -4427,18 +4651,24 @@ def _unsupported_ledger_filter_metadata(
         metadata = getattr(spec, "metadata", None)
         if not isinstance(metadata, Mapping):
             continue
-        keys = tuple(
-            sorted(
-                str(key)
-                for key, value in metadata.items()
-                if str(key).startswith("ledger_filter")
-                and str(key) not in SUPPORTED_LEDGER_FILTER_METADATA_KEYS
-                and str(key) not in IDENTITY_LEDGER_FILTER_METADATA_KEYS
-                and not _is_noop_ledger_filter_value(str(value))
+        refusals = []
+        for key, value in metadata.items():
+            key = str(key)
+            if not key.startswith("ledger_filter"):
+                continue
+            if key in SUPPORTED_LEDGER_FILTER_METADATA_KEYS:
+                continue
+            if key in IDENTITY_LEDGER_FILTER_METADATA_KEYS:
+                continue
+            if _is_noop_ledger_filter_value(str(value)):
+                continue
+            refusal = _restated_ledger_filter_refusal(key, str(value), metadata)
+            if refusal is not None:
+                refusals.append(refusal)
+        if refusals:
+            unsupported[str(getattr(spec, "name", "<unnamed target>"))] = tuple(
+                sorted(refusals)
             )
-        )
-        if keys:
-            unsupported[str(getattr(spec, "name", "<unnamed target>"))] = keys
     return unsupported
 
 
