@@ -3304,11 +3304,20 @@ class NativeSurveyReleaseResult(NamedTuple):
 
 
 def _native_release_source_identity() -> dict:
+    """Describe the checkout this tool was loaded from, not the caller's cwd."""
     tool = Path(__file__).resolve()
     identity: dict[str, object] = {"tool_sha256": _sha256(tool)}
+
+    def git(*args: str) -> str:
+        return subprocess.check_output(
+            ("git", "-C", str(tool.parent.parent), *args),
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+
     try:
-        identity["git_commit"] = _git_output("rev-parse", "HEAD")
-        identity["git_dirty"] = _git_dirty()
+        identity["git_commit"] = git("rev-parse", "HEAD")
+        identity["git_dirty"] = bool(git("status", "--porcelain"))
     except (OSError, subprocess.CalledProcessError):
         identity["git_commit"] = None
         identity["git_dirty"] = None

@@ -984,6 +984,27 @@ def test_writer_mutation_of_parent_cannot_produce_a_receipt(
         builder._run_prepared_native_fiscal_release(parent, **kwargs)
 
 
+def test_source_identity_describes_the_tool_checkout_not_the_cwd(
+    builder, monkeypatch, tmp_path
+):
+    import subprocess
+
+    tool = Path(builder.__file__).resolve()
+    monkeypatch.chdir(tmp_path)
+    identity = builder._native_release_source_identity()
+    assert identity["tool_sha256"] == builder._sha256(tool)
+    try:
+        expected = subprocess.check_output(
+            ("git", "-C", str(tool.parent.parent), "rev-parse", "HEAD"),
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        expected = None
+    assert identity["git_commit"] == expected
+    assert (identity["git_dirty"] is None) == (expected is None)
+
+
 def test_native_json_writer_is_create_only(builder, tmp_path):
     path = tmp_path / "manifest.json"
     digest = builder._write_native_release_json(path, {"release_eligible": False})
