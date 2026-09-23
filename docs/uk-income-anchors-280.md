@@ -139,6 +139,34 @@ three Table 2.5 measures. Two SPI bands share the 30-50k and 50-100k Table
 uprated, not as diagnostics. Table 2.2 publishes taxpayer counts by region only
 and is not bound.
 
+## Reserved income rows on the spine
+
+The spine stage `spi_income_band_donors` (between `spi_support_channel` and
+`hmrc_spi_income_spine`) reserves 120 SPI-channel households for each HMRC
+Table 2.5 total-income band from £200,000: 200k-500k, 500k-1m, 1m-2m and 2m
+and over. Each is a whole FRS household copied at clone index 2, flagged
+`household_is_spi_income_band_donor` with its band in
+`spi_income_band_donor_lower_bound`, with one carrier adult
+(`person_is_spi_income_band_carrier`) drawn without replacement by the SPI
+2022-23 tape's FACT-weighted propensity for the band given region, sex and
+age band. The copy starts at the build tax year's published band taxpayers
+over 120 (359k/120 = 2,992 for 200k-500k on the 2024-25 projection, 61k/120
+= 508, 20k/120 = 167 and 10k/120 = 83), mass added and receipted as the CGT
+band donors' is. The income stage's `resample_band_donor_leaves` operation
+then gives every carrier a band-conditional draw: one tape record whose
+published total income (TEI + TII) lies in the band, FACT-weighted with
+replacement from the carrier's region where that regional pool holds at
+least 20 records, otherwise nationally, all eighteen stage-1 leaves copied
+together and uprated as the forest draws are. Composite records stay in the
+pools as published. Non-carrier adults in donor households keep the ordinary
+forest draw; stage 2 refills their FRS-only inputs as for every synthetic
+row. The stage-health gate `uk_stage_spi_income_band_donors_support` checks
+that every band carries its donors at positive band-exact weight with one
+carrier each. The methodology and the evidence for it are in
+`repos/uk-spi-income-band-donors-plan-2026-09-23.md` and
+`repos/uk-upper-tail-investigation-2026-09-23.md`: before this stage the
+spine, like the enhanced FRS, carried no record above £1.51m of total income.
+
 ## Not done here
 
 - The property-income amount rows stay signed out: the spine's

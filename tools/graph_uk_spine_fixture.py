@@ -100,6 +100,9 @@ from microcosm.build.uk_runtime.regional_uprating import (
 from microcosm.build.uk_runtime.salary_sacrifice import (
     UKSalarySacrificeStageTransform,
 )
+from microcosm.build.uk_runtime.spi_band_donors import (
+    UKSPIIncomeBandDonorStageTransform,
+)
 from microcosm.build.uk_runtime.spi_income import SPI_DONOR_REQUIRED_COLUMNS
 from microcosm.build.uk_runtime.spi_spine import (
     UKFRSHMRCSpineLeavesStageTransform,
@@ -138,7 +141,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 32
+UK_FIXTURE_STAGE_COUNT = 33
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -868,6 +871,52 @@ def _spi_donor() -> pd.DataFrame:
         row["TII"] = row["OTHERINV"] + row["DIVIDENDS"] + row["INCPROP"] + row["INCBBS"]
         row["TI"] = row["TEI"] + row["TII"]
         rows.append(row)
+        # The reserved income bands (spi_income_band_donors) need a pool in every
+    # band from GBP 200,000 for every region, sex and age cell the synthetic
+    # frame can present as a carrier, so the band propensity is positive for
+    # any adult candidate. The rows carry a tiny FACT so the stage-1 forest
+    # bootstrap of the ordinary synthetic rows barely sees them; the band
+    # pools are FACT-weighted within the band, where they are all that
+    # exists. The top band adds composite records (AGERANGE -1) as the
+    # published tape does. TI = TEI + TII holds by construction.
+    band_pay = (250_000.0, 620_000.0, 1_300_000.0, 2_600_000.0)
+    for band_index, pay in enumerate(band_pay):
+        for region_code in range(1, 13):
+            for sex in (1.0, 2.0):
+                for age_code in range(1, 8):
+                    row = {column: 0.0 for column in SPI_DONOR_REQUIRED_COLUMNS}
+                    row.update(
+                        {
+                            "SEX": sex,
+                            "FACT": 0.002,
+                            "GORCODE": float(region_code),
+                            "AGERANGE": float(age_code),
+                            "PAY": pay + 1_000.0 * age_code,
+                            "DIVIDENDS": pay * 0.05,
+                            "INCBBS": 5_000.0 + 500.0 * band_index,
+                        }
+                    )
+                    row["TEI"] = row["PAY"]
+                    row["TII"] = row["DIVIDENDS"] + row["INCBBS"]
+                    row["TI"] = row["TEI"] + row["TII"]
+                    rows.append(row)
+    for offset in range(6):
+        row = {column: 0.0 for column in SPI_DONOR_REQUIRED_COLUMNS}
+        row.update(
+            {
+                "SEX": float(1 + offset % 2),
+                "FACT": 0.002,
+                "GORCODE": float((7, 11, 10, 1, 8, 12)[offset]),
+                "AGERANGE": -1.0,
+                "PAY": 4_000_000.0 + 250_000.0 * offset,
+                "DIVIDENDS": 800_000.0,
+                "INCBBS": 20_000.0,
+            }
+        )
+        row["TEI"] = row["PAY"]
+        row["TII"] = row["DIVIDENDS"] + row["INCBBS"]
+        row["TI"] = row["TEI"] + row["TII"]
+        rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -1343,6 +1392,12 @@ def _build_implementations(
         "spi_support_channel": UKSPISupportChannelStageTransform(
             stage=stages["spi_support_channel"],
             sample_fraction=_SPI_SAMPLE_FRACTION,
+        ),
+        "spi_income_band_donors": UKSPIIncomeBandDonorStageTransform(
+            raw_dir.parent / "spi_donor.csv",
+            stage=stages["spi_income_band_donors"],
+            sample_fraction=_SPI_SAMPLE_FRACTION,
+            donor_table=spi_donor,
         ),
         "hmrc_spi_income_spine": UKSPIIncomeSpineStageTransform(
             raw_dir.parent / "spi_donor.csv",

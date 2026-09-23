@@ -83,6 +83,7 @@ _STAGE_MODULES = {
     "etb_services": "etb_services",
     "frs_hmrc_spine_leaves": "frs_hmrc_leaves",
     "spi_support_channel": "spi_spine",
+    "spi_income_band_donors": "spi_band_donors",
     "hmrc_spi_income_spine": "spi_spine",
     "uc_reporter_redraw": "uc_reporter_redraw",
     "uc_capital_coherence": "uc_capital_coherence",
@@ -374,6 +375,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .nts_bus_travel import UKNTSBusTravelStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
+    from .spi_band_donors import UKSPIIncomeBandDonorStageTransform
     from .spi_spine import (
         UKFRSHMRCSpineLeavesStageTransform,
         UKSPIIncomeSpineStageTransform,
@@ -510,6 +512,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "spi_support_channel": UKSPISupportChannelStageTransform(
                 stage=stages["spi_support_channel"],
                 sample_fraction=sample_fraction,
+            ),
+            "spi_income_band_donors": UKSPIIncomeBandDonorStageTransform(
+                spi_path,
+                stage=stages["spi_income_band_donors"],
+                sample_fraction=sample_fraction,
+                donor_table=spi_donor,
             ),
             "hmrc_spi_income_spine": UKSPIIncomeSpineStageTransform(
                 spi_path,
@@ -1048,6 +1056,7 @@ def build_uk_registry(
         transform = implementations.get(stage)
         if stage in {
             "spi_support_channel",
+            "spi_income_band_donors",
             "cgt_incidence_clone",
             "cgt_band_donors",
             "cgt_incidence_anchor",

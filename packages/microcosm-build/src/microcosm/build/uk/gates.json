@@ -444,6 +444,25 @@
       "notes": "Stage-time donor-support gate for cgt_band_donors. The cgt_band_donor_support_bounds.json semantic_fit_note says these intervals describe donor-stage initial support and that terminal support-gate applicability requires reviewer confirmation, so this entry deliberately gates the donor stage rather than uk_support."
     },
     {
+      "id": "uk_stage_spi_income_band_donors_support",
+      "gate": "stage_health",
+      "phase": "transferred",
+      "criticality": "release_blocking",
+      "evidence_absent_blocks": true,
+      "parameters": {
+        "stage": "spi_income_band_donors",
+        "check": "spi_income_band_donor_support",
+        "donors_per_band": 120,
+        "band_lower_bounds": [
+          200000,
+          500000,
+          1000000,
+          2000000
+        ]
+      },
+      "notes": "Stage-time support gate for spi_income_band_donors (microcosm#280 lane): every HMRC Table 2.5 band from GBP 200,000 carries its reserved donor households at positive band-exact weight with one carrier each, and the bands are exactly the declared four."
+    },
+    {
       "id": "uk_stage_hmrc_cgt_gains_spine_summary",
       "gate": "stage_health",
       "phase": "transferred",
@@ -713,8 +732,10 @@
           "household.has_fuel_consumption",
           "household.household_is_capital_gains_clone",
           "household.household_is_cgt_band_donor",
+          "household.household_is_spi_income_band_donor",
           "household.household_is_spi_synthetic",
           "household.household_local_bus_trips",
+          "household.spi_income_band_donor_lower_bound",
           "household.la_code_oa",
           "household.local_authority",
           "household.lsoa_code",
@@ -771,7 +792,8 @@
           "person.tax_free_childcare_spend_routed_share",
           "person.would_claim_carers_allowance",
           "person.would_claim_marriage_allowance",
-          "person.would_claim_scp"
+          "person.would_claim_scp",
+          "person.person_is_spi_income_band_carrier"
         ],
         "reviewed_exclusions": {
           "person.incapacity_benefit_reported": "The enhanced FRS stores this legacy reported-benefit input as an all-zero layer; the candidate must drop dead zero layers."

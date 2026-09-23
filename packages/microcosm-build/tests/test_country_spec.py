@@ -999,12 +999,12 @@ class TestUKCountryPackage:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        # 31 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
-        # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725, then
-        # cgt_incidence_anchor #970 and nts_bus_travel #930 as the newest) plus
-        # the two certified-pair
-        # stages the June path still uses.
-        assert len(spec.sources.stages) == 34
+        # 33 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
+        # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725,
+        # cgt_incidence_anchor #970, nts_bus_travel #930, then
+        # spi_income_band_donors (microcosm#280 lane) as the newest) plus the two
+        # certified-pair stages the June path still uses.
+        assert len(spec.sources.stages) == 35
 
 
 class TestExistingPackagesGeneralize:
@@ -1371,6 +1371,7 @@ class TestUKGatesManifest:
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_band_donors_support",
+            "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_cgt_incidence_anchor_composition",
@@ -1471,6 +1472,7 @@ class TestUKGatesManifest:
             "uk_stage_hmrc_spi_income_spine_identity",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_cgt_band_donors_support",
+            "uk_stage_spi_income_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
             "uk_stage_cgt_incidence_anchor_composition",
