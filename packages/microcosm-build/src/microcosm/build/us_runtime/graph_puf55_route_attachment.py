@@ -916,7 +916,7 @@ class SurveyPuf55KeepAllKernel(_Kernel):
         )
         result = _keep_result(b.run.financial_population.frame)
         seal = physical._table_stamp(result.keep.to_frame())
-        financial.check_atomic_survey_financial_run(b.run)
+        financial.check_survey_financial_run(b.run)
         b.context(context, b.nodes[0], b.run.financial_population)
         require(physical._table_stamp(result.keep.to_frame()) == seal, "KEEP_CHANGED")
         return result

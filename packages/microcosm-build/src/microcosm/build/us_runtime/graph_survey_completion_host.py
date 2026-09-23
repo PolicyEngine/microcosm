@@ -370,8 +370,7 @@ class _CompletionHost:
             ),
         )
         self.host_edges = (
-            *host.financial.host.current_survey_host_edges(),
-            host.financial._geography_edge(),
+            *host.financial_host_edges(base),
             *self.ordering,
         )
         self.host_pins = _pins(
@@ -922,7 +921,9 @@ def _extend(boundary, *, resume):
     boundary.observed_stamps = tuple(stamps.items())
     boundary.witnessed = witnessed
     boundary.final_states = states
-    result = host.AtomicSurveyFinancialRunValues(
+    # The retained base already passed the strict two-variant issuer check.
+    host._run_entry(base)
+    result = type(base)(
         base.prefix,
         observed[tax.GATE_NODE],
         manifest,

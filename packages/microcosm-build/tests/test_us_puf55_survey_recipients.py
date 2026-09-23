@@ -483,8 +483,7 @@ def test_final_run_check_cannot_mutate_detached_recipient_outputs(
         caller = frame.f_back
         if (
             event == "return"
-            and frame.f_code
-            is values.financial.check_atomic_survey_financial_run.__code__
+            and frame.f_code is values.financial.check_survey_financial_run.__code__
             and caller is not None
             and caller.f_code is values.qualify_puf55_survey_recipients.__code__
             and "result" in caller.f_locals

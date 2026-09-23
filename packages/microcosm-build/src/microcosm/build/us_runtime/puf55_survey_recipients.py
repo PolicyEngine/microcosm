@@ -450,7 +450,10 @@ def _project(source_frame, frame, report, measured, *, arm=1):
 class Puf55SurveyRecipients:
     """Detached outputs with their actual upstream run; public copies are values."""
 
-    financial_run: financial.AtomicSurveyFinancialRunValues
+    financial_run: (
+        financial.AtomicSurveyFinancialRunValues
+        | financial.PreGeographySurveyFinancialRunValues
+    )
     person: pd.DataFrame
     tax_unit: pd.DataFrame
     matrices: tuple[tuple[str, bytes], ...]
@@ -490,7 +493,7 @@ def qualify_puf55_survey_recipients(financial_run, *, arm=1):
     Source receipt objects and caller-supplied role tables are not accepted.
     """
     protocol = recipient_protocol(arm)
-    financial.check_atomic_survey_financial_run(financial_run)
+    financial.check_survey_financial_run(financial_run)
     financial.require_complete_property_taxes(financial_run)
     entry = financial._run_entry(financial_run)
     state = entry[2]
@@ -564,7 +567,7 @@ def qualify_puf55_survey_recipients(financial_run, *, arm=1):
     )
     result = Puf55SurveyRecipients(financial_run, person, units, matrices, receipt, arm)
     stamp = _result_stamp(result)
-    financial.check_atomic_survey_financial_run(financial_run)
+    financial.check_survey_financial_run(financial_run)
     financial._pure_run(financial_run, entry)
     fresh = _source_report(state.preparation_entry[2], snapshot)
     fresh_measurement, _ = ss._measure(
