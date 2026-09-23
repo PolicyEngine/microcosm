@@ -714,6 +714,7 @@ _US_LAUNCH_GRAPH_RUNTIME_MODULES = frozenset(
         "puf55_survey_observed.py",
         "puf55_original_application.py",
         "puf55_original_placement.py",
+        "puf55_original_finalization.py",
         "graph_puf55_original_placement.py",
         "graph_puf55_original_host.py",
         # A fixture-only price → donor → matrix → raw draw → masked placement graph
@@ -3628,6 +3629,7 @@ _REVIEWED_DYNAMIC_SELECTOR_MODULES = frozenset(
         "puf55_survey_observed.py",
         "puf55_original_application.py",
         "puf55_original_placement.py",
+        "puf55_original_finalization.py",
         "graph_puf55_original_placement.py",
         "graph_puf55_original_host.py",
         "graph_puf55_survey_observed.py",
@@ -3761,6 +3763,7 @@ def _non_owner_source_spine_accesses(
         "puf55_survey_observed.py",
         "puf55_original_application.py",
         "puf55_original_placement.py",
+        "puf55_original_finalization.py",
         "graph_puf55_original_placement.py",
         "graph_puf55_original_host.py",
         "graph_puf55_survey_observed.py",

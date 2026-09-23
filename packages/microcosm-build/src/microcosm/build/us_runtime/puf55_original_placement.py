@@ -167,6 +167,18 @@ def _selected_ids(qualified):
 def candidate_outputs(inputs, profile):
     """Only columns absent in the pre-PUF parent may be owned by this cut."""
     policy = output_policy(profile)
+    return _owned_candidates(
+        inputs, {"person": policy["person"], "tax_unit": policy["tax_unit"]}
+    )
+
+
+def _owned_candidates(inputs, names):
+    """Check arm-one ownership of the named outputs absent in the pre-PUF parent.
+
+    Shared by this conservative cut and the whole-arm finalization policy. A
+    boolean dtype is admitted only for the maintained QBI boolean roster; every
+    other output must be a float column, exactly as arm one declared it.
+    """
     node = inputs.arm_one_node
     require(
         node.id == attachment.ATTACH_NODE
@@ -174,9 +186,10 @@ def candidate_outputs(inputs, profile):
         "ARM_ONE_DECLARATION",
     )
     declared = {(x.entity, x.column): x for x in node.outputs}
+    boolean_outputs = values.recipients.support._PUF_TAX_DETAIL_BOOLEAN_PERSON_OUTPUTS
     result = []
     for entity in ("person", "tax_unit"):
-        for name in policy[entity]:
+        for name in names[entity]:
             if name in inputs.financial_parent.frame.table(entity):
                 continue
             key = (entity, name)
@@ -195,7 +208,12 @@ def candidate_outputs(inputs, profile):
             )
             require(name in inputs.receiving.frame.table(entity), "RECEIVING_OUTPUT")
             dtype = inputs.receiving.frame.table(entity)[name].dtype
-            require(dtype in (np.dtype("float32"), np.dtype("float64")), "OUTPUT_DTYPE")
+            require(
+                isinstance(dtype, pd.BooleanDtype)
+                if entity == "person" and name in boolean_outputs
+                else dtype in (np.dtype("float32"), np.dtype("float64")),
+                "OUTPUT_DTYPE",
+            )
             require(
                 inputs.arm_one.frame.table(entity)[name].dtype == dtype, "OUTPUT_DTYPE"
             )
@@ -215,12 +233,36 @@ def candidate_outputs(inputs, profile):
     return tuple(result)
 
 
-def placement_result(qualified, inputs, conditioning, merge_receipt, *, profile):
-    """Compute exact full-axis columns/reasons without issuing a population.
+@dataclass(frozen=True)
+class CheckedBasis:
+    """Detached results of the shared arm-zero precondition checks.
 
-    A canonical missing producer is graph ownership evidence only. It never
-    means source NIU, source-observed zero, or legal eligibility. Actual source
-    and 55-model producer authentication remains the caller's host obligation.
+    Built only by :func:`_checked_basis` after every check below has passed.
+    It carries the in-process seals each caller must recompare after its own
+    arithmetic; it confers no source, owner or release authority.
+    """
+
+    policy: dict
+    source_stamp: tuple
+    fixed_stamp: tuple
+    table_stamp: str
+    frames: tuple
+    people: pd.DataFrame
+    units: pd.DataFrame
+    selected: pd.Index
+    known: pd.DataFrame
+    current: pd.DataFrame
+    all_known: pd.Series
+    counts: pd.Series
+
+
+def _checked_basis(qualified, inputs, conditioning, merge_receipt, *, profile):
+    """Every precondition shared by placement and whole-arm finalization.
+
+    Checks the fixed-input binding, exact ancestor axes, the conditioning axis
+    and merge binding, unchanged known person values in all three ancestors,
+    the whole-member unit knownness rule and exact fixed conditioning totals,
+    in that order. Nothing here writes or allocates a value.
     """
     values.check_fixed_input_binding(qualified)
     require(
@@ -285,6 +327,39 @@ def placement_result(qualified, inputs, conditioning, merge_receipt, *, profile)
         )
     counts = current.groupby("person_tax_unit_id", sort=False).size().reindex(selected)
     require(counts.gt(0).all(), "EMPTY_UNIT")
+    return CheckedBasis(
+        policy,
+        source_stamp,
+        fixed_stamp,
+        table_stamp,
+        frames,
+        people,
+        units,
+        selected,
+        known,
+        current,
+        all_known,
+        counts,
+    )
+
+
+def placement_result(qualified, inputs, conditioning, merge_receipt, *, profile):
+    """Compute exact full-axis columns/reasons without issuing a population.
+
+    A canonical missing producer is graph ownership evidence only. It never
+    means source NIU, source-observed zero, or legal eligibility. Actual source
+    and 55-model producer authentication remains the caller's host obligation.
+    """
+    basis = _checked_basis(
+        qualified, inputs, conditioning, merge_receipt, profile=profile
+    )
+    policy, source_stamp, fixed_stamp = (
+        basis.policy,
+        basis.source_stamp,
+        basis.fixed_stamp,
+    )
+    table_stamp, selected, current = basis.table_stamp, basis.selected, basis.current
+    all_known, counts = basis.all_known, basis.counts
     statuses = pd.DataFrame(index=selected)
     statuses["members"] = counts
     statuses["all_fixed_members_known"] = all_known
