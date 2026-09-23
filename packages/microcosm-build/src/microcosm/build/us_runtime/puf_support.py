@@ -58,6 +58,9 @@ QRF: Any | None = None
 
 __all__ = [
     "BASE_ASEC_SUPPORT_CHANNEL",
+    "PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES",
+    "PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS",
+    "PUF_TAX_DETAIL_INCOME_RANK_SOURCE",
     "PufTaxDetailChainInputs",
     "PUF_ABSENT_CELLS_LEGACY_ZERO_FILL",
     "PUF_ABSENT_CELLS_PRESERVE_NULLS",
@@ -196,15 +199,50 @@ class _PredictorSourcePlan:
     columns: tuple[str, ...]
 
 
+#: Survey-side tax-unit demographics the PUF imputation conditions on
+#: (microcosm#982). Each is derived identically on both sides from person age,
+#: sex and tax-unit role (``HEAD``/``SPOUSE``/``DEPENDENT``): the PUF donor from
+#: its processed person arrays, the survey recipient from its person table.
+#: ``spouse_age`` is zero when the unit has no spouse (a structural absence,
+#: not a missing value); ``head_age`` is missing when a unit has no head.
+PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES = (
+    "head_age",
+    "spouse_age",
+    "head_is_female",
+    "dependent_count",
+)
+#: The income items whose unit total ranks each tax unit within its own
+#: population (microcosm#982). The same six concepts exist on both sides, so
+#: the survey household and the PUF return are ranked on one definition.
+PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS = (
+    "employment_income",
+    "self_employment_income",
+    "taxable_interest_income",
+    "dividend_income",
+    "short_term_capital_gains",
+    "long_term_capital_gains",
+)
+PUF_TAX_DETAIL_INCOME_RANK_SOURCE = "income_rank_share"
+
+#: Predictors for the PUF tax-detail imputation (microcosm#982).
+#:
+#: The survey's income amounts are deliberately NOT predictors. Conditioning an
+#: income target on the recipient's own survey value of that item teaches the
+#: forest "output ~ input": measured on the 2026-09-12 base build, PUF-clone
+#: wages had rank correlation 1.000 with the survey value and every one landed
+#: within 10% of it, so no clone passed the survey topcodes and survey
+#: underreporting carried into the PUF half. Demographics (as in the archived
+#: eCPS, ``calibration/puf_impute.py``) plus the unit's weighted income rank in
+#: its own population let a top-ranked survey household draw a top-ranked PUF
+#: return's income vector while ordinary households keep their position.
 PUF_TAX_DETAIL_DEFAULT_PREDICTORS = (
     "puf_predictor_filing_status_code",
     "puf_predictor_tax_unit_person_count",
-    "puf_predictor_employment_income",
-    "puf_predictor_self_employment_income",
-    "puf_predictor_taxable_interest_income",
-    "puf_predictor_dividend_income",
-    "puf_predictor_short_term_capital_gains",
-    "puf_predictor_long_term_capital_gains",
+    "puf_predictor_head_age",
+    "puf_predictor_spouse_age",
+    "puf_predictor_head_is_female",
+    "puf_predictor_dependent_count",
+    "puf_predictor_income_rank_share",
 )
 
 PUF_TAX_DETAIL_DEFAULT_PERSON_OUTPUTS = (
@@ -1370,6 +1408,10 @@ def puf_tax_unit_donor_from_arrays(
     tax_unit["tax_unit_person_count"] = (
         person.groupby("tax_unit_id", sort=False).size().reindex(tax_unit_id).to_numpy()
     )
+    donor_demographics = _puf_donor_demographics(arrays, tax_unit_id)
+    if donor_demographics is not None:
+        for column in PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES:
+            tax_unit[column] = donor_demographics[column].to_numpy(dtype=np.float64)
     for output in person_outputs:
         if output in tax_unit.columns:
             continue
@@ -2845,6 +2887,20 @@ def _predictor_person_source_columns(
 ) -> tuple[str, ...]:
     if source == "filing_status_code" or source == "tax_unit_person_count":
         return ()
+    if source in ("head_age", "spouse_age"):
+        return ("age", _TAX_UNIT_ROLE_COLUMN)
+    if source == "head_is_female":
+        return ("is_female", _TAX_UNIT_ROLE_COLUMN)
+    if source == "dependent_count":
+        return (_TAX_UNIT_ROLE_COLUMN,)
+    if source == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
+        return tuple(
+            dict.fromkeys(
+                column
+                for component in PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS
+                for column in _predictor_person_source_columns(component, person)
+            )
+        )
     if source == "dividend_income" and source not in person.columns:
         return ("non_qualified_dividend_income", "qualified_dividend_income")
     if source not in person.columns and source in _PREDICTOR_LEAF_ALIASES:
@@ -2870,6 +2926,27 @@ def _strict_predictor_source_plan(
         return _PredictorSourcePlan(source, "tax_unit", columns)
     if source == "tax_unit_person_count":
         return _PredictorSourcePlan(source, "derived", ("person_tax_unit_id",))
+    if source in PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES:
+        return _PredictorSourcePlan(
+            source, "person", _predictor_person_source_columns(source, person)
+        )
+    if source == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
+        # Every component must resolve at person grain, exactly as the
+        # retired income predictors did, so the ACS earnings-universe receipt
+        # and the null checks keep covering the same survey cells.
+        for component in PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS:
+            component_plan = _strict_predictor_source_plan(
+                _PUF_PREDICTOR_PREFIX + component, tax_unit=tax_unit, person=person
+            )
+            if component_plan.entity != "person":
+                raise ValueError(
+                    "PUF income-rank component "
+                    f"{component!r} resolves at {component_plan.entity} grain; "
+                    "every component must be a person-grain survey amount."
+                )
+        return _PredictorSourcePlan(
+            source, "person", _predictor_person_source_columns(source, person)
+        )
 
     person_columns = _predictor_person_source_columns(source, person)
     person_source_present = all(column in person for column in person_columns)
@@ -2940,9 +3017,11 @@ def _tax_unit_feature_frame(
     tax_unit = frame.table("tax_unit")
     person = frame.table("person")
     result = pd.DataFrame(index=tax_unit.index)
-    for column in columns:
-        source_column = _predictor_source_column(column)
-        plan = None if source_plans is None else source_plans[str(column)]
+
+    def resolve(
+        source_column: str,
+        plan: _PredictorSourcePlan | None,
+    ) -> Any:
         if (plan is not None and plan.source_column == "filing_status_code") or (
             plan is None and source_column == "filing_status_code"
         ):
@@ -2951,21 +3030,18 @@ def _tax_unit_feature_frame(
                 source = tax_unit.get("filing_status")
             if source is None:
                 raise ValueError("tax_unit table lacks filing-status input.")
-            result[column] = _filing_status_codes(
-                source,
-                preserve_nulls=preserve_nulls,
-            )
-        elif (plan is not None and plan.entity == "derived") or (
+            return _filing_status_codes(source, preserve_nulls=preserve_nulls)
+        if (plan is not None and plan.entity == "derived") or (
             plan is None and source_column == "tax_unit_person_count"
         ):
-            result[column] = (
+            return (
                 person.groupby("person_tax_unit_id", sort=False)
                 .size()
                 .reindex(tax_unit["tax_unit_id"])
                 .fillna(0.0)
                 .to_numpy(dtype=np.float64)
             )
-        elif (plan is not None and plan.entity == "tax_unit") or (
+        if (plan is not None and plan.entity == "tax_unit") or (
             plan is None and source_column in tax_unit.columns
         ):
             tax_unit_source = plan.columns[0] if plan is not None else source_column
@@ -2973,14 +3049,77 @@ def _tax_unit_feature_frame(
                 tax_unit[tax_unit_source],
                 errors="raise" if preserve_nulls else "coerce",
             )
-            result[column] = numeric if preserve_nulls else numeric.fillna(0.0)
-        else:
-            result[column] = _person_tax_unit_sum(
-                frame,
-                source_column,
-                preserve_nulls=preserve_nulls,
+            return numeric if preserve_nulls else numeric.fillna(0.0)
+        return _person_tax_unit_sum(
+            frame,
+            source_column,
+            preserve_nulls=preserve_nulls,
+        )
+
+    demographics: pd.DataFrame | None = None
+    for column in columns:
+        source_column = _predictor_source_column(column)
+        plan = None if source_plans is None else source_plans[str(column)]
+        if source_column in PUF_TAX_DETAIL_DEMOGRAPHIC_SOURCES:
+            if demographics is None:
+                demographics = _recipient_tax_unit_demographics(
+                    frame, preserve_nulls=preserve_nulls
+                )
+            result[column] = demographics[source_column].to_numpy(dtype=np.float64)
+        elif source_column == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
+            # The unit's weighted rank within the whole survey population in
+            # the frame (microcosm#982). Clone copies carry identical survey
+            # income and split one household's weight, so ranking every row
+            # ranks the survey population; copies tie and share one rank.
+            total = np.zeros(len(tax_unit), dtype=np.float64)
+            for component in PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS:
+                component_plan = (
+                    None
+                    if source_plans is None
+                    else _strict_predictor_source_plan(
+                        _PUF_PREDICTOR_PREFIX + component,
+                        tax_unit=tax_unit,
+                        person=person,
+                    )
+                )
+                total += np.asarray(
+                    resolve(component, component_plan), dtype=np.float64
+                )
+            result[column] = _weighted_top_rank_share(
+                total,
+                frame.resolve_weights("tax_unit").values,
             )
+        else:
+            result[column] = resolve(source_column, plan)
     return result
+
+
+def _recipient_tax_unit_demographics(
+    frame: Frame,
+    *,
+    preserve_nulls: bool,
+) -> pd.DataFrame:
+    """Survey-side tax-unit demographics for the PUF predictors (microcosm#982)."""
+
+    tax_unit = frame.table("tax_unit")
+    person = frame.table("person")
+    missing = [
+        column
+        for column in ("age", "is_female", _TAX_UNIT_ROLE_COLUMN)
+        if column not in person.columns
+    ]
+    if missing:
+        raise ValueError(
+            f"PUF recipient demographic predictors require person column(s) {missing}."
+        )
+    return _tax_unit_demographics(
+        tax_unit["tax_unit_id"].to_numpy(),
+        person["person_tax_unit_id"].to_numpy(),
+        age=person["age"].to_numpy(),
+        is_female=person["is_female"].to_numpy(),
+        role=person[_TAX_UNIT_ROLE_COLUMN].to_numpy(),
+        preserve_nulls=preserve_nulls,
+    )
 
 
 def _person_tax_unit_sum(
@@ -4051,6 +4190,178 @@ def _person_source_values(
     return None
 
 
+_TAX_UNIT_ROLE_COLUMN = "tax_unit_role_input"
+_TAX_UNIT_ROLES = ("HEAD", "SPOUSE", "DEPENDENT")
+
+
+def _weighted_top_rank_share(values: Any, weights: Any) -> np.ndarray:
+    """Return each row's weighted share of units with a strictly greater value.
+
+    The top unit gets 0.0 and tied values share one rank, so survey topcode ties
+    stay tied. Rows with a non-finite value get NaN and are excluded from the
+    population total, which lets strict recipient validation fail them by name.
+    """
+
+    value_array = np.asarray(values, dtype=np.float64)
+    weight_array = np.asarray(weights, dtype=np.float64)
+    if value_array.ndim != 1 or value_array.shape != weight_array.shape:
+        raise ValueError("Income-rank values and weights must be aligned 1-D arrays.")
+    result = np.full(value_array.shape, np.nan, dtype=np.float64)
+    finite = np.isfinite(value_array)
+    if not finite.any():
+        return result
+    ranked_weights = weight_array[finite]
+    if not np.isfinite(ranked_weights).all() or (ranked_weights < 0).any():
+        raise ValueError("Income-rank weights must be finite and nonnegative.")
+    total = float(ranked_weights.sum())
+    if total <= 0:
+        raise ValueError("Income-rank weights must have positive total mass.")
+    ranked_values = value_array[finite]
+    order = np.argsort(-ranked_values, kind="stable")
+    sorted_values = ranked_values[order]
+    sorted_weights = ranked_weights[order]
+    weight_before = np.cumsum(sorted_weights) - sorted_weights
+    first_of_tie = np.r_[True, sorted_values[1:] != sorted_values[:-1]]
+    tie_group = np.cumsum(first_of_tie) - 1
+    shares = np.empty(len(ranked_values), dtype=np.float64)
+    shares[order] = weight_before[first_of_tie][tie_group] / total
+    result[finite] = shares
+    return result
+
+
+def _tax_unit_demographics(
+    tax_unit_ids: Any,
+    person_tax_unit_ids: Any,
+    *,
+    age: Any,
+    is_female: Any,
+    role: Any,
+    preserve_nulls: bool,
+) -> pd.DataFrame:
+    """Derive head age, spouse age, head sex and dependent count per tax unit.
+
+    One definition serves both sides of the PUF imputation (microcosm#982).
+    ``spouse_age`` is 0.0 for a unit without a spouse. ``head_age`` and
+    ``head_is_female`` are NaN for a unit without a head when nulls are
+    preserved, and zero otherwise. A unit with two heads or two spouses is a
+    malformed role structure and fails closed.
+    """
+
+    roles = pd.Series(role, dtype="object").astype("string").str.upper()
+    persons = pd.DataFrame(
+        {
+            "tax_unit_id": np.asarray(person_tax_unit_ids),
+            "age": pd.to_numeric(pd.Series(age), errors="coerce").to_numpy(
+                dtype=np.float64
+            ),
+            "is_female": pd.to_numeric(
+                pd.Series(is_female, dtype="object"), errors="coerce"
+            ).to_numpy(dtype=np.float64),
+            "role": roles.to_numpy(dtype=object),
+        }
+    )
+    index = pd.Index(np.asarray(tax_unit_ids))
+    heads = persons.loc[persons["role"].eq("HEAD").fillna(False).to_numpy()]
+    spouses = persons.loc[persons["role"].eq("SPOUSE").fillna(False).to_numpy()]
+    dependents = persons.loc[persons["role"].eq("DEPENDENT").fillna(False).to_numpy()]
+    for label, members in (("head", heads), ("spouse", spouses)):
+        if members["tax_unit_id"].duplicated().any():
+            raise ValueError(
+                f"PUF predictor demographics found a tax unit with more than one {label}."
+            )
+    head_rows = heads.set_index("tax_unit_id")
+    spouse_rows = spouses.set_index("tax_unit_id")
+    has_spouse = index.isin(spouse_rows.index)
+    spouse_age = spouse_rows["age"].reindex(index).to_numpy(dtype=np.float64)
+    result = pd.DataFrame(
+        {
+            "head_age": head_rows["age"].reindex(index).to_numpy(dtype=np.float64),
+            "spouse_age": np.where(has_spouse, spouse_age, 0.0),
+            "head_is_female": head_rows["is_female"]
+            .reindex(index)
+            .to_numpy(dtype=np.float64),
+            "dependent_count": dependents.groupby("tax_unit_id")
+            .size()
+            .reindex(index)
+            .fillna(0)
+            .to_numpy(dtype=np.float64),
+        },
+        index=index,
+    )
+    if not preserve_nulls:
+        result = result.fillna(0.0)
+    return result
+
+
+def _puf_donor_demographics(
+    arrays: Mapping[str, Sequence[Any]],
+    tax_unit_id: np.ndarray,
+) -> pd.DataFrame | None:
+    """Donor demographics from processed PUF person arrays, or None if absent."""
+
+    required = ("person_tax_unit_id", "age", "is_tax_unit_head", "is_tax_unit_spouse")
+    if any(column not in arrays for column in required):
+        return None
+    if "is_female" in arrays:
+        is_female = _numeric_array(arrays["is_female"])
+    elif "is_male" in arrays:
+        is_female = 1.0 - _numeric_array(arrays["is_male"])
+    else:
+        return None
+    head = _numeric_array(arrays["is_tax_unit_head"]) > 0
+    spouse = _numeric_array(arrays["is_tax_unit_spouse"]) > 0
+    dependent = (
+        _numeric_array(arrays["is_tax_unit_dependent"]) > 0
+        if "is_tax_unit_dependent" in arrays
+        else ~(head | spouse)
+    )
+    if ((head.astype(int) + spouse.astype(int) + dependent.astype(int)) > 1).any():
+        raise ValueError("PUF donor person carries more than one tax-unit role.")
+    role = np.where(
+        head, "HEAD", np.where(spouse, "SPOUSE", np.where(dependent, "DEPENDENT", None))
+    )
+    demographics = _tax_unit_demographics(
+        tax_unit_id,
+        _numeric_array(arrays["person_tax_unit_id"]).astype("int64"),
+        age=_numeric_array(arrays["age"]),
+        is_female=is_female,
+        role=role,
+        preserve_nulls=False,
+    )
+    return demographics
+
+
+def _donor_rank_component_values(table: pd.DataFrame, source: str) -> np.ndarray:
+    """One donor income-rank component, resolved like its predictor alias."""
+
+    if source in table.columns:
+        values = table[source]
+    elif source == "dividend_income" and {
+        "qualified_dividend_income",
+        "non_qualified_dividend_income",
+    }.issubset(table.columns):
+        values = pd.to_numeric(
+            table["qualified_dividend_income"], errors="coerce"
+        ).fillna(0.0) + pd.to_numeric(
+            table["non_qualified_dividend_income"], errors="coerce"
+        ).fillna(0.0)
+    elif source in _PREDICTOR_LEAF_ALIASES and any(
+        leaf in table.columns for leaf in _PREDICTOR_LEAF_ALIASES[source]
+    ):
+        values = sum(
+            pd.to_numeric(table[leaf], errors="coerce").fillna(0.0)
+            for leaf in _PREDICTOR_LEAF_ALIASES[source]
+            if leaf in table.columns
+        )
+    else:
+        raise ValueError(f"PUF donor cannot resolve income-rank component {source!r}.")
+    return (
+        pd.to_numeric(pd.Series(values), errors="coerce")
+        .fillna(0.0)
+        .to_numpy(dtype=np.float64)
+    )
+
+
 def _add_predictor_aliases(
     table: pd.DataFrame,
     predictors: Sequence[str],
@@ -4059,6 +4370,19 @@ def _add_predictor_aliases(
         if predictor in table.columns:
             continue
         source = _predictor_source_column(predictor)
+        if source == PUF_TAX_DETAIL_INCOME_RANK_SOURCE:
+            # The donor's rank in the PUF population, on the same six income
+            # concepts the survey recipient is ranked on (microcosm#982).
+            if "weight" not in table.columns:
+                raise ValueError("PUF donor income rank requires a weight column.")
+            total = np.zeros(len(table), dtype=np.float64)
+            for component in PUF_TAX_DETAIL_INCOME_RANK_COMPONENTS:
+                total += _donor_rank_component_values(table, component)
+            table[predictor] = _weighted_top_rank_share(
+                total,
+                pd.to_numeric(table["weight"], errors="coerce").fillna(0.0),
+            )
+            continue
         if source in table.columns:
             table[predictor] = table[source]
         elif source == "dividend_income" and {
