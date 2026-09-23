@@ -6,10 +6,22 @@ import pytest
 
 from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime import cgt_imputation
+from microcosm.build.uk_runtime.advani_summers import (
+    ADVANI_SUMMERS_RESOURCE,
+    ADVANI_SUMMERS_VINTAGE,
+    CGT_PRIOR_PERCENTILE_COLUMNS,
+    advani_summers_band_index,
+    advani_summers_knots,
+    advani_summers_rows,
+    exempt_range_quantiles,
+    load_advani_summers_distribution,
+    quantile_for_amount,
+)
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_AGE_GROUP_LOWER_BOUNDS,
     UK_CGT_REGION_GROUP_LABELS,
     UK_CGT_REGION_GROUPS,
+    UK_CGT_REMAINDER_POLICY,
     UK_CGT_SPINE_MASS_CONSERVATION_REASON,
     UK_CGT_SPINE_STAGE_NAME,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
@@ -18,6 +30,7 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     _CellPlan,
     _draw_plan_amounts,
     _joint_plans,
+    _map_remainder_amounts,
     _pareto_quantile,
     _pareto_stratum_means,
     _rake_allocation_targets,
@@ -26,6 +39,7 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     impute_uk_capital_gains,
     impute_uk_capital_gains_with_report,
     summarize_uk_cgt_imputation,
+    uk_cgt_component_sum_income,
     uk_cgt_spine_stage_transform,
     uk_cgt_taxable_income_proxy,
 )
@@ -377,22 +391,160 @@ class TestImputation:
         receipt = result.mass_log[-1]
         assert receipt.reason == UK_CGT_SPINE_MASS_CONSERVATION_REASON
 
-    def test_remainder_keeps_existing_amounts_capped_at_the_aea(self) -> None:
+    def test_remainder_takes_advani_summers_amounts_inside_the_exempt_range(
+        self,
+    ) -> None:
         # One income band holds far more gainer mass than the published
-        # taxpayers, so the ranking's tail lands in the sub-AEA remainder.
+        # taxpayers, so the ranking's tail lands in the sub-AEA remainder,
+        # which the mapping places on the A&S surface (microcosm#970).
         distribution = _distribution(cell_people=10.0)
         rows = 3_000
         rng = np.random.default_rng(2)
         gains = rng.lognormal(9, 1.5, rows)
         frame = _frame(rows, gains=gains, incomes=np.full(rows, 20_000.0))
 
-        result = impute_uk_capital_gains(frame, distribution, PARAMETERS)
+        result, report = impute_uk_capital_gains_with_report(
+            frame,
+            distribution,
+            PARAMETERS,
+            conditioning=load_hmrc_cgt_conditioning_facts(),
+        )
 
         drawn = result.table("person")["capital_gains"].to_numpy()
-        remainder = drawn <= PARAMETERS.annual_exempt_amount
+        exempt = PARAMETERS.annual_exempt_amount
+        remainder = drawn <= exempt
         assert remainder.any()
-        expected = np.minimum(gains, PARAMETERS.annual_exempt_amount)
-        assert drawn[remainder] == pytest.approx(expected[remainder])
+        assert (drawn[remainder] > 0.0).all()
+        # The cap is gone: the remainder no longer sits at min(existing, AEA).
+        capped = np.minimum(gains, exempt)
+        assert not np.allclose(drawn[remainder], capped[remainder])
+        # Rank-preserving within the (single) A&S band: a larger existing
+        # gain never maps lower.
+        order = np.argsort(gains[remainder], kind="stable")
+        assert (np.diff(drawn[remainder][order]) >= 0.0).all()
+        # Every amount's inverse quantile lies strictly inside (q0, q_aea).
+        surface = advani_summers_rows(load_advani_summers_distribution())
+        band = int(advani_summers_band_index(surface, np.asarray([20_000.0]))[0])
+        knots = advani_summers_knots(surface[band])
+        lower, upper = exempt_range_quantiles(knots, exempt)
+        for amount in drawn[remainder]:
+            assert lower < quantile_for_amount(knots, float(amount)) < upper
+        # The receipt describes exactly the mapped population.
+        receipt = report.remainder
+        assert receipt["policy"] == UK_CGT_REMAINDER_POLICY
+        assert receipt["resource"] == ADVANI_SUMMERS_RESOURCE
+        assert receipt["resource_vintage"] == ADVANI_SUMMERS_VINTAGE
+        assert receipt["income_measure"] == "component_sum_without_allowance"
+        assert receipt["persons"] == int(remainder.sum())
+        assert receipt["mass"] == pytest.approx(100.0 * remainder.sum())
+        assert 0.0 < receipt["min_amount"] <= receipt["max_amount"] <= exempt
+        assert receipt["bands_with_remainder"] == 1
+        assert receipt["band_rows"][0]["zero_quantile"] == pytest.approx(lower)
+        assert receipt["band_rows"][0]["exempt_quantile"] == pytest.approx(upper)
+        assert len(receipt["resource_sha256"]) == 64
+        assert report.evidence()["remainder"] == receipt
+
+    def test_remainder_mapping_leaves_the_liable_set_and_amounts_untouched(
+        self,
+    ) -> None:
+        # Review of PR #979: the remainder mapping must never reach the
+        # published cells. Two different within-band surfaces change the
+        # remainder amounts and nothing else.
+        distribution = _distribution(cell_people=10.0)
+        rows = 3_000
+        rng = np.random.default_rng(2)
+        gains = rng.lognormal(9, 1.5, rows)
+        frame = _frame(rows, gains=gains, incomes=np.full(rows, 20_000.0))
+        published = load_advani_summers_distribution()
+        halved = {
+            "rows": [
+                {
+                    **row,
+                    **{
+                        column: 0.5 * float(row[column])
+                        for column in CGT_PRIOR_PERCENTILE_COLUMNS
+                    },
+                }
+                for row in published["rows"]
+            ]
+        }
+
+        first, _ = impute_uk_capital_gains_with_report(
+            frame,
+            distribution,
+            PARAMETERS,
+            conditioning=load_hmrc_cgt_conditioning_facts(),
+        )
+        second, _ = impute_uk_capital_gains_with_report(
+            frame,
+            distribution,
+            PARAMETERS,
+            conditioning=load_hmrc_cgt_conditioning_facts(),
+            remainder_distribution=halved,
+        )
+
+        one = first.table("person")["capital_gains"].to_numpy()
+        two = second.table("person")["capital_gains"].to_numpy()
+        exempt = PARAMETERS.annual_exempt_amount
+        liable = one > exempt
+        np.testing.assert_array_equal(liable, two > exempt)
+        np.testing.assert_array_equal(one[liable], two[liable])
+        np.testing.assert_array_equal(one <= 0.0, two <= 0.0)
+        np.testing.assert_array_equal(one[one <= 0.0], two[two <= 0.0])
+        remainder = (one > 0.0) & (one <= exempt)
+        assert remainder.any()
+        assert not np.array_equal(one[remainder], two[remainder])
+        assert (two[remainder] > 0.0).all() and (two[remainder] <= exempt).all()
+
+    def test_remainder_mapping_is_stable_under_row_permutation(self) -> None:
+        surface = advani_summers_rows(load_advani_summers_distribution())
+        rng = np.random.default_rng(11)
+        rows = 40
+        existing = rng.lognormal(8, 1.0, rows)
+        person_id = np.arange(100, 100 + rows)
+        weight = rng.uniform(10.0, 500.0, rows)
+        weight[:3] = 0.0  # zero-weight rows keep a nominal stratum
+        income = rng.choice([5_000.0, 30_000.0, 150_000.0], rows)
+        band_index = advani_summers_band_index(surface, income)
+
+        def mapped(order: np.ndarray) -> np.ndarray:
+            gains = existing[order].copy()
+            _map_remainder_amounts(
+                remainder=np.arange(rows),
+                existing=existing[order],
+                person_id=person_id[order],
+                person_weight=weight[order],
+                band_index=band_index[order],
+                rows=surface,
+                annual_exempt_amount=3_000.0,
+                new_gains=gains,
+            )
+            result = np.empty(rows)
+            result[order] = gains
+            return result
+
+        forward = mapped(np.arange(rows))
+        shuffled = mapped(rng.permutation(rows))
+        assert forward == pytest.approx(shuffled)
+        assert (forward > 0.0).all() and (forward <= 3_000.0).all()
+        # Within a band the map is monotone in the existing gain.
+        for band in np.unique(band_index):
+            members = np.flatnonzero(band_index == band)
+            order = members[np.argsort(existing[members], kind="stable")]
+            assert (np.diff(forward[order]) >= 0.0).all()
+
+    def test_component_sum_income_is_the_pre_allowance_proxy(self) -> None:
+        person = pd.DataFrame(
+            {
+                column: [1_000.0, 2_000.0]
+                for column in UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS
+            }
+        )
+        total = uk_cgt_component_sum_income(person)
+        components = len(UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS)
+        assert total == pytest.approx([1_000.0 * components, 2_000.0 * components])
+        with pytest.raises(ValueError, match="missing"):
+            uk_cgt_component_sum_income(person.drop(columns=["dividend_income"]))
 
     def test_allocation_preserves_the_existing_ranking(self) -> None:
         # Everyone sits in one income band, whose cells hold 100 people each
@@ -571,6 +723,34 @@ def test_cgt_spine_parsed_inputs_match_the_resource_resolution(
     )
 
 
+def test_spine_checkpoint_carries_the_remainder_receipt() -> None:
+    """The spine receipt names the surface the sub-AEA remainder maps onto."""
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    stage = spec.sources.stage_map()["hmrc_cgt_gains_spine"]
+    rows = 3_000
+    rng = np.random.default_rng(12)
+    frame = _frame(
+        rows, gains=rng.lognormal(9, 1.5, rows), incomes=np.full(rows, 20_000.0)
+    )
+    transform = uk_cgt_spine_stage_transform(
+        stage, distribution=_distribution(cell_people=10.0), parameters=PARAMETERS
+    )
+
+    result = transform(frame)
+
+    drawn = result.table("person")["capital_gains"].to_numpy()
+    remainder = (drawn > 0.0) & (drawn <= PARAMETERS.annual_exempt_amount)
+    evidence = transform.checkpoint_metadata()["evidence"]
+    receipt = evidence["allocation"]["remainder"]
+    assert receipt["persons"] == int(remainder.sum()) > 0
+    assert receipt["resource"] == ADVANI_SUMMERS_RESOURCE
+    assert receipt["resource_vintage"] == ADVANI_SUMMERS_VINTAGE
+    assert receipt["annual_exempt_amount"] == PARAMETERS.annual_exempt_amount
+    assert evidence["remainder_mass"] == pytest.approx(receipt["mass"])
+    assert evidence["stage"] == "hmrc_cgt_gains_spine"
+
+
 def _real_distribution() -> HMRCCapitalGainsJointDistribution:
     """The published 2024-25 joint, from the committed vendored rows.
 
@@ -660,8 +840,10 @@ class TestRealPublishedSurface:
         # Every draw allocated to the liability distribution clears the AEA.
         assert liable.size > 0
         below = redrawn[(redrawn > 0) & (redrawn <= PARAMETERS.annual_exempt_amount)]
-        # The remainder keeps capped existing amounts, never band draws.
+        # The remainder takes A&S within-band amounts in (0, AEA], never
+        # band draws (microcosm#970).
         assert below.size == 0 or below.max() <= PARAMETERS.annual_exempt_amount
+        assert below.size == 0 or below.min() > 0.0
         assert drawn.max() >= 5_000_000.0
 
 
@@ -1028,4 +1210,5 @@ class TestConditionedAllocation:
             "fallback_share_by_band",
             "conditioning",
             "rounding_carry_out",
+            "remainder",
         }

@@ -366,6 +366,13 @@ def test_cgt_summary_allocation_receipt_must_be_finite_and_non_negative() -> Non
                     "ipf_zero_seed_cells": 0,
                 },
                 "fallback_released_mass": released,
+                "remainder": {
+                    "persons": 3,
+                    "mass": 300.0,
+                    "annual_exempt_amount": 3000.0,
+                    "min_amount": 12.5,
+                    "max_amount": 2990.0,
+                },
             },
         }
 
@@ -390,6 +397,67 @@ def test_cgt_summary_allocation_receipt_must_be_finite_and_non_negative() -> Non
             check="cgt_imputation_summary",
             parameters=parameters,
         )
+
+
+def test_cgt_summary_remainder_must_stay_inside_the_exempt_range() -> None:
+    """The sub-AEA remainder receipt (microcosm#970) is fenced on its range."""
+    parameters = {
+        "stage": "hmrc_cgt_gains_spine",
+        "check": "cgt_imputation_summary",
+        "minimum_band_rows": 1,
+    }
+
+    def evidence(remainder: dict) -> dict:
+        return {
+            "stage": "hmrc_cgt_gains_spine",
+            "rows": [{"gain_lower_bound": 12300.0}],
+            "taxpayer_mass": 1.0,
+            "published_taxpayer_mass": 1.0,
+            "remainder_mass": 0.0,
+            "allocation": {
+                "rake": {
+                    "ipf_max_abs_margin_error": 0.0,
+                    "gains_margin_max_abs_error": 0.0,
+                    "ipf_zero_seed_cells": 0,
+                },
+                "fallback_released_mass": 0.0,
+                "remainder": remainder,
+            },
+        }
+
+    def verdict(remainder: dict):
+        return uk_stage_health_gate(
+            evidence=evidence(remainder),
+            stage="hmrc_cgt_gains_spine",
+            check="cgt_imputation_summary",
+            parameters=parameters,
+        )
+
+    inside = {
+        "persons": 2,
+        "mass": 200.0,
+        "annual_exempt_amount": 3000.0,
+        "min_amount": 1.0,
+        "max_amount": 3000.0,
+    }
+    assert _passed(verdict(inside))
+    assert not verdict({**inside, "max_amount": 3000.5}).passed
+    assert not verdict({**inside, "min_amount": 0.0}).passed
+    assert not verdict({**inside, "mass": -1.0}).passed
+    # An empty remainder carries zero amounts and passes.
+    assert _passed(
+        verdict(
+            {
+                "persons": 0,
+                "mass": 0.0,
+                "annual_exempt_amount": 3000.0,
+                "min_amount": 0.0,
+                "max_amount": 0.0,
+            }
+        )
+    )
+    with pytest.raises(ValueError):
+        verdict({**inside, "mass": float("nan")})
 
 
 def test_cgt_summary_minimum_rows_parameter_is_live() -> None:
@@ -653,3 +721,101 @@ def test_cgt_asset_type_summary_holds_the_residential_realisation() -> None:
             evidence={"stage": "hmrc_cgt_asset_type_spine"},
             parameters=parameters,
         )
+
+
+def _anchor_evidence(**overrides: object) -> dict[str, object]:
+    evidence: dict[str, object] = {
+        "stage": "cgt_incidence_anchor",
+        "liable_mass": 551_600.0,
+        "transferred_mass": 11_921_000.0,
+        "pair_count": 60_000,
+        "max_pair_relative_error": 0.0,
+        "targets": {"sub_exempt": 43_000.0, "loss": 136_000.0},
+        "before": {
+            "sub_exempt": 10_800_000.0,
+            "loss": 1_300_000.0,
+            "liable": 159_000.0,
+        },
+        "after": {"sub_exempt": 43_000.0, "loss": 136_000.0, "liable": 159_000.0},
+        "mass_by_clone_flag": {"false": 40_000_000.0, "true": 338_000.0},
+    }
+    evidence.update(overrides)
+    return evidence
+
+
+_ANCHOR_PARAMETERS = {
+    "stage": "cgt_incidence_anchor",
+    "check": "cgt_incidence_anchor",
+    "maximum_relative_composition_error": 1e-6,
+    "maximum_pair_relative_error": 0.0,
+    "minimum_pair_count": 1,
+}
+
+
+def _anchor_gate(evidence: dict[str, object]):
+    return uk_stage_health_gate(
+        stage="cgt_incidence_anchor",
+        check="cgt_incidence_anchor",
+        evidence=evidence,
+        parameters=_ANCHOR_PARAMETERS,
+    )
+
+
+def test_cgt_incidence_anchor_gate_holds_the_composition_and_the_pairs() -> None:
+    passed = _anchor_gate(_anchor_evidence())
+    assert passed.passed
+    assert passed.details["sub_exempt_relative_error"] == 0.0
+    assert passed.details["liable_clone_mass"] == 159_000.0
+    assert passed.details["pair_count"] == 60_000
+
+    # A group already at or below its target stays where it was.
+    untouched = _anchor_evidence(
+        targets={"sub_exempt": 43_000.0, "loss": 2_000_000.0},
+        after={"sub_exempt": 43_000.0, "loss": 1_300_000.0, "liable": 159_000.0},
+        transferred_mass=10_757_000.0,
+    )
+    assert _anchor_gate(untouched).passed
+
+    def fails(match: str, **overrides: object) -> None:
+        result = _anchor_gate(_anchor_evidence(**overrides))
+        assert not result.passed
+        assert any(match in failure for failure in result.failures), result.failures
+
+    fails(
+        "misses its target",
+        after={"sub_exempt": 43_100.0, "loss": 136_000.0, "liable": 159_000.0},
+        transferred_mass=11_920_900.0,
+    )
+    fails(
+        "liable clone mass moved",
+        after={"sub_exempt": 43_000.0, "loss": 136_000.0, "liable": 158_000.0},
+    )
+    fails("pair mass error", max_pair_relative_error=1e-9)
+    fails("pairs is below", pair_count=0)
+    fails(
+        "but moved to",
+        targets={"sub_exempt": 43_000.0, "loss": 2_000_000.0},
+        after={"sub_exempt": 43_000.0, "loss": 1_200_000.0, "liable": 159_000.0},
+        transferred_mass=10_857_000.0,
+    )
+    fails(
+        "clone mass rose",
+        before={"sub_exempt": 40_000.0, "loss": 1_300_000.0, "liable": 159_000.0},
+        transferred_mass=1_161_000.0,
+    )
+    fails("disagrees with the transferred mass", transferred_mass=1.0)
+    fails("exceeds original mass", mass_by_clone_flag={"false": 1.0, "true": 2.0})
+    fails("liable mass must be positive", liable_mass=0.0)
+
+    with pytest.raises(ValueError, match="targets"):
+        _anchor_gate(
+            {
+                "stage": "cgt_incidence_anchor",
+                "liable_mass": 1.0,
+                "transferred_mass": 0.0,
+                "max_pair_relative_error": 0.0,
+                "pair_count": 1,
+            }
+        )
+    with pytest.raises(ValueError, match="pair_count"):
+        _anchor_gate(_anchor_evidence(pair_count=1.5))

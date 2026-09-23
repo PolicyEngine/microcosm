@@ -5338,12 +5338,55 @@
       },
       "rationale": {
        "type": "string"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "resource_vintage": {
+       "type": "string"
+      },
+      "banding": {
+       "type": "string"
+      },
+      "range": {
+       "type": "string"
+      },
+      "mapping": {
+       "type": "string"
+      },
+      "ordering": {
+       "type": "string"
+      },
+      "quantile_points": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "spline_degree": {
+       "type": "integer"
+      },
+      "extrapolation": {
+       "type": "string"
+      },
+      "deterministic": {
+       "type": "boolean"
       }
      },
      "required": [
+      "banding",
+      "deterministic",
+      "extrapolation",
       "kind",
+      "mapping",
+      "ordering",
       "policy",
-      "rationale"
+      "quantile_points",
+      "range",
+      "rationale",
+      "resource",
+      "resource_vintage",
+      "spline_degree"
      ]
     },
     {
@@ -7800,6 +7843,168 @@
        "type": "string"
       },
       "id_remapping": {
+       "type": "string"
+      },
+      "declared_factor": {
+       "type": "number"
+      },
+      "reason": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "clone_flag_column",
+      "donor_flag_column",
+      "id_remapping",
+      "pairing",
+      "requirement"
+     ],
+     "properties": {
+      "kind": {
+       "const": "pair_clone_households_to_originals"
+      },
+      "clone_flag_column": {
+       "type": "string"
+      },
+      "donor_flag_column": {
+       "type": "string"
+      },
+      "id_remapping": {
+       "type": "string"
+      },
+      "pairing": {
+       "type": "string"
+      },
+      "requirement": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "resource",
+      "income_proxy_components",
+      "allowance_subtraction",
+      "carrier",
+      "adult_minimum_age",
+      "quantile_points",
+      "spline_degree",
+      "extrapolation",
+      "crossings",
+      "aggregation",
+      "liable_mass",
+      "targets"
+     ],
+     "properties": {
+      "kind": {
+       "const": "derive_reporter_composition_from_banded_quantiles"
+      },
+      "resource": {
+       "type": "string"
+      },
+      "income_proxy_components": {
+       "type": "array",
+       "items": {
+        "type": "string"
+       }
+      },
+      "allowance_subtraction": {
+       "type": "boolean"
+      },
+      "carrier": {
+       "type": "string"
+      },
+      "adult_minimum_age": {
+       "type": "integer"
+      },
+      "quantile_points": {
+       "type": "array",
+       "items": {
+        "type": "number"
+       }
+      },
+      "spline_degree": {
+       "type": "integer"
+      },
+      "extrapolation": {
+       "type": "string"
+      },
+      "crossings": {
+       "type": "string"
+      },
+      "aggregation": {
+       "type": "string"
+      },
+      "liable_mass": {
+       "type": "string"
+      },
+      "targets": {
+       "type": "string"
+      }
+     }
+    },
+    {
+     "type": "object",
+     "additionalProperties": false,
+     "required": [
+      "kind",
+      "population",
+      "sub_exempt_group",
+      "loss_group",
+      "liable_clones",
+      "donors",
+      "factor",
+      "maximum_factor",
+      "transfer",
+      "weight_kind_out",
+      "conservation",
+      "pair_conservation",
+      "declared_factor",
+      "reason"
+     ],
+     "properties": {
+      "kind": {
+       "const": "transfer_clone_mass_to_originals"
+      },
+      "population": {
+       "type": "string"
+      },
+      "sub_exempt_group": {
+       "type": "string"
+      },
+      "loss_group": {
+       "type": "string"
+      },
+      "liable_clones": {
+       "type": "string"
+      },
+      "donors": {
+       "type": "string"
+      },
+      "factor": {
+       "type": "string"
+      },
+      "maximum_factor": {
+       "type": "number"
+      },
+      "transfer": {
+       "type": "string"
+      },
+      "weight_kind_out": {
+       "type": "string"
+      },
+      "conservation": {
+       "type": "string"
+      },
+      "pair_conservation": {
        "type": "string"
       },
       "declared_factor": {

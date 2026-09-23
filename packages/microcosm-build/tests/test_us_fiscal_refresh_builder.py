@@ -14106,3 +14106,88 @@ def test_ecps_parity_gate_still_fails_an_empty_renamed_layer(monkeypatch) -> Non
 
     assert not gate.passed
     assert gate.failures[0].startswith("takes_up_wic_if_eligible:")
+
+
+# ---------------------------------------------------------------------------
+# --target-surface: calibrate the national release to national + state targets
+# (Max, 2026-09-23, route A d122). The parity and profile-coverage gates keep
+# running on the full compiled surface; only the calibrated specs narrow.
+# ---------------------------------------------------------------------------
+
+
+def _surface_spec(name: str, **metadata) -> TargetSpec:
+    return TargetSpec(
+        name=name,
+        entity="household",
+        value=1.0,
+        measure=f"{name}_measure",
+        source="synthetic",
+        metadata=metadata,
+    )
+
+
+def test_target_surface_defaults_to_full_and_accepts_national_state() -> None:
+    builder = _load_builder_module()
+    base = ["--ledger-facts", "facts.jsonl", "--out", "release"]
+
+    assert builder._parse_args(base).target_surface == "full"
+    assert (
+        builder._parse_args(
+            [*base, "--target-surface", "national_state"]
+        ).target_surface
+        == "national_state"
+    )
+    with pytest.raises(SystemExit):
+        builder._parse_args([*base, "--target-surface", "state"])
+
+
+def test_national_state_surface_drops_every_cd_classified_target() -> None:
+    builder = _load_builder_module()
+    specs = (
+        _surface_spec("us_income_tax", ledger_geography_level="us"),
+        _surface_spec("ca_agi", ledger_geography_level="state", state_fips="06"),
+        _surface_spec(
+            "cd_0601_agi",
+            ledger_geography_level="congressional_district",
+            congressional_district_geoid="0601",
+        ),
+        # A state-geography row sourced from the SOI CD file is CD-classified.
+        _surface_spec(
+            "ca_total_from_cd_file",
+            ledger_geography_level="state",
+            ledger_source_record_id="irs_soi.ty2023.congressional_district_2022.ca_total",
+        ),
+    )
+
+    kept, receipt = builder._select_target_surface(specs, "national_state")
+
+    assert [spec.name for spec in kept] == ["us_income_tax", "ca_agi"]
+    assert receipt == {
+        "mode": "national_state",
+        "compiled_targets": 4,
+        "calibrated_targets": 2,
+        "dropped_congressional_district_targets": 2,
+    }
+
+
+def test_full_surface_keeps_every_target() -> None:
+    builder = _load_builder_module()
+    specs = (
+        _surface_spec("us_income_tax"),
+        _surface_spec("cd_0601_agi", congressional_district_geoid="0601"),
+    )
+
+    kept, receipt = builder._select_target_surface(specs, "full")
+
+    assert kept == specs
+    assert receipt["dropped_congressional_district_targets"] == 0
+
+
+def test_target_surface_refuses_an_unknown_mode_or_an_empty_surface() -> None:
+    builder = _load_builder_module()
+    cd_only = (_surface_spec("cd_0601_agi", congressional_district_geoid="0601"),)
+
+    with pytest.raises(ValueError, match="Unknown target surface"):
+        builder._select_target_surface(cd_only, "state")
+    with pytest.raises(ValueError, match="keeps no targets"):
+        builder._select_target_surface(cd_only, "national_state")

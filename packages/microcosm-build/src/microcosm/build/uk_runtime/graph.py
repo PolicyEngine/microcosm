@@ -50,7 +50,12 @@ UK_SPINE_EXCLUSIONS = frozenset(
 )
 
 UK_SPINE_STRUCTURAL_STAGES = frozenset(
-    {"spi_support_channel", "cgt_incidence_clone", "cgt_band_donors"}
+    {
+        "spi_support_channel",
+        "cgt_incidence_clone",
+        "cgt_band_donors",
+        "cgt_incidence_anchor",
+    }
 )
 
 # The executor's mass ledger is weighted *person* mass per stratum
@@ -70,12 +75,14 @@ _STRUCTURAL_MASS = {
     "spi_support_channel": "declared",
     "cgt_incidence_clone": "conserve",
     "cgt_band_donors": "free",
+    "cgt_incidence_anchor": "conserve",
 }
 
 _STRUCTURAL_WEIGHT_KIND = {
     "spi_support_channel": "importance",
     "cgt_incidence_clone": "importance",
     "cgt_band_donors": "importance",
+    "cgt_incidence_anchor": "importance",
 }
 
 # ``hmrc_spi_income_spine`` has an intentionally conservative open input
@@ -242,6 +249,29 @@ _STAGE_CONSUMES: Mapping[str, frozenset[tuple[str, str]] | None] = {
     # The asset-type stage classifies the redrawn net gains; the AEA it
     # gates on is a policy parameter, not a frame column (microcosm#725).
     "hmrc_cgt_asset_type_spine": frozenset({("person", "capital_gains")}),
+    # The incidence anchor reads the redrawn gains, the carrier income proxy
+    # and the clone/donor flags; it writes no cell and only moves household
+    # weight between paired rows (microcosm#970).
+    "cgt_incidence_anchor": frozenset(
+        {
+            *(
+                ("person", column)
+                for column in (
+                    "capital_gains",
+                    "employment_income",
+                    "self_employment_income",
+                    "state_pension_reported",
+                    "private_pension_income",
+                    "property_income",
+                    "savings_interest_income",
+                    "dividend_income",
+                    "miscellaneous_income",
+                )
+            ),
+            ("household", "household_is_capital_gains_clone"),
+            ("household", "household_is_cgt_band_donor"),
+        }
+    ),
     "salary_sacrifice": None,
     "student_loans": frozenset(
         {
@@ -599,6 +629,8 @@ _STAGE_CELLS: Mapping[str, tuple[_Cell, ...]] = {
         _Cell("person", "capital_gains_asset_type", "string"),
         _Cell("person", "capital_gains_residential_property", "float64"),
     ),
+    # Weights only: the anchor owns no cell (microcosm#970).
+    "cgt_incidence_anchor": (),
     "salary_sacrifice": _cells(
         "person",
         (
@@ -936,30 +968,33 @@ def uk_spine_graph(
                     description=f"Run structural UK stage {stage_name}.",
                 )
             )
-            nodes.append(
-                Node(
-                    id=f"{stage_name}.owned",
-                    kernel="uk.claim@1",
-                    outputs=tuple(
-                        cell.owned(rewrite=cell.coordinate in incumbent)
-                        for cell in cells
-                    ),
-                    population=stage_name,
-                    params={
-                        # Amendment 8 projects declared rewrites directly.
-                        # These are only the new cells installed physically by
-                        # the preceding EXPAND node; structural declarations
-                        # still cannot own them (the one remaining interface
-                        # gap from lane F).
-                        "materialized_expand_outputs": tuple(
-                            f"{cell.entity}.{cell.column}"
+            # A weights-only structural stage (the #970 incidence anchor)
+            # materializes no cell, so it has nothing to claim.
+            if cells:
+                nodes.append(
+                    Node(
+                        id=f"{stage_name}.owned",
+                        kernel="uk.claim@1",
+                        outputs=tuple(
+                            cell.owned(rewrite=cell.coordinate in incumbent)
                             for cell in cells
-                            if cell.coordinate not in incumbent
-                        )
-                    },
-                    description=f"Own the cells materialized by {stage_name}.",
+                        ),
+                        population=stage_name,
+                        params={
+                            # Amendment 8 projects declared rewrites directly.
+                            # These are only the new cells installed physically by
+                            # the preceding EXPAND node; structural declarations
+                            # still cannot own them (the one remaining interface
+                            # gap from lane F).
+                            "materialized_expand_outputs": tuple(
+                                f"{cell.entity}.{cell.column}"
+                                for cell in cells
+                                if cell.coordinate not in incumbent
+                            )
+                        },
+                        description=f"Own the cells materialized by {stage_name}.",
+                    )
                 )
-            )
             current_population = stage_name
             version_owned = set(coordinates)
         else:

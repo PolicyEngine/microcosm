@@ -74,6 +74,11 @@ def _apply_pending_roster_transformations(
     # gains right after the amounts stage.
     assert "hmrc_cgt_asset_type_spine" not in roster
     roster.insert(roster.index("hmrc_cgt_gains_spine") + 1, "hmrc_cgt_asset_type_spine")
+
+    # #970 re-mint pending: the incidence anchor moves non-liable clone mass
+    # back to the originals right after the asset-type stage.
+    assert "cgt_incidence_anchor" not in roster
+    roster.insert(roster.index("hmrc_cgt_asset_type_spine") + 1, "cgt_incidence_anchor")
     return tuple(roster)
 
 

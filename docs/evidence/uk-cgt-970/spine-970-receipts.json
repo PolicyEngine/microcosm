@@ -1,0 +1,598 @@
+{
+  "anchor_gate_details": {
+    "check": "cgt_incidence_anchor",
+    "clone_mass": 677698.9176763435,
+    "effective_pair_relative_tolerance": 1.7763568394002505e-15,
+    "liable_clone_mass": 486719.6331493518,
+    "liable_mass": 557419.6331493518,
+    "loss_after": 150249.8381002053,
+    "loss_before": 2707829.4981969413,
+    "loss_relative_error": 0.0,
+    "loss_target": 150249.8381002053,
+    "max_pair_relative_error": 2.2182797604217762e-16,
+    "original_mass": 28294734.082323655,
+    "pair_count": 26288,
+    "stage": "cgt_incidence_anchor",
+    "sub_exempt_after": 40729.44642678636,
+    "sub_exempt_before": 11291667.368653707,
+    "sub_exempt_relative_error": 0.0,
+    "sub_exempt_target": 40729.44642678636,
+    "transferred_mass": 13808517.582323655
+  },
+  "branch_head": "24509d78f3053000948fa07ac60574453d8e9b89",
+  "cgt_incidence_anchor": {
+    "after": {
+      "liable": 486719.6331493518,
+      "loss": 150249.8381002053,
+      "sub_exempt": 40729.44642678636
+    },
+    "annual_exempt_amount": 3000.0,
+    "before": {
+      "liable": 486719.6331493518,
+      "loss": 2707829.4981969413,
+      "sub_exempt": 11291667.368653707
+    },
+    "by_income_band": [
+      {
+        "clone_households": 19225,
+        "income_measure": "component_sum_without_allowance",
+        "liable": 179214.04181245598,
+        "loss_after": 40626.20512005527,
+        "loss_before": 1887636.9748926982,
+        "lower_limit": 0,
+        "sub_exempt_after": 14164.230405519753,
+        "sub_exempt_before": 8389932.914161285
+      },
+      {
+        "clone_households": 2914,
+        "income_measure": "component_sum_without_allowance",
+        "liable": 84162.12543268935,
+        "loss_after": 20466.46125433182,
+        "loss_before": 319510.26975591714,
+        "lower_limit": 37700,
+        "sub_exempt_after": 6185.432627976916,
+        "sub_exempt_before": 1226156.0207129894
+      },
+      {
+        "clone_households": 3332,
+        "income_measure": "component_sum_without_allowance",
+        "liable": 117975.67386957117,
+        "loss_after": 47292.54754708536,
+        "loss_before": 389778.7962459927,
+        "lower_limit": 50000,
+        "sub_exempt_after": 13129.255218319226,
+        "sub_exempt_before": 1409011.7835760033
+      },
+      {
+        "clone_households": 329,
+        "income_measure": "component_sum_without_allowance",
+        "liable": 30538.71940899144,
+        "loss_after": 8114.747746516141,
+        "loss_before": 37009.77522046153,
+        "lower_limit": 100000,
+        "sub_exempt_after": 2052.5984517018605,
+        "sub_exempt_before": 119188.95183765839
+      },
+      {
+        "clone_households": 327,
+        "income_measure": "component_sum_without_allowance",
+        "liable": 30168.26753024156,
+        "loss_after": 22746.128017281582,
+        "loss_before": 50265.02263825849,
+        "lower_limit": 125140,
+        "sub_exempt_after": 3972.651205192077,
+        "sub_exempt_before": 113879.31641096616
+      },
+      {
+        "clone_households": 161,
+        "income_measure": "component_sum_without_allowance",
+        "liable": 44660.80509540233,
+        "loss_after": 11003.748414935091,
+        "loss_before": 23628.659443613236,
+        "lower_limit": 200000,
+        "sub_exempt_after": 1225.2785180765288,
+        "sub_exempt_before": 33498.381954805314
+      }
+    ],
+    "capped_households": 0,
+    "composition": {
+      "exempt_quantile": 0.2551838064116276,
+      "implied_reporter_mass": 748398.9176763435,
+      "liable_share": 0.7448161935883724,
+      "zero_quantile": 0.20076169880991612
+    },
+    "donor_mass": 392000.0,
+    "liable_mass": 557419.6331493518,
+    "liable_persons": 1003,
+    "mass_by_clone_flag": {
+      "false": 28294734.082323655,
+      "true": 677698.9176763435
+    },
+    "max_pair_relative_error": 2.2182797604217762e-16,
+    "pair_count": 26288,
+    "scale": {
+      "loss": 3.0881630893756133,
+      "sub_exempt": 0.2425546739205345
+    },
+    "stage": "cgt_incidence_anchor",
+    "targets": {
+      "loss": 150249.8381002053,
+      "sub_exempt": 40729.44642678636
+    },
+    "transferred_mass": 13808517.582323655,
+    "trimmed_households": 25436,
+    "zero_gain_clone_households": 0
+  },
+  "entity_row_counts": {
+    "benunit": 61213,
+    "household": 52846,
+    "person": 113590
+  },
+  "hmrc_cgt_gains_spine_remainder": {
+    "annual_exempt_amount": 3000.0,
+    "band_rows": [
+      {
+        "exempt_quantile": 0.2353658536585366,
+        "mass": 2139571.649486485,
+        "minimum_total_income": 0.0,
+        "persons": 3934,
+        "zero_quantile": 0.18048780487804877
+      },
+      {
+        "exempt_quantile": 0.22887323943661972,
+        "mass": 82146.60952224987,
+        "minimum_total_income": 10000.0,
+        "persons": 154,
+        "zero_quantile": 0.16549295774647887
+      },
+      {
+        "exempt_quantile": 0.2469387755102041,
+        "mass": 81827.70653167195,
+        "minimum_total_income": 10300.0,
+        "persons": 160,
+        "zero_quantile": 0.20102040816326533
+      },
+      {
+        "exempt_quantile": 0.24488636363636365,
+        "mass": 90899.66148028057,
+        "minimum_total_income": 10600.0,
+        "persons": 185,
+        "zero_quantile": 0.19375
+      },
+      {
+        "exempt_quantile": 0.23750000000000002,
+        "mass": 94908.3553377529,
+        "minimum_total_income": 11000.0,
+        "persons": 173,
+        "zero_quantile": 0.18392857142857144
+      },
+      {
+        "exempt_quantile": 0.255,
+        "mass": 152868.2084464865,
+        "minimum_total_income": 11400.0,
+        "persons": 348,
+        "zero_quantile": 0.18913043478260871
+      },
+      {
+        "exempt_quantile": 0.24000000000000002,
+        "mass": 94974.51170772573,
+        "minimum_total_income": 11800.0,
+        "persons": 192,
+        "zero_quantile": 0.18
+      },
+      {
+        "exempt_quantile": 0.24366197183098592,
+        "mass": 110269.50604374261,
+        "minimum_total_income": 12100.0,
+        "persons": 217,
+        "zero_quantile": 0.18028169014084508
+      },
+      {
+        "exempt_quantile": 0.24782608695652175,
+        "mass": 105680.60590288212,
+        "minimum_total_income": 12500.0,
+        "persons": 215,
+        "zero_quantile": 0.1826086956521739
+      },
+      {
+        "exempt_quantile": 0.23461538461538461,
+        "mass": 126293.81693461843,
+        "minimum_total_income": 12900.0,
+        "persons": 224,
+        "zero_quantile": 0.17692307692307693
+      },
+      {
+        "exempt_quantile": 0.24565217391304348,
+        "mass": 118999.85215801164,
+        "minimum_total_income": 13300.0,
+        "persons": 241,
+        "zero_quantile": 0.18043478260869567
+      },
+      {
+        "exempt_quantile": 0.2526595744680851,
+        "mass": 98921.35621355017,
+        "minimum_total_income": 13700.0,
+        "persons": 176,
+        "zero_quantile": 0.18958333333333333
+      },
+      {
+        "exempt_quantile": 0.24797297297297297,
+        "mass": 151076.7135107979,
+        "minimum_total_income": 14100.0,
+        "persons": 278,
+        "zero_quantile": 0.18716216216216217
+      },
+      {
+        "exempt_quantile": 0.23695652173913043,
+        "mass": 120330.1312426922,
+        "minimum_total_income": 14500.0,
+        "persons": 234,
+        "zero_quantile": 0.17173913043478262
+      },
+      {
+        "exempt_quantile": 0.2661290322580645,
+        "mass": 121735.70680632457,
+        "minimum_total_income": 14900.0,
+        "persons": 215,
+        "zero_quantile": 0.20135135135135135
+      },
+      {
+        "exempt_quantile": 0.2554945054945055,
+        "mass": 111097.78362736889,
+        "minimum_total_income": 15300.0,
+        "persons": 205,
+        "zero_quantile": 0.19473684210526315
+      },
+      {
+        "exempt_quantile": 0.25,
+        "mass": 110642.04152597653,
+        "minimum_total_income": 15700.0,
+        "persons": 193,
+        "zero_quantile": 0.1875
+      },
+      {
+        "exempt_quantile": 0.24178082191780823,
+        "mass": 127252.46809856928,
+        "minimum_total_income": 16100.0,
+        "persons": 233,
+        "zero_quantile": 0.18013698630136987
+      },
+      {
+        "exempt_quantile": 0.23541666666666666,
+        "mass": 122527.4193943528,
+        "minimum_total_income": 16600.0,
+        "persons": 218,
+        "zero_quantile": 0.17291666666666666
+      },
+      {
+        "exempt_quantile": 0.24807692307692308,
+        "mass": 110597.72357947817,
+        "minimum_total_income": 17000.0,
+        "persons": 200,
+        "zero_quantile": 0.19038461538461537
+      },
+      {
+        "exempt_quantile": 0.24797297297297297,
+        "mass": 118953.04905542974,
+        "minimum_total_income": 17400.0,
+        "persons": 218,
+        "zero_quantile": 0.18716216216216217
+      },
+      {
+        "exempt_quantile": 0.24797297297297297,
+        "mass": 107451.61115222395,
+        "minimum_total_income": 17900.0,
+        "persons": 188,
+        "zero_quantile": 0.18716216216216217
+      },
+      {
+        "exempt_quantile": 0.24391891891891893,
+        "mass": 126718.46877625333,
+        "minimum_total_income": 18300.0,
+        "persons": 230,
+        "zero_quantile": 0.18310810810810813
+      },
+      {
+        "exempt_quantile": 0.24615384615384617,
+        "mass": 92903.10740766935,
+        "minimum_total_income": 18800.0,
+        "persons": 173,
+        "zero_quantile": 0.18846153846153846
+      },
+      {
+        "exempt_quantile": 0.2391304347826087,
+        "mass": 119968.15518516049,
+        "minimum_total_income": 19200.0,
+        "persons": 214,
+        "zero_quantile": 0.17391304347826086
+      },
+      {
+        "exempt_quantile": 0.24583333333333335,
+        "mass": 112644.84880189197,
+        "minimum_total_income": 19700.0,
+        "persons": 212,
+        "zero_quantile": 0.18333333333333335
+      },
+      {
+        "exempt_quantile": 0.23846153846153847,
+        "mass": 113426.25443335756,
+        "minimum_total_income": 20200.0,
+        "persons": 207,
+        "zero_quantile": 0.1807692307692308
+      },
+      {
+        "exempt_quantile": 0.23076923076923078,
+        "mass": 128919.81753697227,
+        "minimum_total_income": 20700.0,
+        "persons": 234,
+        "zero_quantile": 0.17307692307692307
+      },
+      {
+        "exempt_quantile": 0.23125,
+        "mass": 140627.86803524132,
+        "minimum_total_income": 21200.0,
+        "persons": 254,
+        "zero_quantile": 0.16875
+      },
+      {
+        "exempt_quantile": 0.244,
+        "mass": 126774.0355893502,
+        "minimum_total_income": 21800.0,
+        "persons": 215,
+        "zero_quantile": 0.184
+      },
+      {
+        "exempt_quantile": 0.25280898876404495,
+        "mass": 132696.89799377287,
+        "minimum_total_income": 22300.0,
+        "persons": 238,
+        "zero_quantile": 0.18785714285714286
+      },
+      {
+        "exempt_quantile": 0.2411764705882353,
+        "mass": 133231.58903810475,
+        "minimum_total_income": 22900.0,
+        "persons": 241,
+        "zero_quantile": 0.175
+      },
+      {
+        "exempt_quantile": 0.2392857142857143,
+        "mass": 145978.29661732126,
+        "minimum_total_income": 23500.0,
+        "persons": 260,
+        "zero_quantile": 0.175
+      },
+      {
+        "exempt_quantile": 0.25297619047619047,
+        "mass": 154994.91562635888,
+        "minimum_total_income": 24100.0,
+        "persons": 284,
+        "zero_quantile": 0.192
+      },
+      {
+        "exempt_quantile": 0.24817073170731707,
+        "mass": 165568.3789614147,
+        "minimum_total_income": 24800.0,
+        "persons": 268,
+        "zero_quantile": 0.19329268292682927
+      },
+      {
+        "exempt_quantile": 0.24383561643835616,
+        "mass": 178329.25985056855,
+        "minimum_total_income": 25400.0,
+        "persons": 317,
+        "zero_quantile": 0.1821917808219178
+      },
+      {
+        "exempt_quantile": 0.25290697674418605,
+        "mass": 150477.8436987711,
+        "minimum_total_income": 26100.0,
+        "persons": 272,
+        "zero_quantile": 0.1949367088607595
+      },
+      {
+        "exempt_quantile": 0.24375,
+        "mass": 161699.23194476188,
+        "minimum_total_income": 26800.0,
+        "persons": 273,
+        "zero_quantile": 0.18125000000000002
+      },
+      {
+        "exempt_quantile": 0.23421052631578948,
+        "mass": 150495.19155830264,
+        "minimum_total_income": 27500.0,
+        "persons": 278,
+        "zero_quantile": 0.175
+      },
+      {
+        "exempt_quantile": 0.2291139240506329,
+        "mass": 167861.78455847496,
+        "minimum_total_income": 28300.0,
+        "persons": 290,
+        "zero_quantile": 0.17215189873417722
+      },
+      {
+        "exempt_quantile": 0.25,
+        "mass": 177605.55446968038,
+        "minimum_total_income": 29100.0,
+        "persons": 315,
+        "zero_quantile": 0.18571428571428572
+      },
+      {
+        "exempt_quantile": 0.23170731707317074,
+        "mass": 194596.45637822867,
+        "minimum_total_income": 30000.0,
+        "persons": 341,
+        "zero_quantile": 0.17682926829268292
+      },
+      {
+        "exempt_quantile": 0.2453846153846154,
+        "mass": 171552.69524965092,
+        "minimum_total_income": 30900.0,
+        "persons": 317,
+        "zero_quantile": 0.17615384615384616
+      },
+      {
+        "exempt_quantile": 0.24797297297297297,
+        "mass": 173461.74454100273,
+        "minimum_total_income": 31800.0,
+        "persons": 291,
+        "zero_quantile": 0.18716216216216217
+      },
+      {
+        "exempt_quantile": 0.24347826086956523,
+        "mass": 188236.70897177444,
+        "minimum_total_income": 32800.0,
+        "persons": 322,
+        "zero_quantile": 0.17826086956521742
+      },
+      {
+        "exempt_quantile": 0.23875000000000002,
+        "mass": 154528.60124980073,
+        "minimum_total_income": 33900.0,
+        "persons": 271,
+        "zero_quantile": 0.1825
+      },
+      {
+        "exempt_quantile": 0.23653846153846153,
+        "mass": 206591.52047206165,
+        "minimum_total_income": 35000.0,
+        "persons": 367,
+        "zero_quantile": 0.17884615384615385
+      },
+      {
+        "exempt_quantile": 0.24025974025974026,
+        "mass": 172915.5087442557,
+        "minimum_total_income": 36200.0,
+        "persons": 300,
+        "zero_quantile": 0.18181818181818182
+      },
+      {
+        "exempt_quantile": 0.2388888888888889,
+        "mass": 191039.9868028383,
+        "minimum_total_income": 37400.0,
+        "persons": 330,
+        "zero_quantile": 0.18333333333333335
+      },
+      {
+        "exempt_quantile": 0.2692307692307692,
+        "mass": 133751.579277577,
+        "minimum_total_income": 38700.0,
+        "persons": 235,
+        "zero_quantile": 0.20460526315789473
+      },
+      {
+        "exempt_quantile": 0.25290697674418605,
+        "mass": 192458.533772917,
+        "minimum_total_income": 39900.0,
+        "persons": 334,
+        "zero_quantile": 0.19423076923076923
+      },
+      {
+        "exempt_quantile": 0.26666666666666666,
+        "mass": 213356.90909349598,
+        "minimum_total_income": 41500.0,
+        "persons": 360,
+        "zero_quantile": 0.20443037974683545
+      },
+      {
+        "exempt_quantile": 0.2558139534883721,
+        "mass": 214090.74037782958,
+        "minimum_total_income": 43300.0,
+        "persons": 380,
+        "zero_quantile": 0.19683544303797468
+      },
+      {
+        "exempt_quantile": 0.24634146341463414,
+        "mass": 246836.30262321822,
+        "minimum_total_income": 45500.0,
+        "persons": 423,
+        "zero_quantile": 0.19146341463414634
+      },
+      {
+        "exempt_quantile": 0.2358823529411765,
+        "mass": 285750.699733868,
+        "minimum_total_income": 48300.0,
+        "persons": 488,
+        "zero_quantile": 0.18294117647058825
+      },
+      {
+        "exempt_quantile": 0.2426829268292683,
+        "mass": 304526.1277696466,
+        "minimum_total_income": 51900.0,
+        "persons": 504,
+        "zero_quantile": 0.1878048780487805
+      },
+      {
+        "exempt_quantile": 0.24505494505494507,
+        "mass": 319359.95534824807,
+        "minimum_total_income": 56700.0,
+        "persons": 538,
+        "zero_quantile": 0.1956043956043956
+      },
+      {
+        "exempt_quantile": 0.24021739130434783,
+        "mass": 318586.89431503334,
+        "minimum_total_income": 63400.0,
+        "persons": 537,
+        "zero_quantile": 0.19130434782608696
+      },
+      {
+        "exempt_quantile": 0.2405263157894737,
+        "mass": 311922.13447131857,
+        "minimum_total_income": 73400.0,
+        "persons": 488,
+        "zero_quantile": 0.1931578947368421
+      },
+      {
+        "exempt_quantile": 0.25255102040816324,
+        "mass": 251369.64526729056,
+        "minimum_total_income": 90100.0,
+        "persons": 405,
+        "zero_quantile": 0.20817307692307693
+      },
+      {
+        "exempt_quantile": 0.30223880597014924,
+        "mass": 188086.63635155128,
+        "minimum_total_income": 128200.0,
+        "persons": 235,
+        "zero_quantile": 0.24761904761904763
+      }
+    ],
+    "bands_with_remainder": 61,
+    "income_measure": "component_sum_without_allowance",
+    "mass": 11612967.368653707,
+    "note": "per-band and overall min/max amounts withheld (per-record values); persons and mass per band kept",
+    "persons": 20642,
+    "policy": "advani_summers_within_band_exempt_range",
+    "resource": "advani_summers_capital_gains_distribution.json",
+    "resource_sha256": "22720d11009b0b5d46b140d5c8566f183204dccc4949070050214ab61fd1516c",
+    "resource_vintage": "2017-18"
+  },
+  "household_weight_total": 29364432.999999996,
+  "spine_gate_statuses": {
+    "uk_brma_enum_domain": "passed",
+    "uk_capital_gains_asset_type_enum_domain": "passed",
+    "uk_ons_household_type_enum_domain": "passed",
+    "uk_stage_age_tail_targets": "passed",
+    "uk_stage_cgt_band_donors_support": "passed",
+    "uk_stage_cgt_incidence_anchor_composition": "passed",
+    "uk_stage_cgt_incidence_clone_mass": "passed",
+    "uk_stage_etb_services_support": "passed",
+    "uk_stage_etb_vat_support": "passed",
+    "uk_stage_frs_hmrc_spine_leaves_signal": "passed",
+    "uk_stage_frs_relationships_composition": "passed",
+    "uk_stage_hmrc_cgt_asset_type_spine_summary": "passed",
+    "uk_stage_hmrc_cgt_gains_spine_summary": "passed",
+    "uk_stage_hmrc_spi_income_spine_identity": "passed",
+    "uk_stage_lcfs_consumption_energy_rake": "passed",
+    "uk_stage_lcfs_consumption_support": "passed",
+    "uk_stage_salary_sacrifice_realization": "passed",
+    "uk_stage_spi_support_channel_mass": "passed",
+    "uk_stage_student_loans_realization": "passed",
+    "uk_stage_uc_deduction_attributes": "passed",
+    "uk_stage_was_wealth_support": "passed"
+  },
+  "spine_h5_sha256": "60c8e1941ce66c1c15e46ff4b083f1d8af80c476ee7a9a524df182e77f78dc3c",
+  "what": "Stage receipts of the 31-stage licensed spine rebuilt on the branch (same inputs as spine-s); aggregates only."
+}

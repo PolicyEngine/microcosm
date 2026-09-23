@@ -64,6 +64,7 @@ from microcosm.build.uk_runtime.cgt_asset_type import (
 from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_spine_stage_transform
 from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTBandDonorStageTransform,
+    UKCGTIncidenceAnchorStageTransform,
     UKCGTIncidenceCloneStageTransform,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
@@ -1555,6 +1556,12 @@ def main(argv: list[str] | None = None) -> int:
             implementations["hmrc_cgt_asset_type_spine"] = (
                 uk_cgt_asset_type_stage_transform(
                     stages_by_name["hmrc_cgt_asset_type_spine"]
+                )
+            )
+        if "cgt_incidence_anchor" in stage_names:
+            implementations["cgt_incidence_anchor"] = (
+                UKCGTIncidenceAnchorStageTransform(
+                    stage=stages_by_name["cgt_incidence_anchor"]
                 )
             )
         if "salary_sacrifice" in stage_names:
