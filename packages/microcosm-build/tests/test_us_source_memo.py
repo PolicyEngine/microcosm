@@ -9,6 +9,7 @@ location into ``tmp_path`` so no test can read or create a real key or memo.
 import hashlib
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -348,6 +349,23 @@ def test_unformable_identities_bypass_the_memo(tmp_path):
             assert calls == [1]
             assert f"bypassed:{expected}" in _stats("test.simple"), expected
     assert _entries(_root(tmp_path)) == ([], [])
+
+
+def test_interpreter_digest_follows_a_virtual_environment_symlink(
+    tmp_path, monkeypatch
+):
+    real = Path(os.path.realpath(sys.executable))
+    link = Path(tmp_path).resolve() / "python"
+    link.symlink_to(real)
+    original = memo.sysconfig.get_config_var
+    monkeypatch.setattr(
+        memo.sysconfig,
+        "get_config_var",
+        lambda name: 0 if name == "Py_ENABLE_SHARED" else original(name),
+    )
+    monkeypatch.setattr(memo.sys, "executable", str(link))
+    expected = hashlib.sha256(real.read_bytes()).hexdigest()
+    assert memo._binary_sha(SimpleNamespace()) == expected
 
 
 def test_canonical_keys_are_injective_for_text():

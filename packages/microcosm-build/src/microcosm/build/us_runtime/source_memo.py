@@ -178,7 +178,11 @@ def reset_statistics() -> None:
 
 
 def _binary_sha(module) -> str:
-    """Digest of the file providing a C module, libpython when it is built in."""
+    """Digest of the file providing a C module, libpython when it is built in.
+
+    The interpreter is usually reached through a virtual environment's
+    symlink, so this one path is resolved before it is hashed.
+    """
     path = getattr(module, "__file__", None)
     if path is None:
         path = (
@@ -187,7 +191,7 @@ def _binary_sha(module) -> str:
             if sysconfig.get_config_var("Py_ENABLE_SHARED")
             else Path(sys.executable)
         )
-    return file_sha256(path)[0]
+    return file_sha256(os.path.realpath(path))[0]
 
 
 def runtime_identity() -> dict:
