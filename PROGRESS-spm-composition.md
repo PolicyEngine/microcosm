@@ -221,3 +221,11 @@ The bundle generator's `--check` passes at spec SHA `c1893460afccc6c1c4291efe2fc
 coverage is 42,174/42,174 fields and 41/41 inventory checks. Ruff and test-group
 verification pass. Draft #959 is stacked on #948; the main-only CI workflow
 does not run on that stacked base, so local checks are not a PR CI claim.
+
+> Historical note (2026-09-23): after the re-level, `47976be6c` added an
+> archive reader to `spm_role_source.py`. The note's claims that the file is
+> "byte-identical to main" and that "earlier receipts remain unchanged"
+> describe the state before that commit and before the 2026-09-23 unit-id
+> redaction of the two derivation receipts. `docs/us-spm-role-stage.md` §2
+> ("The archive reader") and §6 record both. Check GitHub for #959's current
+> state.

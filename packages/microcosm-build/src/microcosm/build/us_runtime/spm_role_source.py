@@ -270,12 +270,16 @@ def derive_spm_role_source(
     expected_parent_sha256: str,
     source_pins: Mapping[int, AsecSpmRoleSource] | None = None,
 ) -> SpmRoleSourceResult:
-    """Derive and reconcile from complete pinned CSVs; never trust a sidecar.
+    """Derive and reconcile from complete pinned sources; never trust a sidecar.
 
-    Local CSV paths are mandatory; the existing education-assistance Census
-    fetcher can obtain their pinned archives separately. The default pins cover
-    all three certified BuildP source years. Alternate pins support explicit
-    review of other populations and small synthetic tests.
+    Local source paths are mandatory. Each is either the pinned official
+    Census survey archive or the complete person CSV extracted from it (the
+    ``--asec-education-source`` vocabulary); the archive must be the pinned
+    one and hold exactly one pinned member that matches the CSV pins. The
+    existing education-assistance Census fetcher can obtain the pinned
+    archives, and extract their person CSVs, separately. The default pins
+    cover all three certified BuildP source years. Alternate pins support
+    explicit review of other populations and small synthetic tests.
 
     Support clones may repeat a source person across native units. Within every
     native unit, the source members must be unique and exhaust one complete
