@@ -942,3 +942,214 @@ def test_tool_environment_strips_credentials_and_stays_offline() -> None:
 def test_tool_environment_refuses_an_unvalidated_plan_env(key: str) -> None:
     with pytest.raises(plan_lib.PlanError, match="may not be passed"):
         plan_lib.tool_environment({}, {key: "x"})
+
+
+# --------------------------------------------------------------------------- #
+# Attempt ledger: outcomes, charging and the run's lock                        #
+# --------------------------------------------------------------------------- #
+
+
+def _attempt(
+    attempt_id: str,
+    *,
+    seen: float,
+    started: float = 0.0,
+    plan_data: dict | None = None,
+    **kw,
+) -> dict:
+    data = plan_data or _plan_data(max_wall_seconds=20_000)
+    return plan_lib.attempt_record(
+        plan_lib.parse_plan(data),
+        plan_lib.plan_digest(data),
+        attempt_id=attempt_id,
+        started_epoch=started,
+        last_seen_epoch=seen,
+        **kw,
+    )
+
+
+def test_attempt_records_carry_outcome_note_and_modal_ids() -> None:
+    record = _attempt(
+        "20260923T050000000000Z",
+        seen=60.0,
+        outcome=plan_lib.OUTCOME_ERROR,
+        note="PlanError: input 'feed' ...",
+        modal={"input_id": "in-1", "function_call_id": "fc-1"},
+    )
+    assert record["outcome"] == "error"
+    assert record["finished"] is False
+    assert record["modal"] == {"input_id": "in-1", "function_call_id": "fc-1"}
+    assert _attempt("a", seen=1.0)["outcome"] is None
+
+
+def test_charging_counts_every_attempt_that_did_not_finish() -> None:
+    data = _plan_data(max_wall_seconds=20_000)
+    plan, sha = plan_lib.parse_plan(data), plan_lib.plan_digest(data)
+    preempted = _attempt("a1", seen=3_000.0)
+    errored = _attempt("a2", seen=500.0, outcome=plan_lib.OUTCOME_ERROR)
+    refused = _attempt("a3", seen=270.0, finished=True, outcome="refused")
+    stopped = _attempt(
+        "a4", seen=9_000.0, finished=True, outcome="receipt", receipt="r.json"
+    )
+    own = _attempt("a5", seen=10.0)
+    charged = plan_lib.unfinished_attempts(
+        [preempted, errored, refused, stopped, own], plan, sha, exclude="a5"
+    )
+    assert [item["attempt_id"] for item in charged] == ["a1", "a2"]
+    # A budget stop wrote a FAILED receipt, so the same plan starts afresh.
+    assert plan_lib.remaining_wall_seconds(plan, charged) == 20_000 - 3_500
+
+
+def test_recent_unfinished_attempts_are_the_run_s_possible_lock_holders() -> None:
+    now = 10_000.0
+    window = plan_lib.ATTEMPT_LIVE_WINDOW_SECONDS
+    other_run = _attempt(
+        "b", seen=now, plan_data=_plan_data(run_id="another-run", stage="calibrate")
+    )
+    records = [
+        _attempt("fresh", seen=now - 10),
+        _attempt("edge", seen=now - window + 1),
+        _attempt("stale", seen=now - window - 1),
+        _attempt("ended", seen=now - 10, outcome=plan_lib.OUTCOME_ERROR),
+        _attempt("done", seen=now - 10, finished=True, outcome="receipt"),
+        _attempt("mine", seen=now),
+        other_run,
+        # A record from the runner before outcomes existed.
+        {
+            key: value
+            for key, value in _attempt("legacy", seen=now - 5).items()
+            if key not in {"outcome", "note", "modal"}
+        },
+    ]
+    recent = plan_lib.recent_unfinished_attempts(
+        records, "acs-local-20260923", now=now, exclude="mine"
+    )
+    assert [item["attempt_id"] for item in recent] == ["fresh", "edge", "legacy"]
+
+
+class _Ledger:
+    """Attempt records as successive reads of the runs volume return them."""
+
+    def __init__(self, *reads: list[dict]) -> None:
+        self.reads = list(reads)
+        self.sleeps: list[float] = []
+
+    def read(self) -> list[dict]:
+        return self.reads.pop(0) if len(self.reads) > 1 else self.reads[0]
+
+    def sleep(self, seconds: float) -> None:
+        self.sleeps.append(seconds)
+
+
+OWN = "20260923T060000000000Z"
+EARLIER = "20260923T050000000000Z"
+LATER = "20260923T070000000000Z"
+
+
+def _lock(ledger: _Ledger, now: float = 10_000.0) -> list[dict]:
+    return plan_lib.live_attempts(
+        ledger.read,
+        "acs-local-20260923",
+        own_attempt_id=OWN,
+        now=lambda: now,
+        sleep=ledger.sleep,
+    )
+
+
+def test_lock_is_free_without_recent_earlier_attempts() -> None:
+    ledger = _Ledger([_attempt(EARLIER, seen=1_000.0), _attempt(OWN, seen=10_000.0)])
+    assert _lock(ledger) == []
+    assert ledger.sleeps == []
+
+
+def test_lock_waits_out_a_preempted_predecessor_and_starts() -> None:
+    # Modal restarted this input moments after preempting it: the earlier
+    # attempt's record is recent but never moves again.
+    dead = _attempt(EARLIER, seen=9_950.0)
+    ledger = _Ledger([dead], [dead])
+    assert _lock(ledger) == []
+    assert ledger.sleeps == [plan_lib.ATTEMPT_RECHECK_SECONDS]
+
+
+def test_lock_refuses_while_an_earlier_attempt_keeps_writing() -> None:
+    ledger = _Ledger(
+        [_attempt(EARLIER, seen=9_950.0)], [_attempt(EARLIER, seen=10_200.0)]
+    )
+    running = _lock(ledger)
+    assert [item["attempt_id"] for item in running] == [EARLIER]
+
+
+def test_lock_frees_when_the_earlier_attempt_finishes_during_the_wait() -> None:
+    ledger = _Ledger(
+        [_attempt(EARLIER, seen=9_950.0)],
+        [_attempt(EARLIER, seen=10_200.0, finished=True, outcome="receipt")],
+    )
+    assert _lock(ledger) == []
+
+
+def test_lock_leaves_a_later_attempt_to_refuse_itself() -> None:
+    ledger = _Ledger([_attempt(LATER, seen=10_000.0)])
+    assert _lock(ledger) == []
+    assert ledger.sleeps == []
+
+
+def test_lock_covers_every_stage_and_plan_of_the_run() -> None:
+    calibrate = _attempt(
+        EARLIER, seen=9_950.0, plan_data=_plan_data("calibrate", max_wall_seconds=600)
+    )
+    moved = {**calibrate, "last_seen_epoch": 10_100.0}
+    assert len(_lock(_Ledger([calibrate], [moved]))) == 1
+
+
+def test_app_attempt_record_cannot_be_overwritten_after_it_ends(
+    app, tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setattr(plan_lib, "RUNS_MOUNT", str(tmp_path))
+    data = _plan_data(max_wall_seconds=600)
+    plan = plan_lib.parse_plan(data)
+    attempt = app._Attempt(plan, plan_lib.plan_digest(data), started=1_000.0)
+    attempt.write()
+    record = json.loads(attempt.path.read_text())
+    assert (record["finished"], record["outcome"]) == (False, None)
+    assert record["modal"] == {"input_id": "in-test", "function_call_id": "fc-test"}
+    attempt.end("receipt", finished=True, receipt="receipts/x.json")
+    attempt.write()  # a heartbeat that lost the race
+    record = json.loads(attempt.path.read_text())
+    assert (record["finished"], record["outcome"]) == (True, "receipt")
+    assert record["receipt"] == "receipts/x.json"
+    assert not list(attempt.path.parent.glob("*.tmp"))
+    assert app.runs_volume.commit.call_count == 2
+    assert [item["attempt_id"] for item in attempt.records()] == [attempt.attempt_id]
+    app.runs_volume.reload.assert_called()
+
+
+@pytest.mark.parametrize(
+    ("raised", "outcome", "finished"),
+    [("refusal", "refused", True), ("error", "error", False)],
+)
+def test_app_run_stage_ends_the_attempt_with_its_outcome(
+    app, tmp_path: Path, monkeypatch, raised: str, outcome: str, finished: bool
+) -> None:
+    monkeypatch.setattr(plan_lib, "RUNS_MOUNT", str(tmp_path))
+    monkeypatch.setattr(
+        app,
+        "_git_state",
+        lambda plan: {
+            "head_matches_plan": True,
+            "tree_clean": True,
+            "branch_verified": True,
+            "tool_present": True,
+        },
+    )
+    error = app._Refusal("lock held") if raised == "refusal" else OSError("disk full")
+
+    def attempt_stage(*_args, **_kwargs):
+        raise error
+
+    monkeypatch.setattr(app, "_attempt_stage", attempt_stage)
+    with pytest.raises(type(error)):
+        app._run_stage(_plan_data(max_wall_seconds=600))
+    (path,) = (tmp_path / "runs" / "acs-local-20260923" / "attempts").glob("*.json")
+    record = json.loads(path.read_text())
+    assert (record["outcome"], record["finished"]) == (outcome, finished)
+    assert str(error) in record["note"]

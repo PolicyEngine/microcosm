@@ -951,6 +951,7 @@ def build_receipt(
     container_wall_seconds: float | None = None,
     prior_attempts: Sequence[Mapping[str, object]] = (),
     budget_seconds: int | None = None,
+    attempt_id: str | None = None,
 ) -> dict[str, object]:
     resources = plan.resources
     # The tool's wall leaves out staging the inputs, hashing the state tree
@@ -996,6 +997,7 @@ def build_receipt(
         },
         "argv": list(argv),
         "returncode": returncode,
+        "attempt_id": attempt_id,
         "max_wall_seconds": plan.max_wall_seconds,
         "budget_seconds_this_attempt": budget_seconds,
         "stopped_at_budget": stopped_at_budget,
@@ -1078,12 +1080,27 @@ def prior_state_problems(plan: Plan, run_identity: Mapping | None) -> list[str]:
 # --------------------------------------------------------------------------- #
 
 ATTEMPT_SCHEMA = "microcosm-modal-us-stage-attempt/1"
-# How often a running attempt records that it is still alive; a preempted
-# attempt is charged up to its last heartbeat, so it can be undercounted by
-# at most this much.
+# How often a running attempt rewrites its record. The record runs from the
+# start of ``_run_stage`` until the attempt's final record, so the lock wait,
+# staging, the tool, hashing and mirroring are all inside it. A preempted
+# attempt is charged from its start to its last record, which undercounts
+# what Modal bills for it by: the container's cold start and image load
+# before ``_run_stage`` begins; up to one interval after the last record
+# (longer if a heartbeat write failed; failures are logged, not retried);
+# and the preemption grace period.
 ATTEMPT_HEARTBEAT_SECONDS = 120
+# An unfinished record newer than this may belong to a running attempt.
+ATTEMPT_LIVE_WINDOW_SECONDS = 2 * ATTEMPT_HEARTBEAT_SECONDS + 60
+# How long a new attempt waits to see whether such a record moves: two
+# heartbeats and slack, so a single failed write does not read as a death.
+ATTEMPT_RECHECK_SECONDS = 2 * ATTEMPT_HEARTBEAT_SECONDS + 30
 # An attempt left with less tool time than this refuses to start.
 MIN_ATTEMPT_SECONDS = 60
+
+# How an attempt ended. A running (or preempted) attempt has no outcome.
+OUTCOME_RECEIPT = "receipt"  # the tool ran and a receipt was written
+OUTCOME_REFUSED = "refused"  # the lock or the budget stopped it before staging
+OUTCOME_ERROR = "error"  # an exception after its first record
 
 
 def attempt_record(
@@ -1095,6 +1112,9 @@ def attempt_record(
     last_seen_epoch: float,
     finished: bool = False,
     receipt: str | None = None,
+    outcome: str | None = None,
+    note: str | None = None,
+    modal: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     return {
         "schema": ATTEMPT_SCHEMA,
@@ -1107,16 +1127,29 @@ def attempt_record(
         "elapsed_seconds": round(max(0.0, last_seen_epoch - started_epoch), 1),
         "finished": finished,
         "receipt": receipt,
+        "outcome": outcome,
+        "note": note,
+        "modal": dict(modal or {}),
     }
 
 
 def unfinished_attempts(
-    records: Iterable[Mapping], plan: Plan, plan_sha256: str
+    records: Iterable[Mapping],
+    plan: Plan,
+    plan_sha256: str,
+    *,
+    exclude: str | None = None,
 ) -> list[dict[str, object]]:
-    """Earlier attempts of this exact plan and stage that never wrote a receipt.
+    """Attempts of this exact plan and stage that are charged to its budget.
 
     Modal restarts a preempted function on the same input, from scratch and
-    regardless of ``retries``; each such attempt is billed.
+    regardless of ``retries``; each such attempt is billed. Every attempt
+    that is not ``finished`` is charged: one preemption cut short, and one
+    that raised after its first record (a digest mismatch, a failed pull or
+    mirror, a runner bug). A finished attempt is not: one that wrote a
+    receipt, COMPLETED or FAILED (including a stop at the budget, after
+    which the same plan starts again with its whole budget), and one the
+    lock or the budget refused. ``exclude`` is the caller's own attempt.
     """
 
     return [
@@ -1126,8 +1159,93 @@ def unfinished_attempts(
         and record.get("run_id") == plan.run_id
         and record.get("stage") == plan.stage
         and record.get("plan_sha256") == plan_sha256
+        and record.get("attempt_id") != exclude
         and not record.get("finished")
     ]
+
+
+def recent_unfinished_attempts(
+    records: Iterable[Mapping],
+    run_id: str,
+    *,
+    now: float,
+    exclude: str | None = None,
+) -> list[dict[str, object]]:
+    """Attempts of the run, any stage or plan, that may still be running.
+
+    Unfinished, without an outcome, and with a record newer than
+    ATTEMPT_LIVE_WINDOW_SECONDS. A preempted attempt looks like this until
+    its record ages out, so this alone cannot tell the two apart.
+    """
+
+    return [
+        dict(record)
+        for record in records
+        if record.get("schema") == ATTEMPT_SCHEMA
+        and record.get("run_id") == run_id
+        and record.get("attempt_id") != exclude
+        and not record.get("finished")
+        and record.get("outcome") is None
+        and now - float(record.get("last_seen_epoch") or 0.0)
+        < ATTEMPT_LIVE_WINDOW_SECONDS
+    ]
+
+
+def live_attempts(
+    read_records: Callable[[], Iterable[Mapping]],
+    run_id: str,
+    *,
+    own_attempt_id: str,
+    now: Callable[[], float],
+    sleep: Callable[[float], None],
+    log: Callable[[str], None] = lambda _message: None,
+) -> list[dict[str, object]]:
+    """The run's lock: earlier attempts that are still running.
+
+    Two attempts of one run would race on its state directory. An earlier
+    attempt (smaller ``attempt_id``, a start timestamp) whose record is
+    recent is either running or was preempted moments ago, as when Modal
+    restarts this very input. Wait ATTEMPT_RECHECK_SECONDS and read again: a
+    running attempt has rewritten its record, a dead one has not. Returns the
+    running ones; the caller refuses to start when there are any. A later
+    attempt is left alone: it sees this one and refuses itself. Modal
+    volumes have no atomic lock, so two attempts that start within one
+    commit of each other can both pass; the runbook asks for one stage of a
+    run at a time.
+    """
+
+    before = [
+        record
+        for record in recent_unfinished_attempts(
+            read_records(), run_id, now=now(), exclude=own_attempt_id
+        )
+        if str(record.get("attempt_id") or "") < own_attempt_id
+    ]
+    if not before:
+        return []
+    names = ", ".join(str(record.get("attempt_id")) for record in before)
+    log(
+        f"LOCK: earlier attempt(s) {names} of run {run_id!r} wrote a record "
+        f"recently; waiting {ATTEMPT_RECHECK_SECONDS}s to see whether they run"
+    )
+    sleep(ATTEMPT_RECHECK_SECONDS)
+    after = {
+        record.get("attempt_id"): record
+        for record in read_records()
+        if record.get("schema") == ATTEMPT_SCHEMA
+    }
+    running = []
+    for record in before:
+        latest = after.get(record.get("attempt_id"))
+        if (
+            latest is not None
+            and not latest.get("finished")
+            and latest.get("outcome") is None
+            and float(latest.get("last_seen_epoch") or 0.0)
+            > float(record.get("last_seen_epoch") or 0.0)
+        ):
+            running.append(dict(latest))
+    return running
 
 
 def remaining_wall_seconds(

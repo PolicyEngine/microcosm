@@ -367,13 +367,31 @@ class _BudgetWatch(threading.Thread):
             self.proc.kill()
 
 
+def _modal_ids() -> dict[str, str | None]:
+    """This container's Modal input and call ids, recorded for the audit."""
+
+    ids: dict[str, str | None] = {}
+    for key, name in (
+        ("input_id", "current_input_id"),
+        ("function_call_id", "current_function_call_id"),
+    ):
+        try:
+            value = getattr(modal, name)()
+        except Exception:  # noqa: BLE001 - absent outside a container
+            value = None
+        ids[key] = value if isinstance(value, str) else None
+    return ids
+
+
 class _Attempt(threading.Thread):
-    """This container's entry in ``runs/<run_id>/attempts/``.
+    """This container's record in ``runs/<run_id>/attempts/``.
 
     Modal restarts a preempted function from scratch on the same input, and
-    ``retries=0`` does not stop that. The entry is rewritten and committed
-    every ``ATTEMPT_HEARTBEAT_SECONDS`` so that a restart can charge the
-    attempts preemption cut short to the plan's ``max_wall_seconds``.
+    ``retries=0`` does not stop that. The record is written when the attempt
+    starts, rewritten and committed every ``ATTEMPT_HEARTBEAT_SECONDS``, and
+    ended once with an outcome (``end``). The records charge the attempts
+    preemption cut short to the plan's ``max_wall_seconds`` and serve as the
+    run's lock (``plan_lib.live_attempts``).
     """
 
     def __init__(self, plan: plan_lib.Plan, plan_sha256: str, started: float) -> None:
@@ -385,23 +403,59 @@ class _Attempt(threading.Thread):
             "%Y%m%dT%H%M%S%fZ"
         )
         self.path = _run_dir(plan) / "attempts" / f"{plan.stage}-{self.attempt_id}.json"
+        self.modal = _modal_ids()
         self.stop = threading.Event()
+        # Serializes writes, commits and reloads of the runs volume between the
+        # heartbeat and the main thread; a reload fails while a file is open.
+        self.lock = threading.Lock()
+        self.ended = False
 
-    def write(self, *, finished: bool = False, receipt: str | None = None) -> None:
+    def _write(self, **final: object) -> None:
         record = plan_lib.attempt_record(
             self.plan,
             self.plan_sha256,
             attempt_id=self.attempt_id,
             started_epoch=self.started,
             last_seen_epoch=time.time(),
-            finished=finished,
-            receipt=receipt,
+            modal=self.modal,
+            **final,  # type: ignore[arg-type]
         )
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
+        tmp = self.path.with_name(self.path.name + ".tmp")
         tmp.write_text(json.dumps(record, indent=2) + "\n")
         os.replace(tmp, self.path)
         runs_volume.commit()
+
+    def write(self) -> None:
+        """Write or refresh the running record; a no-op once ended."""
+
+        with self.lock:
+            if not self.ended:
+                self._write()
+
+    def end(
+        self,
+        outcome: str,
+        *,
+        finished: bool,
+        receipt: str | None = None,
+        note: str | None = None,
+    ) -> None:
+        """Write the final record once; no heartbeat can overwrite it after."""
+
+        self.stop.set()
+        with self.lock:
+            if self.ended:
+                return
+            self.ended = True
+            self._write(finished=finished, receipt=receipt, outcome=outcome, note=note)
+
+    def records(self) -> list[dict]:
+        """Every attempt record of the run, as committed now."""
+
+        with self.lock:
+            runs_volume.reload()
+        return _attempt_records(self.plan)
 
     def run(self) -> None:
         while not self.stop.wait(plan_lib.ATTEMPT_HEARTBEAT_SECONDS):
@@ -411,16 +465,12 @@ class _Attempt(threading.Thread):
                 print(f"attempt heartbeat failed: {error}", flush=True)
 
 
-def _prior_attempts(plan: plan_lib.Plan, plan_sha256: str) -> list[dict[str, object]]:
+def _attempt_records(plan: plan_lib.Plan) -> list[dict]:
     attempts_dir = _run_dir(plan) / "attempts"
-    records = (
-        [_load_json(path) for path in sorted(attempts_dir.glob("*.json"))]
-        if attempts_dir.exists()
-        else []
-    )
-    return plan_lib.unfinished_attempts(
-        [record for record in records if record], plan, plan_sha256
-    )
+    if not attempts_dir.exists():
+        return []
+    records = [_load_json(path) for path in sorted(attempts_dir.glob("*.json"))]
+    return [record for record in records if record]
 
 
 def _load_json(path: Path) -> dict | None:
@@ -510,7 +560,10 @@ def check_stage(plan_data: dict) -> dict:
     )
     report["prior_run_identity"] = identity
     problems += plan_lib.prior_state_problems(plan, identity)
-    prior_attempts = _prior_attempts(plan, plan_lib.plan_digest(plan_data))
+    records = _attempt_records(plan)
+    prior_attempts = plan_lib.unfinished_attempts(
+        records, plan, plan_lib.plan_digest(plan_data)
+    )
     report["prior_unfinished_attempts"] = prior_attempts
     remaining = plan_lib.remaining_wall_seconds(plan, prior_attempts)
     report["remaining_wall_seconds"] = remaining
@@ -518,10 +571,24 @@ def check_stage(plan_data: dict) -> dict:
         problems.append(
             "earlier unfinished attempts used this plan's max_wall_seconds budget"
         )
+    # The run's lock, without the wait a run would do.
+    now = time.time()
+    running = plan_lib.recent_unfinished_attempts(records, plan.run_id, now=now)
+    report["recent_unfinished_attempts"] = running
+    problems += [
+        f"attempt {item.get('attempt_id')} ({item.get('stage')}) of this run wrote "
+        f"its record {now - float(item.get('last_seen_epoch') or 0.0):.0f}s ago and "
+        "may still be running; a run waits to see and refuses if it is"
+        for item in running
+    ]
 
     report["problems"] = problems
     report["ok"] = not problems
     return report
+
+
+class _Refusal(plan_lib.PlanError):
+    """The lock or the budget stopped an attempt before it staged anything."""
 
 
 def _run_stage(plan_data: dict) -> dict:
@@ -539,27 +606,82 @@ def _run_stage(plan_data: dict) -> dict:
     ):
         raise plan_lib.PlanError(f"image clone does not match the plan: {git}")
 
-    work = Path(plan_lib.WORK_ROOT)
-    state = work / "state"
     run_dir = _run_dir(plan)
     runs_volume.reload()
 
-    # 1. Refuse a foreign or missing predecessor before paying for inputs.
+    # 1. Refuse a foreign or missing predecessor before recording an attempt.
     identity = _load_json(run_dir / "state" / "checkpoints" / "run_identity.json")
     problems = plan_lib.prior_state_problems(plan, identity)
     if problems:
         raise plan_lib.PlanError("; ".join(problems))
 
-    # 1b. Charge attempts that preemption cut short to this plan's budget,
-    #     then record this one. An attempt that never wrote a receipt stays
-    #     charged; to relaunch past it, raise max_wall_seconds or change run_id.
+    # 2. Record this attempt. The heartbeat runs until the final record, so the
+    #    lock wait, staging, the tool, hashing and mirroring are all charged
+    #    if preemption cuts the attempt short. Any exception from here on
+    #    leaves the attempt unfinished (charged) with outcome "error"; only a
+    #    receipt or a refusal by the lock or the budget finishes it.
     plan_sha256 = plan_lib.plan_digest(plan_data)
-    prior_attempts = _prior_attempts(plan, plan_sha256)
+    attempt = _Attempt(plan, plan_sha256, container_started)
+    attempt.write()
+    attempt.start()
+    try:
+        return _attempt_stage(plan, plan_data, plan_sha256, attempt, git)
+    except _Refusal as refusal:
+        attempt.end(plan_lib.OUTCOME_REFUSED, finished=True, note=str(refusal)[:500])
+        raise
+    except BaseException as error:
+        try:
+            attempt.end(
+                plan_lib.OUTCOME_ERROR,
+                finished=False,
+                note=f"{type(error).__name__}: {error}"[:500],
+            )
+        except Exception as record_error:  # noqa: BLE001 - keep the first error
+            print(f"attempt record failed: {record_error}", flush=True)
+        raise
+
+
+def _attempt_stage(
+    plan: plan_lib.Plan,
+    plan_data: dict,
+    plan_sha256: str,
+    attempt: _Attempt,
+    git: dict[str, object],
+) -> dict:
+    work = Path(plan_lib.WORK_ROOT)
+    state = work / "state"
+    run_dir = _run_dir(plan)
+
+    # 3. The run's lock: an earlier attempt of this run that is still
+    #    writing its record would race on the state directory.
+    running = plan_lib.live_attempts(
+        attempt.records,
+        plan.run_id,
+        own_attempt_id=attempt.attempt_id,
+        now=time.time,
+        sleep=time.sleep,
+        log=lambda message: print(message, flush=True),
+    )
+    if running:
+        names = ", ".join(
+            f"{item.get('attempt_id')} ({item.get('stage')})" for item in running
+        )
+        raise _Refusal(
+            f"run {plan.run_id!r} has a running attempt: {names}. Run one stage "
+            "of a run at a time; wait for it or stop its app"
+        )
+
+    # 4. Charge the attempts of this plan that never finished to its budget.
+    prior_attempts = plan_lib.unfinished_attempts(
+        attempt.records(), plan, plan_sha256, exclude=attempt.attempt_id
+    )
     budget_seconds = plan_lib.remaining_wall_seconds(plan, prior_attempts)
     if budget_seconds is not None and budget_seconds < plan_lib.MIN_ATTEMPT_SECONDS:
-        raise plan_lib.PlanError(
+        raise _Refusal(
             f"{len(prior_attempts)} earlier unfinished attempt(s) of this plan used "
-            f"the max_wall_seconds budget ({plan.max_wall_seconds}s); not starting"
+            f"the max_wall_seconds budget ({plan.max_wall_seconds}s); not starting. "
+            "To launch again, raise max_wall_seconds (a new plan digest) or use a "
+            "new run_id"
         )
     if prior_attempts:
         print(
@@ -567,11 +689,8 @@ def _run_stage(plan_data: dict) -> dict:
             f"tool budget for this attempt {budget_seconds}s",
             flush=True,
         )
-    attempt = _Attempt(plan, plan_sha256, container_started)
-    attempt.write()
-    attempt.start()
 
-    # 2. Inputs to stable local paths, each digest verified; then this run's
+    # 5. Inputs to stable local paths, each digest verified; then this run's
     #    prior state (checkpoints, calibrated H5) onto local disk.
     inputs_verified = [_stage_input(ref, work) for ref in plan.inputs.values()]
     pulled = plan_lib.mirror_tree(run_dir / "state", state)
@@ -580,7 +699,7 @@ def _run_stage(plan_data: dict) -> dict:
     for path in sorted(receipts_dir.glob("*.json")) if receipts_dir.exists() else []:
         prior.append({"file": path.name, "sha256": plan_lib.sha256_file(path)[0]})
 
-    # 3. The stage itself, in the pinned tree, logged to the state directory.
+    # 6. The stage itself, in the pinned tree, logged to the state directory.
     argv = plan_lib.planned_argv(plan)
     started_at, started = _now(), time.time()
     log_path = state / "logs" / f"{plan.stage}-{started_at.replace(':', '')}.log"
@@ -608,10 +727,8 @@ def _run_stage(plan_data: dict) -> dict:
     peak_kib = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
     finished_at = _now()
 
-    # 4. Outputs: hash the whole state tree, mirror it to the volume, receipt.
-    #    The heartbeat stops first so that no commit lands mid-mirror.
-    attempt.stop.set()
-    attempt.join(timeout=60)
+    # 7. Outputs: hash the whole state tree, mirror it to the volume, receipt.
+    #    The heartbeat keeps running, so this is charged too.
     outputs = plan_lib.hash_tree(state)
     pushed = plan_lib.mirror_tree(state, run_dir / "state")
     receipt = plan_lib.build_receipt(
@@ -631,17 +748,21 @@ def _run_stage(plan_data: dict) -> dict:
             "state_pulled": pulled,
             "state_pushed": pushed,
             "tool_env_removed": env_removed,
+            "modal": attempt.modal,
         },
         prior_receipts=prior,
         stopped_at_budget=budget.fired,
-        container_wall_seconds=time.time() - container_started,
+        container_wall_seconds=time.time() - attempt.started,
         prior_attempts=prior_attempts,
         budget_seconds=budget_seconds,
+        attempt_id=attempt.attempt_id,
     )
     receipts_dir.mkdir(parents=True, exist_ok=True)
     name = f"{plan.stage}-{started_at.replace(':', '')}.json"
-    (receipts_dir / name).write_text(json.dumps(receipt, indent=2) + "\n")
-    attempt.write(finished=True, receipt=f"receipts/{name}")
+    tmp = receipts_dir / f".{name}.tmp"
+    tmp.write_text(json.dumps(receipt, indent=2) + "\n")
+    os.replace(tmp, receipts_dir / name)
+    attempt.end(plan_lib.OUTCOME_RECEIPT, finished=True, receipt=f"receipts/{name}")
     receipt["receipt_path"] = f"runs/{plan.run_id}/receipts/{name}"
     shutil.rmtree(work / "hf", ignore_errors=True)
     return receipt
