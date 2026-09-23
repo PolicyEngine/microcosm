@@ -137,7 +137,11 @@ def original_placement_nodes(
         inputs.receiving.version if receiving_version is None else receiving_version
     )
     require(type(version) is str and bool(version), "RECEIVING_VERSION")
-    values._axes(inputs, qualified)
+    # Own-tail copies are split off by clone index; declarations, axes and
+    # ownership are those of the two-clone core, so a late tail expansion in
+    # the observed terminal does not change what this fragment declares.
+    core, _ = values._receiving_core(inputs)
+    values._axes(core, qualified)
     seeds = dict(
         clone_one_seed=clone_one_seed,
         original_application_seed=original_application_seed,
@@ -152,10 +156,10 @@ def original_placement_nodes(
         "ROUTE_TARGETS",
     )
     if finalization_policy is None:
-        candidates, reads = values.candidate_outputs(inputs, profiles[0]), ()
+        candidates, reads = values.candidate_outputs(core, profiles[0]), ()
     else:
-        candidates = finalization.candidate_outputs(inputs, profiles[0])
-        reads = finalization.read_columns(inputs, profiles[0])
+        candidates = finalization.candidate_outputs(core, profiles[0])
+        reads = finalization.read_columns(core, profiles[0])
     frame = inputs.receiving.frame
     # Entity IDs and memberships arrive in the executor's structural view; they
     # have no column owner in the compiled declaration, so a Slice naming them

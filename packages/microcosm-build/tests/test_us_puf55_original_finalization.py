@@ -771,12 +771,23 @@ def test_finalization_declarations_compile_after_a_late_terminal():
     assert compiled.order.index(b.terminal.id) < compiled.order.index(graph.KEEP_NODE)
 
 
-def test_finalization_binding_observes_terminal_and_rebuilds_keep_all():
-    b, inputs = _descriptive_binding(POLICY, whole_fixture=whole_fixture)
-    assert b.finalization_policy == POLICY
-    b.observe_terminal(b.terminal.id, inputs.receiving)
-    expected = b.reconstruct(b.placement_nodes[0], inputs.receiving, {}, {})
+@pytest.mark.parametrize("tail", (False, True))
+@pytest.mark.parametrize("policy", (None, POLICY))
+def test_binding_observes_a_terminal_with_or_without_tail_copies(policy, tail):
+    b, inputs = _descriptive_binding(policy, whole_fixture=whole_fixture)
+    assert b.finalization_policy == policy
+    terminal = with_tail(inputs).receiving if tail else inputs.receiving
+    # The declaration was made from the tail-free template; the observed
+    # terminal's own-tail copies do not change it (TERMINAL_OUTPUT_DECLARATIONS).
+    b.observe_terminal(b.terminal.id, terminal)
+    assert b.kept.frame.n("person") == terminal.frame.n("person")
+    expected = b.reconstruct(b.placement_nodes[0], terminal, {}, {})
     original_host.physical.replay.same_replayed_population(expected, b.kept)
+
+
+def test_finalization_binding_refuses_a_changed_policy():
+    b, inputs = _descriptive_binding(POLICY, whole_fixture=whole_fixture)
+    b.observe_terminal(b.terminal.id, inputs.receiving)
     b.finalization_policy = None  # a changed policy is a changed binding
     with pytest.raises(ValueError, match="HOST_BINDING_CHANGED"):
         b.pure()
@@ -817,10 +828,13 @@ def test_attach_kernel_passes_exactly_its_policy(monkeypatch, policy):
             kernel.run(SimpleNamespace(node=None, artifacts={}))
 
 
-def test_typed_finalization_consumes_strict_full55_codecs(real_chain):
+@pytest.mark.parametrize("tail", (False, True))
+def test_typed_finalization_consumes_strict_full55_codecs(real_chain, tail):
     """Synthetic 55-step envelopes through the strict merger; no 55-fit claim."""
     qualified, transports = _codec_only_full55(real_chain)
     _, inputs, _ = whole_fixture()
+    if tail:
+        inputs = with_tail(inputs)
     declarations = routes(qualified)
     keep, node = graph.original_placement_nodes(
         qualified,
@@ -884,9 +898,10 @@ def test_typed_finalization_consumes_strict_full55_codecs(real_chain):
     final_population = populations.patch(
         graph.keep_all_population(inputs, keep), node, actual
     )
+    assert bool(document["own_tail_copies_carried"]) is tail
     for (entity, name), column in actual.columns.items():
         assert final_population.owners[entity, name] == graph.ATTACH_NODE
-        clone_one = column.index >= 1000
+        clone_one = column.index >= 1000  # clone-one twins and tail copies
         incumbent = inputs.receiving.frame.table(entity).set_index(entity + "_id")[name]
         pd.testing.assert_series_equal(column[clone_one], incumbent[clone_one])
     # A conservative declaration cannot be run under the finalization policy.

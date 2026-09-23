@@ -130,7 +130,9 @@ households to clone index 2.
 
 The original-arm placement and finalization read the late receiving terminal,
 so a tail expansion could come before them. Both now split tail copies off by
-clone index (`_receiving_core`). The copies must be whole households, closed
+clone index (`_receiving_core`), in the pure results and in the graph
+declarations and terminal observer alike, so a tail in the observed terminal
+leaves the declared nodes unchanged. The copies must be whole households, closed
 under every group membership. The remaining core must reproduce the arm-one ID
 axis row for row, or the step is refused (`TAIL_MEMBERSHIP`, `CLONE_DOMAIN`,
 `ID_AXIS`). Every tail cell is carried unchanged, and the document records the

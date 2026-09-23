@@ -225,7 +225,7 @@ class Binding:
             "TERMINAL_OBSERVER",
         )
         inputs = replace(self.template, receiving=population)
-        values._axes(inputs, self.fixed)
+        values._axes(values._receiving_core(inputs)[0], self.fixed)
         expected = fragment.original_placement_nodes(
             self.fixed,
             inputs,
