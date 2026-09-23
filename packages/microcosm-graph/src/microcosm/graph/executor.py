@@ -2995,16 +2995,20 @@ def _execute_graph(
 
         if result is None:
             prepared = None if speculation is None else speculation.claim(node_id)
-            if (
+            # The context digest covers tables, weights, strata and byte
+            # inputs, not the numeric scopes a kernel may also read, so both
+            # reuse paths below require those scopes to be equal as well.
+            scopes_match = (
                 prepared is not None
-                and prepared.incumbent is incumbent
                 and dict(prepared.tolerances) == dict(input_tolerances)
                 and dict(prepared.numerics) == dict(input_numerics)
-            ):
+            )
+            if prepared is not None and scopes_match and prepared.incumbent is incumbent:
                 # Nothing the projection reads has moved since it was taken:
-                # admitted populations are immutable, so the same incumbent
-                # object, scopes, key, sources and byte edges project this
-                # very context.
+                # admitted populations are immutable (patch copies the tables
+                # and returns a new Population), so the same incumbent object,
+                # scopes, key, sources and byte edges project this very
+                # context.
                 assert speculation is not None
                 context, before = prepared.context, prepared.before
                 outcome = speculation.outcome(prepared, reused=True)
@@ -3021,7 +3025,9 @@ def _execute_graph(
                 before = _context_digest(context)
                 if speculation is None:
                     outcome = _run_inline(kernel, context, node_id, record_timings)
-                elif prepared is not None and prepared.before == before:
+                elif (
+                    prepared is not None and scopes_match and prepared.before == before
+                ):
                     # A sibling admitted since the early projection moved the
                     # incumbent, but not one byte of this node's context.
                     outcome = speculation.outcome(prepared, reused=False)
