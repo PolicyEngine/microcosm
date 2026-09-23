@@ -26,9 +26,10 @@ run. Node keys, receipts, cache records and every stored byte are therefore
 those of the sequential run, provided each kernel honours the contract it
 already declares: its output is a function of its projected context, its
 declared sources and its node-key seed, and nothing else. Running kernels on
-worker threads adds one obligation that is the caller's, like amendment 25's
-live-observer promise: a registered kernel instance must be safe to call from a
-worker thread while other kernels run. The executor cannot check that.
+worker threads adds one obligation that is the caller's: a registered kernel
+instance, and any module state it shares with other kernels, must be safe to
+call from a worker thread while other kernels run. The executor cannot check
+that, so the default stays one worker and a caller opts in.
 
 Worker threads never publish to the store, never touch the cumulative
 populations, and are joined before ``run_graph`` settles a failure or
