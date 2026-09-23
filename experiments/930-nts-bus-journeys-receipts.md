@@ -499,3 +499,9 @@ Reading: retiring the support rake costs nothing in fit (loss 0.01048 on 643 row
 the frame's, and turns the Scotland support row into the same proxy-region finding as its fares.
 The rulings for María stay the two from Part G (the devolved proxy region; the vehicle-share gap) plus
 the stale self-employment deferral, which blocks any national line on this tree until it is removed.
+
+Post-build fix-up: the C13 sweep's H2 parity test showed the stage writing the share column before the
+eligibility flag while the declared outputs (and the graph's cells) put it after; the write order is
+aligned and the fixture regenerated (oracle `d7486a5d…`, now equal to the graph's identity). spine-t3
+was built one commit earlier with the two columns in the other order; values, gates, the twin diff and
+the calibration are unaffected, and the rebuild is not repeated for a column-order change.

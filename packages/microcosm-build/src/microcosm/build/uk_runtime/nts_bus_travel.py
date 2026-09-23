@@ -1746,10 +1746,14 @@ class UKNTSBusTravelStageTransform:
             SERIES_TRIP_COLUMNS[BUS_IN_LONDON],
             SERIES_TRIP_COLUMNS[OTHER_LOCAL_BUS],
             TRIPS_COLUMN,
-            SINGLE_FARE_SHARE_COLUMN,
         ):
             person[column] = clipped[column].to_numpy(dtype=float)
         person[ELIGIBLE_COLUMN] = eligible
+        # Declared output order (the graph's cell order): the share follows
+        # the eligibility flag.
+        person[SINGLE_FARE_SHARE_COLUMN] = clipped[SINGLE_FARE_SHARE_COLUMN].to_numpy(
+            dtype=float
+        )
         household = household_table.copy()
         by_household = (
             pd.Series(
