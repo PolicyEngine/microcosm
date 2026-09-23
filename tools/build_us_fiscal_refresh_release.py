@@ -304,7 +304,7 @@ from microcosm.calibrate import (
     relative_error_loss,
 )
 from microcosm.calibrate.diagnostics import (
-    diagnostics_payload,
+    target_surface_payload,
     write_calibration_diagnostics,
 )
 from microcosm.data.contract import (
@@ -329,6 +329,7 @@ from microcosm.data.us_critical_targets import (
 from microcosm.data.us_critical_targets import (
     US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT as SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT,
 )
+from microcosm.diagnostics import DiagnosticsWriteOutcome, DiagnosticsWriteSuccess
 from microcosm.frame import Frame, MassChange, WeightKind, Weights, read_frame_table
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSEngine,
@@ -9537,7 +9538,7 @@ def _write_release_calibration_diagnostics(
     exact_k_ladder: Mapping[str, object] | None = None,
     calibration_runtime: Mapping[str, object] | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
-) -> None:
+) -> DiagnosticsWriteOutcome:
     """Write calibration diagnostics even when hard release gates fail."""
     failures = list(gate_failures)
     incumbent_rows = incumbent_diagnostics or {}
@@ -9554,7 +9555,7 @@ def _write_release_calibration_diagnostics(
         if incumbent_diagnostics_path is not None
         else None
     )
-    write_calibration_diagnostics(
+    return write_calibration_diagnostics(
         result,
         release_dir / "calibration_diagnostics.json",
         target_registry=registry,
@@ -9740,6 +9741,23 @@ def _write_release_calibration_diagnostics(
             ),
         },
     )
+
+
+def _diagnostics_manifest_status(outcome: DiagnosticsWriteOutcome) -> dict[str, object]:
+    """Render the typed writer result into durable release metadata."""
+
+    if outcome.status == "available":
+        return {
+            "status": "available",
+            "schema_version": outcome.schema_version,
+            "sha256": outcome.sha256,
+        }
+    return {
+        "status": "failed",
+        "expected_schema_version": outcome.expected_schema_version,
+        "error_code": outcome.error_code,
+        "message": outcome.message,
+    }
 
 
 def _target_final_estimate(result, target_name: str) -> float:
@@ -10160,6 +10178,7 @@ def _build_manifests(
     skipped_gates: Iterable[str] = (),
     scored_dataset_sha256: str | None = None,
     post_export_scoring: Mapping[str, object] | None = None,
+    diagnostics_outcome: DiagnosticsWriteOutcome | None = None,
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -10186,9 +10205,17 @@ def _build_manifests(
             "bytes it does not pin."
         )
     calibration_sha = _sha256(calibration_path)
-    diagnostics_sha = _sha256(diagnostics_path)
+    if diagnostics_outcome is None:
+        diagnostics_outcome = DiagnosticsWriteSuccess(
+            status="available",
+            path=diagnostics_path,
+            schema_version=8,
+            sha256=_sha256(diagnostics_path),
+        )
+    diagnostics_status = _diagnostics_manifest_status(diagnostics_outcome)
     coverage_sha = _sha256(coverage_path)
     diag = diagnostics_payload(result, target_registry=registry)
+    target_surface = target_surface_payload(result)
     # Route A remediation PR-3: every certified-surface exception, and the
     # inputs the gates judged against, must be recorded in the manifests
     # rather than only in loose diagnostics that never ship. The same blocks
@@ -10303,8 +10330,8 @@ def _build_manifests(
                 else {}
             ),
             "target_surface": {
-                "sha256": diag["target_surface"]["sha256"],
-                "n_targets": diag["target_surface"]["n_targets"],
+                "sha256": target_surface["sha256"],
+                "n_targets": target_surface["n_targets"],
             },
             "target_registry": {
                 "version": registry.version,
@@ -10323,9 +10350,11 @@ def _build_manifests(
             "calibration": {
                 "passed": not gate_failures,
                 "failures": gate_failures,
-                "initial_loss": diag["initial_loss"],
-                "final_loss": diag["final_loss"],
-                "fraction_within_10pct": diag["fraction_within_10pct"],
+                "initial_loss": _finite_or_none(result.initial_loss),
+                "final_loss": _finite_or_none(result.final_loss),
+                "fraction_within_10pct": _finite_or_none(
+                    result.fraction_within_10pct
+                ),
             },
             **(
                 {
@@ -10490,6 +10519,18 @@ def _build_manifests(
         json.dumps(manifest, indent=1, allow_nan=False)
     )
 
+    diagnostic_artifacts = (
+        {
+            "calibration_diagnostics": _artifact_entry(
+                "calibration_diagnostics.json",
+                diagnostics_outcome.sha256,
+                kind="diagnostics",
+                revision=release_id,
+            )
+        }
+        if diagnostics_outcome.status == "available"
+        else {}
+    )
     release_manifest = {
         "schema_version": 1,
         "data_package": {
@@ -10651,6 +10692,7 @@ def _build_manifests(
                 "specifier": f"=={runtime['policyengine-us']}",
             }
         ],
+        "calibration_diagnostics": diagnostics_status,
         "artifacts": {
             dataset_key: _artifact_entry(
                 dataset_filename,
@@ -10664,12 +10706,7 @@ def _build_manifests(
                 kind="calibration",
                 revision=release_id,
             ),
-            "calibration_diagnostics": _artifact_entry(
-                "calibration_diagnostics.json",
-                diagnostics_sha,
-                kind="diagnostics",
-                revision=release_id,
-            ),
+            **diagnostic_artifacts,
             "us_source_coverage": _artifact_entry(
                 "us_source_coverage.json",
                 coverage_sha,
@@ -13919,10 +13956,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
             else _load_incumbent_diagnostics_payload(args.incumbent_diagnostics)
         )
         if args.incumbent_diagnostics is not None:
-            current_target_surface = diagnostics_payload(
-                result,
-                target_registry=registry,
-            )["target_surface"]
+            current_target_surface = target_surface_payload(result)
             if (
                 args.exact_k is not None
                 and current_target_surface.get("sha256")
@@ -13975,10 +14009,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 "Exact-k calibration lost its pool or selection receipt."
             )
         if current_target_surface is None:
-            current_target_surface = diagnostics_payload(
-                result,
-                target_registry=registry,
-            )["target_surface"]
+            current_target_surface = target_surface_payload(result)
         exact_k_incumbent_fit_gate = _exact_k_frozen_register_fit_gate(
             result,
             incumbent_diagnostics,
@@ -14064,7 +14095,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         result=result,
         release_id=release_id,
     )
-    _write_release_calibration_diagnostics(
+    diagnostics_outcome = _write_release_calibration_diagnostics(
         result=result,
         release_dir=release_dir,
         registry=registry,
@@ -14119,10 +14150,11 @@ def _main(argv: Sequence[str] | None = None) -> None:
         telemetry,
         terminal_gate_failures,
     )
-    terminal_batch_telemetry.attach_artifact(
-        "calibration_diagnostics",
-        release_dir / "calibration_diagnostics.json",
-    )
+    if diagnostics_outcome.status == "available":
+        terminal_batch_telemetry.attach_artifact(
+            "calibration_diagnostics",
+            release_dir / "calibration_diagnostics.json",
+        )
     if gate_failures:
         terminal_batch_telemetry.stage(
             "release_gates",
@@ -14835,6 +14867,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         ),
         scored_dataset_sha256=scored_dataset_sha256,
         post_export_scoring=post_export_scoring,
+        diagnostics_outcome=diagnostics_outcome,
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")
