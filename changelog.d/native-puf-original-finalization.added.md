@@ -1,0 +1,1 @@
+Add opt-in whole-arm original PUF55 finalization (`original_finalization`) with per-target chain-prefix eligibility for mixed-known units, maintained person allocation of all 43 non-fixed outputs, and an explicit no-cap/no-snap/no-prune/no-signed-mass numerical policy; the default conservative placement is unchanged.

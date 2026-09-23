@@ -21,24 +21,30 @@ unit and five singleton outputs. Person outputs are allocated inside each
 eligible unit with the maintained arm-one helpers
 (:func:`~.puf_support._write_person_tax_unit_totals` and
 :func:`~.puf_support._write_person_tax_unit_boolean_counts`) and the maintained
-distribution bases, restricted to arm-zero members. Two arm-zero refusals are
-stricter than arm one: a multi-member unit whose declared basis columns are all
-absent from the population (tuition without a student flag) or whose basis is
-unresolved for an allocation member stays unresolved instead of falling back
-to the first member. Earnings-universe outputs keep the maintained age-15
-universe: under-15 members of an eligible unit receive the receipted universe
-zero, and a nonzero draw with no eligible member stays unresolved.
+distribution bases, restricted to arm-zero members. Three arm-zero refusals
+are stricter than arm one. A multi-member unit whose declared basis columns are
+all absent from the population (tuition without a student flag), or whose
+basis is unresolved for an allocation member, stays unresolved instead of
+falling back to the first member. Earnings-universe outputs keep the maintained
+age-15 universe: under-15 members of an eligible unit receive the receipted
+universe zero, and a nonzero draw with no eligible member stays unresolved
+instead of being dropped.
 
 **Finalization and pruning policy.** Arm-one finalization clips, snaps to donor
 values, caps the configured tail, prunes sparse outputs to the donor's weighted
-positive rate and aligns signed mass. None of those population-level donor
-alignments is applied here: the recipients are survey units with modeled
-non-filer roles, so the PUF filer donor's rates are not a qualified target for
-this arm. A negative draw for a nonnegative output stays unresolved (no
-clipping). Boolean QBI counts keep the maintained representation: rounded and
-capped at the allocation members. Descriptive arm-zero rates and totals are
-recorded for later comparison only; they are not a calibration, selection or
-release criterion.
+positive rate and aligns signed mass. The maintained finalizer
+(:func:`~.puf_support.finalize_us_puf_tax_detail_predictions`) writes model
+values only on the PUF clone arm, so none of those steps has an arm-zero
+precedent, and this policy applies none of them. Each is a population-level
+alignment to a donor statistic over the whole receiving arm. Here the modeled
+units are a subset of that arm, because mixed-known and domain-unresolved units
+are excluded, and the donor statistics are not plumbed to this arm. Whatever
+arm-one pruning corrects in its raw draws may also be present in these draws;
+this policy leaves it uncorrected but measured. A negative draw for a
+nonnegative output stays unresolved (no clipping). Boolean QBI counts keep the
+maintained representation: rounded and capped at the allocation members. Descriptive arm-zero weighted positive shares and totals
+are recorded so a later reviewed rule can be compared against donor rates.
+They are not a calibration, selection or release criterion.
 
 **Own-tail copies.** Arm-zero rows are selected by clone index 0. A
 capital-gains/AGI own-tail copy (clone index 2) keeps its clone-one twin's

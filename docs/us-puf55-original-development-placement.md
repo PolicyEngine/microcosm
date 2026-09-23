@@ -88,3 +88,9 @@ separate complete-envelope test uses synthetic 55-target payloads derived from
 an actual three-target test template solely to exercise the strict codec path.
 It is not evidence of 55 fitted models, a genuine financial owner, a complete
 host run, or a calibrated dataset.
+
+An opt-in successor, whole-arm finalization, handles mixed-known units by chain
+prefix. It also allocates every non-fixed output inside units and records its
+numerical policy. See [us-puf55-original-finalization.md](us-puf55-original-finalization.md).
+Both paths split capital-gains own-tail copies (clone index 2) off by clone
+index and carry them unchanged.
