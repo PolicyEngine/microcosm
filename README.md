@@ -128,7 +128,10 @@ The [native SPM role source-enrichment lane](docs/us-native-spm-role-source-enri
 creates a new US H5 from the exact reviewed BuildP parent, preserves its original
 variables and schema-5 calibration evidence, and requires fresh country/wrapper
 compatibility checks. It has a local candidate builder and uses the regular
-publisher's contract with `--parent-h5` and `--preflight-only`.
+publisher's contract with `--parent-h5` and `--preflight-only`. The same release
+type publishes the [reported-receipt child of the national default](docs/us-reported-receipt-source-enrichment.md)
+as a tag-only donor for the ACS local chain. It is never the `latest.json`
+default.
 
 Standard publication uploads the locally built `releases/<id>/` artifacts to
 the Hugging Face dataset, tags the release, and updates `latest.json`. It runs

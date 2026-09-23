@@ -231,6 +231,20 @@ def prepare_release(
             "never update latest.json. Pass update_latest=False "
             "(publish CLI: --no-latest)."
         )
+    if update_latest and not evidence:
+        from microcosm.data.source_enrichment import is_receipt_enrichment
+
+        if is_receipt_enrichment(release_dir):
+            # microcosm#978: the reported-receipt child is a published donor for
+            # the ACS local chain. Country formulas read its receipt inputs
+            # (policyengine-us 2.2.1's WIC and SNAP categorical eligibility,
+            # among others), so it never becomes the default as a side effect.
+            raise ValueError(
+                f"release {release_id!r} is a reported-receipt source "
+                "enrichment: a published donor, never the national default "
+                "pointer. Pass update_latest=False (publish CLI: --no-latest, "
+                "with --tag-only to leave main untouched)."
+            )
     if tag_only and update_latest:
         raise ValueError(
             "tag_only=True requires update_latest=False; a tag-only publication "
