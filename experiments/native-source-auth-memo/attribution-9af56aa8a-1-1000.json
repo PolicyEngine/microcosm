@@ -1,0 +1,349 @@
+{
+  "schema": "microcosm.native-source-auth-memo.attribution.v1",
+  "report_sha256": "4e7be8adfe472a684cd8ff86a7139cffb42e8a3699d8072d02775fdd9554976d",
+  "report_is_expected_9af56aa8a_run": true,
+  "native_commit": "9af56aa8a7a210e18674d484b11d36f417de6759",
+  "method": "Exclusive partitions of sampled outside-graph stack rows. Issuer: highest-precedence owner entry on the stack. Operation: first listed operation class from the stack leaf. Statistical process-CPU estimates at a 0.25 s sampling interval; not exact function CPU. Inclusive candidate values overlap and must not be summed.",
+  "phases": {
+    "cold": {
+      "outside_graph_cpu_seconds": 1681.637001,
+      "by_issuer": {
+        "acs_native_coverage": 469.398563,
+        "acs_source_catalogue": 467.460208,
+        "asec_source_catalogue": 176.758191,
+        "asec_native_population": 174.64024,
+        "atomic_geography_requalification": 108.386441,
+        "predictor_requalification": 100.756186,
+        "preparation_assembly_and_validation": 68.71362,
+        "verification_epoch_close": 43.416364,
+        "catalogue_selection": 26.752927,
+        "other_runner_work": 21.968375,
+        "preparation_borrow_checks": 15.080849,
+        "run_issuance_seals": 8.305037
+      },
+      "by_operation": {
+        "zip_member_decompression": 416.266946,
+        "pandas_and_numpy_frame_operations": 326.733693,
+        "custody_copy_hash_and_byte_guards": 310.338327,
+        "other_python_validation_and_assembly": 192.318871,
+        "live_frame_seal_recomputation": 165.966913,
+        "json_encoding_and_byte_budgets": 163.511196,
+        "csv_record_parsing": 106.501055
+      },
+      "issuer_by_operation": {
+        "acs_native_coverage": {
+          "zip_member_decompression": 190.699606,
+          "pandas_and_numpy_frame_operations": 178.446047,
+          "csv_record_parsing": 65.411817,
+          "other_python_validation_and_assembly": 18.142098,
+          "json_encoding_and_byte_budgets": 11.372656,
+          "custody_copy_hash_and_byte_guards": 4.869374,
+          "live_frame_seal_recomputation": 0.456965
+        },
+        "acs_source_catalogue": {
+          "zip_member_decompression": 224.551358,
+          "json_encoding_and_byte_budgets": 126.025035,
+          "pandas_and_numpy_frame_operations": 60.504415,
+          "other_python_validation_and_assembly": 30.948377,
+          "csv_record_parsing": 23.651815,
+          "custody_copy_hash_and_byte_guards": 1.779208
+        },
+        "asec_native_population": {
+          "custody_copy_hash_and_byte_guards": 124.269627,
+          "live_frame_seal_recomputation": 19.97581,
+          "other_python_validation_and_assembly": 15.737227,
+          "pandas_and_numpy_frame_operations": 7.980039,
+          "json_encoding_and_byte_budgets": 4.072349,
+          "csv_record_parsing": 2.605188
+        },
+        "asec_source_catalogue": {
+          "custody_copy_hash_and_byte_guards": 121.610632,
+          "live_frame_seal_recomputation": 19.143831,
+          "other_python_validation_and_assembly": 19.087547,
+          "json_encoding_and_byte_budgets": 8.851979,
+          "pandas_and_numpy_frame_operations": 5.897825,
+          "csv_record_parsing": 2.166377
+        },
+        "atomic_geography_requalification": {
+          "pandas_and_numpy_frame_operations": 39.942593,
+          "live_frame_seal_recomputation": 30.810335,
+          "other_python_validation_and_assembly": 15.999584,
+          "custody_copy_hash_and_byte_guards": 14.065564,
+          "csv_record_parsing": 5.581375,
+          "json_encoding_and_byte_budgets": 1.22111,
+          "zip_member_decompression": 0.76588
+        },
+        "catalogue_selection": {
+          "other_python_validation_and_assembly": 26.752927
+        },
+        "other_runner_work": {
+          "live_frame_seal_recomputation": 10.265584,
+          "other_python_validation_and_assembly": 8.152738,
+          "pandas_and_numpy_frame_operations": 2.285644,
+          "custody_copy_hash_and_byte_guards": 0.751258,
+          "json_encoding_and_byte_budgets": 0.513151
+        },
+        "predictor_requalification": {
+          "live_frame_seal_recomputation": 32.224297,
+          "pandas_and_numpy_frame_operations": 29.064104,
+          "other_python_validation_and_assembly": 14.511677,
+          "custody_copy_hash_and_byte_guards": 14.423365,
+          "csv_record_parsing": 7.084483,
+          "json_encoding_and_byte_budgets": 3.198158,
+          "zip_member_decompression": 0.250102
+        },
+        "preparation_assembly_and_validation": {
+          "other_python_validation_and_assembly": 29.73029,
+          "live_frame_seal_recomputation": 19.694619,
+          "custody_copy_hash_and_byte_guards": 12.228927,
+          "json_encoding_and_byte_budgets": 6.278362,
+          "pandas_and_numpy_frame_operations": 0.781422
+        },
+        "preparation_borrow_checks": {
+          "live_frame_seal_recomputation": 5.785001,
+          "other_python_validation_and_assembly": 4.525513,
+          "custody_copy_hash_and_byte_guards": 3.958025,
+          "pandas_and_numpy_frame_operations": 0.544649,
+          "json_encoding_and_byte_budgets": 0.267661
+        },
+        "run_issuance_seals": {
+          "live_frame_seal_recomputation": 7.52929,
+          "pandas_and_numpy_frame_operations": 0.518105,
+          "json_encoding_and_byte_budgets": 0.257642
+        },
+        "verification_epoch_close": {
+          "live_frame_seal_recomputation": 20.081181,
+          "custody_copy_hash_and_byte_guards": 12.382347,
+          "other_python_validation_and_assembly": 8.730893,
+          "json_encoding_and_byte_budgets": 1.453093,
+          "pandas_and_numpy_frame_operations": 0.76885
+        }
+      },
+      "memo_candidates_inclusive": {
+        "acs_housing_universe_source.py:_archive": {
+          "inclusive_cpu_seconds": 220.064972,
+          "distinct_issuer_call_sites": 2
+        },
+        "acs_housing_universe_source.py:_reconstruct": {
+          "inclusive_cpu_seconds": 381.523635,
+          "distinct_issuer_call_sites": 2
+        },
+        "acs_housing_universe_source.py:_select": {
+          "inclusive_cpu_seconds": 120.996734,
+          "distinct_issuer_call_sites": 2
+        },
+        "acs_person_coverage_authentication.py:_inventory": {
+          "inclusive_cpu_seconds": 153.859624,
+          "distinct_issuer_call_sites": 3
+        },
+        "acs_population_catalogue.py:_collect": {
+          "inclusive_cpu_seconds": 216.490845,
+          "distinct_issuer_call_sites": 1
+        },
+        "acs_person_coverage_columns.py:_scan_acs_person_coverage": {
+          "inclusive_cpu_seconds": 138.578803,
+          "distinct_issuer_call_sites": 2
+        },
+        "acs_person_coverage_columns.py:read_acs_person_coverage_columns": {
+          "inclusive_cpu_seconds": 26.260025,
+          "distinct_issuer_call_sites": 1
+        },
+        "acs_pums.py:load_acs_pums_tables": {
+          "inclusive_cpu_seconds": 148.929143,
+          "distinct_issuer_call_sites": 1
+        },
+        "asec_coverage_authentication.py:_reconstruct": {
+          "inclusive_cpu_seconds": 252.559457,
+          "distinct_issuer_call_sites": 2
+        },
+        "asec_coverage_authentication.py:_capture": {
+          "inclusive_cpu_seconds": 221.39828,
+          "distinct_issuer_call_sites": 2
+        },
+        "asec_person_income_source.py:_verify": {
+          "inclusive_cpu_seconds": 34.248088,
+          "distinct_issuer_call_sites": 2
+        },
+        "asec_demographic_source.py:_reconstruct": {
+          "inclusive_cpu_seconds": 45.25376,
+          "distinct_issuer_call_sites": 2
+        },
+        "asec_current_money_source.py:_series_digest": {
+          "inclusive_cpu_seconds": 132.113468,
+          "distinct_issuer_call_sites": 11
+        }
+      },
+      "phase_process_cpu_seconds": 1999.411185,
+      "outside_graph_share_of_phase_cpu": 0.841066
+    },
+    "replay": {
+      "outside_graph_cpu_seconds": 1624.744543,
+      "by_issuer": {
+        "acs_native_coverage": 450.38366,
+        "acs_source_catalogue": 414.091568,
+        "asec_native_population": 167.333709,
+        "asec_source_catalogue": 165.287709,
+        "atomic_geography_requalification": 116.796251,
+        "predictor_requalification": 111.254025,
+        "preparation_assembly_and_validation": 70.867921,
+        "verification_epoch_close": 48.98271,
+        "catalogue_selection": 30.991677,
+        "other_runner_work": 22.303794,
+        "preparation_borrow_checks": 17.9107,
+        "run_issuance_seals": 8.540819
+      },
+      "by_operation": {
+        "zip_member_decompression": 381.353607,
+        "pandas_and_numpy_frame_operations": 319.682068,
+        "custody_copy_hash_and_byte_guards": 298.177986,
+        "other_python_validation_and_assembly": 188.792492,
+        "live_frame_seal_recomputation": 179.095496,
+        "json_encoding_and_byte_budgets": 159.353938,
+        "csv_record_parsing": 98.288956
+      },
+      "issuer_by_operation": {
+        "acs_native_coverage": {
+          "zip_member_decompression": 183.21955,
+          "pandas_and_numpy_frame_operations": 175.04427,
+          "csv_record_parsing": 57.663161,
+          "other_python_validation_and_assembly": 17.536433,
+          "json_encoding_and_byte_budgets": 11.590289,
+          "custody_copy_hash_and_byte_guards": 5.134631,
+          "live_frame_seal_recomputation": 0.195326
+        },
+        "acs_source_catalogue": {
+          "zip_member_decompression": 197.379323,
+          "json_encoding_and_byte_budgets": 120.61172,
+          "pandas_and_numpy_frame_operations": 50.830548,
+          "csv_record_parsing": 22.15983,
+          "other_python_validation_and_assembly": 20.984793,
+          "custody_copy_hash_and_byte_guards": 2.125354
+        },
+        "asec_native_population": {
+          "custody_copy_hash_and_byte_guards": 121.900283,
+          "live_frame_seal_recomputation": 18.210533,
+          "other_python_validation_and_assembly": 14.335342,
+          "pandas_and_numpy_frame_operations": 6.614252,
+          "json_encoding_and_byte_budgets": 4.238825,
+          "csv_record_parsing": 2.034474
+        },
+        "asec_source_catalogue": {
+          "custody_copy_hash_and_byte_guards": 112.782353,
+          "other_python_validation_and_assembly": 19.797987,
+          "live_frame_seal_recomputation": 18.454968,
+          "json_encoding_and_byte_budgets": 7.072889,
+          "pandas_and_numpy_frame_operations": 5.451894,
+          "csv_record_parsing": 1.727618
+        },
+        "atomic_geography_requalification": {
+          "pandas_and_numpy_frame_operations": 45.463472,
+          "live_frame_seal_recomputation": 31.391816,
+          "other_python_validation_and_assembly": 17.467401,
+          "custody_copy_hash_and_byte_guards": 13.196168,
+          "csv_record_parsing": 6.38165,
+          "json_encoding_and_byte_budgets": 2.39218,
+          "zip_member_decompression": 0.503564
+        },
+        "catalogue_selection": {
+          "other_python_validation_and_assembly": 30.991677
+        },
+        "other_runner_work": {
+          "live_frame_seal_recomputation": 11.665649,
+          "other_python_validation_and_assembly": 6.61419,
+          "pandas_and_numpy_frame_operations": 3.062909,
+          "custody_copy_hash_and_byte_guards": 0.961046
+        },
+        "predictor_requalification": {
+          "live_frame_seal_recomputation": 37.42749,
+          "pandas_and_numpy_frame_operations": 30.625109,
+          "other_python_validation_and_assembly": 17.527381,
+          "custody_copy_hash_and_byte_guards": 14.836347,
+          "csv_record_parsing": 8.322223,
+          "json_encoding_and_byte_budgets": 2.264305,
+          "zip_member_decompression": 0.25117
+        },
+        "preparation_assembly_and_validation": {
+          "other_python_validation_and_assembly": 27.983086,
+          "live_frame_seal_recomputation": 20.462135,
+          "custody_copy_hash_and_byte_guards": 12.437218,
+          "json_encoding_and_byte_budgets": 8.402423,
+          "pandas_and_numpy_frame_operations": 1.583059
+        },
+        "preparation_borrow_checks": {
+          "live_frame_seal_recomputation": 8.642478,
+          "other_python_validation_and_assembly": 4.818639,
+          "custody_copy_hash_and_byte_guards": 3.708978,
+          "json_encoding_and_byte_budgets": 0.740605
+        },
+        "run_issuance_seals": {
+          "live_frame_seal_recomputation": 8.039744,
+          "other_python_validation_and_assembly": 0.25233,
+          "json_encoding_and_byte_budgets": 0.248745
+        },
+        "verification_epoch_close": {
+          "live_frame_seal_recomputation": 24.605357,
+          "custody_copy_hash_and_byte_guards": 11.095608,
+          "other_python_validation_and_assembly": 10.483233,
+          "json_encoding_and_byte_budgets": 1.791957,
+          "pandas_and_numpy_frame_operations": 1.006555
+        }
+      },
+      "memo_candidates_inclusive": {
+        "acs_housing_universe_source.py:_archive": {
+          "inclusive_cpu_seconds": 209.027644,
+          "distinct_issuer_call_sites": 2
+        },
+        "acs_housing_universe_source.py:_reconstruct": {
+          "inclusive_cpu_seconds": 344.615247,
+          "distinct_issuer_call_sites": 2
+        },
+        "acs_housing_universe_source.py:_select": {
+          "inclusive_cpu_seconds": 98.71646,
+          "distinct_issuer_call_sites": 2
+        },
+        "acs_person_coverage_authentication.py:_inventory": {
+          "inclusive_cpu_seconds": 146.462648,
+          "distinct_issuer_call_sites": 3
+        },
+        "acs_population_catalogue.py:_collect": {
+          "inclusive_cpu_seconds": 180.808543,
+          "distinct_issuer_call_sites": 1
+        },
+        "acs_person_coverage_columns.py:_scan_acs_person_coverage": {
+          "inclusive_cpu_seconds": 118.658254,
+          "distinct_issuer_call_sites": 2
+        },
+        "acs_person_coverage_columns.py:read_acs_person_coverage_columns": {
+          "inclusive_cpu_seconds": 25.622638,
+          "distinct_issuer_call_sites": 1
+        },
+        "acs_pums.py:load_acs_pums_tables": {
+          "inclusive_cpu_seconds": 157.255206,
+          "distinct_issuer_call_sites": 1
+        },
+        "asec_coverage_authentication.py:_reconstruct": {
+          "inclusive_cpu_seconds": 240.26417,
+          "distinct_issuer_call_sites": 2
+        },
+        "asec_coverage_authentication.py:_capture": {
+          "inclusive_cpu_seconds": 209.253111,
+          "distinct_issuer_call_sites": 2
+        },
+        "asec_person_income_source.py:_verify": {
+          "inclusive_cpu_seconds": 30.609988,
+          "distinct_issuer_call_sites": 2
+        },
+        "asec_demographic_source.py:_reconstruct": {
+          "inclusive_cpu_seconds": 47.669202,
+          "distinct_issuer_call_sites": 2
+        },
+        "asec_current_money_source.py:_series_digest": {
+          "inclusive_cpu_seconds": 139.057836,
+          "distinct_issuer_call_sites": 11
+        }
+      },
+      "phase_process_cpu_seconds": 1652.082504,
+      "outside_graph_share_of_phase_cpu": 0.983452
+    }
+  }
+}
