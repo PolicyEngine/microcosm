@@ -26,17 +26,27 @@ result = build_native_survey_release(
 
 `main`/`_main` remain the legacy H5/pool entry. The native entry never runs the
 legacy source block: base or pool loading, frozen-support selection, value
-repairs, donor/QRF stages, take-up and benefit assignment, or the ACS join. It
-never downloads, never starts staging telemetry and never writes the legacy
-`release_manifest.json`. Its output is a candidate with measured results. It is
-**never release-eligible**, and publication stays a separate, human,
-preflight-gated step.
+repairs, donor/QRF stages, take-up and benefit assignment, or the ACS join. Its
+own code calls no download path, never starts staging telemetry and never
+writes the legacy `release_manifest.json`. Whether the consumer's own runtime
+fetches anything is part of that runtime's qualification; the engine-free
+wiring test runs with sockets disabled. Its output is a candidate with measured
+results. It is **never release-eligible**, and publication stays a separate,
+human, preflight-gated step.
 
 ## Order of checks
 
-Each step refuses with a `NATIVE_RELEASE_*` code (a
-`NativeSurveyReleaseRefusalError`, a `ValueError`) before the next one starts.
-Diagnostics carry codes, declared names, counts and digests only.
+Each step refuses before the next one starts. The entry's own refusals raise
+`NativeSurveyReleaseRefusalError`, a `ValueError`, with a `NATIVE_RELEASE_*`
+code. The maintained helpers it reuses keep their own errors: the owner check
+(for example `UNISSUED_RUN`), the projection (`NATIVE_ENGINE_PROJECTION_*`),
+the calibration attachment (`NATIVE_CALIBRATION_*`) and the H5 comparison
+(`H5_*` and retained-export codes) raise `ValueError`s. Ledger loading and the
+target-parity gate keep their existing errors; the parity gate raises
+`RuntimeError`. Writer and HDF library errors become
+`NATIVE_RELEASE_EXPORT_WRITE`, since they can quote cells. No error is followed
+by a manifest. Diagnostics carry codes, declared names, counts and digests
+only.
 
 1. **Owner.** `check_survey_enrichment_run(run)` runs first. A Frame, a
    development checkpoint or its report, a projection, a descriptive checked
@@ -56,17 +66,28 @@ Diagnostics carry codes, declared names, counts and digests only.
    and `--no-target-frame-checkpoint` are required. The consumed options are the
    output location and release ID, the Ledger feed and its pins, the
    congressional-district crosswalk and gating, the dense/L0 solve settings,
-   target-family loss multipliers and the microsimulation batch size.
+   target-family loss multipliers and the microsimulation batch size. The
+   solve settings are checked here rather than after materialization: positive
+   epochs and learning rate, a finite `--max-weight-ratio` of at least 1 (the
+   conserved total cannot be met when every weight is capped below its
+   initial value), finite non-negative L2 penalties and L0 share, and a
+   non-negative seed.
 3. **Output directory.** `<out>/native-releases/<release-id>` must not exist,
-   and `<out>/native-releases` must not be a symlink or a file.
+   and `<out>/native-releases` must not be a symlink or a file. The root is
+   checked again immediately before and after the directory is created.
 4. **Consumer.** `engine` must be exactly `PolicyEngineUSEngine`, with no
    defaults, the declaration's closed export contract and an explicit SPM
    selection equal to the declaration's. The declaration's period must be the
    integer 2024 and it must name a consumer ID dtype. `consumer_manifest` must
-   equal the live identity: adapter and constructor source digests, the
-   `RECORD` digests and versions of `policyengine-us`, `policyengine-core`,
-   `spm-calculator`, `numpy`, `pandas` and `tables`, the export contract, the
-   explicit SPM selection and the effective SPM settings. The static part is
+   equal the live identity: adapter and constructor source digests; the
+   versions, `RECORD` digests and verified file counts of `policyengine-us`,
+   `policyengine-core`, `spm-calculator`, `numpy`, `pandas` and `tables`; the
+   export contract; the (empty) input defaults; the explicit SPM selection;
+   and the effective SPM settings. Each hashed `RECORD` row is re-hashed on
+   disk, so an edited, resized or removed installed file refuses with
+   `NATIVE_RELEASE_CONSUMER_FILES`, and an editable install refuses with
+   `NATIVE_RELEASE_CONSUMER_EDITABLE`. Files not listed in `RECORD` are not
+   covered. The static part is
    compared before the country system is built. The effective settings come
    from `policyengine_us.spm.spm_config` on the adapter's own system, so a
    partial caller mapping is not enough. A match describes this process's
@@ -84,7 +105,9 @@ Diagnostics carry codes, declared names, counts and digests only.
    closed and nothing is filled. The selected cells must also fit the H5
    codec with complete SPM roles and canonical scope, and carry `state_fips`
    and, when district targets exist, `congressional_district_geoid`. Presence
-   is not a source-signal or applicability qualification.
+   is not a source-signal or applicability qualification. A
+   `--target-family-loss-multiplier` that names no compiled family also
+   refuses here, before any output.
 8. **Materialization.** Only now is the output directory created. Targets are
    materialized from the projected Frame with the admitted consumer's dataset,
    simulation and system constructors, a copy of the explicit SPM selection,
@@ -93,17 +116,20 @@ Diagnostics carry codes, declared names, counts and digests only.
    solve and attaches weights only to the projected input cells.
 10. **Fit gates.** `_release_gate_failures` evaluates the solve against the
     compiled surface: unmaterialized or skipped targets, zero support, critical
-    target fit, national SOI Table 1.4 dollar fit and loss. Legacy source-stage
-    gates are not passed as `None` to look green; their native successors are
-    listed as outstanding. `native_calibration_diagnostics.json` is always
+    target fit, national SOI Table 1.4 dollar fit and loss. The legacy
+    source-stage gate arguments stay at their `None` defaults because their
+    inputs come from legacy stages; the manifest lists their native successors
+    as outstanding, never as passed. `native_calibration_diagnostics.json` is always
     written. A failure writes no H5.
 11. **Export.** `write_verified_policyengine_h5_export` writes
     `native_candidate_populace_us_2024.h5` once with the adapter and compares
     the logical readback. Its binding must equal the calibration attachment's.
-12. **Final checks.** The consumer identity is derived again, the owner is
-    checked again, and the declaration, projection, report and owner population
-    are compared after that last owner I/O. Only then is
-    `native_release_manifest.json` written.
+12. **Final checks.** The consumer identity, including installed files and
+    input defaults, is derived again; the owner is checked again; and the
+    declaration, projection, report, owner population, dataset bytes and
+    diagnostics bytes are compared after that last owner I/O. Only then is
+    `native_release_manifest.json` written. It is linked into place from a
+    complete temporary file, so an existing manifest is never replaced.
 
 ## Manifest
 
@@ -135,19 +161,37 @@ tuning signal or selection criterion.
 ## Tests
 
 `packages/microcosm-build/tests/test_us_native_release_entry.py` is
-engine-free. It shows that forged owners refuse before every later step; that
-each unconsumed option refuses; how consumer admission orders its refusals; the
-input gate's codes and name-only diagnostics; that the private composition
-passes the admitted constructors, SPM copy and metadata to materialization,
-attaches weights only to input cells, refuses on the real fit gate, and writes
-only after a verified logical readback; and that a failed final owner check,
-dataset bytes replaced after readback, or a consumer identity that changed
-during export each leave no manifest. The composition and wiring tests use
-invented constructors, a byte writer and a stand-in owner. They do not show
-that a genuine public native build succeeds. `test_us_policyengine_h5_readback.py` adds wrong-parent
-refusals before the writer. It also documents that the pure comparator cannot
-tell apart parents that differ only outside the retained scope. The native
-entry therefore passes the projected parent object it retains, binds the owner
-and whole-projection digests in the parent reference, and after the final owner
-check compares the whole projection stamp and the projection against the
-owner's source frame again.
+engine-free. It shows that:
+
+- forged owners refuse before every later step, including `main`/`_main`,
+  downloads, legacy source stages, writers and staging;
+- each unconsumed option and each unusable solve setting refuses at parsing;
+- consumer admission orders its refusals, and the installed-file check
+  refuses edited, resized, removed and editable installs of an invented
+  distribution;
+- the input gate reports codes and name-only counts, including unknown
+  values, and a projection report that does not bind the owner and consumer
+  refuses;
+- the private composition passes the admitted constructors, SPM copy and
+  metadata to materialization, attaches weights only to input cells, refuses
+  on the real fit gate, on an unknown loss family, on a mismatched export
+  binding and on writer errors, and writes only after a verified logical
+  readback;
+- the public wiring runs for dense and L0 solves with sockets disabled; and a
+  redirected output root, a failed final owner check, replaced dataset or
+  diagnostics bytes, or a consumer whose SPM settings or input defaults
+  changed during export each leave no manifest, which is never replaced once
+  written.
+
+The composition and wiring tests use invented constructors, a byte writer and a
+stand-in owner. They do not show that a genuine public native build succeeds.
+For speed, most tests hash one small installed distribution; one test checks
+the whole maintained roster that is installed.
+
+`test_us_policyengine_h5_readback.py` adds wrong-parent refusals before the
+writer. It also documents that the pure comparator cannot tell apart parents
+that differ only outside the retained scope. The native entry therefore passes
+the projected parent object it retains, binds the owner and whole-projection
+digests in the parent reference, and after the final owner check compares the
+whole projection stamp and the projection against the owner's source frame
+again.

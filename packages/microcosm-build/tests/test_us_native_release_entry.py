@@ -68,6 +68,21 @@ def _no_country_engine(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", guarded_import)
 
 
+@pytest.fixture(autouse=True)
+def _small_distribution_roster(builder, monkeypatch, request):
+    """Hash one small installed distribution and one absent one per test.
+
+    Every identity still re-hashes real installed files; only the roster is
+    shorter. ``test_full_distribution_roster_*`` checks the maintained roster.
+    """
+    if not request.node.name.startswith("test_full_distribution_roster"):
+        monkeypatch.setattr(
+            builder,
+            "NATIVE_RELEASE_CONSUMER_DISTRIBUTIONS",
+            ("tables", "policyengine-us"),
+        )
+
+
 class InventedDataset:
     """Recorded only; never a PolicyEngine dataset."""
 
@@ -450,6 +465,7 @@ def test_native_options_require_disabled_staging_and_target_caches(
         "populace-uk-2024-native",
         "populace-us-2024-evidence-native",
         "populace-us-../../escape",
+        "populace-us-2024..native",
         "populace-us-2024/native",
         "populace-us-2024 native",
     ],
@@ -1252,10 +1268,18 @@ def test_input_gate_refuses_before_output_directory_and_model_construction(
     assert reached == [] and not (tmp_path / "out").exists()
 
 
+@pytest.mark.parametrize("dense", [True, False])
 def test_public_entry_call_order_with_stand_in_owner_is_wiring_only(
-    builder, monkeypatch, tmp_path
+    builder, monkeypatch, tmp_path, dense
 ):
     """Wiring only: a stand-in owner and invented roster, never a positive build."""
+    import socket
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("network reached")
+
+    monkeypatch.setattr(socket.socket, "connect", no_network)
+    monkeypatch.setattr(socket, "create_connection", no_network)
     events = []
     run, spec, engine, manifest, owner = _stand_in(
         builder, monkeypatch, tmp_path, events=events
@@ -1292,7 +1316,7 @@ def test_public_entry_call_order_with_stand_in_owner_is_wiring_only(
     monkeypatch.setattr(builder, "_write_native_release_json", record_manifest)
     result = builder.build_native_survey_release(
         run,
-        argv=_argv(tmp_path),
+        argv=_argv(tmp_path, dense=dense),
         declaration=spec,
         engine=engine,
         consumer_manifest=manifest,
@@ -1324,6 +1348,10 @@ def test_public_entry_call_order_with_stand_in_owner_is_wiring_only(
     assert document["survey_poverty_role"].startswith("comparison_only")
     assert document["dataset"]["sha256"] == result.dataset_sha256
     assert document["owner"]["receipt_sha256"] == "d" * 64
+    assert document["calibration"]["default_dataset"]["sparse"] is (not dense)
+    assert document["calibration"]["solver_options"]["dense_default_dataset"] is dense
+    assert document["consumer"]["identity"]["input_defaults"] == []
+    assert document["diagnostics"]["sha256"] == builder._sha256(result.diagnostics_path)
     assert not (result.release_dir / "release_manifest.json").exists()
 
 
@@ -1440,3 +1468,435 @@ def test_consumer_changed_during_export_leaves_no_manifest(
     release_dir = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY / RELEASE_ID
     assert (release_dir / builder.NATIVE_RELEASE_DATASET_FILENAME).exists()
     assert not (release_dir / builder.NATIVE_RELEASE_MANIFEST_FILENAME).exists()
+
+
+# --- Review follow-ups: parse-time solve checks, early refusals, export guards.
+
+
+@pytest.mark.parametrize(
+    "extra,dense,option",
+    [
+        (("--epochs", "0"), True, "--epochs"),
+        (("--learning-rate", "nan"), True, "--learning-rate"),
+        (("--learning-rate", "0"), True, "--learning-rate"),
+        (("--max-weight-ratio", "0.5"), True, "--max-weight-ratio"),
+        (("--max-weight-ratio", "inf"), True, "--max-weight-ratio"),
+        (("--l2-lambda", "-1"), True, "--l2-lambda"),
+        (("--l2-lambda", "nan"), True, "--l2-lambda"),
+        (("--refit-l2-lambda", "nan"), False, "--refit-l2-lambda"),
+        (("--l0-refit-lambda-share", "nan"), True, "--l0-refit-lambda-share"),
+        (("--seed", "-1"), True, "--seed"),
+    ],
+)
+def test_native_options_refuse_unusable_solve_settings(
+    builder, tmp_path, extra, dense, option
+):
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._parse_native_release_args(_argv(tmp_path, *extra, dense=dense))
+    assert refused.value.code == "NATIVE_RELEASE_SOLVE_OPTIONS"
+    assert refused.value.diagnostics == {"options": [option]}
+
+
+@pytest.mark.parametrize("pin", ["A" * 64, "a" * 63, "not-a-digest"])
+def test_native_options_refuse_malformed_ledger_manifest_pin(builder, tmp_path, pin):
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._parse_native_release_args(
+            _argv(tmp_path, "--ledger-manifest-sha256", pin)
+        )
+    assert refused.value.code == "NATIVE_RELEASE_LEDGER_PIN"
+    assert refused.value.diagnostics == {"option": "--ledger-manifest-sha256"}
+
+
+def test_input_gate_refuses_unknown_values_with_counts_only(builder, monkeypatch):
+    rows = [
+        {
+            "entity": "person",
+            "variable": "invented_income",
+            "status": "contains_unknowns",
+            "missing_values": 2,
+        }
+    ]
+    monkeypatch.setattr(handoff, "native_survey_input_inventory", lambda frame: rows)
+    gate = builder._native_release_input_gate(
+        _gate_projection(_parent()), target_specs=_registry().specs
+    )
+    assert gate["passed"] is False
+    assert gate["failures"] == ["NATIVE_RELEASE_INPUT_UNKNOWN_VALUES"]
+    assert gate["missing_count"] == 0
+    assert gate["contains_unknowns_count"] == 1
+    assert gate["contains_unknowns"] == [["person", "invented_income", 2]]
+
+
+def test_input_gate_codes_unexpected_profile_errors_without_detail(
+    builder, monkeypatch
+):
+    _complete_inventory(monkeypatch)
+
+    def profile(frame, *, calibrated):
+        raise TypeError("cell 9007199254740993 is not storable")
+
+    monkeypatch.setattr(readback, "_frame_profile", profile)
+    gate = builder._native_release_input_gate(
+        _gate_projection(_parent()), target_specs=_registry().specs
+    )
+    assert gate["failures"] == ["NATIVE_RELEASE_EXPORT_PROFILE"]
+    assert "9007199254740993" not in json.dumps(gate)
+
+
+def test_constructor_resolution_errors_refuse_with_a_code(builder, monkeypatch):
+    spec = _declaration(_parent())
+    engine = _engine(spec)
+
+    def unresolvable(engine):
+        raise ImportError("invented consumer is not installed")
+
+    monkeypatch.setattr(builder, "_native_release_consumer_constructors", unresolvable)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._admit_native_release_consumer(engine, {"invented": True}, spec)
+    assert refused.value.code == "NATIVE_RELEASE_CONSUMER_UNRESOLVED"
+    assert refused.value.__cause__ is None
+
+
+@pytest.mark.parametrize(
+    "change,code",
+    [
+        ("owner_digest", "NATIVE_RELEASE_PROJECTION"),
+        ("compatibility_missing", "NATIVE_RELEASE_PROJECTION"),
+        ("compatibility_false", "NATIVE_RELEASE_PROJECTION"),
+    ],
+)
+def test_projection_report_must_bind_owner_and_consumer(
+    builder, monkeypatch, tmp_path, change, code
+):
+    run, spec, engine, manifest, _ = _stand_in(builder, monkeypatch, tmp_path)
+    project = handoff.prepare_native_survey_engine_input
+
+    def altered(candidate, *, declaration, consumer):
+        result = project(candidate, declaration=declaration, consumer=consumer)
+        if change == "owner_digest":
+            result.report["owner_receipt_sha256"] = "e" * 64
+        elif change == "compatibility_missing":
+            del result.report["consumer_representation_compatible"]
+        else:
+            result.report["consumer_representation_compatible"] = False
+        return result
+
+    monkeypatch.setattr(handoff, "prepare_native_survey_engine_input", altered)
+    reached = []
+    _forbid(monkeypatch, builder, ("_compile_fiscal_release_target_registry",), reached)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder.build_native_survey_release(
+            run,
+            argv=_argv(tmp_path),
+            declaration=spec,
+            engine=engine,
+            consumer_manifest=manifest,
+        )
+    assert refused.value.code == code
+    assert reached == [] and not (tmp_path / "out").exists()
+
+
+def test_unknown_loss_family_refuses_before_output_directory(
+    builder, monkeypatch, tmp_path
+):
+    run, spec, engine, manifest, _ = _stand_in(builder, monkeypatch, tmp_path)
+    _complete_inventory(monkeypatch)
+    reached = []
+    _forbid(
+        monkeypatch,
+        builder,
+        ("_run_prepared_native_fiscal_release", "_load_or_materialize_target_frame"),
+        reached,
+    )
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder.build_native_survey_release(
+            run,
+            argv=_argv(
+                tmp_path, "--target-family-loss-multiplier", "invented_absent=2"
+            ),
+            declaration=spec,
+            engine=engine,
+            consumer_manifest=manifest,
+        )
+    assert refused.value.code == "NATIVE_RELEASE_LOSS_WEIGHTS"
+    assert reached == [] and not (tmp_path / "out").exists()
+
+
+def test_private_composition_refuses_unknown_loss_family_before_solve(
+    builder, monkeypatch, tmp_path
+):
+    parent, kwargs, _, engine = _prepared_case(builder, monkeypatch, tmp_path)
+    kwargs["options"] = builder._parse_native_release_args(
+        _argv(tmp_path, "--target-family-loss-multiplier", "invented_absent=2")
+    )
+    monkeypatch.setattr(
+        builder,
+        "_calibrate_native_input_frame",
+        lambda *a, **k: pytest.fail("solve reached"),
+    )
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._run_prepared_native_fiscal_release(parent, **kwargs)
+    assert refused.value.code == "NATIVE_RELEASE_LOSS_WEIGHTS"
+    assert engine.writes == []
+
+
+def test_export_receipt_must_match_the_calibration_binding(
+    builder, monkeypatch, tmp_path
+):
+    parent, kwargs, _, _ = _prepared_case(builder, monkeypatch, tmp_path)
+    write = readback.write_verified_policyengine_h5_export
+
+    def rebound(*args, **kwargs):
+        from dataclasses import replace
+
+        return replace(write(*args, **kwargs), binding=b"another-parent")
+
+    monkeypatch.setattr(readback, "write_verified_policyengine_h5_export", rebound)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._run_prepared_native_fiscal_release(parent, **kwargs)
+    assert refused.value.code == "NATIVE_RELEASE_EXPORT_BINDING"
+
+
+def test_writer_library_errors_become_a_code_without_private_detail(
+    builder, monkeypatch, tmp_path
+):
+    parent, kwargs, _, engine = _prepared_case(builder, monkeypatch, tmp_path)
+
+    def failing_write(bundle, path, *, period):
+        raise ValueError("cannot store cell 9007199254740993 in column x")
+
+    engine.write_dataset = failing_write
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._run_prepared_native_fiscal_release(parent, **kwargs)
+    assert str(refused.value) == "NATIVE_RELEASE_EXPORT_WRITE"
+    assert refused.value.__cause__ is None and refused.value.__suppress_context__
+
+
+def test_native_root_swapped_during_admission_refuses_before_mkdir(
+    builder, monkeypatch, tmp_path
+):
+    run, spec, engine, manifest, _ = _stand_in(builder, monkeypatch, tmp_path)
+    _complete_inventory(monkeypatch)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    native_root = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY
+    compile_targets = builder._compile_fiscal_release_target_registry
+
+    def swap_root(args, *, congressional_district_vintage_crosswalk):
+        native_root.parent.mkdir(parents=True, exist_ok=True)
+        native_root.symlink_to(elsewhere, target_is_directory=True)
+        return compile_targets(
+            args,
+            congressional_district_vintage_crosswalk=(
+                congressional_district_vintage_crosswalk
+            ),
+        )
+
+    monkeypatch.setattr(builder, "_compile_fiscal_release_target_registry", swap_root)
+    reached = []
+    _forbid(monkeypatch, builder, ("_run_prepared_native_fiscal_release",), reached)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder.build_native_survey_release(
+            run,
+            argv=_argv(tmp_path),
+            declaration=spec,
+            engine=engine,
+            consumer_manifest=manifest,
+        )
+    assert refused.value.code == "NATIVE_RELEASE_DIRECTORY"
+    assert reached == [] and not any(elsewhere.iterdir())
+
+
+def test_diagnostics_changed_after_manifest_digest_leaves_no_manifest(
+    builder, monkeypatch, tmp_path
+):
+    """Wiring only: diagnostics replaced during the final owner check."""
+    run, spec, engine, manifest, owner = _stand_in(builder, monkeypatch, tmp_path)
+    _wire_invented_export(builder, monkeypatch)
+    release_dir = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY / RELEASE_ID
+    diagnostics = release_dir / builder.NATIVE_RELEASE_DIAGNOSTICS_FILENAME
+    original = owner.check
+
+    def replace_diagnostics(candidate):
+        result = original(candidate)
+        if owner.calls == 2:
+            diagnostics.write_text("{}")
+        return result
+
+    monkeypatch.setattr(
+        native_owner, "check_survey_enrichment_run", replace_diagnostics
+    )
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder.build_native_survey_release(
+            run,
+            argv=_argv(tmp_path),
+            declaration=spec,
+            engine=engine,
+            consumer_manifest=manifest,
+        )
+    assert refused.value.code == "NATIVE_RELEASE_DIAGNOSTICS_CHANGED"
+    assert not (release_dir / builder.NATIVE_RELEASE_MANIFEST_FILENAME).exists()
+
+
+def test_consumer_defaults_added_during_export_leave_no_manifest(
+    builder, monkeypatch, tmp_path
+):
+    """Wiring only: defaults added after admission change the consumer identity."""
+    run, spec, engine, manifest, _ = _stand_in(builder, monkeypatch, tmp_path)
+    writer = _wire_invented_export(builder, monkeypatch)
+
+    def write_and_add_default(self, bundle, path, period):
+        writer.write_dataset(bundle, path, period=period)
+        self._defaults["invented_default"] = 0
+
+    monkeypatch.setattr(PolicyEngineUSEngine, "write_dataset", write_and_add_default)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder.build_native_survey_release(
+            run,
+            argv=_argv(tmp_path),
+            declaration=spec,
+            engine=engine,
+            consumer_manifest=manifest,
+        )
+    assert refused.value.code == "NATIVE_RELEASE_CONSUMER_CHANGED"
+    release_dir = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY / RELEASE_ID
+    assert not (release_dir / builder.NATIVE_RELEASE_MANIFEST_FILENAME).exists()
+
+
+def test_native_json_writer_never_replaces_a_concurrent_manifest(
+    builder, monkeypatch, tmp_path
+):
+    path = tmp_path / "manifest.json"
+    fsync = builder.os.fsync
+
+    def racing_fsync(descriptor):
+        fsync(descriptor)
+        if not path.exists():
+            path.write_text('{"writer": "other"}')
+
+    monkeypatch.setattr(builder.os, "fsync", racing_fsync)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._write_native_release_json(path, {"release_eligible": False})
+    assert refused.value.code == "NATIVE_RELEASE_OUTPUT_EXISTS"
+    assert json.loads(path.read_text()) == {"writer": "other"}
+    assert not (tmp_path / "manifest.json.tmp").exists()
+
+
+def _invented_distribution(root, *, direct_url=None, record=True, size_delta=0):
+    import base64
+    import hashlib
+
+    site = root / "site"
+    package = site / "invented_consumer"
+    info = site / "invented_consumer-1.0.dist-info"
+    package.mkdir(parents=True)
+    info.mkdir()
+    module = b"VALUE = 1\n"
+    (package / "__init__.py").write_bytes(module)
+    metadata = b"Metadata-Version: 2.1\nName: invented-consumer\nVersion: 1.0\n"
+    (info / "METADATA").write_bytes(metadata)
+    if direct_url is not None:
+        (info / "direct_url.json").write_text(direct_url)
+
+    def row(name, data, delta=0):
+        digest = base64.urlsafe_b64encode(hashlib.sha256(data).digest())
+        return f"{name},sha256={digest.rstrip(b'=').decode()},{len(data) + delta}"
+
+    if record:
+        (info / "RECORD").write_text(
+            "\n".join(
+                [
+                    row("invented_consumer/__init__.py", module, size_delta),
+                    row("invented_consumer-1.0.dist-info/METADATA", metadata),
+                    "invented_consumer-1.0.dist-info/RECORD,,",
+                ]
+            )
+            + "\n"
+        )
+    return importlib_metadata().PathDistribution(info), package / "__init__.py"
+
+
+def importlib_metadata():
+    import importlib.metadata
+
+    return importlib.metadata
+
+
+def _serve(monkeypatch, distribution):
+    metadata = importlib_metadata()
+    original = metadata.distribution
+
+    def lookup(name):
+        return distribution if name == "invented-consumer" else original(name)
+
+    monkeypatch.setattr(metadata, "distribution", lookup)
+
+
+def test_distribution_identity_rehashes_installed_files(builder, monkeypatch, tmp_path):
+    distribution, _ = _invented_distribution(tmp_path)
+    _serve(monkeypatch, distribution)
+    identity = builder._native_release_distribution_identity("invented-consumer")
+    assert identity["version"] == "1.0"
+    assert identity["verified_files"] == 2
+    assert identity["unhashed_entries"] == 1
+    assert len(identity["record_sha256"]) == 64
+    assert builder._native_release_distribution_identity("invented-absent") is None
+
+
+@pytest.mark.parametrize("change", ["edited", "missing", "size"])
+def test_distribution_identity_refuses_changed_files(
+    builder, monkeypatch, tmp_path, change
+):
+    distribution, module = _invented_distribution(
+        tmp_path, size_delta=1 if change == "size" else 0
+    )
+    if change == "edited":
+        module.write_bytes(b"VALUE = 2\n")
+    elif change == "missing":
+        module.unlink()
+    _serve(monkeypatch, distribution)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._native_release_distribution_identity("invented-consumer")
+    assert refused.value.code == "NATIVE_RELEASE_CONSUMER_FILES"
+    assert refused.value.diagnostics == {
+        "distribution": "invented-consumer",
+        "mismatched_count": 1,
+        "mismatched_examples": ["invented_consumer/__init__.py"],
+    }
+
+
+@pytest.mark.parametrize(
+    "direct_url,code",
+    [
+        ('{"url": "file:///invented", "dir_info": {"editable": true}}', "EDITABLE"),
+        ("not json", "EDITABLE"),
+        ('{"url": "file:///invented.whl", "archive_info": {}}', None),
+        ('{"url": "file:///invented", "dir_info": {}}', None),
+    ],
+)
+def test_distribution_identity_refuses_editable_installs(
+    builder, monkeypatch, tmp_path, direct_url, code
+):
+    distribution, _ = _invented_distribution(tmp_path, direct_url=direct_url)
+    _serve(monkeypatch, distribution)
+    if code is None:
+        identity = builder._native_release_distribution_identity("invented-consumer")
+        assert identity["verified_files"] == 2
+        return
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._native_release_distribution_identity("invented-consumer")
+    assert refused.value.code == "NATIVE_RELEASE_CONSUMER_" + code
+
+
+def test_distribution_identity_requires_a_record(builder, monkeypatch, tmp_path):
+    distribution, _ = _invented_distribution(tmp_path, record=False)
+    _serve(monkeypatch, distribution)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder._native_release_distribution_identity("invented-consumer")
+    assert refused.value.code == "NATIVE_RELEASE_CONSUMER_RECORD"
+
+
+def test_full_distribution_roster_verifies_every_installed_consumer_file(builder):
+    for name in builder.NATIVE_RELEASE_CONSUMER_DISTRIBUTIONS:
+        identity = builder._native_release_distribution_identity(name)
+        assert identity is None or identity["verified_files"] > 0

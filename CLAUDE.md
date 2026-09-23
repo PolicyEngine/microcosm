@@ -165,7 +165,7 @@ live owner first, refuses every option it does not consume, compares the
 consumer with an expected identity, and writes one verified logical H5
 candidate with `native_release_manifest.json`. That manifest is never
 release-eligible and lists outstanding qualifications. The entry never runs
-the legacy source block, never downloads or stages, and never writes
+the legacy source block, calls no download or staging path, and never writes
 `release_manifest.json`.
 
 ## Root journals are history, not state

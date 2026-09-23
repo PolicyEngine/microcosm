@@ -2638,8 +2638,9 @@ def prepare_native_survey_development_input(
 # dense/L0 solve, attaches weights only to the projected input cells, and
 # writes one verified logical H5 candidate. It never runs the legacy source
 # block (``_main``'s base/pool loading, repairs, donor, take-up or assignment
-# stages), never downloads, never starts staging telemetry and never writes a
-# legacy ``release_manifest.json``. Its manifest records outstanding
+# stages), calls no download path (the consumer runtime's own network use is
+# part of its qualification), never starts staging telemetry and never writes
+# a legacy ``release_manifest.json``. Its manifest records outstanding
 # qualifications and is never release-eligible; publication certification is
 # a separate step this entry does not perform. Survey poverty is not a gate,
 # target or selection criterion anywhere in this entry.
@@ -2652,7 +2653,8 @@ NATIVE_RELEASE_DIRECTORY = "native-releases"
 NATIVE_RELEASE_DATASET_FILENAME = "native_candidate_populace_us_2024.h5"
 NATIVE_RELEASE_MANIFEST_FILENAME = "native_release_manifest.json"
 NATIVE_RELEASE_DIAGNOSTICS_FILENAME = "native_calibration_diagnostics.json"
-# Installed distributions whose RECORD bytes bind the consumer runtime.
+# Installed distributions whose RECORD manifests and hashed file contents are
+# part of the consumer identity (see ``_native_release_distribution_identity``).
 NATIVE_RELEASE_CONSUMER_DISTRIBUTIONS = (
     "policyengine-us",
     "policyengine-core",
@@ -2847,10 +2849,47 @@ def _parse_native_release_args(argv: Sequence[str]) -> _NativeReleaseOptions:
             "NATIVE_RELEASE_LEDGER_PIN",
             {"option": "--" + name.replace("_", "-")},
         )
-    _native_release_require(args.exact_k is None, "NATIVE_RELEASE_UNSUPPORTED_OPTIONS")
+
+    # Refuse unusable solve settings now, not after hours of materialization.
+    # Conserved mass needs max_weight_ratio >= 1: every weight is capped at
+    # ratio * initial weight, so a smaller ratio cannot keep the total.
+    def finite(value, *, low, strict):
+        return (
+            type(value) in (int, float)
+            and math.isfinite(value)
+            and (value > low if strict else value >= low)
+        )
+
+    invalid = sorted(
+        "--" + name.replace("_", "-")
+        for name, valid in (
+            ("epochs", type(args.epochs) is int and args.epochs > 0),
+            ("learning_rate", finite(args.learning_rate, low=0.0, strict=True)),
+            ("max_weight_ratio", finite(args.max_weight_ratio, low=1.0, strict=False)),
+            ("l2_lambda", finite(args.l2_lambda, low=0.0, strict=False)),
+            (
+                "refit_l2_lambda",
+                args.refit_l2_lambda is None
+                or finite(args.refit_l2_lambda, low=0.0, strict=False),
+            ),
+            (
+                "l0_refit_lambda_share",
+                finite(args.l0_refit_lambda_share, low=0.0, strict=False),
+            ),
+            ("seed", type(args.seed) is int and args.seed >= 0),
+        )
+        if not valid
+    )
+    _native_release_require(
+        not invalid, "NATIVE_RELEASE_SOLVE_OPTIONS", {"options": invalid}
+    )
     solve = argparse.Namespace(
         **{name: getattr(args, name) for name in _NATIVE_RELEASE_SOLVE_OPTIONS}
     )
+    try:
+        _strict_json_bytes(vars(solve))
+    except (TypeError, ValueError):
+        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_SOLVE_OPTIONS") from None
     return _NativeReleaseOptions(args, solve)
 
 
@@ -2904,18 +2943,80 @@ def _native_release_code_identity(value) -> dict:
 
 
 def _native_release_distribution_identity(name: str) -> dict | None:
+    """RECORD digest of one installed distribution, after checking its files.
+
+    Every RECORD row that carries a hash is re-hashed on disk now and must
+    match its recorded sha256 and size, so a file edited or removed after
+    installation refuses instead of hiding behind an unchanged RECORD. RECORD
+    is parsed directly because ``Distribution.files`` drops missing files.
+    Editable installs refuse because their RECORD lists a path hook, not the
+    consumer's files. Rows without a hash (RECORD itself, installer files) are
+    only counted. An absent distribution is recorded as ``None``.
+    """
+    import base64
+    import csv
+
     try:
         distribution = importlib.metadata.distribution(name)
     except importlib.metadata.PackageNotFoundError:
         return None
     record = distribution.read_text("RECORD")
+    _native_release_require(
+        record is not None, "NATIVE_RELEASE_CONSUMER_RECORD", {"distribution": name}
+    )
+    direct_url = distribution.read_text("direct_url.json")
+    if direct_url is not None:
+        try:
+            dir_info = json.loads(direct_url).get("dir_info") or {}
+            editable = dir_info.get("editable") is True
+        except (AttributeError, TypeError, ValueError):
+            editable = True
+        _native_release_require(
+            not editable, "NATIVE_RELEASE_CONSUMER_EDITABLE", {"distribution": name}
+        )
+    verified = unhashed = 0
+    mismatched = []
+    for row in csv.reader(record.splitlines()):
+        if not row:
+            continue
+        path, recorded_hash, recorded_size = (row + ["", ""])[:3]
+        if not recorded_hash:
+            unhashed += 1
+            continue
+        algorithm, _, expected = recorded_hash.partition("=")
+        digest = hashlib.sha256() if algorithm == "sha256" and expected else None
+        size = 0
+        try:
+            with Path(distribution.locate_file(path)).open("rb") as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    size += len(block)
+                    if digest is not None:
+                        digest.update(block)
+        except OSError:
+            digest = None
+        if (
+            digest is None
+            or base64.urlsafe_b64encode(digest.digest()).rstrip(b"=").decode("ascii")
+            != expected
+            or (recorded_size != "" and recorded_size != str(size))
+        ):
+            mismatched.append(path)
+        else:
+            verified += 1
+    _native_release_require(
+        not mismatched,
+        "NATIVE_RELEASE_CONSUMER_FILES",
+        {
+            "distribution": name,
+            "mismatched_count": len(mismatched),
+            "mismatched_examples": sorted(mismatched)[:5],
+        },
+    )
     return {
         "version": distribution.version,
-        "record_sha256": (
-            None
-            if record is None
-            else hashlib.sha256(record.encode("utf-8")).hexdigest()
-        ),
+        "record_sha256": hashlib.sha256(record.encode("utf-8")).hexdigest(),
+        "verified_files": verified,
+        "unhashed_entries": unhashed,
     }
 
 
@@ -2931,6 +3032,9 @@ def _native_release_static_consumer_identity(
                 "adapter": _native_release_code_identity(type(engine)),
                 "export_contract": asdict(engine.export_contract()),
                 "explicit_spm": None if engine._spm is None else dict(engine._spm),
+                # Admission requires none; recording them lets the final
+                # recheck see defaults added after admission.
+                "input_defaults": sorted(engine._defaults),
                 "constructors": {
                     "dataset": _native_release_code_identity(constructors.dataset_cls),
                     "microsimulation": _native_release_code_identity(
@@ -3004,8 +3108,15 @@ def _admit_native_release_consumer(
         and engine.export_contract() == declaration.export_contract,
         "NATIVE_RELEASE_CONSUMER_CONTRACT",
     )
-    constructors = _native_release_consumer_constructors(engine)
-    static = _native_release_static_consumer_identity(engine, constructors)
+    try:
+        constructors = _native_release_consumer_constructors(engine)
+        static = _native_release_static_consumer_identity(engine, constructors)
+    except NativeSurveyReleaseRefusalError:
+        raise
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_CONSUMER_UNRESOLVED"
+        ) from None
     _native_release_require(
         set(expected) == {*static, "effective_spm"}
         and _strict_json_bytes({key: expected[key] for key in static})
@@ -3075,6 +3186,9 @@ def _native_release_input_gate(projection, *, target_specs) -> dict:
         policyengine_h5_readback._frame_profile(frame, calibrated=False)
     except policyengine_h5_readback.PolicyEngineH5ReadbackError as error:
         failures.append("NATIVE_RELEASE_EXPORT_PROFILE:" + str(error))
+    except (AttributeError, KeyError, OverflowError, TypeError, ValueError):
+        # Other profile errors can quote cells; record the code only.
+        failures.append("NATIVE_RELEASE_EXPORT_PROFILE")
     household = frame.table("household")
     if "state_fips" not in household:
         failures.append("NATIVE_RELEASE_GEOGRAPHY_STATE")
@@ -3246,27 +3360,48 @@ def _run_prepared_native_fiscal_release(
         "NATIVE_RELEASE_FIT_GATES",
         {"failure_count": len(fit_gate_failures)},
     )
+    from microcosm.build.us_runtime.common_frame_export_contract import (
+        RetainedFrameExportError,
+    )
     from microcosm.build.us_runtime.policyengine_h5_readback import (
+        PolicyEngineH5ReadbackError,
         write_verified_policyengine_h5_export,
     )
 
     dense = options.solve.dense_default_dataset
     dataset_path = release_dir / NATIVE_RELEASE_DATASET_FILENAME
-    receipt = write_verified_policyengine_h5_export(
-        input_frame,
-        attachment.frame,
-        engine,
-        dataset_path,
-        period=PERIOD,
-        parent_reference=parent_reference,
-        ordered_household_ids=attachment.ordered_household_ids.copy(),
-        calibrated_weights=attachment.full_parent_weights.copy(),
-        calibration_specification=attachment.comparison_specification,
-        scope_household_ids=(
-            None if dense else np.asarray(attachment.result.selected_entity_ids).copy()
-        ),
-        prune_zero_weight=False,
-    )
+    try:
+        receipt = write_verified_policyengine_h5_export(
+            input_frame,
+            attachment.frame,
+            engine,
+            dataset_path,
+            period=PERIOD,
+            parent_reference=parent_reference,
+            ordered_household_ids=attachment.ordered_household_ids.copy(),
+            calibrated_weights=attachment.full_parent_weights.copy(),
+            calibration_specification=attachment.comparison_specification,
+            scope_household_ids=(
+                None
+                if dense
+                else np.asarray(attachment.result.selected_entity_ids).copy()
+            ),
+            prune_zero_weight=False,
+        )
+    except (PolicyEngineH5ReadbackError, RetainedFrameExportError):
+        # Maintained comparison codes carry no cell values; keep them.
+        raise
+    except (
+        AttributeError,
+        KeyError,
+        OSError,
+        OverflowError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ):
+        # Writer and HDF library errors can quote columns or cells.
+        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_EXPORT_WRITE") from None
     _native_release_require(
         receipt.binding == attachment.binding
         and receipt.period == PERIOD
@@ -3429,7 +3564,12 @@ def _native_release_manifest_payload(
 
 
 def _write_native_release_json(path: Path, payload: Mapping[str, object]) -> str:
-    """Write strict JSON once through a same-directory temporary file."""
+    """Write strict JSON once through a same-directory temporary file.
+
+    The complete temporary file is hard-linked to its final name, which fails
+    rather than replaces when that name already exists, so a concurrent writer
+    cannot be overwritten and readers never see a partial manifest.
+    """
     _native_release_require(
         not path.exists() and not path.is_symlink(), "NATIVE_RELEASE_OUTPUT_EXISTS"
     )
@@ -3443,8 +3583,22 @@ def _write_native_release_json(path: Path, payload: Mapping[str, object]) -> str
         stream.write(data)
         stream.flush()
         os.fsync(stream.fileno())
-    os.replace(temporary, path)
+    try:
+        os.link(temporary, path)
+    except FileExistsError:
+        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_OUTPUT_EXISTS") from None
+    finally:
+        temporary.unlink()
     return hashlib.sha256(data).hexdigest()
+
+
+def _require_native_release_root(native_root: Path) -> None:
+    """A symlinked or non-directory native root would move outputs outside --out."""
+    _native_release_require(
+        not native_root.is_symlink()
+        and (not native_root.exists() or native_root.is_dir()),
+        "NATIVE_RELEASE_DIRECTORY",
+    )
 
 
 def _validate_native_release_after_owner_io(
@@ -3522,12 +3676,7 @@ def build_native_survey_release(
     args = options.args
     native_root = args.out.resolve() / NATIVE_RELEASE_DIRECTORY
     release_dir = native_root / args.release_id
-    # A symlinked or non-directory native root would move outputs outside --out.
-    _native_release_require(
-        not native_root.is_symlink()
-        and (not native_root.exists() or native_root.is_dir()),
-        "NATIVE_RELEASE_DIRECTORY",
-    )
+    _require_native_release_root(native_root)
     _native_release_require(
         not release_dir.exists() and not release_dir.is_symlink(),
         "NATIVE_RELEASE_DIRECTORY_EXISTS",
@@ -3565,6 +3714,14 @@ def build_native_survey_release(
     _native_release_require(
         input_gate["passed"], "NATIVE_RELEASE_INPUT_GATE", input_gate
     )
+    # A loss multiplier naming no compiled family refuses before any output;
+    # the materialized registry is checked again before the solve.
+    try:
+        _fiscal_target_loss_weights(
+            target_registry, args.target_family_loss_multipliers
+        )
+    except ValueError:
+        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_LOSS_WEIGHTS") from None
     timing["targets_and_input_gate"] = time.perf_counter() - started
     parent_reference = (
         "native-survey-owner:"
@@ -3592,8 +3749,21 @@ def build_native_survey_release(
             ),
         }
     )
-    # First output side effect: a fresh directory owned by this build.
-    release_dir.mkdir(parents=True, exist_ok=False)
+    # First output side effect: a fresh directory owned by this build. The
+    # root is checked again around creation, since admission took time.
+    _require_native_release_root(native_root)
+    try:
+        release_dir.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_DIRECTORY_EXISTS"
+        ) from None
+    except OSError:
+        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_DIRECTORY") from None
+    _require_native_release_root(native_root)
+    _native_release_require(
+        release_dir.resolve() == release_dir, "NATIVE_RELEASE_DIRECTORY"
+    )
     prepared = _run_prepared_native_fiscal_release(
         projection.frame,
         target_specs=target_specs,
@@ -3622,7 +3792,7 @@ def build_native_survey_release(
                 }
             )
         ).hexdigest()
-    except (AttributeError, ImportError, TypeError, ValueError):
+    except (AttributeError, ImportError, OSError, TypeError, ValueError):
         raise NativeSurveyReleaseRefusalError(
             "NATIVE_RELEASE_CONSUMER_CHANGED"
         ) from None
@@ -3662,6 +3832,10 @@ def build_native_survey_release(
     _native_release_require(
         _sha256(prepared.dataset_path) == prepared.h5_receipt.sha256,
         "NATIVE_RELEASE_DATASET_CHANGED",
+    )
+    _native_release_require(
+        _sha256(prepared.diagnostics_path) == manifest_payload["diagnostics"]["sha256"],
+        "NATIVE_RELEASE_DIAGNOSTICS_CHANGED",
     )
     manifest_path = release_dir / NATIVE_RELEASE_MANIFEST_FILENAME
     manifest_sha256 = _write_native_release_json(manifest_path, manifest_payload)
