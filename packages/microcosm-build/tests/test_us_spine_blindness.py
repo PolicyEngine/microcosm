@@ -110,6 +110,10 @@ _SOURCE_SPINE_PROVENANCE_OWNERS = frozenset(
         "puf_support.py",  # Validates provenance at the clone boundary.
         "spine_agreement.py",  # Pre-calibration distribution comparison.
         "spine_assembly.py",  # New pre-operator assembly seam.
+        # Declares the SPM measurement universe per source arm. The ACS and
+        # ASEC rulings differ by construction, so the provenance tag is the
+        # producer's input rather than something it must be blind to.
+        "spm_universe_source.py",
         # Stacked-spine pilot (#578 revision): stacking, gap-fill donor
         # routing, activation authority, the completeness gate, and the
         # by-origin battery are origin-aware by charter.
@@ -305,6 +309,9 @@ _OTHER_US_RUNTIME_MODULES = frozenset(
         # Pinned ASEC role reconstruction and exact parent join; no population
         # treatment. Remains subject to the all-runtime source-identity scan.
         "spm_role_source.py",
+        # Source-owned SPM measurement-universe declaration; reads the source
+        # record type and no population attribute. Provenance owner above.
+        "spm_universe_source.py",
         "stacked_spine.py",  # Provenance owner (#578 revision); see owners list.
         "support_provenance.py",
         "take_up.py",
