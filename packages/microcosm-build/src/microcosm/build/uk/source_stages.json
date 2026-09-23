@@ -1439,6 +1439,413 @@
    "notes": "Deterministically rescales owner rows so regional unweighted owner means match the public house-price reference. Northern Ireland has no reference row and is never scaled; empty and nonpositive regions are skipped. The unweighted mean follows the incumbent behavior."
   },
   {
+   "stage": "nts_bus_travel",
+   "survey": "National Travel Survey 2002-2024",
+   "source": "Department for Transport National Travel Survey, UK Data Service SN 5340 (End User Licence, 19th edition, November 2025), DOI 10.5255/UKDA-SN-5340-19; local licensed tab files (household, individual, trip); England residents only from 2013.",
+   "grain": "person",
+   "artifacts": [
+    {
+     "role": "nts_household_tab",
+     "kind": "private_microdata",
+     "ukds_study_number": 5340,
+     "doi": "10.5255/UKDA-SN-5340-19",
+     "filename": "household_eul_2002-2024.tab",
+     "sha256": "b70252b606b13c2b7f32e6da09e202e47514f6414045a017e77deb1d2a87ceb7",
+     "size_bytes": 117993975,
+     "access": "private_local_input",
+     "locator": "caller-supplied local input",
+     "runtime_sha256_required": true
+    },
+    {
+     "role": "nts_individual_tab",
+     "kind": "private_microdata",
+     "ukds_study_number": 5340,
+     "doi": "10.5255/UKDA-SN-5340-19",
+     "filename": "individual_eul_2002-2024.tab",
+     "sha256": "e8b568497f99aeced2b379d853a1254759cdcb4409acc0b9ff3ea3d95c1f5e8d",
+     "size_bytes": 270677548,
+     "access": "private_local_input",
+     "locator": "caller-supplied local input",
+     "runtime_sha256_required": true
+    },
+    {
+     "role": "nts_trip_tab",
+     "kind": "private_microdata",
+     "ukds_study_number": 5340,
+     "doi": "10.5255/UKDA-SN-5340-19",
+     "filename": "trip_eul_2002-2024.tab",
+     "sha256": "878b61c9fdafcbc1a85913f3af4889913bcf73c294f0221e84b3651a404284c4",
+     "size_bytes": 1055711332,
+     "access": "private_local_input",
+     "locator": "caller-supplied local input",
+     "runtime_sha256_required": true
+    },
+    {
+     "role": "nts_stage_tab",
+     "kind": "private_microdata",
+     "ukds_study_number": 5340,
+     "doi": "10.5255/UKDA-SN-5340-19",
+     "filename": "stage_eul_2002-2024.tab",
+     "sha256": "4a6015ed54abc32b48e45a5af663d44a39e1147c7ff8c2e087aa29828665b64c",
+     "size_bytes": 1039281193,
+     "access": "private_local_input",
+     "locator": "caller-supplied local input",
+     "runtime_sha256_required": true
+    },
+    {
+     "role": "nts_ticket_tab",
+     "kind": "private_microdata",
+     "ukds_study_number": 5340,
+     "doi": "10.5255/UKDA-SN-5340-19",
+     "filename": "ticket_eul_2002-2024.tab",
+     "sha256": "276a99bd30ff4aa3506d2126f6fd269db2f2d0265b5231a55aaefca9212363a0",
+     "size_bytes": 8655532,
+     "access": "private_local_input",
+     "locator": "caller-supplied local input",
+     "runtime_sha256_required": true
+    },
+    {
+     "role": "nts_trip_rates",
+     "resource": "nts_trip_rates.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
+     "role": "nts_car_availability",
+     "resource": "nts_car_availability.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    },
+    {
+     "role": "nts_bus_use_frequency",
+     "resource": "nts_bus_use_frequency.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
+    }
+   ],
+   "operations": [
+    {
+     "kind": "clean_nts_travel_tables",
+     "lowercase_columns": true,
+     "survey_years": [
+      2022,
+      2023,
+      2024
+     ],
+     "cars_clip": [
+      0,
+      5
+     ],
+     "age_band_edges": [
+      0,
+      5,
+      11,
+      17,
+      21,
+      30,
+      40,
+      50,
+      60,
+      70
+     ],
+     "trip_weight_basis": "household_and_trip",
+     "columns": {
+      "household_id": "HouseholdID",
+      "individual_id": "IndividualID",
+      "trip_id": "TripID",
+      "survey_year": "SurveyYear",
+      "region": "HHoldGOR_B02ID",
+      "income_band": "HHIncome2002_B02ID",
+      "cars": "NumCarVan",
+      "household_size": "HHoldNumPeople",
+      "household_weight": "W2",
+      "age_band": "Age_B01ID",
+      "sex": "Sex_B01ID",
+      "frequency": "OrdBus2Freq_B01ID",
+      "main_mode": "MainMode_B04ID",
+      "trip_weight": "W5",
+      "short_walk_multiplier": "JJXSC",
+      "stage_id": "StageID",
+      "stage_trip_id": "TripID",
+      "stage_individual_id": "IndividualID",
+      "stage_ticket_id": "IndTicketID",
+      "stage_mode": "StageMode_B04ID",
+      "stage_boardings": "NumBoardings",
+      "stage_fare_cost": "StageFareCost",
+      "ticket_id": "IndTicketID",
+      "ticket_special": "SpecialTicket_B01ID"
+     },
+     "codes": {
+      "region": {
+       "1": "NORTH_EAST",
+       "2": "NORTH_WEST",
+       "3": "YORKSHIRE",
+       "4": "EAST_MIDLANDS",
+       "5": "WEST_MIDLANDS",
+       "6": "EAST_OF_ENGLAND",
+       "7": "LONDON",
+       "8": "SOUTH_EAST",
+       "9": "SOUTH_WEST"
+      },
+      "income_band": {
+       "1": 1,
+       "2": 2,
+       "3": 3
+      },
+      "female": 2,
+      "main_mode": {
+       "bus_in_london": 7,
+       "other_local_bus": 8
+      },
+      "concessionary_ticket": [
+       7,
+       8,
+       9,
+       10,
+       11
+      ],
+      "frequency": {
+       "1": 6,
+       "2": 6,
+       "3": 6,
+       "4": 5,
+       "5": 4,
+       "6": 3,
+       "7": 2,
+       "8": 1,
+       "9": 0,
+       "10": 0,
+       "-9": 0
+      },
+      "age_band": {
+       "1": 0,
+       "2": 1,
+       "3": 3,
+       "4": 5,
+       "5": 11,
+       "6": 16,
+       "7": 17,
+       "8": 18,
+       "9": 19,
+       "10": 20,
+       "11": 21,
+       "12": 26,
+       "13": 30,
+       "14": 40,
+       "15": 50,
+       "16": 60,
+       "17": 65,
+       "18": 70,
+       "19": 75,
+       "20": 80,
+       "21": 85
+      }
+     },
+     "codebook_status": "verified 2026-09-22 against the deposited SN 5340 19th-edition lookup tables and the data extract user guide. Frequency is OrdBus2Freq_B01ID (asked since 2019; OrdBusFreq_B01ID ended in 2018), ten codes folded onto the seven NTS0313 bands (codes 1 to 3 are the three-or-more-times-a-week band, 9 and 10 the less-than-once-a-year-or-never band); code -9 (question not applicable, proxy responses) is declared a non-user because the published NTS0313 shares reproduce only with those persons in the base (2024 at-least-yearly share 0.526 without them, 0.505 with them, the published 0.505); code -8 (no answer) is dropped and receipted. Age_B01ID has 21 bands, each mapped to its lower age and then banded on the declared edges, so donor and recipient share one banding (every NTS band lies inside one declared band). Region codes 10 and 11 (Wales, Scotland) occur only before 2013 and never in the declared years. HHIncome2002_B02ID -8 (no answer) is dropped. The trip weight is W5, which carries the diary household weight W2 (the user guide's trips per person per year is 52.14 x sum(JJXSC x W5) over sum(W2) on the diary sample), so each person's counted trips are divided by W2 before the W2-weighted mean; W5xHH is the within-household factor only. W2 is zero for interview-only households, which leave the donor (the fit and the diary means use the diary sample, as the user guide prescribes for trip measures). Stage and ticket tables, verified 2026-09-23. A stage is a boarding (NumBoardings counts the vehicles), StageMode_B04ID carries the trip-mode categories, StageFareCost is the boarding cost paid at the point of use and IndTicketID links a stage to a held ticket; SpecialTicket_B01ID codes 7 to 11 are the concessionary passes (older people, scholars, disabled persons, subsidised tokens, other concessionary), 1 to 6 non-concessionary season tickets and passes. A boarding with no ticket record and a positive cost paid a single, return or day fare at the point of use; with no record and zero cost it travelled free (children, in the main); with no cost recorded its class is unknown."
+    },
+    {
+     "kind": "materialize_rules_engine_predictors",
+     "predictors": [
+      "household_gross_income"
+     ],
+     "consumed_only": true
+    },
+    {
+     "kind": "impute_bus_use_band",
+     "output": "local_bus_use_band",
+     "seed": 0,
+     "n_estimators": 100,
+     "predictors": [
+      "age_band",
+      "is_female",
+      "num_vehicles",
+      "household_size",
+      "income_band",
+      "region"
+     ],
+     "categorical_predictors": [
+      "region"
+     ],
+     "income_band_edges": [
+      25000,
+      50000
+     ],
+     "region_remap": {
+      "SCOTLAND": "NORTH_EAST",
+      "WALES": "SOUTH_WEST",
+      "NORTHERN_IRELAND": "NORTH_EAST"
+     },
+     "trip_rates_resource": "nts_trip_rates.json",
+     "trip_rates_period_value": 2024,
+     "car_availability_resource": "nts_car_availability.json",
+     "car_availability_period_value": 2024,
+     "fallback": {
+      "resource": "nts_bus_use_frequency.json",
+      "period_value": 2024,
+      "share_geography": "E92000001",
+      "share_age_coverage": "all_ages",
+      "applied_to": "every_person",
+      "transport_mode_groupby_value_id": "local_bus",
+      "older_age_band": "60 and over",
+      "age_threshold": 60,
+      "user_definition": "at_least_once_a_year",
+      "non_user_band": "less_than_once_a_year_or_never",
+      "bands": [
+       {
+        "id": "three_or_more_times_a_week",
+        "trips_per_year": 208,
+        "labels": [
+         "3 or more times a week (%)"
+        ]
+       },
+       {
+        "id": "once_or_twice_a_week",
+        "trips_per_year": 78,
+        "labels": [
+         "Once or twice a week (%)"
+        ]
+       },
+       {
+        "id": "less_than_weekly_more_than_twice_a_month",
+        "trips_per_year": 36,
+        "labels": [
+         "Less than once a week, more than once or twice a month (%)",
+         "Less than once per week, more than twice a month (%)"
+        ]
+       },
+       {
+        "id": "once_or_twice_a_month",
+        "trips_per_year": 18,
+        "labels": [
+         "Once or twice a month (%)"
+        ]
+       },
+       {
+        "id": "less_than_monthly_more_than_twice_a_year",
+        "trips_per_year": 6,
+        "labels": [
+         "Less than once a month, more than once or twice a year (%)",
+         "Less than once a month, more than twice a year (%)"
+        ]
+       },
+       {
+        "id": "once_or_twice_a_year",
+        "trips_per_year": 1.5,
+        "labels": [
+         "Once or twice a year (%)"
+        ]
+       },
+       {
+        "id": "less_than_once_a_year_or_never",
+        "trips_per_year": 0,
+        "labels": [
+         "Less than once a year or never (%)"
+        ]
+       }
+      ]
+     }
+    },
+    {
+     "kind": "assign_trips_from_band_means",
+     "outputs": [
+      "bus_in_london_trips",
+      "other_local_bus_trips",
+      "local_bus_trips"
+     ],
+     "household_output": "household_local_bus_trips",
+     "annualisation_weeks": 52.14,
+     "trip_rates_resource": "nts_trip_rates.json",
+     "trip_rates_period_value": 2024,
+     "band_midpoints": {
+      "three_or_more_times_a_week": 208,
+      "once_or_twice_a_week": 78,
+      "less_than_weekly_more_than_twice_a_month": 36,
+      "once_or_twice_a_month": 18,
+      "less_than_monthly_more_than_twice_a_year": 6,
+      "once_or_twice_a_year": 1.5,
+      "less_than_once_a_year_or_never": 0
+     }
+    },
+    {
+     "kind": "assign_bus_pass_eligibility",
+     "output": "bus_pass_eligible",
+     "basis": "statutory concessionary travel by area (ENCTS at State Pension age outside London; London 60+ Oyster and under-18 Zip; Scotland National Entitlement Card 60+ and under-22; Wales 60+; Northern Ireland 60+ SmartPass, free on all Translink services within Northern Ireland from age 60, the 65+ pass adding all-Ireland travel only) and under-5s free everywhere; disabled passes and child half-fares are absorbed by the yield",
+     "rules": {
+      "england_outside_london": {
+       "regions": [
+        "NORTH_EAST",
+        "NORTH_WEST",
+        "YORKSHIRE",
+        "EAST_MIDLANDS",
+        "WEST_MIDLANDS",
+        "EAST_OF_ENGLAND",
+        "SOUTH_EAST",
+        "SOUTH_WEST"
+       ],
+       "min_age": 66,
+       "max_age_exclusive": 5
+      },
+      "london": {
+       "regions": [
+        "LONDON"
+       ],
+       "min_age": 60,
+       "max_age_exclusive": 18
+      },
+      "scotland": {
+       "regions": [
+        "SCOTLAND"
+       ],
+       "min_age": 60,
+       "max_age_exclusive": 22
+      },
+      "wales": {
+       "regions": [
+        "WALES"
+       ],
+       "min_age": 60,
+       "max_age_exclusive": 5
+      },
+      "northern_ireland": {
+       "regions": [
+        "NORTHERN_IRELAND"
+       ],
+       "min_age": 60,
+       "max_age_exclusive": 5
+      }
+     }
+    },
+    {
+     "kind": "support_clip",
+     "range": "donor_realized"
+    },
+    {
+     "kind": "record_mass_conservation_receipt",
+     "entity": "household",
+     "reason": "NTS bus-travel imputation on the source spine: household weights pass through unchanged and total household mass is conserved.",
+     "declared_factor": 1.0,
+     "gate_coupling": "The terminal family gate requires a valid mass-conserving MassChangeRecord carrying exactly this stage-specific reason."
+    }
+   ],
+   "outputs": [
+    "local_bus_use_band",
+    "bus_in_london_trips",
+    "other_local_bus_trips",
+    "local_bus_trips",
+    "bus_pass_eligible",
+    "local_bus_single_fare_share",
+    "household_local_bus_trips"
+   ],
+   "nonnegative_outputs": [
+    "local_bus_use_band",
+    "bus_in_london_trips",
+    "other_local_bus_trips",
+    "local_bus_trips",
+    "household_local_bus_trips"
+   ],
+   "notes": "Imputes local-bus travel per person from the National Travel Survey microdata (microcosm#930; the structural fix Maria ruled on 2026-09-15 for the rake-then-bind bus fares of microcosm#890). The donor is the NTS End User Licence extract (England residents only since 2013) pooled over the declared survey years for the conditional fit; the artifact pins are the 19th-edition (November 2025) tabs, verified at runtime, and the H2 fixture drives the stage with synthetic tabs in the same codebook. One QRF target, the interview frequency-of-use band (the variable behind NTS0313; 0 is the non-user band), conditioned on age band, sex, cars (the was_wealth draw on the recipient), household size, the three-band gross household income and region, drawn from identity-keyed uniforms and rounded to the nearest band; devolved recipients take a declared proxy region for prediction only. Each person's annual local-bus trips are the diary's weighted mean for their band and residence group (London or the rest of England), split into the bus-in-London and other-local-bus series by main mode, W5 x JJXSC over W2 persons annualised by 52.14 weeks; a seven-day diary annualised per person would be right in aggregate and wrong in distribution, so it supplies band means, not per-person counts. If the extract carries no frequency column the band is drawn from the vendored NTS0313/NTS0621 shares and declared band midpoints are scaled to the vendored NTS0303 rate (the receipt names the path). Concessionary eligibility is the declared statutory age rule of the person's area, emitted for the lcfs pricing step to zero-price eligible persons' trips; the donor's eligible share of trips per series is receipted beside the publisher's concessionary boarding share. The stage and ticket tables class every diary bus boarding by how it was paid for (at the point of use, a season ticket or pass, a concessionary pass, free) and give each person the share of fare-paying boardings paid at the point of use for their band and residence group (local_bus_single_fare_share), the boardings a per-journey fare cap binds on, with the fare paid per boarding by residence group and survey year receipted beside it (microcosm#930 C13, María's ask of 2026-09-23). The stage records the frame's band shares against NTS0313/NTS0621, its trips per person against NTS0303 and by age band against NTS0601, and the frame's car availability against NTS0205, all from vendored rows; nothing derived from the licensed rows is committed."
+  },
+  {
    "stage": "lcfs_consumption",
    "survey": "Living Costs and Food Survey 2023-24",
    "source": "UK Data Service SN 9468 Living Costs and Food Survey 2023-24 household/person tabs and the vendored Chronicle facts for NEED 2023 mean kWh, the FY2024-25 Ofgem cap levels, road-fuel outturn (DESNZ, HMRC, ONS), the DfT VEH1103 licensed-car stock, NTS bus use and the DfT and devolved bus finance tables.",
@@ -1509,8 +1916,8 @@
      "format": "json"
     },
     {
-     "role": "nts_bus_use_frequency",
-     "resource": "nts_bus_use_frequency.json",
+     "role": "dft_bus_journeys",
+     "resource": "dft_bus_journeys.json",
      "kind": "public_aggregate_reference",
      "format": "json"
     },
@@ -1677,74 +2084,6 @@
      "seed": 0
     },
     {
-     "kind": "assign_bus_use_incidence",
-     "output": "uses_local_bus",
-     "seed": 0,
-     "resource": "nts_bus_use_frequency.json",
-     "period_value": 2024,
-     "share_geography": "E92000001",
-     "share_age_coverage": "all_ages",
-     "applied_to": "fare_rake_regions",
-     "transport_mode_groupby_value_id": "local_bus",
-     "older_age_band": "60 and over",
-     "age_threshold": 60,
-     "user_definition": "at_least_once_a_year",
-     "non_user_band": "less_than_once_a_year_or_never",
-     "bands": [
-      {
-       "id": "three_or_more_times_a_week",
-       "trips_per_year": 208,
-       "labels": [
-        "3 or more times a week (%)"
-       ]
-      },
-      {
-       "id": "once_or_twice_a_week",
-       "trips_per_year": 78,
-       "labels": [
-        "Once or twice a week (%)"
-       ]
-      },
-      {
-       "id": "less_than_weekly_more_than_twice_a_month",
-       "trips_per_year": 36,
-       "labels": [
-        "Less than once a week, more than once or twice a month (%)",
-        "Less than once per week, more than twice a month (%)"
-       ]
-      },
-      {
-       "id": "once_or_twice_a_month",
-       "trips_per_year": 18,
-       "labels": [
-        "Once or twice a month (%)"
-       ]
-      },
-      {
-       "id": "less_than_monthly_more_than_twice_a_year",
-       "trips_per_year": 6,
-       "labels": [
-        "Less than once a month, more than once or twice a year (%)",
-        "Less than once a month, more than twice a year (%)"
-       ]
-      },
-      {
-       "id": "once_or_twice_a_year",
-       "trips_per_year": 1.5,
-       "labels": [
-        "Once or twice a year (%)"
-       ]
-      },
-      {
-       "id": "less_than_once_a_year_or_never",
-       "trips_per_year": 0,
-       "labels": [
-        "Less than once a year or never (%)"
-       ]
-      }
-     ]
-    },
-    {
      "kind": "materialize_rules_engine_predictors",
      "predictors": [
       "is_adult",
@@ -1841,6 +2180,9 @@
      "connection_period_value": 2024,
      "connection_rule": "gas_meters_over_electricity_meters",
      "connection_fallback": "positive_gas_spend",
+     "connection_fallback_regions": [
+      "NORTHERN_IRELAND"
+     ],
      "disconnect_rule": "lowest_drawn_gas_first",
      "margins_resource": "need_energy_facts.json",
      "margins_period_value": 2024,
@@ -1849,33 +2191,57 @@
      "level_temperature_adjustment": "actual_temperature"
     },
     {
-     "kind": "rake_to_vendored_facts",
-     "columns": [
-      "bus_fare_spending"
-     ],
-     "scope": "users_only",
-     "quintile_income": "hbai_household_net_income",
-     "iterations": 1,
-     "weighted": true,
-     "cells": [
+     "kind": "price_bus_journeys",
+     "column": "bus_fare_spending",
+     "trips_columns": {
+      "bus_in_london": "bus_in_london_trips",
+      "other_local_bus": "other_local_bus_trips"
+     },
+     "eligibility_column": "bus_pass_eligible",
+     "fiscal_start": "2024-04-01",
+     "trip_rates_resource": "dft_bus_value_anchors.json",
+     "trip_rates_period_value": 2024,
+     "population_resource": "dft_bus_journeys.json",
+     "population_period_value": 2024,
+     "areas": [
       {
        "label": "london",
-       "regions": [
-        "LONDON"
-       ],
-       "resource": "dft_bus_value_anchors.json",
-       "selector": {
+       "series": "bus_in_london",
+       "receipts": {
+        "resource": "dft_bus_value_anchors.json",
         "concept": "dft.local_bus_passenger_fare_receipts",
-        "fiscal_start": "2024-04-01",
         "geography_id": "E12000007"
        },
-       "allocation": "income_quintile_trips",
-       "allocation_resource": "dft_bus_value_anchors.json",
-       "allocation_concept": "dft.bus_in_london_trips_per_person",
-       "allocation_period_value": 2024
+       "boardings": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_passenger_journeys",
+        "geography_id": "E12000007"
+       },
+       "concessionary": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_passenger_journeys",
+        "geography_id": "E12000007",
+        "dimension_values": {
+         "journey_category": "total_concessionary"
+        }
+       },
+       "trips_concept": "dft.bus_in_london_trips_per_person",
+       "trips_basis": "published_series_rate",
+       "population_geography_ids": [
+        "E12000001",
+        "E12000002",
+        "E12000003",
+        "E12000004",
+        "E12000005",
+        "E12000006",
+        "E12000007",
+        "E12000008",
+        "E12000009"
+       ]
       },
       {
        "label": "england_outside_london",
+       "series": "other_local_bus",
        "regions": [
         "NORTH_EAST",
         "NORTH_WEST",
@@ -1883,52 +2249,120 @@
         "EAST_MIDLANDS",
         "WEST_MIDLANDS",
         "EAST_OF_ENGLAND",
+        "LONDON",
         "SOUTH_EAST",
         "SOUTH_WEST"
        ],
-       "resource": "dft_bus_value_anchors.json",
-       "selector": {
+       "receipts": {
+        "resource": "dft_bus_value_anchors.json",
         "concept": "dft.local_bus_passenger_fare_receipts",
-        "fiscal_start": "2024-04-01",
         "geography_id": "dft:england_outside_london"
        },
-       "allocation": "income_quintile_trips",
-       "allocation_resource": "dft_bus_value_anchors.json",
-       "allocation_concept": "dft.other_local_bus_trips_per_person",
-       "allocation_period_value": 2024
+       "boardings": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_passenger_journeys",
+        "geography_id": "dft:england_outside_london"
+       },
+       "concessionary": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_passenger_journeys",
+        "geography_id": "dft:england_outside_london",
+        "dimension_values": {
+         "journey_category": "total_concessionary"
+        }
+       },
+       "trips_concept": "dft.other_local_bus_trips_per_person",
+       "trips_basis": "published_series_rate",
+       "population_geography_ids": [
+        "E12000001",
+        "E12000002",
+        "E12000003",
+        "E12000004",
+        "E12000005",
+        "E12000006",
+        "E12000007",
+        "E12000008",
+        "E12000009"
+       ]
       },
       {
        "label": "scotland",
+       "series": "other_local_bus",
        "regions": [
         "SCOTLAND"
        ],
-       "resource": "devolved_bus_finance.json",
-       "selector": {
+       "receipts": {
+        "resource": "devolved_bus_finance.json",
         "concept": "scotgov.bus.operator_revenue",
-        "fiscal_start": "2024-04-01",
-        "groupby_value_id": "passenger_revenue"
+        "groupby_value_id": "passenger_revenue",
+        "dimension_values": {
+         "revenue_component": "passenger_revenue"
+        }
        },
-       "allocation": "uniform"
+       "boardings": {
+        "resource": "devolved_bus_finance.json",
+        "concept": "scotgov.bus.passenger_journeys",
+        "groupby_value_id": "all_passenger_journeys"
+       },
+       "concessionary": {
+        "resource": "devolved_bus_finance.json",
+        "concept": "scotgov.bus.passenger_journeys",
+        "groupby_value_id": "concessionary_passenger_journeys",
+        "dimension_values": {
+         "journey_category": "concessionary"
+        }
+       },
+       "trips_concept": "dft.other_local_bus_trips_per_person",
+       "trips_basis": "england_other_local_bus_rate_as_proxy",
+       "population_geography_ids": [
+        "S92000003"
+       ]
       },
       {
        "label": "northern_ireland",
+       "series": "other_local_bus",
        "regions": [
         "NORTHERN_IRELAND"
        ],
-       "resource": "devolved_bus_finance.json",
-       "selector": {
+       "receipts": {
+        "resource": "devolved_bus_finance.json",
         "concept": "dfi_ni.translink_bus.passenger_receipts",
-        "fiscal_start": "2024-04-01",
         "sum_over": {
          "service": [
-          "ulsterbus",
-          "metro_glider"
+          "metro_glider",
+          "ulsterbus"
          ]
         }
        },
-       "allocation": "uniform"
+       "boardings": {
+        "resource": "devolved_bus_finance.json",
+        "concept": "dfi_ni.translink_bus.passenger_journeys",
+        "sum_over": {
+         "service": [
+          "metro_glider",
+          "ulsterbus"
+         ]
+        }
+       },
+       "concessionary": {
+        "resource": "devolved_bus_finance.json",
+        "concept": "dfi_ni.translink_bus.full_fare_concession_passenger_journeys",
+        "dimension_values": {
+         "transport_mode": "bus",
+         "travel_status": "full_fare_concession"
+        }
+       },
+       "trips_concept": "dft.other_local_bus_trips_per_person",
+       "trips_basis": "england_other_local_bus_rate_as_proxy",
+       "population_geography_ids": [
+        "N92000002"
+       ]
       }
-     ]
+     ],
+     "unpriced_regions": [
+      "WALES"
+     ],
+     "scope_translation": "operator receipts carry interchange boardings, non-resident and business payers, and London contactless is not separated, so the yield is per resident trip, not a fare; Wales publishes journeys but no receipts and keeps the chain's raw draw clipped to donor support"
     },
     {
      "kind": "fold_into",
@@ -1997,7 +2431,7 @@
     "gas_consumption",
     "has_fuel_consumption"
    ],
-   "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns. Bus fares are clipped to donor support before the fare rake (María's ruling 2026-09-15), which bounds the regions no fare cell levels (Wales keeps the chain's raw draw) while the rake is free to move the raked regions beyond donor support afterwards; for that reason the column carries no committed support bound for the terminal gate. Domestic energy is raked in kWh to the NEED 2024 shape at the DESNZ level and priced at the average prices paid (microcosm#890 F, chronicle#270), where both NEED rakes take their mean-kWh margins from the vendored NEED 2024 tables (England and Wales by income band, tenure, property type and region; Scotland by income band, tenure and property type with the all-dwellings mean as its region margin; Northern Ireland untouched), the declared price_domestic_energy step converts spend to kWh and back at each household's QEP price region through the committed crosswalk using the FY2024-25 average variable unit cost and fixed cost across payment methods, standard metering, including VAT (Northern Ireland gas at the UK average because QEP publishes no Northern Ireland gas row), a gas fixed cost only for connected households, the gas connection imposed on the recipient frame at the published share of each region (DESNZ subnational gas meters over electricity meters, 2024) by disconnecting the households with the smallest drawn gas first, skipping a household whose weight would overshoot the published share (Northern Ireland has no subnational row and keeps the positive-gas rule), and after the four-margin NEED rake one factor per fuel scales the kWh so the design-weighted frame total equals the DESNZ Energy Trends domestic consumption at actual temperature summed over the four FY2024-25 quarters; NEED gas means are per gas-metered household, so the gas kWh margins are raked over connected households only while electricity is raked over every household, and the energy_rake gate recomputes every NEED mean, the DESNZ level and the connection shares from the vendored rows. Who uses local buses is drawn take-up style (microcosm#890 I), where each person takes a frequency band by an identity-keyed draw from the vendored NTS0313 shares (NTS0621 for people aged 60 and over, the under-60 shares derived from the two with the frame's design-weighted 60-plus share), a household is a user when any member rides at least once a year, user households the chain drew at zero take the bus step's positive-regime draw at an identity-keyed quantile and non-users take zero, in the regions a fare-rake cell levels afterwards (a positive-regime amount is a diary-positive fortnight annualised and would overstate an unraked region several-fold, so Wales keeps the raw draw); the NTS shares are England's and DfT publishes no Scottish or Northern Irish frequency table, so the same shares govern the Scotland and Northern Ireland cells, as declared (share_geography). Bus fares are then raked (microcosm#890 D) so that user households' design-weighted totals equal the FY2024-25 DfT BUS05ai receipts for London and England outside London, spread across design-weighted person income quintiles in proportion to NTS0705a trips per person, Scottish Transport Statistics passenger revenue for Scotland and Translink passenger receipts for Northern Ireland; Wales publishes no fare receipts and is untouched. The 2023-24 diary is uprated to the FRS 2024-25 base year by the declared uprate_donor_columns step (microcosm#890), with consumption columns and bus fares uprated by the engine's CPI index (the fare factor survives only where no fare cell levels the column, i.e. Wales), income predictors by the engine's earnings, mixed-income and pension indices, petrol and diesel by the DESNZ pump-price times HMRC litres per head outturn from the vendored road_fuel_anchors.json; the energy columns are exempt because the NEED rake and the FY2024-25 Ofgem pricing set their level."
+   "notes": "Ports the incumbent LCFS consumption QRF, including NEED energy raking, with adjudicated weighted fits and an identity-keyed seed-0 fuel flag. The vehicle count is a numeric QRF predictor on both sides (LCFS a124 on the donor, the was_wealth draw of WAS vcarnr8 on the recipient, both clipped to 0-5), which retires the incumbent's WAS-to-LCFS has-fuel bridge (microcosm#890 A). The recipient fuel flag is num_vehicles > 0 times a draw at the fuel-buyer share from the vendored DfT VEH1103 licensed-car stock (one minus the battery-electric and fuel-cell share, 2024, Great Britain; plug-in hybrids count as fuel buyers), replacing the hand-copied NTS share (microcosm#890 E2). Energy support clipping is exempt because NEED raking governs those columns. Bus fares are clipped to donor support before the pricing step (María's rulings 2026-09-15 and 2026-09-17), which bounds the region no area prices (Wales keeps the chain's raw draw) while the priced regions move beyond donor support afterwards; for that reason the column carries no committed support bound for the terminal gate. Domestic energy is raked in kWh to the NEED 2024 shape at the DESNZ level and priced at the average prices paid (microcosm#890 F, chronicle#270), where both NEED rakes take their mean-kWh margins from the vendored NEED 2024 tables (England and Wales by income band, tenure, property type and region; Scotland by income band, tenure and property type with the all-dwellings mean as its region margin; Northern Ireland untouched), the declared price_domestic_energy step converts spend to kWh and back at each household's QEP price region through the committed crosswalk using the FY2024-25 average variable unit cost and fixed cost across payment methods, standard metering, including VAT (Northern Ireland gas at the UK average because QEP publishes no Northern Ireland gas row), a gas fixed cost only for connected households, the gas connection imposed on the recipient frame at the published share of each region (DESNZ subnational gas meters over electricity meters, 2024) by disconnecting the households with the smallest drawn gas first, skipping a household whose weight would overshoot the published share (Northern Ireland has no subnational row and keeps the positive-gas rule), and after the four-margin NEED rake one factor per fuel scales the kWh so the design-weighted frame total equals the DESNZ Energy Trends domestic consumption at actual temperature summed over the four FY2024-25 quarters; NEED gas means are per gas-metered household, so the gas kWh margins are raked over connected households only while electricity is raked over every household, and the energy_rake gate recomputes every NEED mean, the DESNZ level and the connection shares from the vendored rows. Bus fares are priced from journeys (microcosm#930), where the nts_bus_travel stage imputes each person's annual bus-in-London and other-local-bus trips and their concessionary eligibility, and the declared price_bus_journeys step sets bus_fare_spending as the sum over the household's non-eligible persons of trips times boardings per resident trip (the published BUS01 journeys over the published NTS0705a trips per resident times the ONS population) times the yield per fare-paying boarding (BUS05ai receipts over journeys less concessionary journeys), per area; bus-in-London trips take the London area's price for every resident, other-local-bus trips the price of the residence area (England outside London; Scotland and Northern Ireland from their own receipts and journeys with England's trip rate as the declared proxy); Wales is unpriced and keeps the raw draw. The chain still draws bus_fare_spending so later targets condition on the same raw draw; the emitted column is the priced value. The receipt records every factor, the frame-implied boardings beside the published ones and the frame's eligible trip share beside the publisher's concessionary boarding share, so the design-weight fit of the bound receipts targets is read as a composition check, never a level the stage set; the"
   },
   {
    "stage": "etb_vat",
@@ -2132,6 +2566,12 @@
      "resource": "devolved_bus_finance.json",
      "kind": "public_aggregate_reference",
      "format": "json"
+    },
+    {
+     "role": "dft_bus_journeys",
+     "resource": "dft_bus_journeys.json",
+     "kind": "public_aggregate_reference",
+     "format": "json"
     }
    ],
    "operations": [
@@ -2208,32 +2648,170 @@
     },
     {
      "kind": "support_clip",
-     "range": "donor_realized",
-     "exempt": [
-      "bus_subsidy_spending"
-     ]
+     "range": "donor_realized"
     },
     {
-     "kind": "rake_to_vendored_facts",
-     "columns": [
-      "bus_subsidy_spending"
+     "kind": "price_bus_support",
+     "support_column": "bus_subsidy_spending",
+     "trips_columns": {
+      "bus_in_london": "bus_in_london_trips",
+      "other_local_bus": "other_local_bus_trips"
+     },
+     "eligibility_column": "bus_pass_eligible",
+     "fiscal_start": "2024-04-01",
+     "trip_rates_resource": "dft_bus_value_anchors.json",
+     "trip_rates_period_value": 2024,
+     "population_resource": "dft_bus_journeys.json",
+     "population_period_value": 2024,
+     "pricing_areas": [
+      {
+       "label": "london",
+       "series": "bus_in_london",
+       "receipts": {
+        "resource": "dft_bus_value_anchors.json",
+        "concept": "dft.local_bus_passenger_fare_receipts",
+        "geography_id": "E12000007"
+       },
+       "boardings": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_passenger_journeys",
+        "geography_id": "E12000007"
+       },
+       "concessionary": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_passenger_journeys",
+        "geography_id": "E12000007",
+        "dimension_values": {
+         "journey_category": "total_concessionary"
+        }
+       },
+       "trips_concept": "dft.bus_in_london_trips_per_person",
+       "trips_basis": "published_series_rate",
+       "population_geography_ids": [
+        "E12000001",
+        "E12000002",
+        "E12000003",
+        "E12000004",
+        "E12000005",
+        "E12000006",
+        "E12000007",
+        "E12000008",
+        "E12000009"
+       ]
+      },
+      {
+       "label": "england_outside_london",
+       "series": "other_local_bus",
+       "regions": [
+        "NORTH_EAST",
+        "NORTH_WEST",
+        "YORKSHIRE",
+        "EAST_MIDLANDS",
+        "WEST_MIDLANDS",
+        "EAST_OF_ENGLAND",
+        "SOUTH_EAST",
+        "SOUTH_WEST",
+        "LONDON"
+       ],
+       "receipts": {
+        "resource": "dft_bus_value_anchors.json",
+        "concept": "dft.local_bus_passenger_fare_receipts",
+        "geography_id": "dft:england_outside_london"
+       },
+       "boardings": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_passenger_journeys",
+        "geography_id": "dft:england_outside_london"
+       },
+       "concessionary": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_passenger_journeys",
+        "geography_id": "dft:england_outside_london",
+        "dimension_values": {
+         "journey_category": "total_concessionary"
+        }
+       },
+       "trips_concept": "dft.other_local_bus_trips_per_person",
+       "trips_basis": "published_series_rate",
+       "population_geography_ids": [
+        "E12000001",
+        "E12000002",
+        "E12000003",
+        "E12000004",
+        "E12000005",
+        "E12000006",
+        "E12000007",
+        "E12000008",
+        "E12000009"
+       ]
+      },
+      {
+       "label": "scotland",
+       "series": "other_local_bus",
+       "regions": [
+        "SCOTLAND"
+       ],
+       "receipts": {
+        "resource": "devolved_bus_finance.json",
+        "concept": "scotgov.bus.operator_revenue",
+        "groupby_value_id": "passenger_revenue",
+        "dimension_values": {
+         "revenue_component": "passenger_revenue"
+        }
+       },
+       "boardings": {
+        "resource": "devolved_bus_finance.json",
+        "concept": "scotgov.bus.passenger_journeys",
+        "groupby_value_id": "all_passenger_journeys"
+       },
+       "concessionary": {
+        "resource": "devolved_bus_finance.json",
+        "concept": "scotgov.bus.passenger_journeys",
+        "groupby_value_id": "concessionary_passenger_journeys",
+        "dimension_values": {
+         "journey_category": "concessionary"
+        }
+       },
+       "trips_concept": "dft.other_local_bus_trips_per_person",
+       "trips_basis": "england_other_local_bus_rate_as_proxy",
+       "population_geography_ids": [
+        "S92000003"
+       ]
+      }
      ],
-     "scope": "all",
-     "iterations": 1,
-     "weighted": true,
-     "cells": [
+     "unpriced_regions": [
+      "WALES",
+      "NORTHERN_IRELAND"
+     ],
+     "support_areas": [
       {
        "label": "london",
        "regions": [
         "LONDON"
        ],
-       "resource": "dft_bus_value_anchors.json",
-       "selector": {
-        "concept": "dft.local_bus_total_estimated_net_support",
-        "fiscal_start": "2024-04-01",
+       "reimbursement": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_concessionary_travel_reimbursement",
         "geography_id": "E12000007"
        },
-       "allocation": "uniform"
+       "net_support": {
+        "resource": "dft_bus_value_anchors.json",
+        "concept": "dft.local_bus_total_estimated_net_support",
+        "geography_id": "E12000007"
+       },
+       "boardings": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_passenger_journeys",
+        "geography_id": "E12000007"
+       },
+       "concessionary": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_passenger_journeys",
+        "geography_id": "E12000007",
+        "dimension_values": {
+         "journey_category": "total_concessionary"
+        }
+       }
       },
       {
        "label": "england_outside_london",
@@ -2247,76 +2825,69 @@
         "SOUTH_EAST",
         "SOUTH_WEST"
        ],
-       "resource": "dft_bus_value_anchors.json",
-       "selector": {
-        "concept": "dft.local_bus_total_estimated_net_support",
-        "fiscal_start": "2024-04-01",
+       "reimbursement": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_concessionary_travel_reimbursement",
         "geography_id": "dft:england_outside_london"
        },
-       "allocation": "uniform"
+       "net_support": {
+        "resource": "dft_bus_value_anchors.json",
+        "concept": "dft.local_bus_total_estimated_net_support",
+        "geography_id": "dft:england_outside_london"
+       },
+       "boardings": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_passenger_journeys",
+        "geography_id": "dft:england_outside_london"
+       },
+       "concessionary": {
+        "resource": "dft_bus_journeys.json",
+        "concept": "dft.local_bus_passenger_journeys",
+        "geography_id": "dft:england_outside_london",
+        "dimension_values": {
+         "journey_category": "total_concessionary"
+        }
+       }
       },
       {
        "label": "scotland",
        "regions": [
         "SCOTLAND"
        ],
-       "resource": "devolved_bus_finance.json",
-       "selector": {
+       "reimbursement": {
+        "resource": "devolved_bus_finance.json",
         "concept": "scotgov.bus.government_support",
-        "fiscal_start": "2024-04-01",
+        "dimension_values": {
+         "funding_component": "concessionary_fares"
+        }
+       },
+       "net_support": {
+        "resource": "devolved_bus_finance.json",
+        "concept": "scotgov.bus.government_support",
         "dimension_values": {
          "funding_component": "all_government_support"
         }
        },
-       "allocation": "uniform"
-      },
-      {
-       "label": "wales",
-       "regions": [
-        "WALES"
-       ],
-       "resource": "devolved_bus_finance.json",
-       "selector": {
-        "concept": "welshgov.local_transport.gross_expenditure",
-        "fiscal_start": "2024-04-01",
-        "dimension_values": {
-         "expenditure_component": "Gross expenditure"
-        },
-        "sum_over": {
-         "service_line": [
-          "Concessionary fares",
-          "Support to operators"
-         ]
-        }
+       "boardings": {
+        "resource": "devolved_bus_finance.json",
+        "concept": "scotgov.bus.passenger_journeys",
+        "groupby_value_id": "all_passenger_journeys"
        },
-       "allocation": "uniform"
-      },
-      {
-       "label": "northern_ireland",
-       "regions": [
-        "NORTHERN_IRELAND"
-       ],
-       "resource": "devolved_bus_finance.json",
-       "selector": {
-        "concept": "nithc.dfi_transaction_value",
-        "fiscal_start": "2024-04-01",
+       "concessionary": {
+        "resource": "devolved_bus_finance.json",
+        "concept": "scotgov.bus.passenger_journeys",
+        "groupby_value_id": "concessionary_passenger_journeys",
         "dimension_values": {
-         "mode_scope": "all_public_transport"
-        },
-        "sum_over": {
-         "funding_component": [
-          "Public Service Obligation compensation",
-          "Concessionary fare compensation for a range of groups"
-         ]
+         "journey_category": "concessionary"
         }
-       },
-       "allocation": "uniform",
-       "joint_columns": [
-        "bus_subsidy_spending",
-        "rail_subsidy_spending"
-       ]
+       }
       }
-     ]
+     ],
+     "raw_draw_regions": [
+      "WALES",
+      "NORTHERN_IRELAND"
+     ],
+     "basis": "bus support priced from the frame's journeys at the published support per boarding where the publisher gives the components and the boardings (DfT BUS05bi and BUS01 for London and England outside London, Scottish Transport Statistics for Scotland); Wales (no published boardings) and Northern Ireland (the NITHC accounts carry bus and rail jointly) keep the chain's raw draw clipped to donor support, as Wales fares do (microcosm#930; María's ruling of 2026-09-23 retiring the support rake)"
     },
     {
      "kind": "compute_ratio",
@@ -2364,7 +2935,7 @@
     "nhs_admitted_patient_spending",
     "nhs_outpatient_spending"
    ],
-   "notes": "Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the support rake levels away in every nation and which therefore only positions the donor before the QRF), rakes bus support so each area's design-weighted total equals the FY2024-25 published net support (DfT BUS05bi for London and England outside London, Scottish Transport Statistics all government support, the StatsWales local-authority gross expenditure on concessionary fares plus support to operators for Wales, and for Northern Ireland the NITHC accounts' PSO plus concessionary compensation bound jointly on bus plus rail support since the accounts carry no split; microcosm#890 D), with the raked column exempt from the support clip, computes rail_usage from the 2024 fare index, and allocates NHS visits/spending to persons using the signed half-open age bands with the donor table's native 85-89, 90-94 and 95+ top bands (the former 85+ fold-in was retired once age_tail moved ahead of this stage and recipients could populate those bands). The year-max donor filter resolves to 2023 on the pinned tab (the file labels financial year ending 2024 as year 2023), so the services training year coincides with the VAT training year and the fare-index year - the incumbent's apparent three-way year mismatch is vacuous on this vintage."
+   "notes": "Ports ETB public-services QRF at household grain, uprates the FYE-2024 donor to the FRS 2024-25 base year by the declared uprate_donor_columns step (education by the engine's CPI index, rail support by ORR table 7270's own FY2024-25 over FY2023-24 outturn, bus support by DfT BUS05bi England net support, a factor the pricing overrides outside Wales and Northern Ireland and which therefore only positions the donor before the QRF), prices bus support from the frame's journeys (microcosm#930; the"
   },
   {
    "stage": "frs_hmrc_spine_leaves",
@@ -3611,6 +4182,13 @@
      "resource": "hmrc_cgt_conditioning_facts.json",
      "format": "json",
      "runtime_sha256_required": true
+    },
+    {
+     "role": "capital_gains_within_band_distribution",
+     "kind": "public_aggregate_reference",
+     "resource": "advani_summers_capital_gains_distribution.json",
+     "format": "json",
+     "runtime_sha256_required": true
     }
    ],
    "operations": [
@@ -3725,8 +4303,26 @@
     },
     {
      "kind": "sub_aea_remainder",
-     "policy": "gainers beyond the published taxpayer mass keep their existing amounts capped at the annual exempt amount",
-     "rationale": "Table 3 covers only individuals with a CGT liability; remaining gainers are treated as sub-AEA gainers rather than invented into the liability distribution or deleted."
+     "policy": "gainers beyond the published taxpayer mass take amounts from the Advani-Summers within-band gains distribution restricted to (0, annual exempt amount], rank-preserving within each Advani-Summers total-income band",
+     "rationale": "Table 3 covers only individuals with a CGT liability; the remaining gainers are sub-AEA gainers, so their amounts come from the only published within-band distribution that reaches below the exempt amount, the surface the spine's gainer set was drawn from, rather than from capping the candidate's amounts, and none is invented into the liability distribution or deleted (microcosm#970).",
+     "resource": "advani_summers_capital_gains_distribution.json",
+     "resource_vintage": "2017-18 nominal pounds as published (Advani and Summers 2020, CAGE WP 465, Table A1); no uprating is applied",
+     "banding": "Advani-Summers total-income bands at the person's component-sum income without allowance subtraction, the banding the prior draw uses",
+     "range": "quantiles strictly between the band's degree-1 quantile spline zero crossing and its crossing of the build period's annual exempt amount, so every amount lies in (0, AEA]",
+     "mapping": "remainder gainers take the midpoints of the weight-proportional quantile strata that partition the range, evaluated on the band's spline; zero-weight persons take a nominal stratum of the band's smallest positive weight and carry no mass; no seeded draw is consumed, so the walk and plan draw order is unchanged",
+     "ordering": "existing gains ascending, person_id descending on ties (the allocation ranking reversed, as the within-band draws order their strata)",
+     "quantile_points": [
+      0.05,
+      0.1,
+      0.25,
+      0.5,
+      0.75,
+      0.9,
+      0.95
+     ],
+     "spline_degree": 1,
+     "extrapolation": "ext=0",
+     "deterministic": true
     },
     {
      "kind": "record_mass_conservation_receipt",
@@ -3875,6 +4471,93 @@
     "capital_gains_residential_property"
    ],
    "notes": "Spine stage after the amounts redraw: every liable gainer carries one main asset type and, where flagged residential, its net gain restated in capital_gains_residential_property. The residential flag is solved to the Table 8a 2024-25 totals on the individuals basis, which the hmrc.cgt.residential_property_taxpayers and hmrc.cgt.residential_property_gains targets bind; the non-residential composition follows the fenced Table 7 2023-24 prior and is diagnostic only. Carried interest (Table 9) is not modelled (microcosm#725)."
+  },
+  {
+   "stage": "cgt_incidence_anchor",
+   "survey": "Family Resources Survey 2024-25, SPI synthetic support, the HMRC Table 3 redrawn gains on the spine and Advani-Summers capital-gains incidence",
+   "source": "Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465",
+   "grain": "household",
+   "artifacts": [
+    {
+     "role": "capital_gains_incidence_and_quantiles",
+     "kind": "public_aggregate_reference",
+     "resource": "advani_summers_capital_gains_distribution.json",
+     "format": "json",
+     "runtime_sha256_required": true
+    },
+    {
+     "role": "policy_parameters",
+     "kind": "versioned_parameter_tree",
+     "dependency": "policyengine-uk>=2.98.0 via microcosm-build[uk]",
+     "parameters": [
+      "gov.hmrc.cgt.annual_exempt_amount"
+     ],
+     "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
+     "runtime_sha256_required": false,
+     "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time"
+    }
+   ],
+   "operations": [
+    {
+     "kind": "pair_clone_households_to_originals",
+     "clone_flag_column": "household_is_capital_gains_clone",
+     "donor_flag_column": "household_is_cgt_band_donor",
+     "id_remapping": "id_multiplier_for_values",
+     "pairing": "clone household_id minus the clone stage's id multiplier, recomputed from the pre-clone rows (clone flag false and not a band donor)",
+     "requirement": "bijection between clone and original households; an unpaired clone or original fails the build"
+    },
+    {
+     "kind": "derive_reporter_composition_from_banded_quantiles",
+     "resource": "advani_summers_capital_gains_distribution.json",
+     "income_proxy_components": [
+      "employment_income",
+      "self_employment_income",
+      "state_pension_reported",
+      "private_pension_income",
+      "property_income",
+      "savings_interest_income",
+      "dividend_income",
+      "miscellaneous_income"
+     ],
+     "allowance_subtraction": false,
+     "carrier": "oldest adult; person_id ascending breaks age ties",
+     "adult_minimum_age": 16,
+     "quantile_points": [
+      0.05,
+      0.1,
+      0.25,
+      0.5,
+      0.75,
+      0.9,
+      0.95
+     ],
+     "spline_degree": 1,
+     "extrapolation": "ext=0",
+     "crossings": "each band's degree-1 quantile spline inverted at zero and at the build period's annual exempt amount",
+     "aggregation": "crossings averaged over clone carriers weighted by household weight times the band's percent_with_gains",
+     "liable_mass": "weighted persons with capital_gains above the annual exempt amount on every household after the Table 3 redraw, clones and band donors alike",
+     "targets": "sub_exempt = liable_mass * (exempt_quantile - zero_quantile) / (1 - exempt_quantile); loss = liable_mass * zero_quantile / (1 - exempt_quantile)"
+    },
+    {
+     "kind": "transfer_clone_mass_to_originals",
+     "population": "clone households paired to their originals; band donors and originals are outside the anchor, so the groups, targets and masses are clone-side quantities, not population counts",
+     "sub_exempt_group": "clone households whose carrier's capital_gains lie in (0, annual exempt amount]; a carrier with exactly zero gains is no reporter and is left untouched",
+     "loss_group": "clone households whose carrier's capital_gains are negative",
+     "liable_clones": "untouched",
+     "donors": "untouched",
+     "factor": "min(maximum_factor, scale * percent_with_gains) with scale solved per group by bisection so the group's mass equals its target; a group at or below its target is untouched",
+     "maximum_factor": 1.0,
+     "transfer": "each clone's removed mass is added to its paired original, so every pair's mass is conserved to rounding; no global exact-total correction is applied, so no household outside a trimmed pair moves",
+     "weight_kind_out": "importance",
+     "conservation": "household_total_to_rounding",
+     "pair_conservation": "to_rounding",
+     "declared_factor": 1.0,
+     "reason": "Capital-gains incidence anchor moves the mass of non-liable clone households back to their paired originals until the sub-exempt and loss-making clone mass match the Advani-Summers reporter composition at the redrawn liable mass; every pair's mass and the total household mass are conserved."
+    }
+   ],
+   "outputs": [],
+   "rewrites": [],
+   "notes": "Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone's paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones, zero-gain clone carriers and band donors are untouched; the groups, targets and receipt are clone-side quantities (band donors and originals are outside the anchor), every pair's mass and the household total are conserved, and the receipt is gated at stage time."
   },
   {
    "stage": "salary_sacrifice",

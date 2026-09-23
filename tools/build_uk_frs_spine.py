@@ -64,6 +64,7 @@ from microcosm.build.uk_runtime.cgt_asset_type import (
 from microcosm.build.uk_runtime.cgt_imputation import uk_cgt_spine_stage_transform
 from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTBandDonorStageTransform,
+    UKCGTIncidenceAnchorStageTransform,
     UKCGTIncidenceCloneStageTransform,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
@@ -112,6 +113,7 @@ from microcosm.build.uk_runtime.national_sampling import (
     UK_SAMPLE_RUNG_TOKENS,
     UK_SAMPLE_SEED_DEFAULT,
 )
+from microcosm.build.uk_runtime.nts_bus_travel import UKNTSBusTravelStageTransform
 from microcosm.build.uk_runtime.regional_uprating import (
     UKRegionalPropertyUpratingStageTransform,
 )
@@ -268,6 +270,31 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Caller-supplied private WAS round-8 household tab for was_wealth.",
     )
     parser.add_argument(
+        "--nts-household-tab",
+        type=Path,
+        help="Caller-supplied private NTS household tab for nts_bus_travel.",
+    )
+    parser.add_argument(
+        "--nts-individual-tab",
+        type=Path,
+        help="Caller-supplied private NTS individual tab for nts_bus_travel.",
+    )
+    parser.add_argument(
+        "--nts-trip-tab",
+        type=Path,
+        help="Caller-supplied private NTS trip tab for nts_bus_travel.",
+    )
+    parser.add_argument(
+        "--nts-stage-tab",
+        type=Path,
+        help="Caller-supplied private NTS stage tab for nts_bus_travel.",
+    )
+    parser.add_argument(
+        "--nts-ticket-tab",
+        type=Path,
+        help="Caller-supplied private NTS ticket tab for nts_bus_travel.",
+    )
+    parser.add_argument(
         "--lcfs-hh-tab",
         type=Path,
         help="Caller-supplied private LCFS 2023-24 household tab for lcfs_consumption.",
@@ -320,6 +347,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             flag
             for flag, value in (
                 ("--was-tab", args.was_tab),
+                ("--nts-household-tab", args.nts_household_tab),
+                ("--nts-individual-tab", args.nts_individual_tab),
+                ("--nts-trip-tab", args.nts_trip_tab),
+                ("--nts-stage-tab", args.nts_stage_tab),
+                ("--nts-ticket-tab", args.nts_ticket_tab),
                 ("--lcfs-hh-tab", args.lcfs_hh_tab),
                 ("--lcfs-person-tab", args.lcfs_person_tab),
                 ("--etb-tab", args.etb_tab),
@@ -422,6 +454,11 @@ def _synthetic_graph_sources(source: Path) -> dict[str, Path]:
         raise ValueError("Synthetic fixture inputs must be an object.")
     names = {
         "was": "was",
+        "nts_household": "nts_household",
+        "nts_individual": "nts_individual",
+        "nts_trip": "nts_trip",
+        "nts_stage": "nts_stage",
+        "nts_ticket": "nts_ticket",
         "lcfs_household": "lcfs_household",
         "lcfs_person": "lcfs_person",
         "etb": "etb",
@@ -1342,6 +1379,23 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError(
                 "--was-tab is required when the was_wealth stage is scheduled."
             )
+        if args.synthetic_fixture_dir is None and "nts_bus_travel" in stage_names:
+            missing_nts = [
+                flag
+                for flag, value in (
+                    ("--nts-household-tab", args.nts_household_tab),
+                    ("--nts-individual-tab", args.nts_individual_tab),
+                    ("--nts-trip-tab", args.nts_trip_tab),
+                    ("--nts-stage-tab", args.nts_stage_tab),
+                    ("--nts-ticket-tab", args.nts_ticket_tab),
+                )
+                if value is None
+            ]
+            if missing_nts:
+                raise ValueError(
+                    "nts_bus_travel requires caller-supplied private inputs: "
+                    f"{', '.join(missing_nts)}."
+                )
         if args.synthetic_fixture_dir is None and "lcfs_consumption" in stage_names:
             missing_lcfs = [
                 flag
@@ -1479,6 +1533,18 @@ def main(argv: list[str] | None = None) -> int:
                     was_tab_path=sources["was"],
                 )
             )
+        if "nts_bus_travel" in stage_names:
+            implementations["nts_bus_travel"] = _GraphSourceTransform(
+                lambda sources: UKNTSBusTravelStageTransform(
+                    stage=stages_by_name["nts_bus_travel"],
+                    engine=engine,
+                    nts_household_tab_path=sources["nts_household"],
+                    nts_individual_tab_path=sources["nts_individual"],
+                    nts_trip_tab_path=sources["nts_trip"],
+                    nts_stage_tab_path=sources["nts_stage"],
+                    nts_ticket_tab_path=sources["nts_ticket"],
+                )
+            )
         if "regional_property_uprating" in stage_names:
             implementations["regional_property_uprating"] = (
                 UKRegionalPropertyUpratingStageTransform(
@@ -1555,6 +1621,12 @@ def main(argv: list[str] | None = None) -> int:
             implementations["hmrc_cgt_asset_type_spine"] = (
                 uk_cgt_asset_type_stage_transform(
                     stages_by_name["hmrc_cgt_asset_type_spine"]
+                )
+            )
+        if "cgt_incidence_anchor" in stage_names:
+            implementations["cgt_incidence_anchor"] = (
+                UKCGTIncidenceAnchorStageTransform(
+                    stage=stages_by_name["cgt_incidence_anchor"]
                 )
             )
         if "salary_sacrifice" in stage_names:
@@ -1636,6 +1708,12 @@ def main(argv: list[str] | None = None) -> int:
             graph_sources = {"frs": args.frs_raw_dir}
             if "was_wealth" in stage_names:
                 graph_sources["was"] = args.was_tab
+            if "nts_bus_travel" in stage_names:
+                graph_sources["nts_household"] = args.nts_household_tab
+                graph_sources["nts_individual"] = args.nts_individual_tab
+                graph_sources["nts_trip"] = args.nts_trip_tab
+                graph_sources["nts_stage"] = args.nts_stage_tab
+                graph_sources["nts_ticket"] = args.nts_ticket_tab
             if "lcfs_consumption" in stage_names:
                 graph_sources["lcfs_household"] = args.lcfs_hh_tab
                 graph_sources["lcfs_person"] = args.lcfs_person_tab

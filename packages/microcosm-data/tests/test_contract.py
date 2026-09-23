@@ -116,13 +116,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "62bc37def863b68d5595dcd5ec8b6483d1fad5f0874b80073f5752e0a1a5ebff"
+    "8757f540a12bdfd65f3466ba4b1bdf31ff29a765bc7caa2b4ca5236c738f843c"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "4f2be1f12ebdbebd57b00dee355e27de0cac280be2b09e177cc82cc6afaf552e"
+    "e16c751623fe0bccd1ef5409a60a6a9d9e3d44d1b071a8178314de615b1adb32"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "775ba91346d29ce958cd82c0e459140f77d0ba00f695254f93ca02d8d7e52981"
+    "86325b18815736f41a2b6d85f468692e721e5131d945635ee9ab0850b14c3266"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -156,8 +156,12 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_stage_lcfs_consumption_support": ("stage_health", "transferred", None),
     "uk_stage_lcfs_consumption_energy_rake": ("stage_health", "transferred", None),
+    "uk_stage_lcfs_consumption_bus_pricing": ("stage_health", "transferred", None),
+    "uk_stage_nts_bus_travel_support": ("stage_health", "transferred", None),
+    "uk_stage_nts_bus_travel_facts": ("stage_health", "transferred", None),
     "uk_stage_etb_vat_support": ("stage_health", "transferred", None),
     "uk_stage_etb_services_support": ("stage_health", "transferred", None),
+    "uk_stage_etb_services_support_pricing": ("stage_health", "transferred", None),
     "uk_stage_frs_hmrc_spine_leaves_signal": (
         "stage_health",
         "transferred",
@@ -199,6 +203,11 @@ UK_GATE_BATTERY_ENTRIES = {
         None,
     ),
     "uk_stage_hmrc_cgt_asset_type_spine_summary": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
+    "uk_stage_cgt_incidence_anchor_composition": (
         "stage_health",
         "transferred",
         None,
@@ -267,6 +276,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_target_surface": ("target_surface", "terminal", "target_surface"),
     "uk_target_fit": ("target_fit", "terminal", "target_fit"),
+    "uk_cgt_projection_entrants": ("cgt_projection_entrants", "terminal", None),
     "uk_input_mass_parity": ("input_mass_parity", "terminal", "input_mass_parity"),
     "uk_qrf_tail_concentration": (
         "tail_concentration",
@@ -1172,8 +1182,12 @@ def _gate_battery_payload(
         "uk_stage_uc_deduction_attributes": "uc_deduction_attributes",
         "uk_stage_lcfs_consumption_support": "lcfs_consumption",
         "uk_stage_lcfs_consumption_energy_rake": "lcfs_consumption",
+        "uk_stage_lcfs_consumption_bus_pricing": "lcfs_consumption",
+        "uk_stage_nts_bus_travel_support": "nts_bus_travel",
+        "uk_stage_nts_bus_travel_facts": "nts_bus_travel",
         "uk_stage_etb_vat_support": "etb_vat",
         "uk_stage_etb_services_support": "etb_services",
+        "uk_stage_etb_services_support_pricing": "etb_services",
         "uk_stage_frs_hmrc_spine_leaves_signal": "frs_hmrc_spine_leaves",
         "uk_stage_spi_support_channel_mass": "spi_support_channel",
         "uk_stage_hmrc_spi_income_spine_identity": "hmrc_spi_income_spine",
@@ -1181,6 +1195,7 @@ def _gate_battery_payload(
         "uk_stage_cgt_band_donors_support": "cgt_band_donors",
         "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",
         "uk_stage_hmrc_cgt_asset_type_spine_summary": "hmrc_cgt_asset_type_spine",
+        "uk_stage_cgt_incidence_anchor_composition": "cgt_incidence_anchor",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
         "uk_stage_age_tail_targets": "age_tail",
@@ -1226,6 +1241,12 @@ def _gate_battery_payload(
             }
         elif entry_id == "uk_calibration_reference_coverage":
             details = {"activated": 388, "resolved": 388, "matrix": 388}
+        elif entry_id == "uk_cgt_projection_entrants":
+            details = {
+                "max_entrants": 41_000.0,
+                "worst_year": 2030,
+                "bound": 73_000.0,
+            }
         elif entry_id.startswith("uk_local_"):
             # Local candidate gates are explicitly excluded from national
             # certification; this full-report fixture needs only their
@@ -1294,6 +1315,9 @@ def _gate_battery_payload(
         ),
         "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,
         "uk_input_mass_parity": UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256,
+        "uk_cgt_projection_entrants": _canonical_sha256(
+            {"cgt_projection": {"base_year": 2023, "horizon_year": 2030}}
+        ),
     }
     for entry_id, stage in stage_health_stages.items():
         evidence[entry_id] = _canonical_sha256({stage: {"stage": stage}})

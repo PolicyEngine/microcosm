@@ -10,19 +10,32 @@ from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime.bus_use_incidence import (
     BusUseBandShares,
     assign_bus_use_incidence,
-    incidence_operation,
     nts_band_shares,
     under_threshold_shares,
 )
-from microcosm.build.uk_runtime.lcfs_consumption import lcfs_bus_use_incidence
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 
 
 def _declared() -> dict:
-    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
-    parameters = incidence_operation(stage)
-    assert parameters is not None
-    return parameters
+    """The published-shares draw as the nts_bus_travel stage declares it.
+
+    The #890 lcfs declaration (`assign_bus_use_incidence`) retired with
+    microcosm#930; the same block lives on as the stage's fallback for an
+    extract without the frequency column, and NTS0313 stays fact-checked
+    through it.
+    """
+
+    stage = load_country_spec("uk").sources.stage_map()["nts_bus_travel"]
+    fallback = next(
+        (
+            dict(op.parameters["fallback"])
+            for op in stage.operations
+            if op.kind == "impute_bus_use_band"
+        ),
+        None,
+    )
+    assert fallback is not None
+    return fallback
 
 
 def test_declared_bands_read_both_nts_series_by_label() -> None:
@@ -49,7 +62,7 @@ def test_declared_bands_read_both_nts_series_by_label() -> None:
     assert receipt["user_definition"] == "at_least_once_a_year"
     assert receipt["share_geography"] == "E92000001"
     assert receipt["share_age_coverage"] == "all_ages"
-    assert receipt["applied_to"] == "fare_rake_regions"
+    assert receipt["applied_to"] == "every_person"
 
 
 @pytest.mark.parametrize(
@@ -66,7 +79,7 @@ def test_declared_bands_read_both_nts_series_by_label() -> None:
         (lambda p: p.update(period_value=1999), "missing an NTS series"),
         (lambda p: p.update(user_definition="ever"), "user_definition"),
         (lambda p: p.pop("share_geography"), "declares no share_geography"),
-        (lambda p: p.update(applied_to="everywhere"), "fare_rake_regions only"),
+        (lambda p: p.update(applied_to="everywhere"), "every_person"),
     ],
 )
 def test_declaration_refusals(mutation, match: str) -> None:
@@ -154,7 +167,15 @@ def test_household_incidence_is_identity_keyed_and_rolls_up_any_user() -> None:
     assert again.household_user.tolist() == first.household_user.tolist()
 
 
-def test_stage_helper_draws_from_the_declaration_on_a_frame() -> None:
+def test_nts_fallback_declaration_draws_from_the_published_shares() -> None:
+    """The nts_bus_travel fallback block is the #890 draw, declared once more.
+
+    With no interview frequency column in the extract the stage draws each
+    person's band from the vendored NTS0313/NTS0621 shares through this
+    declaration (``applied_to: every_person``); the lcfs stage no longer
+    carries an incidence draw (#930).
+    """
+
     frame = uk_national_frame(
         person=pd.DataFrame(
             {
@@ -170,19 +191,26 @@ def test_stage_helper_draws_from_the_declaration_on_a_frame() -> None:
         ),
         time_period="2024",
     )
-    stage = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
-
-    result = lcfs_bus_use_incidence(stage, frame)
-
-    assert result is not None
+    stage = load_country_spec("uk").sources.stage_map()["nts_bus_travel"]
+    fallback = next(
+        dict(op.parameters["fallback"])
+        for op in stage.operations
+        if op.kind == "impute_bus_use_band"
+    )
+    assert fallback["applied_to"] == "every_person"
+    shares, receipt = nts_band_shares(fallback)
+    result = assign_bus_use_incidence(
+        frame.table("person"),
+        frame.table("household"),
+        household_weights=frame.weights_for("household").values,
+        shares=shares,
+        seed=0,
+    )
     assert len(result.household_user) == 3
-    assert result.receipt["nts"]["period_value"] == 2024
+    assert receipt["period_value"] == 2024
     assert result.receipt["older_population_share"] == pytest.approx(3.0 / 7.0)
     assert set(result.receipt["under_threshold_shares"]) == set(
-        result.receipt["nts"]["all_ages_shares"]
+        receipt["all_ages_shares"]
     )
-
-    class Stage:
-        operations = ()
-
-    assert lcfs_bus_use_incidence(Stage(), frame) is None
+    lcfs = load_country_spec("uk").sources.stage_map()["lcfs_consumption"]
+    assert not any(op.kind == "assign_bus_use_incidence" for op in lcfs.operations)

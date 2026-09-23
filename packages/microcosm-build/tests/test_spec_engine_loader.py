@@ -236,7 +236,7 @@ def test_semantic_hash_has_golden_vector_and_surface_separation(tmp_path) -> Non
     # Pin the domain separator, normalization rules, schema-set receipt, and
     # exact normative projection as one reviewable golden vector.
     assert first.spec_sha256 == (
-        "a6cac1ed963cba8b459b47dcb41c99afd26f1eedec11cb034df89762d4ee3fbb"
+        "a2f0b3cd33fbd16e7f9ab44099de2abc579c71f0700137d949c9299f6ca335cd"
     )
 
     second_root = _rich_minimal(tmp_path / "xy", note="second", store="local:b")

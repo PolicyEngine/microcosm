@@ -2041,6 +2041,18 @@ def test_refuses_sha_mismatch(tmp_path: Path) -> None:
         build_uk_frs_spine_frame(tmp_path, stage=stage)
 
 
+def test_read_pinned_tab_refuses_a_zero_placeholder_pin(tmp_path) -> None:
+    """A 64-zero digest with size 0 (the pre-landing NTS placeholder) never reads."""
+
+    from microcosm.build.uk_runtime.frs_spine import read_pinned_tab
+
+    tab = tmp_path / "trip_eul_2002-2024.tab"
+    tab.write_text("TripID\tW5\n1\t1.0\n", encoding="utf-8")
+    placeholder = {"sha256": "0" * 64, "size_bytes": 0}
+    with pytest.raises(ValueError, match="not the pinned"):
+        read_pinned_tab(tab, placeholder)
+
+
 def test_refuses_nan_in_produced_weight_column(tmp_path: Path) -> None:
     tables = _fixture_tables()
     tables["househol"][0]["GROSS4"] = ""
@@ -2063,18 +2075,28 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "etb_household_tab",
         "lcfs_household_tab",
         "lcfs_person_tab",
+        "nts_household_tab",
+        "nts_individual_tab",
+        "nts_trip_tab",
+        "nts_stage_tab",
+        "nts_ticket_tab",
         "published_fact_surface",
         "qrf_donor",
         "was_qrf_donor",
     }
+    # Every private input, the three NTS tabs included since the SN 5340
+    # 19th-edition extract was pinned (#930), carries a real size and digest.
     for pin in pins.values():
         assert len(str(pin["sha256"])) == 64
-        assert int(pin["size_bytes"]) > 0
+        assert str(pin["sha256"]) != "0" * 64
         assert str(pin["filename"])
+        assert int(pin["size_bytes"]) > 0
+    assert pins["nts_trip_tab"]["filename"] == "trip_eul_2002-2024.tab"
     declared = {
         str(artifact["role"]): str(artifact["sha256"])
         for stage_name in (
             "was_wealth",
+            "nts_bus_travel",
             "lcfs_consumption",
             "etb_vat",
             "etb_services",
@@ -2100,9 +2122,9 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
     )
 
     assert declared["cgt_incidence_clone"] == {"cgt_prior_amount": 0}
+    assert declared["nts_bus_travel"] == {"local_bus_use_band": 0}
     assert declared["lcfs_consumption"] == {
         "has_fuel_consumption": 0,
-        "uses_local_bus": 0,
         "lcfs_consumption": 0,
     }
     assert declared["uc_capital_coherence"] == {"frs_benunit_capital": 0}
@@ -2116,6 +2138,8 @@ def test_e8_manifest_seeds_all_reach_the_build_sidecar_harvester() -> None:
         "assign_residential_property_flag": 553,
         "assign_main_asset_type": 554,
     }
+    # The #970 incidence anchor is deterministic and consumes no seed.
+    assert "cgt_incidence_anchor" not in declared
     assert declared["salary_sacrifice"] == {
         "salary_sacrifice": 42,
         "salary_sacrifice_conversion": 2024,

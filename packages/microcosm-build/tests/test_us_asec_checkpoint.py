@@ -24,6 +24,7 @@ from microcosm.build.us_runtime import (
     load_asec_raw_stage_checkpoint,
     load_take_up_contract,
 )
+from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
 from microcosm.frame import US_SCHEMA, EntitySchema, Frame, WeightKind, Weights
 
 _OUTER_STAGE_ARTIFACT_KIND = "populace_outer_stage_frame"
@@ -379,6 +380,24 @@ def test_operator_boundary_enumerates_full_take_up_contract() -> None:
     assert PRE_ASSEMBLY_OPERATOR_OUTPUT_FAMILIES["take_up"] == {
         entity: frozenset(columns) for entity, columns in expected.items()
     }
+
+
+def test_raw_loader_rejects_prefilled_spm_independence_role(tmp_path: Path) -> None:
+    source = _raw_us_frame()
+    tables = {entity: source.table(entity).copy() for entity in source.entities}
+    # A nonconstant role would otherwise bypass the source stage's derivation.
+    tables["person"][NATIVE_SPM_ROLE] = [True, False]
+    contaminated = Frame(
+        tables,
+        source.schema,
+        {entity: source.weights_for(entity) for entity in source.weighted_entities},
+        source.strata,
+    )
+    path = tmp_path / "prefilled-spm-role.checkpoint.h5"
+    _write_checkpoint(path, contaminated, metadata=_raw_binding(contaminated))
+
+    with pytest.raises(ValueError, match="spm_independence_role:person"):
+        load_asec_raw_stage_checkpoint(path)
 
 
 def test_operator_boundary_accepts_only_receipted_acs_native_exception() -> None:

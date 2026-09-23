@@ -430,8 +430,26 @@ def published_gas_connected_shares(
             f"connection_fallback must be {GAS_CONNECTED_POSITIVE_SPEND!r} (the rule "
             "for regions without a published meter count)."
         )
+    declared_fallback = parameters.get("connection_fallback_regions")
+    if (
+        not isinstance(declared_fallback, list)
+        or not declared_fallback
+        or not all(isinstance(region, str) and region for region in declared_fallback)
+    ):
+        raise ValueError(
+            "connection_fallback_regions must name every FRS region that has no "
+            "published meter count (a non-empty list of region names)."
+        )
+    fallback_regions = {str(region) for region in declared_fallback}
     crosswalk = load_ofgem_region_crosswalk()
     areas = crosswalk["subnational_area_mapping"]
+    undeclared = sorted(str(region) for region, area in areas.items() if area is None)
+    if set(undeclared) != fallback_regions:
+        raise ValueError(
+            "connection_fallback_regions must be exactly the regions the crosswalk "
+            f"maps to no subnational area: declared {sorted(fallback_regions)}, "
+            f"crosswalk {undeclared}."
+        )
     shares: dict[str, float | None] = {}
     by_region: dict[str, dict[str, Any]] = {}
     for frs_region, area in areas.items():
@@ -477,6 +495,7 @@ def published_gas_connected_shares(
         "resource": resource,
         "period_value": period_value,
         "fallback": fallback,
+        "fallback_regions": sorted(fallback_regions),
         "by_region": by_region,
     }
     return shares, receipt
@@ -492,18 +511,20 @@ def impose_gas_connection(
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """The gas-connected mask after imposing each region's published share.
 
-    Within a region whose design-weighted share of gas-positive households
-    exceeds the published share, gas-positive households are disconnected in
-    ascending order of drawn gas kWh (a trace of diary gas is the likeliest
-    false connection) until the excess weight is removed: a household whose
-    weight would overshoot the remaining excess is skipped (it stays
-    connected) and the walk continues to lighter households, then the skipped
-    household nearest the remainder is taken if that brings the share nearer
-    the published one, so the achieved share sits within a fraction of one
-    household weight of the published share. A region below its published
-    share keeps every gas-positive household (the draw cannot create
-    connections) and the shortfall is receipted. Regions with no published
-    share (``None``) keep the positive-gas rule.
+    A greedy weight-fitting walk, not a fitted threshold. Within a region
+    whose design-weighted share of gas-positive households exceeds the
+    published share, gas-positive households are walked in ascending order of
+    drawn gas kWh (a trace of diary gas is the likeliest false connection):
+    a household is disconnected when its weight fits inside the remaining
+    excess, skipped (it stays connected) when it would overshoot, and after
+    the walk the skipped household nearest the remainder is disconnected if
+    that brings the share nearer the published one. The achieved share
+    therefore sits within a fraction of one household weight of the published
+    share; ``rows_skipped_for_weight`` counts the households the walk passed
+    over. A region below its published share keeps every gas-positive
+    household (the draw cannot create connections) and the shortfall is
+    receipted. Regions with no published share (``None``, the stage's
+    declared ``connection_fallback_regions``) keep the positive-gas rule.
     """
 
     if disconnect_rule != DISCONNECT_LOWEST_DRAWN_GAS_FIRST:
@@ -563,6 +584,7 @@ def impose_gas_connection(
                 drop.append(nearest)
                 remaining -= weight[nearest]
         drop_index = np.asarray(drop, dtype=int)
+        dropped = set(drop)
         connected[drop_index] = False
         after = float(weight[rows[connected[rows]]].sum()) / total
         entry.update(
@@ -571,7 +593,7 @@ def impose_gas_connection(
                 "share_after": after,
                 "rows_disconnected": int(len(drop_index)),
                 "rows_skipped_for_weight": int(
-                    sum(1 for i in skipped if i not in set(drop))
+                    sum(1 for i in skipped if i not in dropped)
                 ),
                 "weight_disconnected": float(weight[drop_index].sum()),
                 "shortfall": 0.0,
@@ -928,6 +950,11 @@ def rake_energy_kwh(
         weight_column=weight_column,
     )
     zero_cells = list(raked.attrs.get("raking_zero_current_cells", ()))
+    sweep_residuals = {
+        ELECTRICITY_KWH: [
+            float(v) for v in raked.attrs.get("raking_sweep_residuals", ())
+        ]
+    }
     gas_raked = iterative_proportional_fit(
         frame.loc[connected],
         columns=(GAS_KWH,),
@@ -936,6 +963,9 @@ def rake_energy_kwh(
         weight_column=weight_column,
     )
     zero_cells.extend(gas_raked.attrs.get("raking_zero_current_cells", ()))
+    sweep_residuals[GAS_KWH] = [
+        float(v) for v in gas_raked.attrs.get("raking_sweep_residuals", ())
+    ]
     raked.loc[connected, GAS_KWH] = gas_raked[GAS_KWH].to_numpy(dtype=float)
     raked.loc[~connected, GAS_KWH] = 0.0
     weight_values = (
@@ -982,6 +1012,7 @@ def rake_energy_kwh(
         "gas_connected_rows": int(connected.sum()),
         "rows": int(len(frame)),
         "zero_current_cells": zero_cells,
+        "sweep_residuals": sweep_residuals,
         "level_factor": dict(level_factor),
         "level": level_receipt,
         "fit": fit,

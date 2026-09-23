@@ -1,0 +1,130 @@
+{
+  "after": {
+    "n_units": 367306,
+    "n_units_without_classified_adult": 0,
+    "n_units_without_member_aged_18_or_over": 238,
+    "role_source": "source_column",
+    "status": "PASS"
+  },
+  "agreement": {
+    "buildp_reference_bytes_equal": null,
+    "evidence_sha256": "92e6233a679749ade2facace92de8a70f45edce45caccc2b4793d864123a6ddb",
+    "persons_compared": 907382,
+    "roles_differ": 0
+  },
+  "before": {
+    "n_units": 367306,
+    "n_units_without_classified_adult": 222,
+    "n_units_without_member_aged_18_or_over": 238,
+    "role_source": "household_structure_fallback",
+    "status": "FAIL"
+  },
+  "completed_at_utc": "2026-09-19T12:32:40.874549+00:00",
+  "environment": {
+    "microcosm-build": "0.1.0",
+    "microcosm-data": "0.1.0",
+    "microcosm-frame": "0.1.0",
+    "numpy": "2.4.6",
+    "pandas": "3.0.3",
+    "policyengine-core": "3.32.5",
+    "policyengine-us": "2.2.1",
+    "python": "3.14.4",
+    "spm-calculator": "1.0.0",
+    "tables": "3.11.1"
+  },
+  "historical_receipt_sha256": "becfe4f4e9b45c4b7762730b583124712af28ff5c63239c5e4a76e176285c140",
+  "input_bytes_unchanged": true,
+  "input_frame_unchanged": true,
+  "inputs": {
+    "asec_2022": {
+      "sha256": "19b56537e50e7663f954361ef2bb5ce9cef8d9d45f156fe1a69a99b654198ffe",
+      "size_bytes": 281065733
+    },
+    "asec_2023": {
+      "sha256": "21a2b9e0e4b08534563578a45acad77868af4ae9a7d46f23776b707d4a559aa7",
+      "size_bytes": 277250415
+    },
+    "asec_2024": {
+      "sha256": "06921fe83fc66c907e6c7b86b82255dc70458ee7d76258fc48297cb34f0c06b5",
+      "size_bytes": 277882549
+    },
+    "population": {
+      "sha256": "475ca33fcdbf60f107ba212c762e9e9ea9587e96b5a645750e61aaa2395b7822",
+      "size_bytes": 2351269694
+    }
+  },
+  "peak_rss_bytes": 15632220160,
+  "preservation": {
+    "all_existing_tables_and_columns_equal": true,
+    "existing_metadata_preserved": true,
+    "person_order_ids_ages_and_memberships_equal": true,
+    "strata_and_mass_log_equal": true,
+    "tables": {
+      "family": {
+        "existing_columns": 4,
+        "rows": 394055
+      },
+      "household": {
+        "existing_columns": 15,
+        "rows": 352932
+      },
+      "marital_unit": {
+        "existing_columns": 4,
+        "rows": 722088
+      },
+      "person": {
+        "existing_columns": 289,
+        "rows": 907382
+      },
+      "spm_unit": {
+        "existing_columns": 11,
+        "rows": 367306
+      },
+      "tax_unit": {
+        "existing_columns": 20,
+        "rows": 477242
+      }
+    },
+    "weights_and_kinds_equal": true
+  },
+  "receipt": "spm_role_stage_wrapper_proof.base",
+  "signal_gate": {
+    "adult_child_person_count_mismatch_units": 0,
+    "failure_count": 0,
+    "frame_projection_sha256": "a2f6920e7c7f26a16cf73d9d1dcfb10bd349bf20ff6368490eba512b351ad40b",
+    "independent_minor_persons": 681,
+    "minor_role_share": 0.018401503892826607,
+    "minor_role_share_band": [
+      0.003,
+      0.06
+    ],
+    "passed": true,
+    "persons_aged_15_to_17": 41434,
+    "role_missing_values": 0,
+    "role_share": 0.6268870430582791,
+    "role_share_band": [
+      0.4,
+      0.75
+    ],
+    "unmatched_persons": 0
+  },
+  "source": {
+    "dirty_source_digest": "d5740c0849df58759ffc23bc39d509f91bd5970db2ddcecf9d862205075f4642",
+    "head": "cff157729599c41f7ccfdadf32145d9679ffe796",
+    "original_proof_script_sha256": "67f722b871047cd60e97e3d7e1c1aa6764a3595ad92af43e9348e77a3e6599d5",
+    "proof_script_sha256": "def9d52eaf5726d14fda0e2f35cf7fe3014ad714447652687cfbc089a3230277",
+    "tracked_source_patch_sha256": "feb5539685677ab2156461c68d18eca1cd5b14e1dd66f0c0adcd6adefd94bf85",
+    "untracked_source_sha256": {}
+  },
+  "stage_arguments": {
+    "seed": 0,
+    "time_period": 2024
+  },
+  "status": "PASS",
+  "timing_seconds": {
+    "load": 6.9,
+    "original_derivation": 10.5,
+    "total": 31.47,
+    "wrapper": 7.36
+  }
+}

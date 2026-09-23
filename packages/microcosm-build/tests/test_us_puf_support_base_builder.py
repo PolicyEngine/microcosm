@@ -19,6 +19,11 @@ from microcosm.build.us_runtime.puf_capital_gains_tail import (
     PUF_CAPITAL_GAINS_TAIL_STAGE_NAME,
     puf_capital_gains_tail_support_contract_identity,
 )
+from microcosm.build.us_runtime.spm_independence_role import (
+    US_SPM_INDEPENDENCE_ROLE_PROVENANCE_KEY,
+    _role_binding_sha256,
+)
+from microcosm.build.us_runtime.spm_role_source import NATIVE_SPM_ROLE
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
 
@@ -844,6 +849,105 @@ def test_raw_stage_copy_adds_only_exact_source_mappings(
     builder.assert_operator_free_source_frame(raw, label="raw-stage fixture")
 
 
+@pytest.mark.parametrize("execution", ["all", "pre_clone_enrichment"])
+def test_spm_stage_receives_explicit_asec_source_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    execution: str,
+) -> None:
+    builder = _load_support_builder_module()
+    args = _raw_stage_args(builder, tmp_path)
+    frame = _raw_asec_frame()
+    _patch_raw_stage_sources(
+        monkeypatch,
+        builder,
+        frame=frame,
+        source_receipt=_pooled_source_receipt(tmp_path),
+    )
+    for name in (
+        "derive_us_cps_carried_inputs",
+        "with_us_prior_year_income_inputs",
+        "with_us_relationship_inputs",
+    ):
+        monkeypatch.setattr(builder, name, lambda value, **_kwargs: value)
+    monkeypatch.setattr(
+        builder,
+        "us_relationship_inputs_signal_gate",
+        lambda _frame: SimpleNamespace(passed=True, failures=(), details={}),
+    )
+    calls = []
+
+    def capture_spm_stage(value, *, seed, time_period, asec_spm_role_source_paths):
+        calls.append((value, seed, time_period, asec_spm_role_source_paths))
+        raise RuntimeError("SPM stage reached")
+
+    monkeypatch.setattr(builder, "with_us_spm_independence_role", capture_spm_stage)
+    with pytest.raises(RuntimeError, match="SPM stage reached"):
+        if execution == "all":
+            builder._run_all(args)
+        else:
+            builder._pre_clone_enrichment_stage(
+                args,
+                frame,
+                {"weeks_unemployed_source_path": str(tmp_path / "asec_weeks.zip")},
+            )
+
+    assert calls == [(frame, args.seed, 2022, {2022: tmp_path / "asec_education.zip"})]
+
+
+def test_real_spm_gate_payload_serializes_through_stage_completion(
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    units = np.arange(1, 51, dtype=np.int64)
+    ages = np.tile([40, 35, 16], len(units))
+    ages[:3] = [17, 16, 10]
+    roles = np.tile([True, True, False], len(units))
+    roles[:3] = [True, False, False]
+    person = pd.DataFrame(
+        {"person_id": np.arange(len(ages)), "age": ages, NATIVE_SPM_ROLE: roles}
+    )
+    tables = {"person": person}
+    for entity in US_SCHEMA.group_entities:
+        person[US_SCHEMA.membership_column(entity)] = np.repeat(units, 3)
+        tables[entity] = pd.DataFrame({US_SCHEMA.id_column(entity): units})
+    frame = Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(np.ones(len(units)), WeightKind.DESIGN)},
+        metadata={
+            US_SPM_INDEPENDENCE_ROLE_PROVENANCE_KEY: {
+                "persons_joined": len(person),
+                "table_rows": len(person),
+                "native_spm_units": len(units),
+                "true_role_persons": int(roles.sum()),
+                "person_role_binding_sha256": _role_binding_sha256(person),
+                "source_checks": [{"income_year": 2024, "checks": {"counts": True}}],
+                "nonmissing_optional_raw_fields_checked": {"A_FAMTYP": len(person)},
+            }
+        },
+    )
+    gate = builder.us_spm_independence_role_signal_gate(frame)
+    assert gate.passed, gate.failures
+    payload = builder._checked_gate_payload(gate, "SPM role fixture")
+    assert json.loads(json.dumps(payload)) == payload
+
+    runtime = builder.StageRuntime(
+        tmp_path / "checkpoints",
+        builder.OUTER_STAGE_PIPELINE,
+        run_config={"fixture": "spm-gate-serialization"},
+    )
+    runtime.complete("source_construction", frame)
+    runtime.complete(
+        "pre_clone_enrichment",
+        frame,
+        metadata={"signals": {"spm_independence_role_signal": payload}},
+    )
+    assert runtime.metadata["pre_clone_enrichment"]["signals"] == {
+        "spm_independence_role_signal": payload
+    }
+
+
 def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -880,6 +984,7 @@ def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
     identity_transforms = (
         "with_us_prior_year_income_inputs",
         "with_us_relationship_inputs",
+        "with_us_spm_independence_role",
         "with_us_medicare_take_up_input",
         "with_us_eligibility_inputs",
         "with_us_pregnancy_inputs",
@@ -899,6 +1004,7 @@ def test_pooled_source_stage_dual_exports_without_changing_legacy_checkpoints(
     passing_gate = SimpleNamespace(passed=True, failures=(), details={})
     for name in (
         "us_relationship_inputs_signal_gate",
+        "us_spm_independence_role_signal_gate",
         "us_medicare_take_up_signal_gate",
         "us_housing_inputs_signal_gate",
         "us_eligibility_inputs_signal_gate",
@@ -1058,6 +1164,7 @@ def test_source_and_preclone_stages_round_trip_design_weight_kind(
         "derive_us_cps_carried_inputs",
         "with_us_prior_year_income_inputs",
         "with_us_relationship_inputs",
+        "with_us_spm_independence_role",
         "with_us_medicare_take_up_input",
         "with_us_eligibility_inputs",
         "with_us_pregnancy_inputs",
@@ -1077,6 +1184,7 @@ def test_source_and_preclone_stages_round_trip_design_weight_kind(
     passing_gate = SimpleNamespace(passed=True, failures=(), details={})
     for name in (
         "us_relationship_inputs_signal_gate",
+        "us_spm_independence_role_signal_gate",
         "us_medicare_take_up_signal_gate",
         "us_housing_inputs_signal_gate",
         "us_eligibility_inputs_signal_gate",
@@ -1723,6 +1831,10 @@ def test_pooled_asec_mode_loads_sources_with_manifest_metadata(
             f"2023={asec_2023}",
             "--asec-h5",
             f"2024={asec_2024}",
+            "--asec-education-source",
+            f"2023={tmp_path / 'asecpub24csv.zip'}",
+            "--asec-education-source",
+            f"2024={tmp_path / 'asecpub25csv.zip'}",
             "--target-year",
             "2024",
             "--asec-max-households",
@@ -1740,11 +1852,17 @@ def test_pooled_asec_mode_loads_sources_with_manifest_metadata(
     assert frame is sentinel_frame
     assert captured["target_year"] == 2024
     assert [
-        (source.year, source.path.name, source.max_households)
+        (
+            source.year,
+            source.path.name,
+            source.max_households,
+            source.census_person_source,
+            source.census_person_pin,
+        )
         for source in captured["sources"]
     ] == [
-        (2023, "asec_2023.h5", 50),
-        (2024, "asec_2024.h5", 50),
+        (2023, "asec_2023.h5", 50, tmp_path / "asecpub24csv.zip", None),
+        (2024, "asec_2024.h5", 50, tmp_path / "asecpub25csv.zip", None),
     ]
     assert metadata == {
         "kind": "pooled_asec",
@@ -1825,6 +1943,13 @@ def test_support_spine_spec_resolves_relative_years_and_shares(
         fake_build_pooled_asec_unit_frame,
     )
     monkeypatch.setattr(builder, "_sha256", lambda path: f"sha:{Path(path).name}")
+    resolved = {}
+
+    def fake_resolve(paths, *, income_years):
+        resolved["call"] = (paths, income_years)
+        return {year: tmp_path / f"census_{year}.zip" for year in income_years}
+
+    monkeypatch.setattr(builder, "resolve_asec_spm_role_source_paths", fake_resolve)
 
     args = builder._parse_args(
         [
@@ -1854,9 +1979,85 @@ def test_support_spine_spec_resolves_relative_years_and_shares(
         (2024, "asec_2024.h5", 0.25),
         (2025, "asec_2025.h5", 0.75),
     ]
+    # Spine-spec sources are bound to their Census person files like any other.
+    assert resolved["call"] == (None, (2024, 2025))
+    assert [source.census_person_source for source in captured["sources"]] == [
+        tmp_path / "census_2024.zip",
+        tmp_path / "census_2025.zip",
+    ]
     assert metadata["support_spine_spec"]["path"] == str(spec_path.resolve())
     assert metadata["support_spine_spec"]["sources"][0]["resolved_year"] == 2024
     assert metadata["support_spine_spec"]["sources"][1]["resolved_year"] == 2025
+
+
+def test_pooled_asec_sources_fetch_unmapped_census_person_files(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A pooled year without --asec-education-source is fetched and pinned (#720).
+
+    Source construction resolves the Census person files exactly as the SPM
+    role stage does, so no base built from --asec-h5 inputs can skip the
+    restoration of the columns its H5 lacks.
+    """
+
+    from microcosm.build.us_runtime import spm_independence_role
+
+    builder = _load_support_builder_module()
+    fetched = []
+
+    def fake_fetch(year):
+        fetched.append(year)
+        return tmp_path / f"fetched_{year}.csv"
+
+    monkeypatch.setattr(
+        spm_independence_role, "fetch_asec_education_assistance_source", fake_fetch
+    )
+    args = builder._parse_args(
+        [
+            "--asec-h5",
+            f"2024={tmp_path / 'asec_2024.h5'}",
+            "--asec-h5",
+            f"2022={tmp_path / 'asec_2022.h5'}",
+            "--asec-education-source",
+            f"2024={tmp_path / 'asecpub25csv.zip'}",
+            "--puf-h5",
+            "puf.h5",
+            "--out",
+            "out",
+            "--without-block-ladder",
+        ]
+    )
+
+    sources = builder._asec_sources_from_args(args, support_spine_spec=None)
+
+    assert fetched == [2022]
+    assert [(source.year, source.census_person_source) for source in sources] == [
+        (2024, tmp_path / "asecpub25csv.zip"),
+        (2022, tmp_path / "fetched_2022.csv"),
+    ]
+
+
+def test_pooled_asec_sources_refuse_an_income_year_without_census_pins(
+    tmp_path: Path,
+) -> None:
+    builder = _load_support_builder_module()
+    args = builder._parse_args(
+        [
+            "--asec-h5",
+            f"2021={tmp_path / 'asec_2021.h5'}",
+            "--asec-education-source",
+            f"2021={tmp_path / 'asecpub22csv.zip'}",
+            "--puf-h5",
+            "puf.h5",
+            "--out",
+            "out",
+            "--without-block-ladder",
+        ]
+    )
+
+    with pytest.raises(ValueError, match=r"income year\(s\) \[2021\]"):
+        builder._asec_sources_from_args(args, support_spine_spec=None)
 
 
 def test_support_spine_spec_requires_mapped_asec_year(tmp_path: Path) -> None:
@@ -2041,6 +2242,18 @@ def test_main_runs_cps_only_inputs_before_clone_and_after_puf_then_fails_gate(
     monkeypatch.setattr(
         builder,
         "us_relationship_inputs_signal_gate",
+        lambda frame: type(
+            "Gate", (), {"passed": True, "failures": (), "details": {}}
+        )(),
+    )
+    monkeypatch.setattr(
+        builder,
+        "with_us_spm_independence_role",
+        lambda frame, **_kwargs: frame,
+    )
+    monkeypatch.setattr(
+        builder,
+        "us_spm_independence_role_signal_gate",
         lambda frame: type(
             "Gate", (), {"passed": True, "failures": (), "details": {}}
         )(),

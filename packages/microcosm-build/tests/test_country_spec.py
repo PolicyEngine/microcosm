@@ -962,6 +962,7 @@ class TestUKCountryPackage:
             "local_registry_parity_fixture_2025.json",
             "was_wealth_support_bounds.json",
             "uc_deduction_support_bounds.json",
+            "nts_bus_travel_support_bounds.json",
             "local_binding_adjudications.json",
             "local_area_support_exclusions.json",
             "uk_local_target_census.json",
@@ -988,17 +989,21 @@ class TestUKCountryPackage:
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
+            "dft_bus_journeys.json",
+            "nts_trip_rates.json",
+            "nts_car_availability.json",
         )
 
     def test_uk_source_manifest_loads_thirty_stages(self) -> None:
         spec = load_country_spec("uk")
 
         assert spec.sources is not None
-        # 30 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
-        # #685, frs_relationships #791, then hmrc_cgt_asset_type_spine #725 as
-        # the newest) plus the
-        # two certified-pair stages the June path still uses.
-        assert len(spec.sources.stages) == 32
+        # 31 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
+        # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725, then
+        # cgt_incidence_anchor #970 and nts_bus_travel #930 as the newest) plus
+        # the two certified-pair
+        # stages the June path still uses.
+        assert len(spec.sources.stages) == 34
 
 
 class TestExistingPackagesGeneralize:
@@ -1070,6 +1075,7 @@ class TestExistingPackagesGeneralize:
             "local_registry_parity_fixture_2025.json",
             "was_wealth_support_bounds.json",
             "uc_deduction_support_bounds.json",
+            "nts_bus_travel_support_bounds.json",
             "local_binding_adjudications.json",
             "local_area_support_exclusions.json",
             "uk_local_target_census.json",
@@ -1096,6 +1102,9 @@ class TestExistingPackagesGeneralize:
             "devolved_bus_finance.json",
             "orr_rail_facts.json",
             "ons_household_expenditure_facts.json",
+            "dft_bus_journeys.json",
+            "nts_trip_rates.json",
+            "nts_car_availability.json",
         )
 
     def test_uk_target_references_accept_regenerated_contract_fields(self) -> None:
@@ -1342,11 +1351,15 @@ class TestUKGatesManifest:
             "uk_ledger_compile_parity_local_incumbent_2025",
             "uk_target_surface_local_default_2025",
             "uk_stage_was_wealth_support",
+            "uk_stage_nts_bus_travel_support",
+            "uk_stage_nts_bus_travel_facts",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
             "uk_stage_lcfs_consumption_energy_rake",
+            "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
+            "uk_stage_etb_services_support_pricing",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
@@ -1354,6 +1367,7 @@ class TestUKGatesManifest:
             "uk_stage_cgt_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
+            "uk_stage_cgt_incidence_anchor_composition",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
@@ -1378,6 +1392,7 @@ class TestUKGatesManifest:
             "uk_calibration_reference_coverage",
             "uk_target_surface",
             "uk_target_fit",
+            "uk_cgt_projection_entrants",
             "uk_input_mass_parity",
             "uk_qrf_tail_concentration",
             "uk_local_geography_ladder_post_calibration",
@@ -1436,11 +1451,15 @@ class TestUKGatesManifest:
         flagged = [g.id for g in manifest.gates if g.evidence_absent_blocks]
         assert flagged == [
             "uk_stage_was_wealth_support",
+            "uk_stage_nts_bus_travel_support",
+            "uk_stage_nts_bus_travel_facts",
             "uk_stage_uc_deduction_attributes",
             "uk_stage_lcfs_consumption_support",
             "uk_stage_lcfs_consumption_energy_rake",
+            "uk_stage_lcfs_consumption_bus_pricing",
             "uk_stage_etb_vat_support",
             "uk_stage_etb_services_support",
+            "uk_stage_etb_services_support_pricing",
             "uk_stage_frs_hmrc_spine_leaves_signal",
             "uk_stage_spi_support_channel_mass",
             "uk_stage_hmrc_spi_income_spine_identity",
@@ -1448,11 +1467,15 @@ class TestUKGatesManifest:
             "uk_stage_cgt_band_donors_support",
             "uk_stage_hmrc_cgt_gains_spine_summary",
             "uk_stage_hmrc_cgt_asset_type_spine_summary",
+            "uk_stage_cgt_incidence_anchor_composition",
             "uk_stage_salary_sacrifice_realization",
             "uk_stage_student_loans_realization",
             "uk_stage_age_tail_targets",
             "uk_stage_frs_relationships_composition",
             "uk_weights_audit",
+            # The #970 projection fence: a seam that cannot project cannot
+            # certify the candidate's sub-exempt gainers.
+            "uk_cgt_projection_entrants",
         ]
         assert all(g.not_applicable is None for g in manifest.gates)
 
@@ -1487,6 +1510,7 @@ class TestUKGatesManifest:
             "etb_vat_support_bounds.json",
             "etb_services_support_bounds.json",
             "uc_deduction_support_bounds.json",
+            "nts_bus_travel_support_bounds.json",
         )
         aggregate = params["uk_aggregate_admin"]
         assert aggregate["default_rtol"] == 0.15

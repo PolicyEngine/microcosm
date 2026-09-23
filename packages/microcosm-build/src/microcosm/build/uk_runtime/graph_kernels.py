@@ -44,7 +44,7 @@ from microcosm.graph import (
 )
 from microcosm.graph.population import dtype_for_token
 
-from . import uc_relationships
+from . import bus_use_incidence, uc_relationships
 from .national_frame import UK_NATIONAL_SCHEMA
 from .rowwise_geography import id_multiplier_for_values
 
@@ -76,6 +76,7 @@ _STAGE_MODULES = {
     "frs_household_draws": "frs_household_draws",
     "frs_brma": "frs_brma",
     "was_wealth": "was_wealth",
+    "nts_bus_travel": "nts_bus_travel",
     "regional_property_uprating": "regional_uprating",
     "lcfs_consumption": "lcfs_consumption",
     "etb_vat": "etb_vat",
@@ -88,6 +89,7 @@ _STAGE_MODULES = {
     "uc_deduction_attributes": "uc_deduction_attributes",
     "cgt_incidence_clone": "cgt_structure",
     "cgt_band_donors": "cgt_structure",
+    "cgt_incidence_anchor": "cgt_structure",
     "hmrc_cgt_gains_spine": "cgt_imputation",
     "hmrc_cgt_asset_type_spine": "cgt_asset_type",
     "salary_sacrifice": "salary_sacrifice",
@@ -103,6 +105,7 @@ _STAGE_HELPER_MODULES = {
     "frs_education_grant_split": (uk_engine_adapter,),
     "frs_brma": (uk_engine_adapter,),
     "was_wealth": (uk_engine_adapter,),
+    "nts_bus_travel": (uk_engine_adapter, bus_use_incidence),
     "lcfs_consumption": (uk_engine_adapter,),
     "etb_vat": (uk_engine_adapter,),
     "etb_services": (uk_engine_adapter,),
@@ -335,7 +338,7 @@ def _fixture_descriptor(
         missing = sorted(set(_STAGE_MODULES) - set(stages))
         extra = sorted(set(stages) - set(_STAGE_MODULES))
         raise ValueError(
-            "UK parity fixture must describe the current 30-stage spine "
+            "UK parity fixture must describe the current 31-stage spine "
             f"(missing={missing}, extra={extra})."
         )
     return descriptor, stages
@@ -351,6 +354,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .cgt_imputation import UKCGTPolicyParameters, uk_cgt_spine_stage_transform
     from .cgt_structure import (
         UKCGTBandDonorStageTransform,
+        UKCGTIncidenceAnchorStageTransform,
         UKCGTIncidenceCloneStageTransform,
     )
     from .etb_services import UKETBServicesStageTransform
@@ -367,6 +371,7 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     from .frs_relationships import UKFRSRelationshipsStageTransform
     from .frs_take_up import UKFRSTakeUpStageTransform
     from .lcfs_consumption import UKLCFSConsumptionStageTransform
+    from .nts_bus_travel import UKNTSBusTravelStageTransform
     from .regional_uprating import UKRegionalPropertyUpratingStageTransform
     from .salary_sacrifice import UKSalarySacrificeStageTransform
     from .spi_spine import (
@@ -399,6 +404,21 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     )
     etb = pd.read_csv(
         _fixture_input(source, inputs, "etb"), float_precision="round_trip"
+    )
+    nts_household = pd.read_csv(
+        _fixture_input(source, inputs, "nts_household"), float_precision="round_trip"
+    )
+    nts_individual = pd.read_csv(
+        _fixture_input(source, inputs, "nts_individual"), float_precision="round_trip"
+    )
+    nts_trip = pd.read_csv(
+        _fixture_input(source, inputs, "nts_trip"), float_precision="round_trip"
+    )
+    nts_stage = pd.read_csv(
+        _fixture_input(source, inputs, "nts_stage"), float_precision="round_trip"
+    )
+    nts_ticket = pd.read_csv(
+        _fixture_input(source, inputs, "nts_ticket"), float_precision="round_trip"
     )
     spi_path = _fixture_input(source, inputs, "spi_donor")
     spi_donor = pd.read_csv(spi_path, float_precision="round_trip")
@@ -460,6 +480,15 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "was_wealth": UKWASWealthStageTransform(
                 stage=stages["was_wealth"], engine=engine, donor=was
             ),
+            "nts_bus_travel": UKNTSBusTravelStageTransform(
+                stage=stages["nts_bus_travel"],
+                engine=engine,
+                nts_household=nts_household,
+                nts_individual=nts_individual,
+                nts_trip=nts_trip,
+                nts_stage=nts_stage,
+                nts_ticket=nts_ticket,
+            ),
             "regional_property_uprating": UKRegionalPropertyUpratingStageTransform(
                 stage=stages["regional_property_uprating"]
             ),
@@ -515,6 +544,10 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
             "hmrc_cgt_asset_type_spine": UKCGTAssetTypeStageTransform(
                 stage=stages["hmrc_cgt_asset_type_spine"],
                 facts=cgt_asset_type_facts,
+                parameters=cgt_parameters,
+            ),
+            "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
+                stage=stages["cgt_incidence_anchor"],
                 parameters=cgt_parameters,
             ),
             "salary_sacrifice": UKSalarySacrificeStageTransform(
@@ -808,6 +841,16 @@ def _source_lineage(
     before_table = before.table(entity)
     after_table = after.table(entity)
     before_ids = pd.Index(before_table[id_column])
+    # A weights-only structural stage (the #970 incidence anchor) adds no
+    # row: every target is an incumbent, so the lineage is empty without
+    # walking the table row by row.
+    if pd.Index(after_table[id_column]).isin(before_ids).all():
+        return pd.Series(
+            [],
+            index=pd.Index([], name=id_column, dtype=before_table[id_column].dtype),
+            dtype=before_table[id_column].dtype,
+            name=id_column,
+        )
     targets: list[object] = []
     values: list[object] = []
     source_column = f"{entity}_source_id"
@@ -1007,6 +1050,7 @@ def build_uk_registry(
             "spi_support_channel",
             "cgt_incidence_clone",
             "cgt_band_donors",
+            "cgt_incidence_anchor",
         }:
             registry.register(UKExpandStageKernel(stage, transform, fixture_resolver))
         else:

@@ -376,6 +376,18 @@ def _parser(*, selection_source_required: bool = True) -> argparse.ArgumentParse
         help="Optional pin: expected SHA-256 of consumer_facts.jsonl.",
     )
     parser.add_argument(
+        "--congressional-district-vintage-crosswalk",
+        type=Path,
+        default=None,
+        help=(
+            "CD vintage crosswalk the feed's congressional-district facts are "
+            "translated through before the target surface is compiled. "
+            "Defaults to the canonical packaged crosswalk, as the release "
+            "tool's option of the same name does; pass the release run's "
+            "replacement if it used one."
+        ),
+    )
+    parser.add_argument(
         "--target-period",
         default=2024,
         help="Build period the fiscal targets are compiled for (default 2024).",
@@ -462,6 +474,9 @@ def main(argv: list[str] | None = None) -> int:
         export_input_mass_reference_h5=args.export_input_mass_reference_h5,
         ledger_facts=args.ledger_facts,
         ledger_facts_sha256=args.ledger_facts_sha256,
+        congressional_district_vintage_crosswalk=(
+            args.congressional_district_vintage_crosswalk
+        ),
         target_period=target_period,
         relative_tolerance=args.relative_tolerance,
         minimum_reference_total=args.minimum_reference_total,

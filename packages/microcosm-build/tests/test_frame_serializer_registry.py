@@ -25,6 +25,9 @@ from microcosm.build.uk_runtime.national_frame import (
     _write_uk_single_year_tables,
 )
 from microcosm.build.us_runtime.h5_io import write_nullable_us_h5
+from microcosm.build.us_runtime.spm_independence_role import (
+    _write_role_projection,
+)
 from microcosm.frame import (
     US_SCHEMA,
     EntitySchema,
@@ -374,6 +377,21 @@ def _round_trip_us_annual_static_aging(
     return _semantic_observation(source, before, loaded)
 
 
+def _round_trip_spm_role_projection(
+    tmp_path: Path, nullable_case: str
+) -> BooleanRoundTrip:
+    pytest.importorskip("tables")
+    source = _dtype_family_table(nullable_case)
+    before = source.copy(deep=True)
+    spm_unit = pd.DataFrame({"spm_unit_id": np.asarray([1, 2, 3], dtype=np.int64)})
+    path = tmp_path / "spm-role-projection.h5"
+    digest = _write_role_projection(path, source, spm_unit)
+    assert len(digest) == 64
+    with pd.HDFStore(path, mode="r") as store:
+        loaded = read_frame_table(store, "person")
+    return _semantic_observation(source, before, loaded)
+
+
 ROUND_TRIP_ADAPTERS: dict[str, RoundTripAdapter] = {
     "frame_checkpoint": _round_trip_frame_checkpoint,
     "nullable_us_h5": _round_trip_nullable_us_h5,
@@ -384,6 +402,7 @@ ROUND_TRIP_ADAPTERS: dict[str, RoundTripAdapter] = {
     "legacy_us_two_spine": _round_trip_legacy_us,
     "acs_local_lean_checkpoint": _round_trip_acs_lean,
     "fiscal_target_frame_checkpoint": _round_trip_fiscal_checkpoint,
+    "spm_role_derivation_projection": _round_trip_spm_role_projection,
 }
 
 
@@ -453,10 +472,10 @@ def test_registry_classifies_every_writable_production_hdf_site() -> None:
     assert _discover_writable_hdf_sites() == classified
 
 
-def test_registry_has_exactly_nine_unique_frame_table_serializers() -> None:
-    assert len(FRAME_TABLE_SERIALIZERS) == 9
-    assert len({spec.serializer_id for spec in FRAME_TABLE_SERIALIZERS}) == 9
-    assert len({spec.writer.key for spec in FRAME_TABLE_SERIALIZERS}) == 9
+def test_registry_has_exactly_ten_unique_frame_table_serializers() -> None:
+    assert len(FRAME_TABLE_SERIALIZERS) == 10
+    assert len({spec.serializer_id for spec in FRAME_TABLE_SERIALIZERS}) == 10
+    assert len({spec.writer.key for spec in FRAME_TABLE_SERIALIZERS}) == 10
 
 
 def test_round_trip_adapter_registry_exactly_matches_serializer_registry() -> None:

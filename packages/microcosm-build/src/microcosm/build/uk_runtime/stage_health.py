@@ -55,12 +55,20 @@ def uk_stage_health_gate(
         return _cgt_imputation_summary_gate(stage, evidence, parameters)
     if check == "cgt_asset_type_summary":
         return _cgt_asset_type_summary_gate(stage, evidence, parameters)
+    if check == "cgt_incidence_anchor":
+        return _cgt_incidence_anchor_gate(stage, evidence, parameters)
     if check == "latent_attribute_realization":
         return _latent_attribute_realization_gate(stage, evidence)
     if check == "household_composition":
         return _household_composition_gate(stage, evidence, parameters)
     if check == "energy_rake":
         return _energy_rake_gate(stage, evidence, parameters)
+    if check == "bus_travel_facts":
+        return _bus_travel_facts_gate(stage, evidence, parameters)
+    if check == "bus_pricing":
+        return _bus_pricing_gate(stage, evidence, parameters)
+    if check == "bus_support_pricing":
+        return _bus_support_pricing_gate(stage, evidence, parameters)
     return GateResult(
         name="stage_health",
         passed=False,
@@ -817,6 +825,47 @@ def _cgt_imputation_summary_gate(
         details["ipf_max_abs_margin_error"] = rake.get("ipf_max_abs_margin_error")
         details["gains_margin_max_abs_error"] = rake.get("gains_margin_max_abs_error")
         details["fallback_released_mass"] = released
+        # The sub-AEA remainder receipt (microcosm#970): every remainder
+        # amount must sit strictly above zero and at or below the exempt
+        # amount, or the projection fence downstream measures the wrong
+        # population. Optional so receipts predating the mapping still read.
+        remainder = allocation.get("remainder")
+        if remainder is not None:
+            if not isinstance(remainder, Mapping):
+                raise ValueError(f"{stage}.allocation.remainder must be a mapping.")
+            persons = _finite_number(
+                remainder.get("persons"), label=f"{stage}.allocation.remainder.persons"
+            )
+            remainder_mass = _finite_number(
+                remainder.get("mass"), label=f"{stage}.allocation.remainder.mass"
+            )
+            if persons < 0.0 or remainder_mass < 0.0:
+                failures.append(
+                    f"{stage}: allocation.remainder count or mass is negative."
+                )
+            if persons > 0.0:
+                exempt = _finite_number(
+                    remainder.get("annual_exempt_amount"),
+                    label=f"{stage}.allocation.remainder.annual_exempt_amount",
+                )
+                low = _finite_number(
+                    remainder.get("min_amount"),
+                    label=f"{stage}.allocation.remainder.min_amount",
+                )
+                high = _finite_number(
+                    remainder.get("max_amount"),
+                    label=f"{stage}.allocation.remainder.max_amount",
+                )
+                if not low > 0.0:
+                    failures.append(
+                        f"{stage}: allocation.remainder.min_amount is not positive."
+                    )
+                if high > exempt:
+                    failures.append(
+                        f"{stage}: allocation.remainder.max_amount exceeds the "
+                        "annual exempt amount."
+                    )
+            details["remainder_mass"] = remainder_mass
     return (
         _fail(stage, check, failures, details)
         if failures
@@ -911,6 +960,132 @@ def _cgt_asset_type_summary_gate(
             failures.append(f"{stage}: {name} gains share {value} is not a share.")
     details["residential_rows"] = residential.get("achieved_rows")
     details["classified_values"] = sorted(counts)
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _cgt_incidence_anchor_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The anchor realised its reporter composition without touching anyone else.
+
+    The stage derives a target for the sub-exempt and loss-making clone mass
+    from the redrawn liable mass and the Advani-Summers composition, then
+    moves the excess to the paired originals. This gate holds each group to
+    its target when it was trimmed (never overshooting, never gaining mass,
+    untouched when it was already at or below target), the liable clone mass
+    to exactly its pre-anchor value, every pair's mass to rounding, and the
+    clone side to no more than the original side; the pairing must cover at
+    least ``minimum_pair_count`` households (microcosm#970).
+    """
+
+    check = "cgt_incidence_anchor"
+    failures: list[str] = []
+    max_relative = _finite_number(
+        parameters["maximum_relative_composition_error"],
+        label=f"{stage}.maximum_relative_composition_error",
+    )
+    max_pair_error = max(
+        _finite_number(
+            parameters["maximum_pair_relative_error"],
+            label=f"{stage}.maximum_pair_relative_error",
+        ),
+        _FLOAT_RELATIVE_TOLERANCE,
+    )
+    minimum_pairs = parameters["minimum_pair_count"]
+    if not isinstance(minimum_pairs, int) or isinstance(minimum_pairs, bool):
+        raise ValueError(f"{stage}.minimum_pair_count must be an integer.")
+    liable_mass = _finite_number(
+        evidence.get("liable_mass"), label=f"{stage}.liable_mass"
+    )
+    transferred = _finite_number(
+        evidence.get("transferred_mass"), label=f"{stage}.transferred_mass"
+    )
+    pair_error = _finite_number(
+        evidence.get("max_pair_relative_error"),
+        label=f"{stage}.max_pair_relative_error",
+    )
+    pair_count = evidence.get("pair_count")
+    if not isinstance(pair_count, int) or isinstance(pair_count, bool):
+        raise ValueError(f"{stage}.pair_count must be an integer.")
+    targets = _mapping(evidence.get("targets"), label=f"{stage}.targets")
+    before = _mapping(evidence.get("before"), label=f"{stage}.before")
+    after = _mapping(evidence.get("after"), label=f"{stage}.after")
+    mass = _mapping(
+        evidence.get("mass_by_clone_flag"), label=f"{stage}.mass_by_clone_flag"
+    )
+    details: dict[str, object] = {
+        "liable_mass": liable_mass,
+        "transferred_mass": transferred,
+        "pair_count": pair_count,
+        "max_pair_relative_error": pair_error,
+        "effective_pair_relative_tolerance": max_pair_error,
+    }
+    if liable_mass <= 0.0:
+        failures.append(f"{stage}: liable mass must be positive.")
+    if transferred < 0.0:
+        failures.append(f"{stage}: transferred mass must be non-negative.")
+    if pair_count < minimum_pairs:
+        failures.append(
+            f"{stage}: {pair_count} clone/original pairs is below the required "
+            f"{minimum_pairs}."
+        )
+    if pair_error > max_pair_error:
+        failures.append(
+            f"{stage}: pair mass error {pair_error} exceeds {max_pair_error}."
+        )
+    removed = 0.0
+    for group in ("sub_exempt", "loss"):
+        target = _finite_number(targets.get(group), label=f"{stage}.targets.{group}")
+        was = _finite_number(before.get(group), label=f"{stage}.before.{group}")
+        now = _finite_number(after.get(group), label=f"{stage}.after.{group}")
+        removed += was - now
+        details[f"{group}_target"] = target
+        details[f"{group}_before"] = was
+        details[f"{group}_after"] = now
+        if target <= 0.0:
+            failures.append(f"{stage}: {group} target must be positive.")
+            continue
+        if now > was * (1.0 + _FLOAT_RELATIVE_TOLERANCE):
+            failures.append(f"{stage}: {group} clone mass rose from {was} to {now}.")
+        if was > target:
+            error = abs(now - target) / target
+            details[f"{group}_relative_error"] = error
+            if error > max(max_relative, _FLOAT_RELATIVE_TOLERANCE):
+                failures.append(
+                    f"{stage}: {group} clone mass {now} misses its target {target} "
+                    f"by {error} (allowed {max_relative})."
+                )
+        elif not np.isclose(now, was, rtol=_FLOAT_RELATIVE_TOLERANCE, atol=0.0):
+            failures.append(
+                f"{stage}: {group} clone mass {was} was already at or below its "
+                f"target {target} but moved to {now}."
+            )
+    liable_before = _finite_number(before.get("liable"), label=f"{stage}.before.liable")
+    liable_after = _finite_number(after.get("liable"), label=f"{stage}.after.liable")
+    details["liable_clone_mass"] = liable_after
+    if liable_after != liable_before:
+        failures.append(
+            f"{stage}: liable clone mass moved from {liable_before} to {liable_after}."
+        )
+    if not np.isclose(removed, transferred, rtol=1e-9, atol=0.0):
+        failures.append(
+            f"{stage}: removed group mass {removed} disagrees with the transferred "
+            f"mass {transferred}."
+        )
+    original = _finite_number(mass.get("false"), label=f"{stage}.mass.false")
+    clone = _finite_number(mass.get("true"), label=f"{stage}.mass.true")
+    details["original_mass"] = original
+    details["clone_mass"] = clone
+    if clone > original * (1.0 + _FLOAT_RELATIVE_TOLERANCE):
+        failures.append(
+            f"{stage}: clone mass {clone} exceeds original mass {original}."
+        )
     return (
         _fail(stage, check, failures, details)
         if failures
@@ -1108,3 +1283,347 @@ def _household_composition_gate(
     if failures:
         return _fail(stage, check, failures, details)
     return _pass(stage, check, details)
+
+
+def _bus_travel_facts_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The NTS bus-travel stage reproduces the published incidence and trip rates.
+
+    Fact checks on the ``nts_bus_travel`` receipts, every published value
+    recomputed here from the vendored rows the stage declares (never taken
+    from the receipt): the frame's design-weighted share of persons who use
+    a local bus at least yearly must sit within ``maximum_user_share_deviation``
+    (points) of the vendored NTS0313 all-ages share, and the frame's mean
+    local-bus trips per person per series within ``maximum_trip_rate_deviation``
+    (relative) of the vendored NTS0303 rate of the declared year. The receipt
+    must name its frequency source; a missing block fails closed.
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.nts_bus_travel import (
+        BAND_IDS,
+        NON_USER_BAND,
+        SERIES,
+        published_band_shares,
+        published_trip_rates,
+    )
+
+    check = "bus_travel_facts"
+    incidence = _mapping(evidence.get("incidence"), label=f"{stage}.incidence")
+    trip_rates = _mapping(evidence.get("trip_rates"), label=f"{stage}.trip_rates")
+    share_tolerance = _finite_number(
+        parameters.get("maximum_user_share_deviation"),
+        label=f"{stage}.maximum_user_share_deviation",
+    )
+    rate_tolerance = _finite_number(
+        parameters.get("maximum_trip_rate_deviation"),
+        label=f"{stage}.maximum_trip_rate_deviation",
+    )
+    period_value = parameters.get("trip_rates_period_value")
+    if not isinstance(period_value, int) or isinstance(period_value, bool):
+        raise ValueError(
+            f"{stage}: bus_travel_facts declares no trip_rates_period_value."
+        )
+    spec_stage = load_country_spec("uk").sources.stage_map()[stage]
+    declared_band = next(
+        (
+            dict(op.parameters)
+            for op in spec_stage.operations
+            if op.kind == "impute_bus_use_band"
+        ),
+        None,
+    )
+    if declared_band is None:
+        raise ValueError(f"{stage}: declares no impute_bus_use_band operation.")
+    if int(declared_band.get("trip_rates_period_value", -1)) != period_value:
+        raise ValueError(
+            f"{stage}: the gate's trip_rates_period_value {period_value} differs from "
+            f"the stage's declared {declared_band.get('trip_rates_period_value')!r}."
+        )
+    failures: list[str] = []
+    details: dict[str, object] = {
+        "trip_rates_period_value": period_value,
+        "maximum_user_share_deviation": share_tolerance,
+        "maximum_trip_rate_deviation": rate_tolerance,
+        "frequency_source": incidence.get("frequency_source"),
+    }
+    if incidence.get("frequency_source") not in ("interview_band", "published_shares"):
+        failures.append(f"{stage}: the incidence receipt names no frequency source.")
+    all_ages, _older, _receipt = published_band_shares(spec_stage)
+    published_user = 1.0 - float(all_ages[BAND_IDS[NON_USER_BAND]])
+    achieved_user = incidence.get("person_user_share")
+    if not isinstance(achieved_user, int | float):
+        failures.append(f"{stage}: the incidence receipt carries no person_user_share.")
+    else:
+        details["user_share"] = {
+            "published": published_user,
+            "achieved": float(achieved_user),
+        }
+        if abs(float(achieved_user) - published_user) > share_tolerance:
+            failures.append(
+                f"{stage}: local-bus user share {float(achieved_user):.4f} is not the "
+                f"published {published_user:.4f} (tolerance {share_tolerance} points)."
+            )
+    published_rates = published_trip_rates(declared_band)
+    frame_rates = _mapping(
+        trip_rates.get("frame_trips_per_person"),
+        label=f"{stage}.frame_trips_per_person",
+    )
+    recorded = _mapping(
+        trip_rates.get("published_trips_per_person"),
+        label=f"{stage}.published_trips_per_person",
+    )
+    details["trip_rates"] = {}
+    for series in SERIES:
+        published = float(published_rates[series])
+        if not isinstance(recorded.get(series), int | float) or abs(
+            float(recorded[series]) - published
+        ) > 1e-9 * max(1.0, published):
+            failures.append(
+                f"{stage}: the receipt's published {series} rate "
+                f"{recorded.get(series)!r} is not the vendored {published}."
+            )
+        achieved = frame_rates.get(series)
+        if not isinstance(achieved, int | float):
+            failures.append(f"{stage}: the receipt carries no frame {series} rate.")
+            continue
+        deviation = float(achieved) / published - 1.0 if published > 0 else None
+        details["trip_rates"][series] = {
+            "published": published,
+            "achieved": float(achieved),
+            "relative_deviation": deviation,
+        }
+        if deviation is None or abs(deviation) > rate_tolerance:
+            failures.append(
+                f"{stage}: frame {series} trips per person {float(achieved):.3f} "
+                f"deviate {deviation!r} from the published {published:.3f}, above "
+                f"the tolerance {rate_tolerance}."
+            )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _bus_pricing_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The lcfs bus-fare pricing used the published yields and translations.
+
+    Fact checks on the lcfs ``bus_pricing`` receipt, every published value
+    recomputed here from the vendored rows the stage declares (never taken
+    from the receipt): for every declared area the receipts, boardings,
+    concessionary journeys, trips per person and population, and the
+    boardings-per-trip and yield factors derived from them, must equal the
+    receipt's to ``maximum_relative_deviation``; the unpriced regions must be
+    the declared ones; and the receipt must state that the chain conditioned
+    on the raw draw. The frame-implied boardings against the published ones
+    are reported, not fenced: that ratio is the survey-versus-admin reading
+    the calibration targets then act on (microcosm#930).
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.bus_fare_pricing import bus_fare_prices
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_VENDORED_RESOURCES,
+        bus_pricing_operation,
+    )
+
+    check = "bus_pricing"
+    receipt = _mapping(evidence.get("bus_pricing"), label=f"{stage}.bus_pricing")
+    tolerance = _finite_number(
+        parameters.get("maximum_relative_deviation"),
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    declared = bus_pricing_operation(load_country_spec("uk").sources.stage_map()[stage])
+    if declared is None:
+        raise ValueError(f"{stage}: declares no price_bus_journeys operation.")
+    prices = bus_fare_prices(declared, allowed_resources=UK_LCFS_VENDORED_RESOURCES)
+    failures: list[str] = []
+    details: dict[str, object] = {
+        "maximum_relative_deviation": tolerance,
+        "areas_fact_checked": 0,
+        "frame_implied_over_published_boardings": {},
+    }
+    if receipt.get("chain_conditioned_on") != "raw_draw":
+        failures.append(f"{stage}: the chain did not condition on the raw draw.")
+    if sorted(str(r) for r in receipt.get("unpriced_regions", ())) != sorted(
+        prices.unpriced_regions
+    ):
+        failures.append(
+            f"{stage}: unpriced regions {receipt.get('unpriced_regions')!r} are not "
+            f"the declared {sorted(prices.unpriced_regions)}."
+        )
+    recorded = _mapping(receipt.get("prices"), label=f"{stage}.bus_pricing.prices")
+    expected = {
+        "london_series": prices.london,
+        **{a.label: a for a in prices.other_by_region.values()},
+    }
+
+    def _close(observed: object, value: float) -> bool:
+        return isinstance(observed, int | float) and abs(float(observed) - value) <= (
+            tolerance * max(1.0, abs(value))
+        )
+
+    for label, area in expected.items():
+        block = recorded.get(label)
+        if not isinstance(block, Mapping):
+            failures.append(f"{stage}: the receipt prices no area {label!r}.")
+            continue
+        for key, value in (
+            ("boardings_per_trip", area.boardings_per_trip),
+            ("yield_per_fare_paying_boarding", area.yield_per_fare_paying_boarding),
+            ("fare_per_trip", area.fare_per_trip),
+            ("concessionary_boarding_share", area.concessionary_boarding_share),
+        ):
+            if not _close(block.get(key), value):
+                failures.append(
+                    f"{stage}: {label} {key} {block.get(key)!r} is not the vendored "
+                    f"{value}."
+                )
+        for key, value in (
+            ("receipts", area.receipts),
+            ("boardings", area.boardings),
+            ("concessionary", area.concessionary_boardings),
+            ("trips_per_person", area.trips_per_person),
+        ):
+            inner = block.get(key)
+            observed = inner.get("value") if isinstance(inner, Mapping) else None
+            if not _close(observed, value):
+                failures.append(
+                    f"{stage}: {label} {key} {observed!r} is not the vendored {value}."
+                )
+        population = block.get("population")
+        observed = population.get("value") if isinstance(population, Mapping) else None
+        if not _close(observed, area.population):
+            failures.append(
+                f"{stage}: {label} population {observed!r} is not the vendored "
+                f"{area.population}."
+            )
+        details["areas_fact_checked"] = int(details["areas_fact_checked"]) + 1
+    by_area = receipt.get("by_area")
+    if isinstance(by_area, Mapping):
+        for label, entry in by_area.items():
+            if isinstance(entry, Mapping):
+                details["frame_implied_over_published_boardings"][str(label)] = (
+                    entry.get("frame_implied_over_published_boardings")
+                )
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )
+
+
+def _bus_support_pricing_gate(
+    stage: str,
+    evidence: Mapping[str, object],
+    parameters: Mapping[str, object],
+) -> GateResult:
+    """The ETB bus-support pricing used the published components per boarding.
+
+    Fact checks on the ``bus_support_pricing`` receipt (microcosm#930): every
+    declared support area's reimbursement, net support, boardings and
+    concessionary boardings, and the per-boarding rates derived from them,
+    are recomputed here from the vendored rows through the stage's own
+    declaration (never taken from the receipt) and must equal the receipt's
+    to ``maximum_relative_deviation``; the raw-draw regions must be the
+    declared ones and the receipt must state that the pricing was applied on
+    the chain's raw draw. The priced support against the published net
+    support is reported, not fenced: the calibration targets act on it.
+    """
+
+    from microcosm.build.country_spec import load_country_spec
+    from microcosm.build.uk_runtime.bus_support_pricing import (
+        bus_support_factors,
+        bus_support_pricing_operation,
+    )
+    from microcosm.build.uk_runtime.etb_services import (
+        UK_ETB_SERVICES_VENDORED_RESOURCES,
+    )
+
+    check = "bus_support_pricing"
+    receipt = _mapping(
+        evidence.get("bus_support_pricing"), label=f"{stage}.bus_support_pricing"
+    )
+    tolerance = _finite_number(
+        parameters.get("maximum_relative_deviation"),
+        label=f"{stage}.maximum_relative_deviation",
+    )
+    declared = bus_support_pricing_operation(
+        load_country_spec("uk").sources.stage_map()[stage]
+    )
+    if declared is None:
+        raise ValueError(f"{stage}: declares no price_bus_support operation.")
+    factors = bus_support_factors(
+        declared, allowed_resources=UK_ETB_SERVICES_VENDORED_RESOURCES
+    )
+    failures: list[str] = []
+    details: dict[str, object] = {
+        "maximum_relative_deviation": tolerance,
+        "areas_fact_checked": 0,
+        "priced_over_published": {},
+    }
+    if receipt.get("applied") is not True or receipt.get("chain_conditioned_on") != (
+        "raw_draw"
+    ):
+        failures.append(
+            f"{stage}: the receipt does not state an applied pricing on the raw draw."
+        )
+    declared_raw = sorted(str(r) for r in declared.get("raw_draw_regions", ()))
+    if sorted(str(r) for r in receipt.get("raw_draw_regions", ())) != declared_raw:
+        failures.append(
+            f"{stage}: raw-draw regions {receipt.get('raw_draw_regions')!r} are not "
+            f"the declared {declared_raw}."
+        )
+    recorded = _mapping(
+        receipt.get("by_area"), label=f"{stage}.bus_support_pricing.by_area"
+    )
+
+    def _close(observed: object, value: float) -> bool:
+        return isinstance(observed, int | float) and abs(float(observed) - value) <= (
+            tolerance * max(1.0, abs(value))
+        )
+
+    for label, block in factors.items():
+        entry = recorded.get(label)
+        if not isinstance(entry, Mapping):
+            failures.append(f"{stage}: the receipt prices no support area {label!r}.")
+            continue
+        for key in (
+            "reimbursement_per_concessionary_boarding",
+            "other_support_per_boarding",
+            "published_concessionary_boarding_share",
+        ):
+            if not _close(entry.get(key), float(block[key])):
+                failures.append(
+                    f"{stage}: {label} {key} {entry.get(key)!r} is not the vendored "
+                    f"{block[key]}."
+                )
+        for key in ("reimbursement", "net_support", "boardings", "concessionary"):
+            inner = entry.get(key)
+            observed = inner.get("value") if isinstance(inner, Mapping) else None
+            if not _close(observed, float(block[key]["value"])):
+                failures.append(
+                    f"{stage}: {label} {key} {observed!r} is not the vendored "
+                    f"{block[key]['value']}."
+                )
+        ratio = entry.get("priced_over_published")
+        details["priced_over_published"][label] = (
+            float(ratio) if isinstance(ratio, int | float) else None
+        )
+        details["areas_fact_checked"] = int(details["areas_fact_checked"]) + 1
+    missing = sorted(set(recorded) - set(factors))
+    if missing:
+        failures.append(f"{stage}: the receipt prices undeclared areas {missing}.")
+    return (
+        _fail(stage, check, failures, details)
+        if failures
+        else _pass(stage, check, details)
+    )

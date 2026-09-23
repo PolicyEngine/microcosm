@@ -58,8 +58,16 @@ from microcosm.build.gates import (
     target_surface_gate,
     weights_audit_gate,
 )
+from microcosm.build.uk_runtime.cgt_projection import (
+    UK_CGT_PROJECTION_ARTIFACT_KEY,
+    UKCGTProjection,
+)
 from microcosm.build.uk_runtime.frs_take_up import uk_take_up_signal_gate
 from microcosm.build.uk_runtime.geography_ladder import uk_geography_ladder_gate
+from microcosm.build.uk_runtime.hmrc_capital_gains import (
+    HMRC_CGT_CONDITIONING_RESOURCE,
+    load_hmrc_cgt_conditioning_facts,
+)
 from microcosm.build.uk_runtime.ledger_targets import (
     LOCAL_REGISTRY_PARITY_FIXTURE_RESOURCE,
     align_uk_local_registry_parity_fixture,
@@ -81,6 +89,7 @@ from microcosm.build.uk_runtime.terminal_gates import (
     UKZeroWeightStratumDeclaration,
     _household_weights,
     _missing_fit_weight_evidence_gate,
+    uk_cgt_projection_entrants_gate,
     uk_default_degenerate_reviewed_exclusions,
     uk_default_target_fit_reviewed_exclusions,
     uk_degenerate_release_surface_gate,
@@ -538,6 +547,7 @@ def _evaluate_support(
         "etb_vat_support_bounds.json",
         "etb_services_support_bounds.json",
         "uc_deduction_support_bounds.json",
+        "nts_bus_travel_support_bounds.json",
     }
     if set(resource_names) - allowed:
         raise ValueError(
@@ -592,6 +602,144 @@ def _evaluate_aggregate_admin(
         anchors,
         default_rtol=float(parameters.get("default_rtol", 0.5)),
     )
+
+
+_CGT_PROJECTION_PARAMETER_KEYS = frozenset(
+    {
+        "horizon_year",
+        "gains_growth_parameter",
+        "exempt_amount_parameter",
+        "expected_yoy_growth_by_year",
+        "expected_exempt_amount_by_year",
+        "maximum_growth_drift",
+        "bound_resource",
+        "bound_size_band_lower_bound",
+    }
+)
+
+
+def _evaluate_cgt_projection_entrants(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> GateResult:
+    """Fence projected sub-exempt entrants against the vendored HMRC band.
+
+    The seam supplies the projection artifact; the binding refuses one that
+    does not match the declared base year (the frame's period), horizon and
+    parameter paths, and takes the bound from the vendored conditioning
+    facts the amounts stage itself is pinned to, never from a literal.
+    """
+
+    unrouted = sorted(set(parameters) - _CGT_PROJECTION_PARAMETER_KEYS)
+    if unrouted:
+        raise ValueError(f"cgt_projection_entrants cannot route {unrouted}.")
+    projection = context.artifacts[UK_CGT_PROJECTION_ARTIFACT_KEY]
+    if not isinstance(projection, UKCGTProjection):
+        raise TypeError(
+            f"{UK_CGT_PROJECTION_ARTIFACT_KEY} artifact must be a UKCGTProjection."
+        )
+    horizon_year = parameters["horizon_year"]
+    if not isinstance(horizon_year, int) or isinstance(horizon_year, bool):
+        raise ValueError("cgt_projection_entrants horizon_year must be an integer.")
+    lower_bound = parameters["bound_size_band_lower_bound"]
+    if not isinstance(lower_bound, int) or isinstance(lower_bound, bool):
+        raise ValueError(
+            "cgt_projection_entrants bound_size_band_lower_bound must be an integer."
+        )
+    bound_resource = str(parameters["bound_resource"])
+    if bound_resource != HMRC_CGT_CONDITIONING_RESOURCE:
+        raise ValueError(
+            f"cgt_projection_entrants bound_resource {bound_resource!r} is not the "
+            f"vendored conditioning resource {HMRC_CGT_CONDITIONING_RESOURCE!r}."
+        )
+    surface = _uk_gate_surface(context.frame)
+    base_year = int(surface.time_period)
+    declared = {
+        "base_year": base_year,
+        "horizon_year": horizon_year,
+        "growth_parameter": str(parameters["gains_growth_parameter"]),
+        "exempt_amount_parameter": str(parameters["exempt_amount_parameter"]),
+    }
+    actual = {
+        "base_year": projection.base_year,
+        "horizon_year": projection.horizon_year,
+        "growth_parameter": projection.growth_parameter,
+        "exempt_amount_parameter": projection.exempt_amount_parameter,
+    }
+    if actual != declared:
+        raise ValueError(
+            "cgt_projection_entrants artifact disagrees with the declared "
+            f"projection: declared {declared}, supplied {actual}."
+        )
+    # The engine's growth path and exempt amount are pinned in the manifest:
+    # an engine bump that moves either fails the gate visibly instead of
+    # moving the verdict silently, and re-pinning is a reviewed change.
+    expected_growth = parameters["expected_yoy_growth_by_year"]
+    if not isinstance(expected_growth, Mapping):
+        raise ValueError(
+            "cgt_projection_entrants expected_yoy_growth_by_year must map years "
+            "to rates."
+        )
+    drift_tolerance = float(parameters["maximum_growth_drift"])
+    expected_exempt = parameters["expected_exempt_amount_by_year"]
+    if not isinstance(expected_exempt, Mapping):
+        raise ValueError(
+            "cgt_projection_entrants expected_exempt_amount_by_year must map years "
+            "to amounts."
+        )
+    drifts: list[str] = []
+    for year in projection.projected_years:
+        pinned = expected_growth.get(str(year))
+        if pinned is None:
+            drifts.append(f"no pinned growth rate for {year}")
+            continue
+        actual_rate = float(projection.yoy_growth_by_year[str(year)])
+        if abs(actual_rate - float(pinned)) > drift_tolerance:
+            drifts.append(f"growth {year}: engine {actual_rate} vs pinned {pinned}")
+    for year, amount in projection.exempt_amount_by_year.items():
+        pinned_amount = expected_exempt.get(str(year))
+        if pinned_amount is None:
+            drifts.append(f"no pinned exempt amount for {year}")
+        elif abs(float(amount) - float(pinned_amount)) > 0.5:
+            drifts.append(
+                f"exempt amount {year}: engine {amount} vs pinned {pinned_amount}"
+            )
+    if drifts:
+        raise ValueError(
+            "cgt_projection_entrants projection drifted from the pinned path "
+            f"({projection.engine}): " + "; ".join(drifts) + "."
+        )
+    facts = load_hmrc_cgt_conditioning_facts(bound_resource)
+    band = facts.size_band(lower_bound)
+    bound_source = (
+        f"{bound_resource}: HMRC Table 2.1a tax year {facts.tax_year}, taxpayers "
+        f"with gains from {band.lower_bound:,} to {band.upper_bound:,}"
+    )
+    household = surface.household
+    household_weights = _household_weights(household)
+    positions = pd.Series(
+        np.arange(len(household)), index=household["household_id"].to_numpy()
+    ).reindex(surface.person["person_household_id"].to_numpy())
+    if positions.isna().any():
+        raise ValueError("cgt_projection_entrants found a person without a household.")
+    person_weights = household_weights[positions.to_numpy(dtype=np.int64)]
+    return uk_cgt_projection_entrants_gate(
+        surface.person,
+        person_weights,
+        projection,
+        bound=float(band.taxpayers),
+        bound_source=bound_source,
+    )
+
+
+def _cgt_projection_evidence(
+    context: EvidenceContext, parameters: Mapping[str, Any]
+) -> object:
+    projection = context.artifacts[UK_CGT_PROJECTION_ARTIFACT_KEY]
+    if not isinstance(projection, UKCGTProjection):
+        raise TypeError(
+            f"{UK_CGT_PROJECTION_ARTIFACT_KEY} artifact must be a UKCGTProjection."
+        )
+    return {UK_CGT_PROJECTION_ARTIFACT_KEY: projection.payload()}
 
 
 def _stage_names_evidence(
@@ -1469,11 +1617,20 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
                 "maximum_solve_relative_error",
                 "support_bounds_resource",
                 "minimum_band_rows",
+                # #970 cgt_incidence_anchor stage-health check.
+                "maximum_relative_composition_error",
+                "maximum_pair_relative_error",
+                "minimum_pair_count",
                 # #890 energy_rake check: NEED shape at the DESNZ level at
                 # design weights, with the published gas-connected share.
                 "margins",
                 "margins_period_value",
                 "maximum_connected_share_deviation",
+                # #930 bus_travel_facts check: NTS0313 incidence and NTS0303
+                # trip rates recomputed from the vendored rows.
+                "trip_rates_period_value",
+                "maximum_user_share_deviation",
+                "maximum_trip_rate_deviation",
             }
         ),
         artifact_keys=frozenset({"stage_evidence"}),
@@ -1519,6 +1676,13 @@ UK_GATE_REGISTRY: Mapping[str, GateBinding] = {
         parameter_keys=frozenset(
             {"support_bounds_resource", "support_bounds_resources"}
         ),
+    ),
+    "cgt_projection_entrants": UKGateBinding(
+        name="cgt_projection_entrants",
+        evaluator=_evaluate_cgt_projection_entrants,
+        parameter_keys=_CGT_PROJECTION_PARAMETER_KEYS,
+        artifact_keys=frozenset({UK_CGT_PROJECTION_ARTIFACT_KEY}),
+        evidence=_cgt_projection_evidence,
     ),
     "aggregate_admin": UKGateBinding(
         name="aggregate_admin",

@@ -162,6 +162,7 @@ from microcosm.build.us_runtime import (
     us_snap_take_up_signal_gate,
     us_source_coverage_diagnostics,
     us_source_operation_handlers,
+    us_spm_independence_role_signal_gate,
     us_ssi_disability_criteria_signal_gate,
     us_ssi_take_up_delivery_gate,
     us_ssi_take_up_diagnostics,
@@ -197,6 +198,7 @@ from microcosm.build.us_runtime import (
     with_us_snap_discretionary_exemption_inputs,
     with_us_snap_state_take_up,
     with_us_snap_take_up_inputs,
+    with_us_spm_independence_role,
     with_us_ssi_disability_criteria,
     with_us_ssi_take_up,
     with_us_take_up_inputs,
@@ -829,6 +831,15 @@ US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS = {
     "s_corp_income": (
         "Combined partnership/S-corp income is carried in partnership_income "
         "in pre-PUF-support bases; the S-corp leaf is constant zero there."
+    ),
+    "strike_benefits": (
+        "No respondent in the pinned public ASEC files reports strike benefits: "
+        "OI_OFF code 12 ('strike benefits', ASEC 2024 public use data "
+        "dictionary) has zero person rows in pppub23, pppub24 and pppub25 "
+        "(income years 2022-2024), and the PUF half carries no strike-benefit "
+        "field, so the OI_OFF == 12 split in alimony.py is identically zero. "
+        "The mapping is correct; a vintage with a code-12 reporter makes this "
+        "entry stale and fails the gate."
     ),
 }
 
@@ -1617,6 +1628,21 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "(microcosm.build.us_runtime.data; see "
             "CONGRESSIONAL_DISTRICT_VINTAGE_CROSSWALK.md); pass a path to "
             "override the default."
+        ),
+    )
+    parser.add_argument(
+        "--target-surface",
+        choices=TARGET_SURFACE_MODES,
+        default=TARGET_SURFACE_FULL,
+        help=(
+            "Which compiled fiscal targets the release calibrates to. "
+            f"'{TARGET_SURFACE_FULL}' (default) calibrates every compiled "
+            f"target. '{TARGET_SURFACE_NATIONAL_STATE}' drops every "
+            "congressional-district-classified target (the CD geography rows "
+            "and the rows sourced from the SOI congressional-district file) "
+            "after the target-parity and profile-coverage gates have run on "
+            "the full compiled surface, as the July national releases "
+            "calibrated; the drop is recorded in both manifests."
         ),
     )
     parser.add_argument(
@@ -5464,11 +5490,12 @@ def _spm_composition_report(frame: Frame) -> CheckResult:
     ``check_spm_composition`` reproduces spm-calculator 1.0.0's rule
     (``adult = (age >= 18) | ((age >= 15) & role)``) over frame columns. The
     role resolution it mirrors is exactly what this export can produce:
-    ``is_spm_independent_minor_role`` is formula-owned in the engine adapter
-    (``microcosm.frame.adapters.policyengine_us._GENERATED_VARIABLE_GROUPS``)
-    and therefore *cannot* be written by ``write_dataset``, while
-    ``is_household_head`` and ``is_household_spouse`` can — so a frame check
-    here and the engine's own reading of the written H5 agree.
+    ``is_spm_independent_minor_role`` is the engine's declared dataset source
+    input (``policyengine_us.spm.DATASET_SOURCE_INPUTS``), which the adapter
+    classifies as an input leaf and ``write_dataset`` persists when the frame
+    carries it (the ``spm_independence_role`` stage writes it), and
+    ``is_household_head`` / ``is_household_spouse`` are persisted too — so a
+    frame check here and the engine's own reading of the written H5 agree.
     """
 
     from microcosm.build.us_runtime.release_gate_preflight import (
@@ -6133,6 +6160,165 @@ def _qrf_tail_concentration_gate(
         "sparse_nonzero_share_max": US_QRF_SPARSE_NONZERO_SHARE_MAX,
     }
     return gate, surface
+
+
+#: Failure-line prefix for a per-run QRF tail-concentration register that does
+#: not match the checked surface. Deliberately distinct from the standing
+#: evidence owner "QRF tail concentration failed:" (US_EVIDENCE_FAILURE_OWNERS):
+#: a register mismatch is an operator input error, not the #481/#487 tail
+#: defect, and --evidence-release refuses it outright.
+US_QRF_TAIL_REGISTER_MISMATCH_PREFIX = "QRF tail-concentration register mismatch:"
+
+
+def _qrf_tail_register_mismatch(
+    register: Mapping[str, str],
+    gate: GateResult,
+) -> dict[str, list[str]]:
+    """Register entries the checked tail surface did not use.
+
+    The per-run register must exactly match the concentrated columns.
+    ``stale`` entries were checked and sit at or below the threshold (the
+    gate itself also fails them); ``unused`` entries were never checked —
+    the column is dense, thin, absent, non-numeric, or not a QRF output.
+    Both lists empty means the register matches.
+    """
+    used = set(gate.details.get("reviewed_exclusions", ()))
+    stale = sorted(set(register) & set(gate.details.get("stale_exclusions", ())))
+    unused = sorted(set(register) - used - set(stale))
+    return {"stale": stale, "unused": unused}
+
+
+def _qrf_tail_register_failures(mismatch: Mapping[str, Sequence[str]]) -> list[str]:
+    """One batched failure line for a register mismatch, or none."""
+    stale = list(mismatch.get("stale", ()))
+    unused = list(mismatch.get("unused", ()))
+    if not stale and not unused:
+        return []
+    return [
+        f"{US_QRF_TAIL_REGISTER_MISMATCH_PREFIX} the per-run exclusion "
+        "register must exactly match the concentrated columns; stale "
+        f"(checked, at or below the threshold) = {stale}; unused (dense, "
+        f"thin, absent, or not a checked QRF output) = {unused}. Remove these "
+        "entries; qrf_tail_concentration.json records the measured surface."
+    ]
+
+
+def _qrf_tail_register_evidence_refusal(
+    register_failures: Sequence[str],
+) -> RuntimeError | None:
+    """--evidence-release refusal for a register mismatch, owned or not.
+
+    A register mismatch is corrected in the register, never owned: the
+    pre-batch raise this replaced refused every mode, so no per-run
+    adjudication may carry a stale or unused entry into an evidence export.
+    """
+    if not register_failures:
+        return None
+    return RuntimeError(
+        "Evidence release refused: a QRF tail-concentration register "
+        "mismatch cannot be owned; correct the register from "
+        "qrf_tail_concentration.json and rerun. " + "; ".join(register_failures)
+    )
+
+
+def _record_qrf_tail_concentration_gate(
+    export_frame: Frame,
+    *,
+    exclusions_path: Path | None,
+    allow_concentration: bool,
+    terminal_gate_failures: list[str],
+    release_dir: Path,
+    telemetry: _TerminalBatchTelemetry,
+) -> list[str]:
+    """Evaluate the terminal QRF tail gate and record everything it measured.
+
+    Appends the gate's failures (unless ``allow_concentration``) and any
+    register-mismatch line (always — the register must match whatever the
+    flag says) to ``terminal_gate_failures``, so the batched pre-export raise
+    refuses the run with the #568 weight sidecar on disk. Whenever the gate
+    evaluated, ``qrf_tail_concentration.json`` is written with the per-column
+    shares, carrier counts, and the mismatch. Only a genuine evaluation crash
+    escapes: it propagates on an otherwise-clean run and becomes one unowned
+    failure line under earlier failures.
+
+    Returns the register-mismatch failure lines (empty when the register
+    matches) so --evidence-release can refuse them.
+    """
+    try:
+        register = _load_qrf_tail_concentration_exclusions(exclusions_path)
+        gate, surface = _qrf_tail_concentration_gate(
+            export_frame,
+            reviewed_exclusions=register,
+        )
+        mismatch = _qrf_tail_register_mismatch(register, gate)
+        surface = {
+            **surface,
+            "reviewed_exclusions_file": (
+                str(exclusions_path) if exclusions_path is not None else None
+            ),
+            "reviewed_exclusions_sha256": (
+                _sha256(exclusions_path) if exclusions_path is not None else None
+            ),
+            "reviewed_exclusions": dict(register),
+            "register_mismatch": mismatch,
+        }
+    except Exception as exc:
+        # Same degraded-mode contract as the coverage gate and as before this
+        # refactor: with earlier failures on record, an evaluation crash
+        # becomes one more line under the standing "QRF tail concentration
+        # failed:" prefix (so --evidence-release ownership is unchanged)
+        # instead of masking them. Only a register mismatch is refused
+        # outright; see _qrf_tail_register_evidence_refusal.
+        if not terminal_gate_failures:
+            raise
+        terminal_gate_failures.append(
+            "QRF tail concentration failed: evaluation error under earlier "
+            f"gate failures: {type(exc).__name__}: {exc}"
+        )
+        return []
+    gate_failures = (
+        [f"QRF tail concentration failed: {failure}" for failure in gate.failures]
+        if not gate.passed and not allow_concentration
+        else []
+    )
+    register_failures = _qrf_tail_register_failures(mismatch)
+    terminal_gate_failures.extend(gate_failures)
+    terminal_gate_failures.extend(register_failures)
+    qrf_tail_path = release_dir / "qrf_tail_concentration.json"
+    qrf_tail_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "enforced": not allow_concentration,
+                "surface": surface,
+                "tail_concentration": {
+                    "passed": gate.passed,
+                    "failures": list(gate.failures),
+                    "details": dict(gate.details),
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n"
+    )
+    telemetry.attach_artifact("qrf_tail_concentration", qrf_tail_path)
+    if gate_failures or register_failures:
+        telemetry.stage(
+            "export_dataset",
+            status="failed",
+            message=(
+                "QRF tail-concentration gate failed."
+                if not register_failures
+                else "QRF tail-concentration gate or register failed."
+            ),
+            failures=[
+                *(gate.failures if gate_failures else ()),
+                *register_failures,
+            ],
+            force_upload=True,
+        )
+    return register_failures
 
 
 def _person_population(frame: Frame) -> float:
@@ -7015,6 +7201,79 @@ def _target_family(target: object | None) -> str:
         if isinstance(registry, Mapping) and registry.get("family") is not None:
             return str(registry["family"])
     return ""
+
+
+TARGET_SURFACE_FULL = "full"
+TARGET_SURFACE_NATIONAL_STATE = "national_state"
+TARGET_SURFACE_MODES = (TARGET_SURFACE_FULL, TARGET_SURFACE_NATIONAL_STATE)
+
+
+def _select_target_surface(
+    target_specs: Sequence[TargetSpec],
+    mode: str,
+) -> tuple[tuple[TargetSpec, ...], dict[str, object]]:
+    """Return the specs the release calibrates to and a receipt of the choice.
+
+    ``full`` keeps every compiled spec. ``national_state`` drops every spec
+    ``is_congressional_district_target`` classifies as congressional-district
+    (CD geography rows and rows sourced from the SOI CD file, whatever their
+    geography). The target-parity and profile-coverage gates run on the full
+    compiled surface before this selection, so a dropped family is still
+    proven compiled.
+    """
+
+    if mode not in TARGET_SURFACE_MODES:
+        raise ValueError(
+            f"Unknown target surface {mode!r}; expected one of {TARGET_SURFACE_MODES}."
+        )
+    specs = tuple(target_specs)
+    if mode == TARGET_SURFACE_FULL:
+        kept = specs
+    else:
+        kept = tuple(
+            spec for spec in specs if not _target_is_congressional_district(spec)
+        )
+    if not kept:
+        raise ValueError(f"Target surface {mode!r} keeps no targets.")
+    return kept, {
+        "mode": mode,
+        "compiled_targets": len(specs),
+        "calibrated_targets": len(kept),
+        "dropped_congressional_district_targets": len(specs) - len(kept),
+    }
+
+
+CONGRESSIONAL_DISTRICT_SOURCE_ALIASES = (
+    "census-acs-s0101-congressional-district-age-2024",
+    "soi-congressional-district-2022",
+)
+
+
+def _source_coverage_aliases(
+    target_surface_selection: Mapping[str, object] | None,
+) -> tuple[tuple[str, ...], dict[str, str]]:
+    """Return ``us_source_coverage.json``'s active aliases and surface exclusions.
+
+    The congressional-district sources count as active coverage only when the
+    release calibrates to them. A surface that dropped every CD-classified
+    target (``target_surface_selection`` is recorded only for such surfaces)
+    lists them as reviewed exclusions naming the drop, so the coverage artifact
+    agrees with ``build.target_surface_selection`` in the manifests.
+    """
+
+    if target_surface_selection is None:
+        return DIRECT_ACTIVE_ALIASES + CONGRESSIONAL_DISTRICT_SOURCE_ALIASES, {}
+    dropped = int(target_surface_selection["dropped_congressional_district_targets"])
+    reason = (
+        "Not calibrated by this release: --target-surface "
+        f"{target_surface_selection['mode']} dropped all {dropped:,} "
+        "congressional-district-classified targets after the target-parity and "
+        "profile-coverage gates ran on the full compiled surface; see "
+        "build.target_surface_selection in the manifests."
+    )
+    return DIRECT_ACTIVE_ALIASES, {
+        alias: reason for alias in CONGRESSIONAL_DISTRICT_SOURCE_ALIASES
+    }
 
 
 def _target_is_congressional_district(target: object | None) -> bool:
@@ -8056,6 +8315,7 @@ def _build_manifests(
     timing: Mapping[str, object] | None = None,
     warm_start_calibration: Mapping[str, object] | None = None,
     selection_source: Mapping[str, object] | None = None,
+    target_surface_selection: Mapping[str, object] | None = None,
     default_dataset: Mapping[str, object] | None = None,
     medicaid_enrollment_substitutions: Sequence[Mapping[str, object]] = (),
     staging: Mapping[str, object] | None = None,
@@ -8149,6 +8409,13 @@ def _build_manifests(
             "sha256": calibration_sha,
             "warm_start": warm_start_payload,
             "selection_source": selection_source_payload,
+            # Present only when --target-surface narrows the calibrated
+            # surface, so a default manifest is unchanged.
+            **(
+                {"target_surface_selection": dict(target_surface_selection)}
+                if target_surface_selection is not None
+                else {}
+            ),
             "target_surface": {
                 "sha256": diag["target_surface"]["sha256"],
                 "n_targets": diag["target_surface"]["n_targets"],
@@ -8370,6 +8637,13 @@ def _build_manifests(
             ),
             "warm_start_calibration": warm_start_payload,
             "selection_source": selection_source_payload,
+            # Present only when --target-surface narrows the calibrated
+            # surface, so a default manifest is unchanged.
+            **(
+                {"target_surface_selection": dict(target_surface_selection)}
+                if target_surface_selection is not None
+                else {}
+            ),
             "default_dataset": default_dataset_payload,
             **(
                 {
@@ -9431,6 +9705,15 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 for failure in target_profile_gate.failures
             )
         )
+    # The parity and profile-coverage gates above ran on the full compiled
+    # surface; --target-surface only narrows what is calibrated.
+    target_specs, target_surface_receipt = _select_target_surface(
+        target_specs, args.target_surface
+    )
+    target_surface_selection = (
+        None if args.target_surface == TARGET_SURFACE_FULL else target_surface_receipt
+    )
+    active_target_registry = TargetRegistry(target_specs, country="us")
     release_root = args.out.resolve()
     artifact_root = release_root / "artifacts"
     release_dir = release_root / "releases" / release_id
@@ -10112,6 +10395,37 @@ def _main(argv: Sequence[str] | None = None) -> None:
             + "; ".join(
                 f"Relationship-input signal failed: {failure}"
                 for failure in relationship_inputs_gate.failures
+            )
+        )
+    if telemetry is not None:
+        telemetry.stage(
+            "spm_independence_role",
+            message=(
+                "Restoring the measured SPM independence role from the pinned "
+                "Census ASEC person files."
+            ),
+        )
+    if pool_frame is None:
+        base_frame = with_us_spm_independence_role(
+            base_frame,
+            seed=args.seed,
+            time_period=PERIOD,
+        )
+    spm_independence_role_gate = us_spm_independence_role_signal_gate(base_frame)
+    if not spm_independence_role_gate.passed:
+        if telemetry is not None:
+            telemetry.stage(
+                "spm_independence_role_gate",
+                status="failed",
+                message="SPM independence role signal gate failed.",
+                failures=list(spm_independence_role_gate.failures),
+                force_upload=True,
+            )
+        raise RuntimeError(
+            "Release gates failed: "
+            + "; ".join(
+                f"SPM independence role signal failed: {failure}"
+                for failure in spm_independence_role_gate.failures
             )
         )
     if telemetry is not None:
@@ -12102,90 +12416,17 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # $594,484 donor-ceiling value — is invisible to support clipping (every
     # draw inside donor range), count targets (carrier count exact), and mass
     # parity (column excluded from the reference band), but is unmistakable as
-    # top-k weighted-mass share.
-    try:
-        qrf_tail_exclusions = _load_qrf_tail_concentration_exclusions(
-            args.qrf_tail_concentration_exclusions
-        )
-        qrf_tail_gate, qrf_tail_surface = _qrf_tail_concentration_gate(
-            export_frame,
-            reviewed_exclusions=qrf_tail_exclusions,
-        )
-        register_dormant = sorted(
-            set(qrf_tail_exclusions)
-            - set(qrf_tail_gate.details.get("reviewed_exclusions", ()))
-        )
-        if register_dormant:
-            raise RuntimeError(
-                "QRF tail-concentration exclusion register carries entries "
-                "the checked surface did not use (column dense, thin, "
-                f"absent, or below threshold): {register_dormant}. The "
-                "per-run register must exactly match the concentrated "
-                "columns — remove the stale entries."
-            )
-        qrf_tail_surface = {
-            **qrf_tail_surface,
-            "reviewed_exclusions_file": (
-                str(args.qrf_tail_concentration_exclusions)
-                if args.qrf_tail_concentration_exclusions is not None
-                else None
-            ),
-            "reviewed_exclusions_sha256": (
-                _sha256(args.qrf_tail_concentration_exclusions)
-                if args.qrf_tail_concentration_exclusions is not None
-                else None
-            ),
-            "reviewed_exclusions": dict(qrf_tail_exclusions),
-        }
-    except Exception as exc:
-        # Same degraded-mode contract as the coverage gate above.
-        if not terminal_gate_failures:
-            raise
-        terminal_gate_failures.append(
-            "QRF tail concentration failed: evaluation error under earlier "
-            f"gate failures: {type(exc).__name__}: {exc}"
-        )
-        qrf_tail_gate = None
-        qrf_tail_surface = None
-    if qrf_tail_gate is not None:
-        qrf_tail_failed = (
-            not qrf_tail_gate.passed and not args.allow_qrf_tail_concentration
-        )
-        if qrf_tail_failed:
-            terminal_gate_failures.extend(
-                f"QRF tail concentration failed: {failure}"
-                for failure in qrf_tail_gate.failures
-            )
-        qrf_tail_path = release_dir / "qrf_tail_concentration.json"
-        qrf_tail_path.write_text(
-            json.dumps(
-                {
-                    "schema_version": 1,
-                    "enforced": not args.allow_qrf_tail_concentration,
-                    "surface": qrf_tail_surface,
-                    "tail_concentration": {
-                        "passed": qrf_tail_gate.passed,
-                        "failures": list(qrf_tail_gate.failures),
-                        "details": dict(qrf_tail_gate.details),
-                    },
-                },
-                indent=2,
-                sort_keys=True,
-            )
-            + "\n"
-        )
-        terminal_batch_telemetry.attach_artifact(
-            "qrf_tail_concentration",
-            qrf_tail_path,
-        )
-        if qrf_tail_failed:
-            terminal_batch_telemetry.stage(
-                "export_dataset",
-                status="failed",
-                message="QRF tail-concentration gate failed.",
-                failures=list(qrf_tail_gate.failures),
-                force_upload=True,
-            )
+    # top-k weighted-mass share. A per-run register that does not match the
+    # checked surface is a batched failure (never an early raise), so the
+    # measured tail evidence and the #568 weight sidecar survive it.
+    qrf_tail_register_failures = _record_qrf_tail_concentration_gate(
+        export_frame,
+        exclusions_path=args.qrf_tail_concentration_exclusions,
+        allow_concentration=args.allow_qrf_tail_concentration,
+        terminal_gate_failures=terminal_gate_failures,
+        release_dir=release_dir,
+        telemetry=terminal_batch_telemetry,
+    )
     # Batched pre-export raise: the calibration battery, SPM measurement
     # composition, input coverage,
     # export-mass parity, and QRF tail concentration have ALL been evaluated
@@ -12211,6 +12452,10 @@ def _main(argv: Sequence[str] | None = None) -> None:
                 )
             except RuntimeError as error:
                 evidence_refusal = error
+            if evidence_refusal is None:
+                evidence_refusal = _qrf_tail_register_evidence_refusal(
+                    qrf_tail_register_failures
+                )
         if not args.evidence_release or evidence_refusal is not None:
             # Gate-failure path ONLY (microcosm#568 review): a batched
             # pre-export failure mints no H5, so the exact calibrated weight
@@ -12393,13 +12638,15 @@ def _main(argv: Sequence[str] | None = None) -> None:
         telemetry.stage(
             "source_coverage", message="Writing source coverage diagnostics."
         )
-    active_aliases = DIRECT_ACTIVE_ALIASES + (
-        "census-acs-s0101-congressional-district-age-2024",
-        "soi-congressional-district-2022",
+    active_aliases, surface_exclusions = _source_coverage_aliases(
+        target_surface_selection
     )
     coverage = us_source_coverage_diagnostics(
         active_target_aliases=active_aliases,
-        reviewed_exclusions=_reviewed_exclusions(active_aliases),
+        reviewed_exclusions={
+            **_reviewed_exclusions(active_aliases),
+            **surface_exclusions,
+        },
     )
     coverage["fiscal_target_sources"] = _fiscal_target_source_provenance(target_specs)
     if congressional_district_vintage_crosswalk_metadata is not None:
@@ -12539,6 +12786,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         timing=timing,
         warm_start_calibration=warm_start_calibration,
         selection_source=selection_source_payload,
+        target_surface_selection=target_surface_selection,
         ledger_artifact=ledger_artifact.provenance(),
         default_dataset=default_dataset,
         medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
