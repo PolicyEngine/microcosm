@@ -2066,6 +2066,8 @@ def test_input_artifact_pins_bind_spi_donor_and_ods() -> None:
         "nts_household_tab",
         "nts_individual_tab",
         "nts_trip_tab",
+        "nts_stage_tab",
+        "nts_ticket_tab",
         "published_fact_surface",
         "qrf_donor",
         "was_qrf_donor",

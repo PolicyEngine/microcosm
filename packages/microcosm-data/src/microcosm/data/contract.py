@@ -810,9 +810,10 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
             "a7250c519e79e22d366316cd4943f5f4bd2cc86a0e76b919ee2ff2eacb2335f3"
             "b87fa7eb0c1e0281b8a5ab5c7a33509758f1663e4fbbfb467fb970b54e21d84a"
             "0bb5ca207d76ce6d2be68ba4c0a7dfb982e767165634c15bdb539c921e9edc1f"
+            "cc7e162b160ae34e2ca81629a7c88dc77edbe36a597636a228db0f496f7d2768"
         ),
         "policy_sha256": (
-            "11fe34504eecefa7ca584ccecd3c8c6131db71aa2f96f0d6337b2c9fbd55a738"
+            "a85f9c83fb401d0088b812b7c9a0d05cb067debf973dc0379b50295caf3a4336"
         ),
     },
 }

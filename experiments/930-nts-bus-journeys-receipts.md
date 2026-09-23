@@ -387,3 +387,42 @@ column and root attribute byte-equal.
 The `bus_support_pricing` gate recomputes the three areas' components and per-boarding rates from
 the vendored rows at 1e-9 and reports the priced-over-published ratios (0.953, 1.158, 1.623)
 without fencing them: the calibration targets act on them, as they act on the fares.
+
+## Part I — the stage and ticket tables: the single-fare share (C13, 2026-09-23)
+
+María's ask (2026-09-23, after the fare-cap question): read the ticket table for the single-fare
+share. The NTS extract's Stage table records every boarding (`NumBoardings` counts the vehicles on a
+stage), the cost paid at the point of use (`StageFareCost`) and the held ticket used (`IndTicketID`);
+the Ticket table records the season tickets and passes a person holds (`SpecialTicket_B01ID`: 1–6
+non-concessionary, 7–11 concessionary, from the deposited lookup tables). Pinned as two further
+artifacts: `stage_eul_2002-2024.tab` 1,039,281,193 bytes sha256 `4a6015ed…`, `ticket_eul_2002-2024.tab`
+8,655,532 bytes sha256 `276a99bd…`.
+
+Boarding payment classes on the 2022–24 diary (England, bus stages, unweighted counts read while
+designing the declaration): 30,403 bus boardings; 12,634 paid at the point of use (no ticket record,
+positive cost), 10,399 on concessionary passes, 3,450 on non-concessionary season tickets or passes,
+2,758 free with no ticket (children, by age), 1,162 with no cost recorded. Single-fare share of
+fare-paying boardings 0.79 (London series 0.90, other local bus 0.71). Design-weighted by residence
+group and survey year (W2): outside London the point-of-use share of boardings rose from 0.34 (2022)
+to 0.43 (2023) and 0.46 (2024) while the season-ticket share fell from 0.25 to 0.16 and 0.15, the
+diary's reading of the £2 cap's pass-to-single shift; the fare paid per boarding outside London
+averaged £2.10 in 2022 and £1.95 and £2.02 under the cap, median £2.00 in all three years; London
+£1.57, £1.85, £1.87 (median £1.65 then £1.75, the TfL single). The NTS boardings per bus trip are 1.13
+(London series 1.15, other local bus 1.13): the declared translation for England outside London
+(1.12) is the same number from the publisher's side, and the London series' 2.37 is twice it, the
+scope difference (non-resident boardings in TfL's count) Part D declared.
+
+Declaration and runtime: the stage classes every bus stage, annualises each person's weighted
+boardings by class and series (the trip's weight on the household-and-trip basis, times the
+vehicles boarded), takes per series, residence group and band the boarding-weighted share of
+point-of-use boardings among fare-paying ones (a cell without fare-paying boardings takes its
+group's share, then England's, receipted), and assigns each person the trips-weighted combination
+of the two series' cell shares as `local_bus_single_fare_share` (a person with no trips takes the
+plain mean). The column joins the export surface (person grain), the stage's support clip and E6
+bounds (0 to 1); the receipts carry the class shares, fares and boardings per trip above. No
+published table fences the share (DfT does not publish boardings by ticket type), so it is a
+receipt line, not a gate. The parameter side, a per-journey cap on the single-fare boardings of
+fare-paying persons, is policyengine-uk#1871.
+
+spine-t3 (the rebased tree plus C13) and its diff against spine-t2, the calibration and the anatomy
+follow below.

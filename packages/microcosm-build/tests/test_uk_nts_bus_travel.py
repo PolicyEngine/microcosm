@@ -14,6 +14,10 @@ from microcosm.build.source_manifest import SourceOperationSpec
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.nts_bus_travel import (
     BAND_IDS,
+    BOARDING_CLASSES,
+    BOARDING_CONCESSIONARY,
+    BOARDING_FARE_PAID,
+    BOARDING_PASS,
     BUS_IN_LONDON,
     IMPUTE_BUS_USE_BAND_KIND,
     LONDON_GROUP,
@@ -30,6 +34,7 @@ from microcosm.build.uk_runtime.nts_bus_travel import (
     assign_bus_pass_eligibility,
     assign_trips_from_band_means,
     band_means_from_donor,
+    boarding_class_column,
     clean_nts_travel_tables,
     eligibility_rules,
     impute_bus_use_band,
@@ -37,6 +42,7 @@ from microcosm.build.uk_runtime.nts_bus_travel import (
     published_car_availability,
     published_trip_rates,
     recipient_predictors,
+    single_fare_shares_from_donor,
 )
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
 
@@ -58,6 +64,15 @@ def _columns() -> NTSColumns:
 def _synthetic_nts(
     households: int = 90, *, frequency: bool = True
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    household, individual, trip, _stage, _ticket = _synthetic_nts_with_tickets(
+        households, frequency=frequency
+    )
+    return household, individual, trip
+
+
+def _synthetic_nts_with_tickets(
+    households: int = 90, *, frequency: bool = True
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     rows = np.arange(households)
     household = pd.DataFrame(
         {
@@ -89,17 +104,38 @@ def _synthetic_nts(
     individual = pd.DataFrame(persons)
     w2 = dict(zip(household["HouseholdID"], household["W2"], strict=True))
     trips = []
+    stages = []
+    tickets = []
     trip_id = 1
+    stage_id = 1
+    ticket_id = 1
     for _, person in individual.iterrows():
         code = int(person.get("OrdBus2Freq_B01ID", 10))
         count = max(0, 9 - code)
         london = (int(person["HouseholdID"]) - 1000) % 9 == 6
         household_weight = float(w2[int(person["HouseholdID"])])
+        pid = int(person["IndividualID"])
+        # Odd-numbered households hold a ticket, alternately a concessionary
+        # pass (7) and a season ticket (1); the rest pay at the point of use,
+        # with a free boarding every fifth trip.
+        held = None
+        hid = int(person["HouseholdID"])
+        if hid % 2 == 1:
+            held = ticket_id
+            tickets.append(
+                {
+                    "IndTicketID": ticket_id,
+                    "IndividualID": pid,
+                    "SpecialTicket_B01ID": 7 if (hid // 2) % 2 == 0 else 1,
+                    "SurveyYear": 2024,
+                }
+            )
+            ticket_id += 1
         for t in range(count):
             trips.append(
                 {
                     "TripID": trip_id,
-                    "IndividualID": int(person["IndividualID"]),
+                    "IndividualID": pid,
                     "HouseholdID": int(person["HouseholdID"]),
                     "MainMode_B04ID": 7 if london else 8,
                     # W5 carries W2 (the household_and_trip basis).
@@ -107,6 +143,23 @@ def _synthetic_nts(
                     "JJXSC": 1.0,
                 }
             )
+            free = held is None and t % 5 == 4
+            stages.append(
+                {
+                    "StageID": stage_id,
+                    "TripID": trip_id,
+                    "IndividualID": pid,
+                    "HouseholdID": int(person["HouseholdID"]),
+                    "IndTicketID": held if held is not None else np.nan,
+                    "StageMode_B04ID": 7 if london else 8,
+                    "NumBoardings": 1 + (t % 4 == 3),
+                    "StageFareCost": (
+                        0.0 if held is not None or free else 2.0 - (t % 3) * 0.25
+                    ),
+                    "SurveyYear": 2024,
+                }
+            )
+            stage_id += 1
             trip_id += 1
         trips.append(
             {
@@ -119,7 +172,13 @@ def _synthetic_nts(
             }
         )
         trip_id += 1
-    return household, individual, pd.DataFrame(trips)
+    return (
+        household,
+        individual,
+        pd.DataFrame(trips),
+        pd.DataFrame(stages),
+        pd.DataFrame(tickets),
+    )
 
 
 def test_declared_columns_and_codes_parse_from_the_committed_stage() -> None:
@@ -194,6 +253,63 @@ def test_cleaning_annualises_diary_trips_per_series_and_maps_the_codebook() -> N
         clean_nts_travel_tables(
             household.drop(columns=["NumCarVan"]), individual, trip, columns=_columns()
         )
+
+
+def test_stage_and_ticket_tables_class_boardings_and_give_the_single_fare_share() -> (
+    None
+):
+    """Fare paid at the point of use, season tickets, concessionary passes, free."""
+
+    household, individual, trip, stage, ticket = _synthetic_nts_with_tickets()
+    donor = clean_nts_travel_tables(
+        household, individual, trip, stage, ticket, columns=_columns()
+    )
+    person = donor.person
+    assert donor.receipt["ticket_tables_read"] is True
+    classes = donor.receipt["boarding_classes"]
+    assert set(classes["by_series"]) == {BUS_IN_LONDON, OTHER_LOCAL_BUS}
+    for series in (BUS_IN_LONDON, OTHER_LOCAL_BUS):
+        share = classes["by_series"][series]["single_share_of_fare_paying_boardings"]
+        assert 0.0 < share < 1.0
+        assert classes["by_series"][series]["boardings_per_bus_trip"] >= 1.0
+    cell = next(iter(classes["by_group_and_year"].values()))
+    assert set(cell["boarding_class_shares"]) == set(BOARDING_CLASSES)
+    assert abs(sum(cell["boarding_class_shares"].values()) - 1.0) < 1e-9
+    assert 1.0 <= cell["mean_fare_paid_per_boarding"] <= 2.0
+    # Per person: a ticket holder has no fare-paid boardings; a payer has no
+    # pass boardings; a concessionary holder's boardings are concessionary.
+    ticket_of = ticket.set_index("IndividualID")["SpecialTicket_B01ID"]
+    for series in (BUS_IN_LONDON, OTHER_LOCAL_BUS):
+        paid = person[boarding_class_column(series, BOARDING_FARE_PAID)]
+        passes = person[boarding_class_column(series, BOARDING_PASS)]
+        conc = person[boarding_class_column(series, BOARDING_CONCESSIONARY)]
+        holder = person["individual_id"].map(ticket_of)
+        assert (paid[holder.notna()] == 0).all()
+        assert (passes[holder.isna()] == 0).all() and (conc[holder.isna()] == 0).all()
+        assert (conc[holder == 7] >= 0).all() and (passes[holder == 7] == 0).all()
+    shares, receipt = single_fare_shares_from_donor(person)
+    assert set(shares) == {BUS_IN_LONDON, OTHER_LOCAL_BUS}
+    for series in shares:
+        for group in shares[series]:
+            assert all(0.0 <= v <= 1.0 for v in shares[series][group].values())
+    assert set(receipt["all_england_single_share"]) == {BUS_IN_LONDON, OTHER_LOCAL_BUS}
+    trips = assign_trips_from_band_means(
+        person["local_bus_use_band"].to_numpy(),
+        person["residence_group"].to_numpy(),
+        band_means_from_donor(person)[0],
+        single_fare_shares=shares,
+    )
+    share_column = trips["local_bus_single_fare_share"]
+    assert share_column.shape == (len(person),)
+    assert ((share_column >= 0.0) & (share_column <= 1.0)).all()
+    # Without the tables the donor carries no class columns and the share is absent.
+    plain = clean_nts_travel_tables(household, individual, trip, columns=_columns())
+    assert plain.receipt["ticket_tables_read"] is False
+    assert boarding_class_column(BUS_IN_LONDON, BOARDING_FARE_PAID) not in plain.person
+    bad = dict(_operation(_committed_stage(), "clean_nts_travel_tables"))
+    bad["codes"] = {**bad["codes"], "concessionary_ticket": []}
+    with pytest.raises(NTSBusTravelError, match="concessionary_ticket"):
+        NTSColumns.from_parameters(bad)
 
 
 def test_cleaning_handles_the_nts_sentinels_and_the_diary_sample() -> None:
@@ -414,7 +530,7 @@ def test_stage_transform_end_to_end_on_synthetic_inputs() -> None:
         for op in committed.operations
     )
     stage = dataclasses.replace(committed, operations=operations)
-    household, individual, trip = _synthetic_nts()
+    household, individual, trip, nts_stage, nts_ticket = _synthetic_nts_with_tickets()
     frame, rng = _recipient_frame()
     transform = UKNTSBusTravelStageTransform(
         stage=stage,
@@ -422,6 +538,8 @@ def test_stage_transform_end_to_end_on_synthetic_inputs() -> None:
         nts_household=household,
         nts_individual=individual,
         nts_trip=trip,
+        nts_stage=nts_stage,
+        nts_ticket=nts_ticket,
     )
     result = transform(frame)
     person = result.table("person")
@@ -430,6 +548,7 @@ def test_stage_transform_end_to_end_on_synthetic_inputs() -> None:
         out_household.columns
     )
     assert person["local_bus_use_band"].between(NON_USER_BAND, MAX_BAND).all()
+    assert person["local_bus_single_fare_share"].between(0.0, 1.0).all()
     assert (person["local_bus_trips"] >= 0).all()
     assert (
         person.loc[person["local_bus_use_band"] == NON_USER_BAND, "local_bus_trips"]

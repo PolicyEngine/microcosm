@@ -233,6 +233,8 @@ def test_uk_production_graph_binds_split_donor_sources_and_runtime_config() -> N
         "nts_household",
         "nts_individual",
         "nts_trip",
+        "nts_stage",
+        "nts_ticket",
         "lcfs_household",
         "lcfs_person",
         "etb",

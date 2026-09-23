@@ -414,6 +414,12 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
     nts_trip = pd.read_csv(
         _fixture_input(source, inputs, "nts_trip"), float_precision="round_trip"
     )
+    nts_stage = pd.read_csv(
+        _fixture_input(source, inputs, "nts_stage"), float_precision="round_trip"
+    )
+    nts_ticket = pd.read_csv(
+        _fixture_input(source, inputs, "nts_ticket"), float_precision="round_trip"
+    )
     spi_path = _fixture_input(source, inputs, "spi_donor")
     spi_donor = pd.read_csv(spi_path, float_precision="round_trip")
     hmrc_targets_path = _fixture_input(source, inputs, "hmrc_income_targets")
@@ -480,6 +486,8 @@ def _fixture_implementations(source: Path) -> Mapping[str, object]:
                 nts_household=nts_household,
                 nts_individual=nts_individual,
                 nts_trip=nts_trip,
+                nts_stage=nts_stage,
+                nts_ticket=nts_ticket,
             ),
             "regional_property_uprating": UKRegionalPropertyUpratingStageTransform(
                 stage=stages["regional_property_uprating"]

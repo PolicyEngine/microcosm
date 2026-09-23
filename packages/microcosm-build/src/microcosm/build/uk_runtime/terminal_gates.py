@@ -229,6 +229,7 @@ UK_ALLOWED_EXTRA_EXPORT_COLUMNS: tuple[str, ...] = (
     "person.is_parent",
     "person.is_uc_claimant",
     "person.legacy_jobseeker_proxy",
+    "person.local_bus_single_fare_share",
     "person.local_bus_trips",
     "person.local_bus_use_band",
     "person.ons_family_index",

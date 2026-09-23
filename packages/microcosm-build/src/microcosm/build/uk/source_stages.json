@@ -1481,6 +1481,30 @@
      "runtime_sha256_required": true
     },
     {
+     "role": "nts_stage_tab",
+     "kind": "private_microdata",
+     "ukds_study_number": 5340,
+     "doi": "10.5255/UKDA-SN-5340-19",
+     "filename": "stage_eul_2002-2024.tab",
+     "sha256": "4a6015ed54abc32b48e45a5af663d44a39e1147c7ff8c2e087aa29828665b64c",
+     "size_bytes": 1039281193,
+     "access": "private_local_input",
+     "locator": "caller-supplied local input",
+     "runtime_sha256_required": true
+    },
+    {
+     "role": "nts_ticket_tab",
+     "kind": "private_microdata",
+     "ukds_study_number": 5340,
+     "doi": "10.5255/UKDA-SN-5340-19",
+     "filename": "ticket_eul_2002-2024.tab",
+     "sha256": "276a99bd30ff4aa3506d2126f6fd269db2f2d0265b5231a55aaefca9212363a0",
+     "size_bytes": 8655532,
+     "access": "private_local_input",
+     "locator": "caller-supplied local input",
+     "runtime_sha256_required": true
+    },
+    {
      "role": "nts_trip_rates",
      "resource": "nts_trip_rates.json",
      "kind": "public_aggregate_reference",
@@ -1540,7 +1564,16 @@
       "frequency": "OrdBus2Freq_B01ID",
       "main_mode": "MainMode_B04ID",
       "trip_weight": "W5",
-      "short_walk_multiplier": "JJXSC"
+      "short_walk_multiplier": "JJXSC",
+      "stage_id": "StageID",
+      "stage_trip_id": "TripID",
+      "stage_individual_id": "IndividualID",
+      "stage_ticket_id": "IndTicketID",
+      "stage_mode": "StageMode_B04ID",
+      "stage_boardings": "NumBoardings",
+      "stage_fare_cost": "StageFareCost",
+      "ticket_id": "IndTicketID",
+      "ticket_special": "SpecialTicket_B01ID"
      },
      "codes": {
       "region": {
@@ -1564,6 +1597,13 @@
        "bus_in_london": 7,
        "other_local_bus": 8
       },
+      "concessionary_ticket": [
+       7,
+       8,
+       9,
+       10,
+       11
+      ],
       "frequency": {
        "1": 6,
        "2": 6,
@@ -1601,7 +1641,7 @@
        "21": 85
       }
      },
-     "codebook_status": "verified 2026-09-22 against the deposited SN 5340 19th-edition lookup tables and the data extract user guide. Frequency is OrdBus2Freq_B01ID (asked since 2019; OrdBusFreq_B01ID ended in 2018), ten codes folded onto the seven NTS0313 bands (codes 1 to 3 are the three-or-more-times-a-week band, 9 and 10 the less-than-once-a-year-or-never band); code -9 (question not applicable, proxy responses) is declared a non-user because the published NTS0313 shares reproduce only with those persons in the base (2024 at-least-yearly share 0.526 without them, 0.505 with them, the published 0.505); code -8 (no answer) is dropped and receipted. Age_B01ID has 21 bands, each mapped to its lower age and then banded on the declared edges, so donor and recipient share one banding (every NTS band lies inside one declared band). Region codes 10 and 11 (Wales, Scotland) occur only before 2013 and never in the declared years. HHIncome2002_B02ID -8 (no answer) is dropped. The trip weight is W5, which carries the diary household weight W2 (the user guide's trips per person per year is 52.14 x sum(JJXSC x W5) over sum(W2) on the diary sample), so each person's counted trips are divided by W2 before the W2-weighted mean; W5xHH is the within-household factor only. W2 is zero for interview-only households, which leave the donor (the fit and the diary means use the diary sample, as the user guide prescribes for trip measures)."
+     "codebook_status": "verified 2026-09-22 against the deposited SN 5340 19th-edition lookup tables and the data extract user guide. Frequency is OrdBus2Freq_B01ID (asked since 2019; OrdBusFreq_B01ID ended in 2018), ten codes folded onto the seven NTS0313 bands (codes 1 to 3 are the three-or-more-times-a-week band, 9 and 10 the less-than-once-a-year-or-never band); code -9 (question not applicable, proxy responses) is declared a non-user because the published NTS0313 shares reproduce only with those persons in the base (2024 at-least-yearly share 0.526 without them, 0.505 with them, the published 0.505); code -8 (no answer) is dropped and receipted. Age_B01ID has 21 bands, each mapped to its lower age and then banded on the declared edges, so donor and recipient share one banding (every NTS band lies inside one declared band). Region codes 10 and 11 (Wales, Scotland) occur only before 2013 and never in the declared years. HHIncome2002_B02ID -8 (no answer) is dropped. The trip weight is W5, which carries the diary household weight W2 (the user guide's trips per person per year is 52.14 x sum(JJXSC x W5) over sum(W2) on the diary sample), so each person's counted trips are divided by W2 before the W2-weighted mean; W5xHH is the within-household factor only. W2 is zero for interview-only households, which leave the donor (the fit and the diary means use the diary sample, as the user guide prescribes for trip measures). Stage and ticket tables, verified 2026-09-23. A stage is a boarding (NumBoardings counts the vehicles), StageMode_B04ID carries the trip-mode categories, StageFareCost is the boarding cost paid at the point of use and IndTicketID links a stage to a held ticket; SpecialTicket_B01ID codes 7 to 11 are the concessionary passes (older people, scholars, disabled persons, subsidised tokens, other concessionary), 1 to 6 non-concessionary season tickets and passes. A boarding with no ticket record and a positive cost paid a single, return or day fare at the point of use; with no record and zero cost it travelled free (children, in the main); with no cost recorded its class is unknown."
     },
     {
      "kind": "materialize_rules_engine_predictors",
@@ -1790,6 +1830,7 @@
     "other_local_bus_trips",
     "local_bus_trips",
     "bus_pass_eligible",
+    "local_bus_single_fare_share",
     "household_local_bus_trips"
    ],
    "nonnegative_outputs": [
@@ -1799,7 +1840,7 @@
     "local_bus_trips",
     "household_local_bus_trips"
    ],
-   "notes": "Imputes local-bus travel per person from the National Travel Survey microdata (microcosm#930; the structural fix Maria ruled on 2026-09-15 for the rake-then-bind bus fares of microcosm#890). The donor is the NTS End User Licence extract (England residents only since 2013) pooled over the declared survey years for the conditional fit; the artifact pins are the 19th-edition (November 2025) tabs, verified at runtime, and the H2 fixture drives the stage with synthetic tabs in the same codebook. One QRF target, the interview frequency-of-use band (the variable behind NTS0313; 0 is the non-user band), conditioned on age band, sex, cars (the was_wealth draw on the recipient), household size, the three-band gross household income and region, drawn from identity-keyed uniforms and rounded to the nearest band; devolved recipients take a declared proxy region for prediction only. Each person's annual local-bus trips are the diary's weighted mean for their band and residence group (London or the rest of England), split into the bus-in-London and other-local-bus series by main mode, W5 x JJXSC over W2 persons annualised by 52.14 weeks; a seven-day diary annualised per person would be right in aggregate and wrong in distribution, so it supplies band means, not per-person counts. If the extract carries no frequency column the band is drawn from the vendored NTS0313/NTS0621 shares and declared band midpoints are scaled to the vendored NTS0303 rate (the receipt names the path). Concessionary eligibility is the declared statutory age rule of the person's area, emitted for the lcfs pricing step to zero-price eligible persons' trips; the donor's eligible share of trips per series is receipted beside the publisher's concessionary boarding share. The stage records the frame's band shares against NTS0313/NTS0621, its trips per person against NTS0303 and by age band against NTS0601, and the frame's car availability against NTS0205, all from vendored rows; nothing derived from the licensed rows is committed."
+   "notes": "Imputes local-bus travel per person from the National Travel Survey microdata (microcosm#930; the structural fix Maria ruled on 2026-09-15 for the rake-then-bind bus fares of microcosm#890). The donor is the NTS End User Licence extract (England residents only since 2013) pooled over the declared survey years for the conditional fit; the artifact pins are the 19th-edition (November 2025) tabs, verified at runtime, and the H2 fixture drives the stage with synthetic tabs in the same codebook. One QRF target, the interview frequency-of-use band (the variable behind NTS0313; 0 is the non-user band), conditioned on age band, sex, cars (the was_wealth draw on the recipient), household size, the three-band gross household income and region, drawn from identity-keyed uniforms and rounded to the nearest band; devolved recipients take a declared proxy region for prediction only. Each person's annual local-bus trips are the diary's weighted mean for their band and residence group (London or the rest of England), split into the bus-in-London and other-local-bus series by main mode, W5 x JJXSC over W2 persons annualised by 52.14 weeks; a seven-day diary annualised per person would be right in aggregate and wrong in distribution, so it supplies band means, not per-person counts. If the extract carries no frequency column the band is drawn from the vendored NTS0313/NTS0621 shares and declared band midpoints are scaled to the vendored NTS0303 rate (the receipt names the path). Concessionary eligibility is the declared statutory age rule of the person's area, emitted for the lcfs pricing step to zero-price eligible persons' trips; the donor's eligible share of trips per series is receipted beside the publisher's concessionary boarding share. The stage and ticket tables class every diary bus boarding by how it was paid for (at the point of use, a season ticket or pass, a concessionary pass, free) and give each person the share of fare-paying boardings paid at the point of use for their band and residence group (local_bus_single_fare_share), the boardings a per-journey fare cap binds on, with the fare paid per boarding by residence group and survey year receipted beside it (microcosm#930 C13, María's ask of 2026-09-23). The stage records the frame's band shares against NTS0313/NTS0621, its trips per person against NTS0303 and by age band against NTS0601, and the frame's car availability against NTS0205, all from vendored rows; nothing derived from the licensed rows is committed."
   },
   {
    "stage": "lcfs_consumption",

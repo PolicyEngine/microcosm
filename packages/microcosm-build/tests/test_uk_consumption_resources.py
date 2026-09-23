@@ -153,8 +153,16 @@ def test_e6_support_bounds_resources_are_sha_bound_and_non_placeholder() -> None
         "bus_in_london_trips",
         "other_local_bus_trips",
         "local_bus_trips",
+        "local_bus_single_fare_share",
     }
     assert nts["bounds"]["local_bus_use_band"] == [0.0, 6.0]
+    assert nts["bounds"]["local_bus_single_fare_share"] == [0.0, 1.0]
+    assert nts["source"]["stage_tab_sha256"] == (
+        "4a6015ed54abc32b48e45a5af663d44a39e1147c7ff8c2e087aa29828665b64c"
+    )
+    assert nts["source"]["ticket_tab_sha256"] == (
+        "276a99bd30ff4aa3506d2126f6fd269db2f2d0265b5231a55aaefca9212363a0"
+    )
     for column in ("bus_in_london_trips", "other_local_bus_trips", "local_bus_trips"):
         low, high = nts["bounds"][column]
         assert low == 0.0 and high > 0.0

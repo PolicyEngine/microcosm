@@ -285,6 +285,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Caller-supplied private NTS trip tab for nts_bus_travel.",
     )
     parser.add_argument(
+        "--nts-stage-tab",
+        type=Path,
+        help="Caller-supplied private NTS stage tab for nts_bus_travel.",
+    )
+    parser.add_argument(
+        "--nts-ticket-tab",
+        type=Path,
+        help="Caller-supplied private NTS ticket tab for nts_bus_travel.",
+    )
+    parser.add_argument(
         "--lcfs-hh-tab",
         type=Path,
         help="Caller-supplied private LCFS 2023-24 household tab for lcfs_consumption.",
@@ -340,6 +350,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                 ("--nts-household-tab", args.nts_household_tab),
                 ("--nts-individual-tab", args.nts_individual_tab),
                 ("--nts-trip-tab", args.nts_trip_tab),
+                ("--nts-stage-tab", args.nts_stage_tab),
+                ("--nts-ticket-tab", args.nts_ticket_tab),
                 ("--lcfs-hh-tab", args.lcfs_hh_tab),
                 ("--lcfs-person-tab", args.lcfs_person_tab),
                 ("--etb-tab", args.etb_tab),
@@ -445,6 +457,8 @@ def _synthetic_graph_sources(source: Path) -> dict[str, Path]:
         "nts_household": "nts_household",
         "nts_individual": "nts_individual",
         "nts_trip": "nts_trip",
+        "nts_stage": "nts_stage",
+        "nts_ticket": "nts_ticket",
         "lcfs_household": "lcfs_household",
         "lcfs_person": "lcfs_person",
         "etb": "etb",
@@ -1372,6 +1386,8 @@ def main(argv: list[str] | None = None) -> int:
                     ("--nts-household-tab", args.nts_household_tab),
                     ("--nts-individual-tab", args.nts_individual_tab),
                     ("--nts-trip-tab", args.nts_trip_tab),
+                    ("--nts-stage-tab", args.nts_stage_tab),
+                    ("--nts-ticket-tab", args.nts_ticket_tab),
                 )
                 if value is None
             ]
@@ -1525,6 +1541,8 @@ def main(argv: list[str] | None = None) -> int:
                     nts_household_tab_path=sources["nts_household"],
                     nts_individual_tab_path=sources["nts_individual"],
                     nts_trip_tab_path=sources["nts_trip"],
+                    nts_stage_tab_path=sources["nts_stage"],
+                    nts_ticket_tab_path=sources["nts_ticket"],
                 )
             )
         if "regional_property_uprating" in stage_names:
@@ -1694,6 +1712,8 @@ def main(argv: list[str] | None = None) -> int:
                 graph_sources["nts_household"] = args.nts_household_tab
                 graph_sources["nts_individual"] = args.nts_individual_tab
                 graph_sources["nts_trip"] = args.nts_trip_tab
+                graph_sources["nts_stage"] = args.nts_stage_tab
+                graph_sources["nts_ticket"] = args.nts_ticket_tab
             if "lcfs_consumption" in stage_names:
                 graph_sources["lcfs_household"] = args.lcfs_hh_tab
                 graph_sources["lcfs_person"] = args.lcfs_person_tab

@@ -671,7 +671,9 @@ def _lcfs_donors() -> tuple[pd.DataFrame, pd.DataFrame]:
     return pd.DataFrame(household), person
 
 
-def _nts_donors() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _nts_donors() -> tuple[
+    pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame
+]:
     """Synthetic NTS Household, Individual and Trip tables (2022-2024).
 
     Column names and codes follow the stage's declared codebook (the SN 5340
@@ -720,9 +722,30 @@ def _nts_donors() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     individual = pd.DataFrame(person_rows)
     w2_by_household = dict(zip(household["HouseholdID"], household["W2"], strict=True))
     trip_rows = []
+    stage_rows = []
+    ticket_rows = []
     trip_id = 1
+    stage_id = 1
+    ticket_id = 1
     for _, person in individual.iterrows():
         code = int(person["OrdBus2Freq_B01ID"])
+        # Odd-numbered households hold a ticket, alternately a concessionary
+        # pass (code 7) and a season ticket (code 1); the rest pay at the point
+        # of use.
+        held_ticket = None
+        pid = int(person["IndividualID"])
+        hid = int(person["HouseholdID"])
+        if hid % 2 == 1:
+            held_ticket = ticket_id
+            ticket_rows.append(
+                {
+                    "IndTicketID": ticket_id,
+                    "IndividualID": pid,
+                    "SpecialTicket_B01ID": 7 if (hid // 2) % 2 == 0 else 1,
+                    "SurveyYear": 2024,
+                }
+            )
+            ticket_id += 1
         # More trips for the frequent codes, none for the never / not-applicable
         # codes (the NTS0313 bands fold codes 1-3 and 9-10 together).
         trips = max(0, 9 - code) if 0 < code < 9 else 0
@@ -739,6 +762,27 @@ def _nts_donors() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
                     "JJXSC": 1.0,
                 }
             )
+            # One boarding per bus trip, paid at the point of use unless the
+            # person holds a ticket; a free child boarding every ninth trip.
+            paid_free = held_ticket is None and t % 5 == 4
+            stage_rows.append(
+                {
+                    "StageID": stage_id,
+                    "TripID": trip_id,
+                    "IndividualID": pid,
+                    "HouseholdID": int(person["HouseholdID"]),
+                    "IndTicketID": held_ticket if held_ticket is not None else "",
+                    "StageMode_B04ID": 7 if london else 8,
+                    "NumBoardings": 1 + (t % 4 == 3),
+                    "StageFareCost": (
+                        0.0
+                        if held_ticket is not None or paid_free
+                        else 2.0 - (t % 3) * 0.25
+                    ),
+                    "SurveyYear": 2024,
+                }
+            )
+            stage_id += 1
             trip_id += 1
         # One non-bus trip per person so the mode filter is exercised.
         trip_rows.append(
@@ -753,7 +797,9 @@ def _nts_donors() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         )
         trip_id += 1
     trip = pd.DataFrame(trip_rows)
-    return household, individual, trip
+    stage = pd.DataFrame(stage_rows)
+    ticket = pd.DataFrame(ticket_rows)
+    return household, individual, trip, stage, ticket
 
 
 def _etb_donor() -> pd.DataFrame:
@@ -1198,6 +1244,8 @@ def _build_implementations(
     nts_household: pd.DataFrame,
     nts_individual: pd.DataFrame,
     nts_trip: pd.DataFrame,
+    nts_stage: pd.DataFrame,
+    nts_ticket: pd.DataFrame,
     lcfs_household: pd.DataFrame,
     lcfs_person: pd.DataFrame,
     etb: pd.DataFrame,
@@ -1271,6 +1319,8 @@ def _build_implementations(
             nts_household=nts_household,
             nts_individual=nts_individual,
             nts_trip=nts_trip,
+            nts_stage=nts_stage,
+            nts_ticket=nts_ticket,
         ),
         "regional_property_uprating": UKRegionalPropertyUpratingStageTransform(
             stage=stages["regional_property_uprating"]
@@ -1417,7 +1467,7 @@ def generate(output: Path) -> None:
     stage_map = {stage.stage: stage for stage in stages}
 
     was = _was_donor()
-    nts_household, nts_individual, nts_trip = _nts_donors()
+    nts_household, nts_individual, nts_trip, nts_stage, nts_ticket = _nts_donors()
     lcfs_household, lcfs_person = _lcfs_donors()
     etb = _etb_donor()
     spi_donor = _spi_donor()
@@ -1425,6 +1475,8 @@ def generate(output: Path) -> None:
     _write_csv(sources / "nts_household.csv", nts_household)
     _write_csv(sources / "nts_individual.csv", nts_individual)
     _write_csv(sources / "nts_trip.csv", nts_trip)
+    _write_csv(sources / "nts_stage.csv", nts_stage)
+    _write_csv(sources / "nts_ticket.csv", nts_ticket)
     _write_csv(sources / "lcfs_household.csv", lcfs_household)
     _write_csv(sources / "lcfs_person.csv", lcfs_person)
     _write_csv(sources / "etb.csv", etb)
@@ -1448,6 +1500,8 @@ def generate(output: Path) -> None:
         nts_household=nts_household,
         nts_individual=nts_individual,
         nts_trip=nts_trip,
+        nts_stage=nts_stage,
+        nts_ticket=nts_ticket,
         lcfs_household=lcfs_household,
         lcfs_person=lcfs_person,
         etb=etb,
@@ -1501,6 +1555,8 @@ def generate(output: Path) -> None:
             "nts_household": "nts_household.csv",
             "nts_individual": "nts_individual.csv",
             "nts_trip": "nts_trip.csv",
+            "nts_stage": "nts_stage.csv",
+            "nts_ticket": "nts_ticket.csv",
             "lcfs_household": "lcfs_household.csv",
             "lcfs_person": "lcfs_person.csv",
             "etb": "etb.csv",

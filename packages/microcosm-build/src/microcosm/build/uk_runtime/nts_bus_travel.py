@@ -73,6 +73,8 @@ UK_NTS_BUS_TRAVEL_MASS_CONSERVATION_REASON = (
 UK_NTS_HOUSEHOLD_TAB_ROLE = "nts_household_tab"
 UK_NTS_INDIVIDUAL_TAB_ROLE = "nts_individual_tab"
 UK_NTS_TRIP_TAB_ROLE = "nts_trip_tab"
+UK_NTS_STAGE_TAB_ROLE = "nts_stage_tab"
+UK_NTS_TICKET_TAB_ROLE = "nts_ticket_tab"
 
 CLEAN_NTS_TRAVEL_TABLES_KIND = "clean_nts_travel_tables"
 IMPUTE_BUS_USE_BAND_KIND = "impute_bus_use_band"
@@ -95,13 +97,40 @@ BAND_COLUMN = "local_bus_use_band"
 TRIPS_COLUMN = "local_bus_trips"
 ELIGIBLE_COLUMN = "bus_pass_eligible"
 HOUSEHOLD_TRIPS_COLUMN = "household_local_bus_trips"
+#: Share of a person's fare-paying boardings paid at the point of use (a
+#: single, return or day fare bought for the journey) rather than covered by a
+#: season ticket or non-concessionary pass: the boardings a per-journey fare
+#: cap binds on (microcosm#930 C13, from the NTS stage and ticket tables).
+SINGLE_FARE_SHARE_COLUMN = "local_bus_single_fare_share"
 UK_NTS_PERSON_OUTPUT_COLUMNS: tuple[str, ...] = (
     BAND_COLUMN,
     SERIES_TRIP_COLUMNS[BUS_IN_LONDON],
     SERIES_TRIP_COLUMNS[OTHER_LOCAL_BUS],
     TRIPS_COLUMN,
     ELIGIBLE_COLUMN,
+    SINGLE_FARE_SHARE_COLUMN,
 )
+#: Boarding payment classes read from the stage and ticket tables.
+BOARDING_FARE_PAID = "fare_paid"
+BOARDING_PASS = "season_or_pass"
+BOARDING_CONCESSIONARY = "concessionary_pass"
+BOARDING_FREE = "free_no_ticket"
+BOARDING_UNKNOWN = "unknown"
+BOARDING_CLASSES: tuple[str, ...] = (
+    BOARDING_FARE_PAID,
+    BOARDING_PASS,
+    BOARDING_CONCESSIONARY,
+    BOARDING_FREE,
+    BOARDING_UNKNOWN,
+)
+
+
+def boarding_class_column(series: str, boarding_class: str) -> str:
+    """The donor column holding a person's annual weighted boardings of a class."""
+
+    return f"{boarding_class}_boardings_{series}"
+
+
 UK_NTS_HOUSEHOLD_OUTPUT_COLUMNS: tuple[str, ...] = (HOUSEHOLD_TRIPS_COLUMN,)
 UK_NTS_BUS_TRAVEL_OUTPUT_COLUMNS: tuple[str, ...] = (
     *UK_NTS_PERSON_OUTPUT_COLUMNS,
@@ -113,6 +142,7 @@ UK_NTS_SUPPORT_CLIP_COLUMNS: tuple[str, ...] = (
     SERIES_TRIP_COLUMNS[BUS_IN_LONDON],
     SERIES_TRIP_COLUMNS[OTHER_LOCAL_BUS],
     TRIPS_COLUMN,
+    SINGLE_FARE_SHARE_COLUMN,
 )
 #: Vendored resources the stage reads (the register's consumer truthfulness).
 UK_NTS_TRIP_RATES_RESOURCE = "nts_trip_rates.json"
@@ -209,6 +239,16 @@ class NTSColumns:
     main_mode: str
     trip_weight: str
     short_walk_multiplier: str
+    stage_id: str
+    stage_trip_id: str
+    stage_individual_id: str
+    stage_ticket_id: str
+    stage_mode: str
+    stage_boardings: str
+    stage_fare_cost: str
+    ticket_id: str
+    ticket_special: str
+    concessionary_ticket_codes: frozenset[int]
     region_codes: Mapping[int, str]
     london_region_code: int
     income_band_codes: Mapping[int, int]
@@ -239,6 +279,15 @@ class NTSColumns:
             "main_mode",
             "trip_weight",
             "short_walk_multiplier",
+            "stage_id",
+            "stage_trip_id",
+            "stage_individual_id",
+            "stage_ticket_id",
+            "stage_mode",
+            "stage_boardings",
+            "stage_fare_cost",
+            "ticket_id",
+            "ticket_special",
         )
         missing = [name for name in required if not isinstance(columns.get(name), str)]
         if missing:
@@ -297,6 +346,14 @@ class NTSColumns:
             raise NTSBusTravelError(
                 f"codes.main_mode must name exactly the series {list(SERIES)}."
             )
+        concessionary_ticket_codes = frozenset(
+            int(code) for code in codes.get("concessionary_ticket", ())
+        )
+        if not concessionary_ticket_codes:
+            raise NTSBusTravelError(
+                "codes.concessionary_ticket must list the ticket-table codes of the "
+                "concessionary passes."
+            )
         frequency_codes = {
             int(code): int(band)
             for code, band in _mapping(
@@ -328,6 +385,16 @@ class NTSColumns:
             main_mode=columns["main_mode"].lower(),
             trip_weight=columns["trip_weight"].lower(),
             short_walk_multiplier=columns["short_walk_multiplier"].lower(),
+            stage_id=columns["stage_id"].lower(),
+            stage_trip_id=columns["stage_trip_id"].lower(),
+            stage_individual_id=columns["stage_individual_id"].lower(),
+            stage_ticket_id=columns["stage_ticket_id"].lower(),
+            stage_mode=columns["stage_mode"].lower(),
+            stage_boardings=columns["stage_boardings"].lower(),
+            stage_fare_cost=columns["stage_fare_cost"].lower(),
+            ticket_id=columns["ticket_id"].lower(),
+            ticket_special=columns["ticket_special"].lower(),
+            concessionary_ticket_codes=concessionary_ticket_codes,
             region_codes=region_codes,
             london_region_code=int(london[0]),
             income_band_codes=income_codes,
@@ -390,6 +457,8 @@ def clean_nts_travel_tables(
     household: pd.DataFrame,
     individual: pd.DataFrame,
     trip: pd.DataFrame,
+    stage: pd.DataFrame | None = None,
+    ticket: pd.DataFrame | None = None,
     *,
     columns: NTSColumns,
     cars_clip: tuple[int, int] = (0, 5),
@@ -402,7 +471,13 @@ def clean_nts_travel_tables(
     ``income_band`` (1..3), ``weight`` (W2, the diary household weight), the
     interview ``local_bus_use_band`` when the extract carries it, and the
     annual diary trips per series (52.14 x sum of trip weight x short-walk
-    multiplier over the person's trips whose main mode is that series).
+    multiplier over the person's trips whose main mode is that series). With the
+    stage and ticket tables, also the person's annual weighted bus boardings by
+    payment class per series: paid at the point of use (no ticket record and a
+    positive boarding cost), a non-concessionary season ticket or pass, a
+    concessionary pass (the declared ticket codes), free with no ticket, or
+    unknown (no cost recorded); the share of fare-paying boardings paid at the
+    point of use is the single-fare share a per-journey cap binds on.
     """
 
     hh = _lower(household)
@@ -545,6 +620,99 @@ def clean_nts_travel_tables(
         person[SERIES_TRIP_COLUMNS[BUS_IN_LONDON]]
         + person[SERIES_TRIP_COLUMNS[OTHER_LOCAL_BUS]]
     )
+    ticket_receipt: dict[str, Any] | None = None
+    if stage is not None and ticket is not None:
+        # Each bus stage is a boarding (NumBoardings counts the vehicles); it
+        # inherits its trip's weight and is classed by how it was paid for.
+        stg = _lower(stage)
+        tkt = _lower(ticket)
+        _require(
+            stg,
+            (
+                columns.stage_id,
+                columns.stage_trip_id,
+                columns.stage_individual_id,
+                columns.stage_ticket_id,
+                columns.stage_mode,
+                columns.stage_boardings,
+                columns.stage_fare_cost,
+            ),
+            "stage",
+        )
+        _require(tkt, (columns.ticket_id, columns.ticket_special), "ticket")
+        stg = stg.loc[
+            stg[columns.stage_individual_id].isin(person[columns.individual_id])
+        ].copy()
+        stage_mode = pd.to_numeric(stg[columns.stage_mode], errors="coerce")
+        series_codes = {code: series for series, code in columns.mode_codes.items()}
+        stg = stg.loc[stage_mode.isin(list(series_codes))].copy()
+        stg["series"] = pd.to_numeric(stg[columns.stage_mode], errors="coerce").map(
+            series_codes
+        )
+        trip_factor = pd.to_numeric(tr[columns.trip_weight], errors="coerce").fillna(
+            0.0
+        ) * pd.to_numeric(tr[columns.short_walk_multiplier], errors="coerce").fillna(
+            0.0
+        )
+        if columns.trip_weight_basis == TRIP_WEIGHT_HOUSEHOLD_AND_TRIP:
+            trip_factor = trip_factor / tr[columns.individual_id].map(
+                person.set_index(columns.individual_id)["weight"]
+            ).to_numpy(dtype=float)
+        trip_factor.index = tr[columns.trip_id].to_numpy()
+        stg["trip_factor"] = (
+            stg[columns.stage_trip_id]
+            .map(trip_factor)
+            .fillna(0.0)
+            .to_numpy(dtype=float)
+        )
+        stg["boardings"] = pd.to_numeric(
+            stg[columns.stage_boardings], errors="coerce"
+        ).fillna(1.0)
+        ticket_special = pd.to_numeric(
+            tkt.set_index(columns.ticket_id)[columns.ticket_special], errors="coerce"
+        )
+        special = stg[columns.stage_ticket_id].map(ticket_special)
+        has_ticket = pd.to_numeric(
+            stg[columns.stage_ticket_id], errors="coerce"
+        ).notna()
+        fare = pd.to_numeric(stg[columns.stage_fare_cost], errors="coerce")
+        concessionary = has_ticket & special.isin(
+            list(columns.concessionary_ticket_codes)
+        )
+        stg["boarding_class"] = np.select(
+            [
+                concessionary.to_numpy(),
+                (has_ticket & ~concessionary).to_numpy(),
+                (~has_ticket & (fare > 0)).to_numpy(),
+                (~has_ticket & (fare == 0)).to_numpy(),
+            ],
+            [BOARDING_CONCESSIONARY, BOARDING_PASS, BOARDING_FARE_PAID, BOARDING_FREE],
+            BOARDING_UNKNOWN,
+        )
+        stg["weighted_boardings"] = stg["trip_factor"] * stg["boardings"]
+        stg["fare_per_boarding"] = np.where(
+            (stg["boarding_class"] == BOARDING_FARE_PAID) & (stg["boardings"] > 0),
+            fare.to_numpy(dtype=float) / stg["boardings"].to_numpy(dtype=float),
+            np.nan,
+        )
+        for series in SERIES:
+            for boarding_class in BOARDING_CLASSES:
+                cell = (stg["series"] == series) & (
+                    stg["boarding_class"] == boarding_class
+                )
+                per_person = (
+                    stg.loc[cell, "weighted_boardings"]
+                    .groupby(stg.loc[cell, columns.stage_individual_id])
+                    .sum()
+                )
+                person[boarding_class_column(series, boarding_class)] = (
+                    person[columns.individual_id]
+                    .map(per_person)
+                    .fillna(0.0)
+                    .to_numpy(dtype=float)
+                    * WEEKS_IN_YEAR
+                )
+        ticket_receipt = _ticket_receipt(stg, person, hh_keep, columns)
     person = person.rename(
         columns={
             columns.individual_id: "individual_id",
@@ -568,6 +736,12 @@ def clean_nts_travel_tables(
         SERIES_TRIP_COLUMNS[OTHER_LOCAL_BUS],
         TRIPS_COLUMN,
     ]
+    if ticket_receipt is not None:
+        keep.extend(
+            boarding_class_column(series, boarding_class)
+            for series in SERIES
+            for boarding_class in BOARDING_CLASSES
+        )
     if frequency_source == FREQUENCY_SOURCE_INTERVIEW:
         keep.append(BAND_COLUMN)
     person = person[keep].reset_index(drop=True)
@@ -592,8 +766,95 @@ def clean_nts_travel_tables(
             series: float(np.average(person[column], weights=person["weight"]))
             for series, column in SERIES_TRIP_COLUMNS.items()
         },
+        "ticket_tables_read": ticket_receipt is not None,
+        "boarding_classes": ticket_receipt,
     }
     return NTSDonor(person=person, frequency_source=frequency_source, receipt=receipt)
+
+
+def _ticket_receipt(
+    stg: pd.DataFrame,
+    person: pd.DataFrame,
+    hh_keep: pd.DataFrame,
+    columns: NTSColumns,
+) -> dict[str, Any]:
+    """Boarding payment classes, fares paid and boardings per trip on the diary.
+
+    Weighted by the trip factor (the trip weight on the diary household
+    weight basis); by residence group and survey year, so the fare paid at the
+    point of use can be read before and after a fare cap. Disclosure-safe
+    aggregates only.
+    """
+
+    person_group = person.set_index(columns.individual_id)["residence_group"]
+    person_year = person.set_index(columns.individual_id)["survey_year"]
+    group = stg[columns.stage_individual_id].map(person_group).astype(str)
+    year = pd.to_numeric(
+        stg[columns.stage_individual_id].map(person_year), errors="coerce"
+    )
+    w = stg["weighted_boardings"].to_numpy(dtype=float)
+    out: dict[str, Any] = {"by_group_and_year": {}, "by_series": {}}
+    for g in RESIDENCE_GROUPS:
+        for y in sorted(int(v) for v in year.dropna().unique()):
+            cell = (group == g) & (year == y)
+            if w[cell].sum() <= 0:
+                continue
+            classes = {
+                boarding_class: float(
+                    w[cell & (stg["boarding_class"] == boarding_class)].sum()
+                    / w[cell].sum()
+                )
+                for boarding_class in BOARDING_CLASSES
+            }
+            paid = cell & (stg["boarding_class"] == BOARDING_FARE_PAID)
+            fares = stg.loc[paid, "fare_per_boarding"].to_numpy(dtype=float)
+            fw = w[paid]
+            ok = np.isfinite(fares) & (fw > 0)
+            out["by_group_and_year"][f"{g}:{y}"] = {
+                "boarding_class_shares": classes,
+                "fare_paying_single_share": (
+                    classes[BOARDING_FARE_PAID]
+                    / (classes[BOARDING_FARE_PAID] + classes[BOARDING_PASS])
+                    if classes[BOARDING_FARE_PAID] + classes[BOARDING_PASS] > 0
+                    else None
+                ),
+                "mean_fare_paid_per_boarding": (
+                    float(np.average(fares[ok], weights=fw[ok])) if ok.any() else None
+                ),
+                "median_fare_paid_per_boarding": (
+                    float(np.median(fares[ok])) if ok.any() else None
+                ),
+                "boardings_unweighted": int(cell.sum()),
+            }
+    for series in SERIES:
+        cell = stg["series"] == series
+        paid = cell & (stg["boarding_class"] == BOARDING_FARE_PAID)
+        passes = cell & (stg["boarding_class"] == BOARDING_PASS)
+        out["by_series"][series] = {
+            "single_share_of_fare_paying_boardings": (
+                float(w[paid].sum() / (w[paid].sum() + w[passes].sum()))
+                if w[paid].sum() + w[passes].sum() > 0
+                else None
+            ),
+            "boardings_per_bus_trip": (
+                float(
+                    stg.loc[cell, "weighted_boardings"].sum()
+                    / stg.loc[cell]
+                    .groupby(columns.stage_trip_id)["trip_factor"]
+                    .first()
+                    .sum()
+                )
+                if cell.any()
+                else None
+            ),
+        }
+    out["basis"] = (
+        "bus stages of the diary sample, each stage a boarding weighted by its "
+        "trip's weight; fare paid at the point of use = no ticket record and a "
+        "positive boarding cost; season_or_pass = a non-concessionary ticket "
+        "record; concessionary_pass = the declared concessionary ticket codes"
+    )
+    return out
 
 
 def nts_support_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
@@ -604,10 +865,11 @@ def nts_support_ranges(donor: pd.DataFrame) -> dict[str, tuple[float, float]]:
     """
 
     ranges: dict[str, tuple[float, float]] = {
-        BAND_COLUMN: (float(NON_USER_BAND), float(MAX_BAND))
+        BAND_COLUMN: (float(NON_USER_BAND), float(MAX_BAND)),
+        SINGLE_FARE_SHARE_COLUMN: (0.0, 1.0),
     }
     for column in UK_NTS_SUPPORT_CLIP_COLUMNS:
-        if column == BAND_COLUMN:
+        if column in (BAND_COLUMN, SINGLE_FARE_SHARE_COLUMN):
             continue
         values = donor[column].to_numpy(dtype=float)
         ranges[column] = (float(values.min()), float(values.max()))
@@ -864,6 +1126,71 @@ def draw_band_from_published_shares(
 # --------------------------------------------------------------------------
 
 
+def single_fare_shares_from_donor(
+    donor: pd.DataFrame,
+) -> tuple[dict[str, dict[str, dict[int, float]]], dict[str, Any]]:
+    """Share of fare-paying boardings paid at the point of use, per series, group and band.
+
+    Weighted by the diary household weight over the cell's boardings. A cell
+    with no fare-paying boardings takes its group's all-band share, then the
+    all-England share, receipted; a series with no fare-paying boardings at
+    all is refused.
+    """
+
+    weights = donor["weight"].to_numpy(dtype=float)
+    bands = donor[BAND_COLUMN].to_numpy() if BAND_COLUMN in donor else None
+    groups = donor["residence_group"].to_numpy().astype(str)
+    shares: dict[str, dict[str, dict[int, float]]] = {}
+    fallbacks: list[dict[str, object]] = []
+    overall: dict[str, float] = {}
+    for series in SERIES:
+        paid = donor[boarding_class_column(series, BOARDING_FARE_PAID)].to_numpy(
+            dtype=float
+        )
+        passes = donor[boarding_class_column(series, BOARDING_PASS)].to_numpy(
+            dtype=float
+        )
+
+        def share(
+            mask: np.ndarray, paid: np.ndarray = paid, passes: np.ndarray = passes
+        ) -> float | None:
+            p = float(np.dot(paid[mask], weights[mask]))
+            q = float(np.dot(passes[mask], weights[mask]))
+            return p / (p + q) if p + q > 0 else None
+
+        england = share(np.ones(len(donor), dtype=bool))
+        if england is None:
+            raise NTSBusTravelError(
+                f"no fare-paying boardings on the {series} series in the donor."
+            )
+        overall[series] = england
+        shares[series] = {}
+        for group in RESIDENCE_GROUPS:
+            in_group = groups == group
+            group_share = share(in_group)
+            shares[series][group] = {}
+            for band in range(len(BAND_IDS)):
+                cell = in_group & (bands == band) if bands is not None else in_group
+                value = share(cell)
+                if value is None:
+                    value = group_share if group_share is not None else england
+                    fallbacks.append({"series": series, "group": group, "band": band})
+                shares[series][group][band] = float(value)
+    receipt = {
+        "source": "donor_diary_boarding_classes",
+        "all_england_single_share": overall,
+        "shares": {
+            series: {
+                group: {BAND_IDS[b]: v for b, v in by_band.items()}
+                for group, by_band in by_group.items()
+            }
+            for series, by_group in shares.items()
+        },
+        "cells_filled_from_group_or_england": fallbacks,
+    }
+    return shares, receipt
+
+
 def band_means_from_donor(
     donor: pd.DataFrame,
 ) -> tuple[dict[str, dict[str, dict[int, float]]], dict[str, Any]]:
@@ -999,11 +1326,18 @@ def assign_trips_from_band_means(
     band: np.ndarray,
     residence_group: np.ndarray,
     means: Mapping[str, Mapping[str, Mapping[int, float]]],
+    single_fare_shares: Mapping[str, Mapping[str, Mapping[int, float]]] | None = None,
 ) -> dict[str, np.ndarray]:
-    """Each person's annual trips per series from their band and residence group."""
+    """Each person's annual trips per series from their band and residence group.
+
+    With ``single_fare_shares`` (per series, group and band) the person's
+    single-fare share is the trips-weighted combination of the two series'
+    cell shares; a person with no trips takes the plain mean of the two.
+    """
 
     out: dict[str, np.ndarray] = {}
     groups = np.asarray(residence_group).astype(str)
+    band_index = np.asarray(band)
     for series in SERIES:
         values = np.zeros(len(band), dtype=float)
         for group in RESIDENCE_GROUPS:
@@ -1012,12 +1346,30 @@ def assign_trips_from_band_means(
                 [by_band[int(b)] for b in range(len(BAND_IDS))], dtype=float
             )
             mask = groups == group
-            values[mask] = lookup[np.asarray(band)[mask]]
+            values[mask] = lookup[band_index[mask]]
         out[SERIES_TRIP_COLUMNS[series]] = values
     out[TRIPS_COLUMN] = (
         out[SERIES_TRIP_COLUMNS[BUS_IN_LONDON]]
         + out[SERIES_TRIP_COLUMNS[OTHER_LOCAL_BUS]]
     )
+    if single_fare_shares is not None:
+        weighted = np.zeros(len(band), dtype=float)
+        plain = np.zeros(len(band), dtype=float)
+        for series in SERIES:
+            cell_share = np.zeros(len(band), dtype=float)
+            for group in RESIDENCE_GROUPS:
+                by_band = single_fare_shares[series][group]
+                lookup = np.asarray(
+                    [by_band[int(b)] for b in range(len(BAND_IDS))], dtype=float
+                )
+                mask = groups == group
+                cell_share[mask] = lookup[band_index[mask]]
+            weighted += out[SERIES_TRIP_COLUMNS[series]] * cell_share
+            plain += cell_share / len(SERIES)
+        trips = out[TRIPS_COLUMN]
+        out[SINGLE_FARE_SHARE_COLUMN] = np.where(
+            trips > 0, weighted / np.where(trips > 0, trips, 1.0), plain
+        )
     return out
 
 
@@ -1208,9 +1560,13 @@ class UKNTSBusTravelStageTransform:
     nts_household_tab_path: str | Path | None = None
     nts_individual_tab_path: str | Path | None = None
     nts_trip_tab_path: str | Path | None = None
+    nts_stage_tab_path: str | Path | None = None
+    nts_ticket_tab_path: str | Path | None = None
     nts_household: pd.DataFrame | None = None
     nts_individual: pd.DataFrame | None = None
     nts_trip: pd.DataFrame | None = None
+    nts_stage: pd.DataFrame | None = None
+    nts_ticket: pd.DataFrame | None = None
     last_result: UKNTSBusTravelResult | None = field(default=None, init=False)
     last_fit_weight_records: tuple[FitWeightRecord, ...] | None = field(
         default=None, init=False
@@ -1250,6 +1606,10 @@ class UKNTSBusTravelStageTransform:
                 UK_NTS_INDIVIDUAL_TAB_ROLE,
             ),
             self._table(self.nts_trip, self.nts_trip_tab_path, UK_NTS_TRIP_TAB_ROLE),
+            self._table(self.nts_stage, self.nts_stage_tab_path, UK_NTS_STAGE_TAB_ROLE),
+            self._table(
+                self.nts_ticket, self.nts_ticket_tab_path, UK_NTS_TICKET_TAB_ROLE
+            ),
             columns=columns,
             cars_clip=(cars_clip[0], cars_clip[1]),
         )
@@ -1287,6 +1647,9 @@ class UKNTSBusTravelStageTransform:
                 n_estimators=int(band_parameters.get("n_estimators", 100)),
             )
             means, means_receipt = band_means_from_donor(donor.person)
+            single_fare_shares, shares_receipt = single_fare_shares_from_donor(
+                donor.person
+            )
         else:
             imputation = draw_band_from_published_shares(
                 recipient,
@@ -1298,10 +1661,17 @@ class UKNTSBusTravelStageTransform:
             means, means_receipt = band_means_from_published_rate(
                 self.stage, band_shares=shares
             )
+            single_fare_shares, shares_receipt = single_fare_shares_from_donor(
+                donor.person
+            )
         band = imputation.band
         trips = assign_trips_from_band_means(
-            band, recipient["residence_group"].to_numpy(), means
+            band,
+            recipient["residence_group"].to_numpy(),
+            means,
+            single_fare_shares=single_fare_shares,
         )
+        means_receipt = {**means_receipt, "single_fare_shares": shares_receipt}
         rules = eligibility_rules(
             _operation(self.stage, ASSIGN_BUS_PASS_ELIGIBILITY_KIND)
         )
@@ -1351,6 +1721,12 @@ class UKNTSBusTravelStageTransform:
                 [BAND_COLUMN, *SERIES_TRIP_COLUMNS.values(), TRIPS_COLUMN]
             ]
         )
+        donor_support = donor_support.copy()
+        # The share is a proportion: its donor support is the unit interval,
+        # which the donor's fare-paying persons span by construction.
+        donor_support[SINGLE_FARE_SHARE_COLUMN] = np.linspace(
+            0.0, 1.0, num=len(donor_support)
+        )
         if TRIPS_COLUMN not in donor_support:
             donor_support[TRIPS_COLUMN] = (
                 donor_support[SERIES_TRIP_COLUMNS[BUS_IN_LONDON]]
@@ -1370,6 +1746,7 @@ class UKNTSBusTravelStageTransform:
             SERIES_TRIP_COLUMNS[BUS_IN_LONDON],
             SERIES_TRIP_COLUMNS[OTHER_LOCAL_BUS],
             TRIPS_COLUMN,
+            SINGLE_FARE_SHARE_COLUMN,
         ):
             person[column] = clipped[column].to_numpy(dtype=float)
         person[ELIGIBLE_COLUMN] = eligible

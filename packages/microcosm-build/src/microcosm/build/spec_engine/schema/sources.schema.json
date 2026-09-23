@@ -8785,7 +8785,16 @@
         "sex",
         "main_mode",
         "trip_weight",
-        "short_walk_multiplier"
+        "short_walk_multiplier",
+        "stage_id",
+        "stage_trip_id",
+        "stage_individual_id",
+        "stage_ticket_id",
+        "stage_mode",
+        "stage_boardings",
+        "stage_fare_cost",
+        "ticket_id",
+        "ticket_special"
        ],
        "properties": {
         "household_id": {
@@ -8832,6 +8841,33 @@
         },
         "short_walk_multiplier": {
          "type": "string"
+        },
+        "stage_id": {
+         "type": "string"
+        },
+        "stage_trip_id": {
+         "type": "string"
+        },
+        "stage_individual_id": {
+         "type": "string"
+        },
+        "stage_ticket_id": {
+         "type": "string"
+        },
+        "stage_mode": {
+         "type": "string"
+        },
+        "stage_boardings": {
+         "type": "string"
+        },
+        "stage_fare_cost": {
+         "type": "string"
+        },
+        "ticket_id": {
+         "type": "string"
+        },
+        "ticket_special": {
+         "type": "string"
         }
        }
       },
@@ -8844,7 +8880,8 @@
         "female",
         "main_mode",
         "frequency",
-        "age_band"
+        "age_band",
+        "concessionary_ticket"
        ],
        "properties": {
         "region": {
@@ -8877,6 +8914,13 @@
         "age_band": {
          "type": "object",
          "additionalProperties": {
+          "type": "integer"
+         }
+        },
+        "concessionary_ticket": {
+         "type": "array",
+         "minItems": 1,
+         "items": {
           "type": "integer"
          }
         }
