@@ -515,3 +515,42 @@ eligibility flag while the declared outputs (and the graph's cells) put it after
 aligned and the fixture regenerated (oracle `d7486a5d…`, now equal to the graph's identity). spine-t3
 was built one commit earlier with the two columns in the other order; values, gates, the twin diff and
 the calibration are unaffected, and the rebuild is not repeated for a column-order change.
+
+## Part K — Vahid's second pass: Northern Ireland at 60, under-5s free everywhere (2026-09-23)
+
+Vahid's round-one should-fix, missed in the first response: nidirect's concessionary travel page has
+the 60+ SmartPass giving free travel on all Translink scheduled services within Northern Ireland from
+age 60, the 65+ pass adding all-Ireland travel and nothing else, and no half-fare tier. The rule is 60
+(`sources.yaml`, basis text, tests, changelog). The DfI series behind Northern Ireland's C/B is the
+full-fare-concession travel status (the count of free-travel boardings across every concession; the
+only status the feed carries), not a 65+ series; Part D's sentence is corrected. The child rule is
+made uniform at the same time: under-5s ride free everywhere, so England outside London, Wales and
+Northern Ireland declare `max_age_exclusive: 5` alongside their age floor instead of absorbing the
+under-5s in the yield (London's under-18 and Scotland's under-22 rules already covered them).
+
+spine-t4 (code `c0d83ba4`, 399 s): 24 of 24 stage gates. Eligible persons 12,689 (Part F: 10,874):
+Northern Ireland 1,417 of 3,945 (888), England outside London 6,906 of 22,466 (5,739), Wales 1,126
+of 2,370 (1,007), London and Scotland unchanged. Zero-priced persons 11,563. Design-weight fares
+against the bound receipts: England outside London 1.064 (Part F: 1.119; the under-5s' trips no
+longer price at the yield), London 0.900 (unchanged), Scotland 1.428 (unchanged), Northern Ireland
+1.567 (1.757), the frame's eligible trip share 0.298 beside the publisher's 0.132. Support priced:
+England outside London 1.002 of the published net support (Part H: 0.953; the under-5 boardings
+now earn the reimbursement), London 1.158 and Scotland 1.623 unchanged.
+
+Twin diff spine-t3 → spine-t4 (`twin_diff_930_t4.sh`, expectation `spine-t4-payload-expectation.json`):
+three observed differences, three expected, none unexpected: `bus_pass_eligible` on the persons the
+corrected rules reach, `bus_fare_spending` and the priced `bus_subsidy_spending` on their
+households (3,129 priced-support rows; the raw-draw rows byte-equal). Weights, indices and every
+other column byte-equal.
+
+Calibration on spine-t4 (`calibrate_930.sh`, 462 s, `calibration-t4/`): the terminal battery blocks
+as on spine-t3, at `uk_target_fit` on the stale self-employment 20–30k deferral (the row solves to
++24.6 %, inside the fence); no H5. From the pre-battery sidecars: 643 rows, loss 0.3173 → 0.01045,
+96.73 % within 10 %, ESS 9,036, 21 rows beyond 10 % (the same set as Part J). Bus rows, design
+weights → final: England fares −14.0 % → 0.0 % (Part J: −10.9 %; the under-5s' trips left the
+priced total), London −21.6 % → 0.0 %, Scotland +27.8 % → −0.1 %, Northern Ireland +49.1 % → 0.0 %
+(Part J: +69.6 %; the 60–64s and under-5s now ride free); support England +5.4 % → 0.0 % (+2.5 %),
+London +12.8 %, Scotland +61.8 %, Wales +5.5 %, all closed. Anatomy: the England fare row's final
+mass beyond 3× is 50.2 % against the frame-wide 48.0 % (Part J: 47.9 % against 47.9 %), London
+58.1 %, the England support row 47.8 % against 48.0 %; Northern Ireland's fare row now sits at
+9.8 % (its carriers are down-weighted less than before, median ratio 0.50 against 0.47).
