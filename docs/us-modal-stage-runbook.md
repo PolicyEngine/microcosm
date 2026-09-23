@@ -252,9 +252,11 @@ hold digests, sizes and paths, never file contents.
   registered either. It takes a directory input (`--inputs-dir`, the ACS
   PUMS archive cache), which the plan format does not support. Supporting it
   would take an archive digest plus extraction.
-- **Preemption.** Functions run with `retries=0` on Modal's default
-  (preemptible) placement. A preempted materialize has to be run again, and
-  state is only mirrored when a stage ends.
+- **Preemption and out-of-memory kills.** Functions run with `retries=0` on
+  Modal's default (preemptible) placement. The heavy class sets a memory
+  request but no hard limit. State is only mirrored and the receipt only
+  written when the tool exits, so a container that is preempted or killed
+  for memory leaves no receipt, and the stage has to be run again.
 - **Certification.** A receipt proves which bytes a stage produced. It does
   not certify a release. Preflight (`tools/preflight_us_release_gates.py`)
   and certification still run on the output as before.
