@@ -41,6 +41,7 @@ from microcosm.build.uk_runtime.cgt_imputation import (
 )
 from microcosm.build.uk_runtime.cgt_structure import (
     UKCGTBandDonorStageTransform,
+    UKCGTIncidenceAnchorStageTransform,
     UKCGTIncidenceCloneStageTransform,
 )
 from microcosm.build.uk_runtime.content_identity import uk_frame_content_identity
@@ -136,7 +137,7 @@ _SPI_SAMPLE_FRACTION = _ROOT_HOUSEHOLDS / 10_000
 _SPI_DONOR_SAMPLE_SIZE = 64
 #: The packaged FRS spine roster the fixture exercises (manifest minus the
 #: certified-pair exclusions); moves whenever a spine stage is added.
-UK_FIXTURE_STAGE_COUNT = 30
+UK_FIXTURE_STAGE_COUNT = 31
 _QRF_ESTIMATORS = 4
 
 # These are the complete object-string surface observed in the unchanged
@@ -1228,6 +1229,9 @@ def _build_implementations(
             facts=cgt_asset_type_facts,
             parameters=cgt_parameters,
         ),
+        "cgt_incidence_anchor": UKCGTIncidenceAnchorStageTransform(
+            stage=stages["cgt_incidence_anchor"], parameters=cgt_parameters
+        ),
         "salary_sacrifice": UKSalarySacrificeStageTransform(
             stage=stages["salary_sacrifice"]
         ),
@@ -1411,7 +1415,7 @@ def generate(output: Path) -> None:
         _normalization_markdown(), encoding="utf-8"
     )
     (output / "PRODUCED_BY.txt").write_text(
-        "tools/graph_uk_spine_fixture.py; current 30-transform legacy "
+        "tools/graph_uk_spine_fixture.py; current 31-transform legacy "
         "StagePlan oracle with parsed private-source seams. The acceptance "
         "test runs both sides from frs_raw in-process (root weights differ "
         "by one ulp between machines); the captured root tables serve the "

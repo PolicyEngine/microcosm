@@ -67,6 +67,7 @@ E8_STAGE_NAMES = [
     "cgt_band_donors",
     "hmrc_cgt_gains_spine",
     "hmrc_cgt_asset_type_spine",
+    "cgt_incidence_anchor",
     "salary_sacrifice",
     "student_loans",
 ]
@@ -324,6 +325,7 @@ class TestUKSourceStagesManifest:
                     "cgt_band_donors": _identity,
                     "hmrc_cgt_gains_spine": _identity,
                     "hmrc_cgt_asset_type_spine": _identity,
+                    "cgt_incidence_anchor": _identity,
                     "salary_sacrifice": _identity,
                     "student_loans": _identity,
                     "age_tail": _identity,

@@ -416,13 +416,13 @@ _UK_GATE_BATTERY_SHIPPABLE_STATUSES = frozenset({"passed", "not_applicable"})
 # fingerprint derives from the manifest digest. Editing the spec moves all
 # three here in the same reviewed change.
 _UK_GATE_BATTERY_POLICY_SHA256 = (
-    "62bc37def863b68d5595dcd5ec8b6483d1fad5f0874b80073f5752e0a1a5ebff"
+    "1f3980db96a922ced81c89b63daae829f180984b1157a0a73cdc768c1ade7017"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "4f2be1f12ebdbebd57b00dee355e27de0cac280be2b09e177cc82cc6afaf552e"
+    "c9141c748dac31d4a0f37d746a8a7639080cf9a80f8cc296aae8e7ef6bafbf79"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "775ba91346d29ce958cd82c0e459140f77d0ba00f695254f93ca02d8d7e52981"
+    "4e88c60ff7688a8528b793bee666ec669b871899f9d8eae7a6d19eb0b659ddd2"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -491,6 +491,10 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
         "stage_health",
         "transferred",
     ),
+    "uk_stage_cgt_incidence_anchor_composition": (
+        "stage_health",
+        "transferred",
+    ),
     "uk_stage_salary_sacrifice_realization": (
         "stage_health",
         "transferred",
@@ -526,6 +530,10 @@ _UK_GATE_BATTERY_ENTRY_GATES = {
     ),
     "uk_target_surface": ("target_surface", "terminal"),
     "uk_target_fit": ("target_fit", "terminal"),
+    "uk_cgt_projection_entrants": (
+        "cgt_projection_entrants",
+        "terminal",
+    ),
     "uk_input_mass_parity": ("input_mass_parity", "terminal"),
     "uk_qrf_tail_concentration": ("tail_concentration", "terminal"),
     "uk_local_geography_ladder_post_calibration": (
@@ -565,10 +573,12 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
         "uk_stage_cgt_band_donors_support",
         "uk_stage_hmrc_cgt_gains_spine_summary",
         "uk_stage_hmrc_cgt_asset_type_spine_summary",
+        "uk_stage_cgt_incidence_anchor_composition",
         "uk_stage_salary_sacrifice_realization",
         "uk_stage_student_loans_realization",
         "uk_stage_age_tail_targets",
         "uk_stage_frs_relationships_composition",
+        "uk_cgt_projection_entrants",
     }
 )
 # The input-mass binding's evidence payload wraps the reviewed reference
@@ -708,6 +718,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
             "uk_ons_household_type_enum_domain",
             "uk_stage_age_tail_targets",
             "uk_stage_cgt_band_donors_support",
+            "uk_stage_cgt_incidence_anchor_composition",
             "uk_stage_cgt_incidence_clone_mass",
             "uk_stage_etb_services_support",
             "uk_stage_etb_vat_support",
@@ -729,6 +740,7 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
         {
             "uk_aggregate_admin",
             "uk_calibration_reference_coverage",
+            "uk_cgt_projection_entrants",
             "uk_target_fit",
             "uk_weight_ess",
             "uk_weight_ratio",
@@ -763,18 +775,18 @@ _UK_CERTIFICATION_PART_SCOPES: Mapping[str, frozenset[str]] = {
 _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     "spine": {
         "gates_manifest_sha256": (
-            "778f5d32d421c4fb2cc8c37ef4232093070d2606ec17bf9d4f7ee1c1e6de8b8d"
+            "59b636f960c2a9e4e6cfb7f989949b89c64330bf9f3784d897926e0a9c8dcea3"
         ),
         "policy_sha256": (
-            "c59f645c51ec234e91bd582df2a1576116f2c67183c2cb015f51d3f1a2be9ea7"
+            "a638c43c4b486962fba6bb6a6ffab557765dce26981b06f066ffdee36616482c"
         ),
     },
     "calibration_seam": {
         "gates_manifest_sha256": (
-            "9ed1529c9c6e9ecaca6469d1fe0570930f0598b10002629ff89429334b13a726"
+            "35ab5136b190ea514e6d0b346d0d27e3c202576f74e3c7e2725abdea33f95cf9"
         ),
         "policy_sha256": (
-            "eaaaacace07b4d282e1b7497f82f027daa9bb31aa7a6268063b05a069588e385"
+            "5a78ad115f958eb20247534ff9fd52e5d5d4f277b608d55ad4251d48a7232049"
         ),
     },
     "release_cut": {

@@ -55,6 +55,10 @@ from microcosm.build.uk_runtime.calibration_run import (
     uk_aggregate_admin_totals,
     uk_scoped_gate_manifest,
 )
+from microcosm.build.uk_runtime.cgt_projection import (
+    UK_CGT_PROJECTION_ENGINE_LABEL_PREFIX,
+    uk_cgt_projection_read_from_engine,
+)
 
 __all__ = [
     "UK_RELEASE_CERTIFICATION_KIND",
@@ -98,6 +102,14 @@ _PART_SCOPES: Mapping[str, Mapping[str, object]] = {
         "posture": UK_RELEASE_CUT_POSTURE,
     },
 }
+
+
+#: The seam's projection fence records where its projection came from. The
+#: seam accepts a projection stated from the manifest pins when no engine is
+#: installed (the secrets-free fast lane, a data-only build) and labels the
+#: receipt; certification requires the fence to have read an installed
+#: engine, so that label can never certify a cut.
+_PROJECTION_GATE_ID = "uk_cgt_projection_entrants"
 
 
 class UKReleaseCertificationError(ValueError):
@@ -573,6 +585,7 @@ def _verify_part(
         raise UKReleaseCertificationError(
             f"{part_name}: release-blocking entries not passed: {failing}."
         )
+    _verify_projection_source(part_name, gates)
     expected = _scoped_digests(scope, phases=phases, policy_suffix=policy_suffix)
     for field in ("gates_manifest_sha256", "policy_sha256"):
         if payload.get(field) != expected[field]:
@@ -583,6 +596,30 @@ def _verify_part(
                 "gate spec."
             )
     _verify_part_signature(part_name, payload, signing_key)
+
+
+def _verify_projection_source(part_name: str, gates: Mapping[str, Any]) -> None:
+    """Refuse a part whose projection fence did not read an installed engine.
+
+    Only the calibration seam carries the fence. Its ``details`` record the
+    projection's source: ``policyengine-uk==<version>`` when the seam read
+    the installed engine, the pins label when it had none. A pinned
+    projection passes the gate (the binding drift-checks it against itself),
+    which is why the refusal lives here, on the only path to a certified cut.
+    """
+
+    entry = gates.get(_PROJECTION_GATE_ID)
+    if entry is None:
+        return
+    details = entry.get("details")
+    engine = details.get("projection_engine") if isinstance(details, Mapping) else None
+    if not uk_cgt_projection_read_from_engine(engine):
+        raise UKReleaseCertificationError(
+            f"{part_name}: {_PROJECTION_GATE_ID}.details.projection_engine must "
+            f"name the installed engine ({UK_CGT_PROJECTION_ENGINE_LABEL_PREFIX}"
+            f"<version>), got {engine!r}; a fence projected from the manifest "
+            "pins evaluates the gate but cannot certify."
+        )
 
 
 def _verify_part_signature(

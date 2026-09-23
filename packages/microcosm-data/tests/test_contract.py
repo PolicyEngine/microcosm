@@ -116,13 +116,13 @@ def _trusted_terminal_gate_signing_key(monkeypatch) -> None:
 UK_GATE_BATTERY_PRODUCER = "microcosm.build.gate_battery"
 UK_GATE_BATTERY_SIGNING_KEY_ENV = "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY"
 UK_GATE_BATTERY_POLICY_SHA256 = (
-    "62bc37def863b68d5595dcd5ec8b6483d1fad5f0874b80073f5752e0a1a5ebff"
+    "1f3980db96a922ced81c89b63daae829f180984b1157a0a73cdc768c1ade7017"
 )
 UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "4f2be1f12ebdbebd57b00dee355e27de0cac280be2b09e177cc82cc6afaf552e"
+    "c9141c748dac31d4a0f37d746a8a7639080cf9a80f8cc296aae8e7ef6bafbf79"
 )
 UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "775ba91346d29ce958cd82c0e459140f77d0ba00f695254f93ca02d8d7e52981"
+    "4e88c60ff7688a8528b793bee666ec669b871899f9d8eae7a6d19eb0b659ddd2"
 )
 UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256 = (
     "6f0243bcda09dad26945376230c44ec3cf55d4e417c3a25e29bae8c59bc1a69d"
@@ -203,6 +203,11 @@ UK_GATE_BATTERY_ENTRIES = {
         "transferred",
         None,
     ),
+    "uk_stage_cgt_incidence_anchor_composition": (
+        "stage_health",
+        "transferred",
+        None,
+    ),
     "uk_stage_age_tail_targets": ("stage_health", "assembled", None),
     "uk_stage_frs_relationships_composition": ("stage_health", "assembled", None),
     "uk_ledger_compile_parity_local_incumbent_2025": (
@@ -267,6 +272,7 @@ UK_GATE_BATTERY_ENTRIES = {
     ),
     "uk_target_surface": ("target_surface", "terminal", "target_surface"),
     "uk_target_fit": ("target_fit", "terminal", "target_fit"),
+    "uk_cgt_projection_entrants": ("cgt_projection_entrants", "terminal", None),
     "uk_input_mass_parity": ("input_mass_parity", "terminal", "input_mass_parity"),
     "uk_qrf_tail_concentration": (
         "tail_concentration",
@@ -1181,6 +1187,7 @@ def _gate_battery_payload(
         "uk_stage_cgt_band_donors_support": "cgt_band_donors",
         "uk_stage_hmrc_cgt_gains_spine_summary": "hmrc_cgt_gains_spine",
         "uk_stage_hmrc_cgt_asset_type_spine_summary": "hmrc_cgt_asset_type_spine",
+        "uk_stage_cgt_incidence_anchor_composition": "cgt_incidence_anchor",
         "uk_stage_salary_sacrifice_realization": "salary_sacrifice",
         "uk_stage_student_loans_realization": "student_loans",
         "uk_stage_age_tail_targets": "age_tail",
@@ -1226,6 +1233,12 @@ def _gate_battery_payload(
             }
         elif entry_id == "uk_calibration_reference_coverage":
             details = {"activated": 388, "resolved": 388, "matrix": 388}
+        elif entry_id == "uk_cgt_projection_entrants":
+            details = {
+                "max_entrants": 41_000.0,
+                "worst_year": 2030,
+                "bound": 73_000.0,
+            }
         elif entry_id.startswith("uk_local_"):
             # Local candidate gates are explicitly excluded from national
             # certification; this full-report fixture needs only their
@@ -1294,6 +1307,9 @@ def _gate_battery_payload(
         ),
         "uk_degenerate_release_surface": UK_GATE_BATTERY_DEGENERATE_EVIDENCE_SHA256,
         "uk_input_mass_parity": UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256,
+        "uk_cgt_projection_entrants": _canonical_sha256(
+            {"cgt_projection": {"base_year": 2023, "horizon_year": 2030}}
+        ),
     }
     for entry_id, stage in stage_health_stages.items():
         evidence[entry_id] = _canonical_sha256({stage: {"stage": stage}})

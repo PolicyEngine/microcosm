@@ -804,6 +804,10 @@ def build_manifest(
                 stage_name="hmrc_cgt_asset_type_spine",
                 candidate_source=candidate_source,
             ),
+            "cgt_incidence_anchor": _source_stage_family_coverage_contract(
+                stage_name="cgt_incidence_anchor",
+                candidate_source=candidate_source,
+            ),
             "salary_sacrifice": _source_stage_family_coverage_contract(
                 stage_name="salary_sacrifice",
                 candidate_source=candidate_source,
@@ -962,6 +966,7 @@ def _cgt_spine_family_coverage_contract(
     required_artifacts = {
         "policy_parameters",
         "cgt_conditioning_facts",
+        "capital_gains_within_band_distribution",
     }
     required_operations = {
         "verify_vendored_fact_resource",

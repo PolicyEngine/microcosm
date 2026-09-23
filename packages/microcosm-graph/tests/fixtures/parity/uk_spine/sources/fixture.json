@@ -135,6 +135,94 @@
       "stage": "cgt_band_donors",
       "survey": "HMRC Capital Gains Tax statistics Table 2.1a (2024-25 individuals) and Advani-Summers capital-gains incidence"
     },
+    "cgt_incidence_anchor": {
+      "artifacts": [
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "advani_summers_capital_gains_distribution.json",
+          "role": "capital_gains_incidence_and_quantiles",
+          "runtime_sha256_required": true
+        },
+        {
+          "dependency": "policyengine-uk>=2.98.0 via microcosm-build[uk]",
+          "dependency_discipline": "deferred inside uk_cgt_policy_parameters; the base package never imports policyengine-uk at import time",
+          "instant_rule": "raw dated parameter files evaluated at 1 June of the build period's tax year",
+          "kind": "versioned_parameter_tree",
+          "parameters": [
+            "gov.hmrc.cgt.annual_exempt_amount"
+          ],
+          "role": "policy_parameters",
+          "runtime_sha256_required": false
+        }
+      ],
+      "grain": "household",
+      "nonnegative_outputs": [],
+      "notes": "Spine-only weight anchor after the amounts and asset-type stages (microcosm#970). The equal-mass clone leaves half of all household mass on gainer households, so after the Table 3 redraw the clones below the exempt amount carry millions of weighted persons that HMRC publishes no count for; the anchor derives their level from the redrawn liable mass and the Advani-Summers reporter composition and moves the excess back to each clone's paired original, which is identical in every cell but the gains. No cell is written: amounts, flags, liable clones, zero-gain clone carriers and band donors are untouched; the groups, targets and receipt are clone-side quantities (band donors and originals are outside the anchor), every pair's mass and the household total are conserved, and the receipt is gated at stage time.",
+      "operations": [
+        {
+          "clone_flag_column": "household_is_capital_gains_clone",
+          "donor_flag_column": "household_is_cgt_band_donor",
+          "id_remapping": "id_multiplier_for_values",
+          "kind": "pair_clone_households_to_originals",
+          "pairing": "clone household_id minus the clone stage's id multiplier, recomputed from the pre-clone rows (clone flag false and not a band donor)",
+          "requirement": "bijection between clone and original households; an unpaired clone or original fails the build"
+        },
+        {
+          "adult_minimum_age": 16,
+          "aggregation": "crossings averaged over clone carriers weighted by household weight times the band's percent_with_gains",
+          "allowance_subtraction": false,
+          "carrier": "oldest adult; person_id ascending breaks age ties",
+          "crossings": "each band's degree-1 quantile spline inverted at zero and at the build period's annual exempt amount",
+          "extrapolation": "ext=0",
+          "income_proxy_components": [
+            "employment_income",
+            "self_employment_income",
+            "state_pension_reported",
+            "private_pension_income",
+            "property_income",
+            "savings_interest_income",
+            "dividend_income",
+            "miscellaneous_income"
+          ],
+          "kind": "derive_reporter_composition_from_banded_quantiles",
+          "liable_mass": "weighted persons with capital_gains above the annual exempt amount on every household after the Table 3 redraw, clones and band donors alike",
+          "quantile_points": [
+            0.05,
+            0.1,
+            0.25,
+            0.5,
+            0.75,
+            0.9,
+            0.95
+          ],
+          "resource": "advani_summers_capital_gains_distribution.json",
+          "spline_degree": 1,
+          "targets": "sub_exempt = liable_mass * (exempt_quantile - zero_quantile) / (1 - exempt_quantile); loss = liable_mass * zero_quantile / (1 - exempt_quantile)"
+        },
+        {
+          "conservation": "household_total_to_rounding",
+          "declared_factor": 1,
+          "donors": "untouched",
+          "factor": "min(maximum_factor, scale * percent_with_gains) with scale solved per group by bisection so the group's mass equals its target; a group at or below its target is untouched",
+          "kind": "transfer_clone_mass_to_originals",
+          "liable_clones": "untouched",
+          "loss_group": "clone households whose carrier's capital_gains are negative",
+          "maximum_factor": 1,
+          "pair_conservation": "to_rounding",
+          "population": "clone households paired to their originals; band donors and originals are outside the anchor, so the groups, targets and masses are clone-side quantities, not population counts",
+          "reason": "Capital-gains incidence anchor moves the mass of non-liable clone households back to their paired originals until the sub-exempt and loss-making clone mass match the Advani-Summers reporter composition at the redrawn liable mass; every pair's mass and the total household mass are conserved.",
+          "sub_exempt_group": "clone households whose carrier's capital_gains lie in (0, annual exempt amount]; a carrier with exactly zero gains is no reporter and is left untouched",
+          "transfer": "each clone's removed mass is added to its paired original, so every pair's mass is conserved to rounding; no global exact-total correction is applied, so no household outside a trimmed pair moves",
+          "weight_kind_out": "importance"
+        }
+      ],
+      "outputs": [],
+      "rewrites": [],
+      "source": "Advani and Summers (2020), Capital Gains and UK Inequality, CAGE Working Paper 465",
+      "stage": "cgt_incidence_anchor",
+      "survey": "Family Resources Survey 2024-25, SPI synthetic support, the HMRC Table 3 redrawn gains on the spine and Advani-Summers capital-gains incidence"
+    },
     "cgt_incidence_clone": {
       "artifacts": [
         {
@@ -1934,6 +2022,13 @@
           "resource": "hmrc_cgt_conditioning_facts.json",
           "role": "cgt_conditioning_facts",
           "runtime_sha256_required": true
+        },
+        {
+          "format": "json",
+          "kind": "public_aggregate_reference",
+          "resource": "advani_summers_capital_gains_distribution.json",
+          "role": "capital_gains_within_band_distribution",
+          "runtime_sha256_required": true
         }
       ],
       "grain": "person",
@@ -2050,9 +2145,27 @@
           "seed_mixing": "seed combined with the build period; each walk draws its rounding offset in cell order then pooled-fallback order, then each plan draws its quantile jitter, income bands ascending and gain bands highest first"
         },
         {
+          "banding": "Advani-Summers total-income bands at the person's component-sum income without allowance subtraction, the banding the prior draw uses",
+          "deterministic": true,
+          "extrapolation": "ext=0",
           "kind": "sub_aea_remainder",
-          "policy": "gainers beyond the published taxpayer mass keep their existing amounts capped at the annual exempt amount",
-          "rationale": "Table 3 covers only individuals with a CGT liability; remaining gainers are treated as sub-AEA gainers rather than invented into the liability distribution or deleted."
+          "mapping": "remainder gainers take the midpoints of the weight-proportional quantile strata that partition the range, evaluated on the band's spline; zero-weight persons take a nominal stratum of the band's smallest positive weight and carry no mass; no seeded draw is consumed, so the walk and plan draw order is unchanged",
+          "ordering": "existing gains ascending, person_id descending on ties (the allocation ranking reversed, as the within-band draws order their strata)",
+          "policy": "gainers beyond the published taxpayer mass take amounts from the Advani-Summers within-band gains distribution restricted to (0, annual exempt amount], rank-preserving within each Advani-Summers total-income band",
+          "quantile_points": [
+            0.05,
+            0.1,
+            0.25,
+            0.5,
+            0.75,
+            0.9,
+            0.95
+          ],
+          "range": "quantiles strictly between the band's degree-1 quantile spline zero crossing and its crossing of the build period's annual exempt amount, so every amount lies in (0, AEA]",
+          "rationale": "Table 3 covers only individuals with a CGT liability; the remaining gainers are sub-AEA gainers, so their amounts come from the only published within-band distribution that reaches below the exempt amount, the surface the spine's gainer set was drawn from, rather than from capping the candidate's amounts, and none is invented into the liability distribution or deleted (microcosm#970).",
+          "resource": "advani_summers_capital_gains_distribution.json",
+          "resource_vintage": "2017-18 nominal pounds as published (Advani and Summers 2020, CAGE WP 465, Table A1); no uprating is applied",
+          "spline_degree": 1
         },
         {
           "declared_factor": 1,
