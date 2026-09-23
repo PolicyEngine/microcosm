@@ -443,10 +443,13 @@ def test_mirror_tree_round_trip_is_a_no_op(tmp_path: Path) -> None:
     (src / "checkpoints").mkdir(parents=True)
     (src / "checkpoints" / "targets.json").write_text("[]")
     (src / "artifact.h5").write_bytes(b"h5")
-    assert plan_lib.mirror_tree(src, dst) == {"copied": 2, "deleted": 0}
-    assert plan_lib.mirror_tree(src, dst) == {"copied": 0, "deleted": 0}
+    counts = plan_lib.mirror_tree(src, dst)
+    assert counts == {"copied": 2, "deleted": 0, "partials_removed": 0}
+    counts = plan_lib.mirror_tree(src, dst)
+    assert counts == {"copied": 0, "deleted": 0, "partials_removed": 0}
     (src / "artifact.h5").unlink()
-    assert plan_lib.mirror_tree(src, dst) == {"copied": 0, "deleted": 1}
+    counts = plan_lib.mirror_tree(src, dst)
+    assert counts == {"copied": 0, "deleted": 1, "partials_removed": 0}
     assert plan_lib.tree_listing(dst).keys() == {"checkpoints/targets.json"}
 
 
@@ -1153,3 +1156,142 @@ def test_app_run_stage_ends_the_attempt_with_its_outcome(
     record = json.loads(path.read_text())
     assert (record["outcome"], record["finished"]) == (outcome, finished)
     assert str(error) in record["note"]
+
+
+# --------------------------------------------------------------------------- #
+# Atomic mirroring and the pulled-state check                                  #
+# --------------------------------------------------------------------------- #
+
+
+def test_a_mirror_cut_short_never_leaves_a_half_written_file(
+    tmp_path: Path, monkeypatch
+) -> None:
+    src, dst = tmp_path / "src", tmp_path / "dst"
+    src.mkdir()
+    (src / "a.npz").write_bytes(b"old-a")
+    (src / "b.h5").write_bytes(b"old-b")
+    plan_lib.mirror_tree(src, dst)
+    (src / "a.npz").write_bytes(b"new-a-longer")
+    (src / "b.h5").write_bytes(b"new-b-longer")
+    real_copy = plan_lib.shutil.copy2
+
+    def copy_then_die(source, target):
+        if Path(source).name == "b.h5":
+            Path(target).write_bytes(b"new-")  # the partial copy, then preemption
+            raise KeyboardInterrupt
+        return real_copy(source, target)
+
+    monkeypatch.setattr(plan_lib.shutil, "copy2", copy_then_die)
+    with pytest.raises(KeyboardInterrupt):
+        plan_lib.mirror_tree(src, dst)
+    # a.npz was replaced whole, b.h5 still holds its old bytes, and the
+    # partial copy is invisible to listings.
+    assert (dst / "a.npz").read_bytes() == b"new-a-longer"
+    assert (dst / "b.h5").read_bytes() == b"old-b"
+    assert (dst / f".b.h5{plan_lib.MIRROR_PARTIAL_SUFFIX}").exists()
+    assert set(plan_lib.tree_listing(dst)) == {"a.npz", "b.h5"}
+    monkeypatch.setattr(plan_lib.shutil, "copy2", real_copy)
+    counts = plan_lib.mirror_tree(src, dst)
+    assert counts["partials_removed"] == 1
+    assert (dst / "b.h5").read_bytes() == b"new-b-longer"
+    assert not list(dst.rglob(f"*{plan_lib.MIRROR_PARTIAL_SUFFIX}"))
+
+
+def _state_receipt(
+    state: Path, finished_at: str, stage: str = "materialize", run_id: str = ""
+) -> dict:
+    data = _plan_data(stage, run_id=run_id or "acs-local-20260923")
+    plan = plan_lib.parse_plan(data)
+    return plan_lib.build_receipt(
+        plan,
+        data,
+        argv=["python"],
+        returncode=0,
+        started_at=finished_at,
+        finished_at=finished_at,
+        wall_seconds=1.0,
+        peak_rss_bytes=None,
+        inputs_verified=[],
+        outputs=plan_lib.hash_tree(state),
+        git={},
+        runner={},
+    )
+
+
+def test_latest_receipt_is_by_finish_time_not_by_name(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    state.mkdir()
+    materialize = _state_receipt(state, "2026-09-23T09:00:00Z")
+    calibrate = _state_receipt(state, "2026-09-23T10:00:00Z", stage="calibrate")
+    foreign = _state_receipt(state, "2026-09-23T11:00:00Z", run_id="other-run")
+    receipts = [
+        ("calibrate-2026-09-23T100000Z.json", calibrate),
+        ("materialize-2026-09-23T090000Z.json", materialize),
+        ("materialize-2026-09-23T110000Z.json", foreign),
+        ("truncated.json", {}),
+    ]
+    name, receipt = plan_lib.latest_receipt(receipts, "acs-local-20260923")
+    assert name == "calibrate-2026-09-23T100000Z.json"
+    assert receipt["stage"] == "calibrate"
+    assert plan_lib.latest_receipt([("x.json", {})], "acs-local-20260923") is None
+
+
+def test_pulled_state_must_be_what_the_latest_receipt_lists(tmp_path: Path) -> None:
+    state = tmp_path / "state"
+    assert plan_lib.pulled_state_problems(state, None) == []
+    (state / "checkpoints").mkdir(parents=True)
+    (state / "checkpoints" / "targets.json").write_text("[]")
+    # State with no receipt at all: a first stage cut short after mirroring.
+    (problem,) = plan_lib.pulled_state_problems(state, None)
+    assert "has no receipt" in problem
+    receipt = _state_receipt(state, "2026-09-23T09:00:00Z")
+    latest = ("materialize-2026-09-23T090000Z.json", receipt)
+    assert plan_lib.pulled_state_problems(state, latest) == []
+    # A later stage's mirror cut short: one file replaced, one added.
+    (state / "checkpoints" / "targets.json").write_text("[1]")
+    (state / "weights_latest.npz").write_bytes(b"w")
+    problems = plan_lib.pulled_state_problems(state, latest)
+    assert problems == [
+        "state differs from receipt materialize-2026-09-23T090000Z.json: "
+        "size mismatch: checkpoints/targets.json is 3 bytes, receipt 2",
+        "state differs from receipt materialize-2026-09-23T090000Z.json: "
+        "not in receipt: weights_latest.npz",
+    ]
+
+
+def test_receipt_names_the_receipt_the_pulled_state_matched(tmp_path: Path) -> None:
+    data = _plan_data("calibrate")
+    plan = plan_lib.parse_plan(data)
+    receipt = plan_lib.build_receipt(
+        plan,
+        data,
+        argv=["python"],
+        returncode=0,
+        started_at="t0",
+        finished_at="t1",
+        wall_seconds=1.0,
+        peak_rss_bytes=None,
+        inputs_verified=[],
+        outputs=[],
+        git={},
+        runner={},
+        attempt_id=OWN,
+        prior_state_verified_against="materialize-2026-09-23T090000Z.json",
+    )
+    assert receipt["attempt_id"] == OWN
+    assert receipt["prior_state_verified_against"] == (
+        "materialize-2026-09-23T090000Z.json"
+    )
+
+
+def test_app_reads_receipts_even_when_one_is_truncated(app, tmp_path: Path) -> None:
+    receipts = tmp_path / "receipts"
+    receipts.mkdir()
+    (receipts / "materialize-2026-09-23T090000Z.json").write_text('{"schema": "x"}')
+    (receipts / "calibrate-2026-09-23T100000Z.json").write_text('{"sche')
+    (receipts / ".calibrate-2026-09-23T110000Z.json.tmp").write_text("{}")
+    rows = app._receipts(tmp_path)
+    assert [(name, data) for name, data, _ in rows] == [
+        ("calibrate-2026-09-23T100000Z.json", {}),
+        ("materialize-2026-09-23T090000Z.json", {"schema": "x"}),
+    ]

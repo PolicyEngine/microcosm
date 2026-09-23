@@ -877,14 +877,24 @@ def verify_digest(ref: InputRef, actual_sha256: str) -> None:
         )
 
 
+# A file mid-copy in mirror_tree; never part of a state tree.
+MIRROR_PARTIAL_SUFFIX = ".mirror-partial"
+
+
 def tree_listing(root: Path | str) -> dict[str, tuple[int, int]]:
-    """``{relative posix path: (bytes, mtime_ns)}`` for every regular file."""
+    """``{relative posix path: (bytes, mtime_ns)}`` for every regular file.
+
+    A ``MIRROR_PARTIAL_SUFFIX`` file (a copy a preemption cut short) is left
+    out; mirror_tree removes it on the next push.
+    """
 
     root = Path(root)
     listing: dict[str, tuple[int, int]] = {}
     if not root.exists():
         return listing
     for path in sorted(root.rglob("*")):
+        if path.name.endswith(MIRROR_PARTIAL_SUFFIX):
+            continue
         if path.is_file() and not path.is_symlink():
             stat = path.stat()
             listing[path.relative_to(root).as_posix()] = (
@@ -912,15 +922,37 @@ def mirror_actions(
 
 
 def mirror_tree(source: Path | str, destination: Path | str) -> dict[str, int]:
+    """Make ``destination`` mirror ``source``, one file at a time, atomically.
+
+    Each file is copied to a temporary name in its own directory and renamed
+    over the target, so no file on the destination is ever half-written. A
+    preemption between files still leaves a mix of new and old files (and
+    files not yet deleted); the next attempt's pulled-state check against
+    the latest receipt refuses that mix.
+    """
+
     source, destination = Path(source), Path(destination)
+    partials = (
+        sorted(destination.rglob(f"*{MIRROR_PARTIAL_SUFFIX}"))
+        if destination.exists()
+        else []
+    )
+    for stale in partials:
+        stale.unlink()
     copy, delete = mirror_actions(tree_listing(source), tree_listing(destination))
     for rel in copy:
         target = destination / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source / rel, target)
+        tmp = target.with_name(f".{target.name}{MIRROR_PARTIAL_SUFFIX}")
+        shutil.copy2(source / rel, tmp)
+        os.replace(tmp, target)
     for rel in delete:
         (destination / rel).unlink()
-    return {"copied": len(copy), "deleted": len(delete)}
+    return {
+        "copied": len(copy),
+        "deleted": len(delete),
+        "partials_removed": len(partials),
+    }
 
 
 def hash_tree(root: Path | str) -> list[dict[str, object]]:
@@ -952,6 +984,7 @@ def build_receipt(
     prior_attempts: Sequence[Mapping[str, object]] = (),
     budget_seconds: int | None = None,
     attempt_id: str | None = None,
+    prior_state_verified_against: str | None = None,
 ) -> dict[str, object]:
     resources = plan.resources
     # The tool's wall leaves out staging the inputs, hashing the state tree
@@ -1012,6 +1045,7 @@ def build_receipt(
         **container,
         "inputs": [dict(item) for item in inputs_verified],
         "prior_receipts": [dict(item) for item in prior_receipts],
+        "prior_state_verified_against": prior_state_verified_against,
         "outputs": [dict(item) for item in outputs],
     }
 
@@ -1044,6 +1078,53 @@ def verify_receipt(
         extra = sorted(set(tree_listing(root)) - declared)
         problems += [f"not in receipt: {rel}" for rel in extra]
     return problems
+
+
+def latest_receipt(
+    receipts: Iterable[tuple[str, Mapping]], run_id: str
+) -> tuple[str, Mapping] | None:
+    """The run's most recent receipt, by ``finished_at`` (then file name).
+
+    Every receipt is written after its state was mirrored, and one stage of
+    a run runs at a time, so this is the receipt that describes the state
+    on the runs volume. Receipt names begin with the stage, so sorting them
+    by name would not do.
+    """
+
+    mine = [
+        (str(receipt.get("finished_at") or ""), name, receipt)
+        for name, receipt in receipts
+        if receipt.get("schema") == RECEIPT_SCHEMA and receipt.get("run_id") == run_id
+    ]
+    if not mine:
+        return None
+    _, name, receipt = max(mine, key=lambda item: (item[0], item[1]))
+    return name, receipt
+
+
+def pulled_state_problems(
+    state_root: Path | str, latest: tuple[str, Mapping] | None
+) -> list[str]:
+    """Refusals for a run's state that its latest receipt does not describe.
+
+    A preemption or error after the state was mirrored and before the
+    receipt was written, or during a mirror, leaves state no receipt lists.
+    With no receipt the state must be empty.
+    """
+
+    if latest is None:
+        files = tree_listing(state_root)
+        if not files:
+            return []
+        return [
+            f"the run's state has {len(files)} file(s) and the run has no receipt "
+            f"(e.g. {sorted(files)[:3]})"
+        ]
+    name, receipt = latest
+    return [
+        f"state differs from receipt {name}: {problem}"
+        for problem in verify_receipt(receipt, state_root, strict=True)
+    ]
 
 
 def prior_state_problems(plan: Plan, run_identity: Mapping | None) -> list[str]:

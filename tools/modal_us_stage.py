@@ -465,6 +465,18 @@ class _Attempt(threading.Thread):
                 print(f"attempt heartbeat failed: {error}", flush=True)
 
 
+def _receipts(run_dir: Path) -> list[tuple[str, dict, str]]:
+    """``(file name, parsed receipt or {}, sha256)`` for each of a run's receipts."""
+
+    receipts_dir = run_dir / "receipts"
+    if not receipts_dir.exists():
+        return []
+    return [
+        (path.name, _load_json(path) or {}, plan_lib.sha256_file(path)[0])
+        for path in sorted(receipts_dir.glob("*.json"))
+    ]
+
+
 def _attempt_records(plan: plan_lib.Plan) -> list[dict]:
     attempts_dir = _run_dir(plan) / "attempts"
     if not attempts_dir.exists():
@@ -560,6 +572,12 @@ def check_stage(plan_data: dict) -> dict:
     )
     report["prior_run_identity"] = identity
     problems += plan_lib.prior_state_problems(plan, identity)
+    # The state the run would pull, hashed in place against its latest receipt.
+    latest = plan_lib.latest_receipt(
+        [(name, data) for name, data, _ in _receipts(_run_dir(plan))], plan.run_id
+    )
+    report["prior_state_verified_against"] = latest[0] if latest else None
+    problems += plan_lib.pulled_state_problems(_run_dir(plan) / "state", latest)
     records = _attempt_records(plan)
     prior_attempts = plan_lib.unfinished_attempts(
         records, plan, plan_lib.plan_digest(plan_data)
@@ -690,14 +708,23 @@ def _attempt_stage(
             flush=True,
         )
 
-    # 5. Inputs to stable local paths, each digest verified; then this run's
-    #    prior state (checkpoints, calibrated H5) onto local disk.
-    inputs_verified = [_stage_input(ref, work) for ref in plan.inputs.values()]
+    # 5. This run's prior state (checkpoints, calibrated H5) onto local disk,
+    #    verified against the run's latest receipt before anything uses it;
+    #    then the inputs to stable local paths, each digest verified.
     pulled = plan_lib.mirror_tree(run_dir / "state", state)
-    receipts_dir = run_dir / "receipts"
-    prior = []
-    for path in sorted(receipts_dir.glob("*.json")) if receipts_dir.exists() else []:
-        prior.append({"file": path.name, "sha256": plan_lib.sha256_file(path)[0]})
+    receipts = _receipts(run_dir)
+    latest = plan_lib.latest_receipt(
+        [(name, data) for name, data, _ in receipts], plan.run_id
+    )
+    problems = plan_lib.pulled_state_problems(state, latest)
+    if problems:
+        raise plan_lib.PlanError(
+            f"run {plan.run_id!r}: its state on {plan_lib.RUNS_VOLUME} is not what "
+            "its latest receipt lists, so a stage was cut short after changing it; "
+            "use a new run_id. " + "; ".join(problems[:10])
+        )
+    prior = [{"file": name, "sha256": sha} for name, _, sha in receipts]
+    inputs_verified = [_stage_input(ref, work) for ref in plan.inputs.values()]
 
     # 6. The stage itself, in the pinned tree, logged to the state directory.
     argv = plan_lib.planned_argv(plan)
@@ -756,7 +783,9 @@ def _attempt_stage(
         prior_attempts=prior_attempts,
         budget_seconds=budget_seconds,
         attempt_id=attempt.attempt_id,
+        prior_state_verified_against=latest[0] if latest else None,
     )
+    receipts_dir = run_dir / "receipts"
     receipts_dir.mkdir(parents=True, exist_ok=True)
     name = f"{plan.stage}-{started_at.replace(':', '')}.json"
     tmp = receipts_dir / f".{name}.tmp"
