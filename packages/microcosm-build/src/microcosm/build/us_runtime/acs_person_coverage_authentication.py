@@ -31,6 +31,7 @@ from . import acs_housing_universe_source as custody
 from . import acs_person_coverage_columns as literal
 from .acs_pums import AcsPumsSource
 from .source_csv_builtin import csv_reader_bound
+from .source_memo import FileInput, exact_text, json_native, memoized, ordered
 
 PROTOCOL = "microcosm.acs-person-coverage-authentication.v1"
 MAX_HEADER_BYTES = 1024**2
@@ -423,7 +424,92 @@ def _members(archive, role):
     return sorted(members, key=lambda m: m.filename), prefix
 
 
+def _selection_parameters(role, serialnos):
+    keys = sorted(serialnos)
+    _require(
+        all(type(key) is str and exact_text(key) for key in keys), "SELECTION_KEYS"
+    )
+    raw = ordered(keys)
+    return {"role": role, "selection_sha256": _sha(raw), "selection_keys": len(keys)}
+
+
+def _encode_inventory(value):
+    inventory, selected = value
+    pairs = [
+        [*key, *item] if type(key) is tuple else [key, item]
+        for key, item in selected.items()
+    ]
+    return [ordered(inventory), ordered(pairs)]
+
+
+def _decoder(role):
+    def decode(blobs):
+        _require(len(blobs) == 2, "MEMO_BLOBS")
+        inventory, pairs = json.loads(blobs[0]), json.loads(blobs[1])
+        if role == "household":
+            return inventory, {key: value for key, value in pairs}
+        return inventory, {(a, b): [c, d] for a, b, c, d in pairs}
+
+    return decode
+
+
+def _prove_inventory(role):
+    """The decoded value is exactly this one when every cell has its exact type."""
+
+    def text(value):
+        return type(value) is str and exact_text(value)
+
+    def household(key, value):
+        return text(key) and type(value) is int
+
+    def person(key, value):
+        return (
+            type(key) is tuple
+            and len(key) == 2
+            and text(key[0])
+            and type(key[1]) is int
+            and type(value) is list
+            and len(value) == 2
+            and text(value[0])
+            and type(value[1]) is int
+        )
+
+    check = household if role == "household" else person
+
+    def prove(value, blobs):
+        return (
+            len(blobs) == 2
+            and type(value) is tuple
+            and len(value) == 2
+            and type(value[0]) is list
+            and json_native(value[0])
+            and type(value[1]) is dict
+            and all(check(key, item) for key, item in value[1].items())
+        )
+
+    return prove
+
+
 def _inventory(path, role, serialnos):
+    """Complete member inventory and selected rows of one archive, memoized.
+
+    A deterministic function of the archive's bytes, role, exact selection
+    and this owner's producer; see ``source_memo``. Refusals are unchanged:
+    only a completed inventory is ever recorded.
+    """
+    return memoized(
+        "acs_person_coverage_authentication._inventory",
+        code=_producer,
+        inputs=(FileInput("archive", path),),
+        parameters=lambda: _selection_parameters(role, serialnos),
+        compute=lambda: _inventory_uncached(path, role, serialnos),
+        encode=_encode_inventory,
+        decode=_decoder(role),
+        proof=_prove_inventory(role),
+    )
+
+
+def _inventory_uncached(path, role, serialnos):
     inventory, selected, rows, selected_budget = [], {}, 0, 0
     required = ("SERIALNO", "NP") if role == "household" else literal.READ_COLUMNS
     with zipfile.ZipFile(path) as archive:

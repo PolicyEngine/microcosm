@@ -20,6 +20,8 @@ from . import acs_housing_universe_source as housing
 from . import acs_native_coverage_binding as native
 from . import acs_person_coverage_columns as literal
 from . import survey_population_domains as domains
+from .source_memo import DigestInput, FileInput, exact_text, json_native, memoized
+from .source_memo import ordered as _ordered
 
 PROTOCOL = "microcosm.acs-source-catalogue.v1"
 _ARCHIVE_BYTES = 8 * 1024**3
@@ -354,6 +356,84 @@ def _collect(projection, paths):
     )
 
 
+def _text(value):
+    return type(value) is str and exact_text(value)
+
+
+def _exact_records(records):
+    """Every cell has the one type ``_collect`` produces, so JSON round-trips it."""
+    if type(records) is not tuple:
+        return False
+    for record in records:
+        if not (
+            type(record) is tuple
+            and len(record) == 7
+            and all(_text(value) for value in record[:5])
+            and type(record[5]) is int
+            and type(record[6]) is tuple
+        ):
+            return False
+        for person in record[6]:
+            if not (
+                type(person) is tuple
+                and len(person) == 9
+                and all(_text(value) for value in person[:8])
+                and type(person[8]) is int
+            ):
+                return False
+    return True
+
+
+def _decode_records(raw):
+    return tuple(
+        (*record[:6], tuple(tuple(person) for person in record[6]))
+        for record in json.loads(raw)
+    )
+
+
+def _collected(held, projection_sha256, projection_bytes, paths):
+    """``_collect`` over the verified full projection, memoized by its exact bytes.
+
+    ``held`` owns the projection bytes; a miss parses and releases them, a hit
+    never parses them. Keyed by the projection digest, both archives' current
+    bytes and this issuer's producer; see ``source_memo``.
+    """
+
+    def compute():
+        return _collect(json.loads(held.pop()), paths)
+
+    return memoized(
+        "acs_population_catalogue._collect",
+        code=_producer,
+        inputs=lambda: (
+            DigestInput("full_projection", projection_sha256, projection_bytes),
+            FileInput("household_archive", paths["household"]),
+            FileInput("person_archive", paths["person"]),
+        ),
+        parameters={"protocol": PROTOCOL},
+        compute=compute,
+        encode=lambda value: [
+            _ordered(value[0]),
+            _ordered(value[1]),
+            _ordered(value[2]),
+        ],
+        decode=lambda blobs: (
+            _decode_records(blobs[0]),
+            _decode_records(blobs[1]),
+            json.loads(blobs[2]),
+        ),
+        proof=lambda value, blobs: (
+            len(blobs) == 3
+            and type(value) is tuple
+            and len(value) == 3
+            and _exact_records(value[0])
+            and _exact_records(value[1])
+            and type(value[2]) is dict
+            and json_native(value[2])
+        ),
+    )
+
+
 def _household(record):
     serial, kind, count, weight, _member, _ordinal, people = record
     key = domains.HouseholdKey(domains.Source.ACS, 2024, 2024, serial)
@@ -505,9 +585,12 @@ def issue_acs_source_catalogue(source_dir, *, snapshot_root, candidate=None):
                 "PROJECTION_CHANGED",
             )
             projection_bytes = len(projection_raw)
-            projection = json.loads(projection_raw)
+            held = [projection_raw]
             del projection_raw
-            records, vacancies, counts = _collect(projection, paths)
+            records, vacancies, counts = _collected(
+                held, projection_sha256, projection_bytes, paths
+            )
+            del held
             _require(
                 counts["households"] == sum(m["rows"] for m in inventories["household"])
                 and counts["people"] == sum(m["rows"] for m in inventories["person"]),

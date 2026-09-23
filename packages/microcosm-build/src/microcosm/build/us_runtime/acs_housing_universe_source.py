@@ -43,6 +43,9 @@ from .acs_sources import load_acs_source_manifest
 from .graph_implementation import implementation_hash
 from .operator_boundary import assert_operator_free_source_frame
 from .source_csv_builtin import capture_csv_reader
+from .source_memo import DigestInput, FileInput, memoized
+from .source_memo import json_native as _json_native
+from .source_memo import ordered as _ordered
 
 ACS_HU_STAGE = "acs_housing_universe_2024"
 ACS_HU_CODEC = "us-acs-housing-universe-2024-v1"
@@ -628,18 +631,108 @@ class AuthenticatedACSHousingSource:
         return _tables(json.loads(self.projection_json))[5]
 
 
+def _memo_code():
+    """Code identity of this owner's memoized derivations, recomputed per call."""
+    return {"owner": ACS_HU_STAGE, "implementation_sha256": _implementation()}
+
+
+def _full_projection(paths):
+    """Both complete lexical archives, as canonical bytes plus member inventories.
+
+    A deterministic function of the two archives' bytes and this owner's code,
+    so a memo entry keyed by exactly those stands in for decompressing and
+    parsing every member again. See ``source_memo``.
+    """
+    parsed = []
+
+    def compute():
+        hc, h, hi = _archive(paths["household"], "household")
+        pc, p, pi = _archive(paths["person"], "person")
+        full = {
+            "format": "acs-housing-lexical-projection/1",
+            "household_columns": hc,
+            "person_columns": pc,
+            "households": h,
+            "persons": p,
+        }
+        parsed.append(full)
+        return _json(full), {"household": hi, "person": pi}
+
+    def prove(value, blobs):
+        full_bytes, members = value
+        return (
+            len(blobs) == 2
+            and blobs[0] is full_bytes
+            and type(full_bytes) is bytes
+            and _json_native(members)
+        )
+
+    full_bytes, members = memoized(
+        "acs_housing_universe_source.full_projection",
+        code=_memo_code,
+        inputs=(
+            FileInput("household_archive", paths["household"]),
+            FileInput("person_archive", paths["person"]),
+        ),
+        parameters={"format": "acs-housing-lexical-projection/1"},
+        compute=compute,
+        encode=lambda value: [value[0], _ordered(value[1])],
+        decode=lambda blobs: (blobs[0], json.loads(blobs[1])),
+        proof=prove,
+    )
+    # A miss hands back the dict it built; a hit parses only if selection misses.
+    return full_bytes, members, parsed
+
+
+def _selection(full_bytes, members, parsed, pins, serialnos, implementation):
+    """Selected projection and receipt: a pure function of the full projection,
+    member inventories, pins, selection, definition and implementation."""
+
+    def compute():
+        full = parsed[0] if parsed else json.loads(full_bytes)
+        return _selected_receipt(
+            full, full_bytes, members, pins, serialnos, implementation
+        )
+
+    def inputs():
+        member_bytes = _ordered(members)
+        return (
+            DigestInput("full_projection", _sha(full_bytes), len(full_bytes)),
+            DigestInput("member_inventories", _sha(member_bytes), len(member_bytes)),
+        )
+
+    return memoized(
+        "acs_housing_universe_source.selection",
+        code=_memo_code,
+        inputs=inputs,
+        parameters=lambda: {
+            "pins": [list(pin) for pin in pins],
+            "serialnos": None if serialnos is None else list(serialnos),
+            "implementation_sha256": implementation,
+            "definition_sha256": _definition()[1],
+        },
+        compute=compute,
+        encode=list,
+        decode=tuple,
+        proof=lambda value, blobs: (
+            type(value) is tuple
+            and len(value) == 2
+            and all(type(item) is bytes for item in value)
+            and blobs == list(value)
+        ),
+    )
+
+
 def _reconstruct(private, paths, pins, serialnos, implementation):
-    hc, h, hi = _archive(paths["household"], "household")
-    pc, p, pi = _archive(paths["person"], "person")
-    full = {
-        "format": "acs-housing-lexical-projection/1",
-        "household_columns": hc,
-        "person_columns": pc,
-        "households": h,
-        "persons": p,
-    }
-    full_bytes = _json(full)
+    full_bytes, members, parsed = _full_projection(paths)
     _write(private / "full-projection.json", full_bytes, ACS_HU_SOURCE_MAX_BYTES)
+    projection, receipt_bytes = _selection(
+        full_bytes, members, parsed, pins, serialnos, implementation
+    )
+    return AuthenticatedACSHousingSource(projection, receipt_bytes, _token=_TOKEN)
+
+
+def _selected_receipt(full, full_bytes, members, pins, serialnos, implementation):
     selected, chosen, counts = _select(full, serialnos)
     projection = _json(selected)
     _require(len(projection) <= ACS_HU_SOURCE_MAX_BYTES, "PROJECTION_TOO_LARGE")
@@ -666,7 +759,7 @@ def _reconstruct(private, paths, pins, serialnos, implementation):
         "archives": [
             {"role": r, "filename": n, "sha256": d, "bytes": s} for r, n, d, s in pins
         ],
-        "members": {"household": hi, "person": pi},
+        "members": members,
         "full_projection_sha256": _sha(full_bytes),
         "full_counts": counts,
         "selection": "all" if serialnos is None else "exact_serialnos",
@@ -682,7 +775,7 @@ def _reconstruct(private, paths, pins, serialnos, implementation):
     }
     receipt_bytes = _json(receipt)
     _require(len(receipt_bytes) <= ACS_HU_RECEIPT_MAX_BYTES, "RECEIPT_TOO_LARGE")
-    return AuthenticatedACSHousingSource(projection, receipt_bytes, _token=_TOKEN)
+    return projection, receipt_bytes
 
 
 def _run_source(source_dir, snapshot_root, serialnos, output_dir, readback):

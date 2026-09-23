@@ -135,6 +135,7 @@
         "microcosm.build.us_runtime.graph_implementation",
         "microcosm.build.us_runtime.operator_boundary",
         "microcosm.build.us_runtime.source_csv_builtin",
+        "microcosm.build.us_runtime.source_memo",
         "microcosm.frame",
         "microcosm.graph.canonical",
         "microcosm.graph.population",
@@ -169,12 +170,13 @@
         "microcosm.build.us_runtime",
         "microcosm.build.us_runtime.acs_pums",
         "microcosm.build.us_runtime.source_csv_builtin",
+        "microcosm.build.us_runtime.source_memo",
         "microcosm.frame",
         "numpy",
         "pandas"
       ],
-      "resource_accesses_sha256": "27da902db7790fcf13f79f383532fb1eaffea49c118f54f76870c36cad264004",
-      "unbound_uses_sha256": "dc548c6590471125d90a86717034d6ed275b6e98115676512a623e4b9f7dc323"
+      "resource_accesses_sha256": "62fb460f6e9e83950ebde58268452ef422125abc9cab4ba9e3baf891faaf8c8a",
+      "unbound_uses_sha256": "2d15da648f88028d9eaaf529d5ff0595844fe1f8b4204040c8e8894290bbd915"
     },
     "microcosm.build/us_runtime/acs_person_coverage_columns.py": {
       "imports": [
@@ -187,7 +189,8 @@
     },
     "microcosm.build/us_runtime/acs_population_catalogue.py": {
       "imports": [
-        "microcosm.build.us_runtime"
+        "microcosm.build.us_runtime",
+        "microcosm.build.us_runtime.source_memo"
       ],
       "resource_accesses_sha256": "8899ffc02d4808966ab99d6897940046a3d422acb99014c0f3cb44591978c775",
       "unbound_uses_sha256": "c175b4f5a567b65b62146020a7b0ae39aa9d32d57bdf0839618b13d1003721a1"
@@ -882,6 +885,11 @@
       "resource_accesses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
       "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
     },
+    "microcosm.build/us_runtime/source_memo.py": {
+      "imports": [],
+      "resource_accesses_sha256": "4ede4d228fb2a25c35b3c1dee9a0e582414cc8841f686caf12ca55a5fcf4075c",
+      "unbound_uses_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
     "microcosm.build/us_runtime/spine_assembly.py": {
       "imports": [
         "microcosm.build.us_runtime.operator_column_contracts",
@@ -1518,6 +1526,7 @@
     "microcosm.build.us_runtime.retirement_distributions": "live registry projection; other shared-module routes inactive",
     "microcosm.build.us_runtime.scf_wealth": "live registry projection; other shared-module routes inactive",
     "microcosm.build.us_runtime.source_csv_builtin": "Whole-module in acs_housing_universe_2024; stdlib-only checked CSV builtin capture, without source or resource access.",
+    "microcosm.build.us_runtime.source_memo": "Whole-module opt-in persistent memo of deterministic ACS source derivations, bound wherever the ACS housing, coverage or catalogue owners are included. Off unless explicitly activated; keys bind exact input SHA-256s, runtime and owner code identity; entries are HMAC-signed and content-addressed, and any unverifiable entry is a miss.",
     "microcosm.build.us_runtime.spine_assembly": "whole-module in explicit stages",
     "microcosm.build.us_runtime.stacked_spine": "whole-module in explicit stages",
     "microcosm.build.us_runtime.support_provenance": "whole-module in explicit stages",
@@ -1658,7 +1667,8 @@
     "occupied_housing_review_base": "HU v1 source definition and attachment are exact approved 4b26e59b additions on d4bddcb6ac2aba52903cd8dace90330cee4a21e1; only the v2 prepared graph/transport wiring is new. Original source-verifier modules and resources are unchanged.",
     "operator_boundary": "Resolved output/formula registries projected; provider bodies are not called by source construction.",
     "other_imports": "Canonical non-stdlib import modules are explicitly classified. Ordinary symbols from a module/dependency bound in every using scope need no inventory edit. Only unbound-helper uses retain a lexical-scope fingerprint; resource-access expressions retain their own fingerprint. Expanded AST details are audit output, not packaged data. Neither fingerprint is a proof of dynamic closure.",
-    "resources": "Microunit rule YAML is bound. Default packaged geography/source-stage resources belong to inactive legacy entrypoints; graph lookups are explicit SourceRefs."
+    "resources": "Microunit rule YAML is bound. Default packaged geography/source-stage resources belong to inactive legacy entrypoints; graph lookups are explicit SourceRefs.",
+    "source_memo": "The ACS housing owner's full lexical projection and selection, the coverage owner's member inventories and the catalogue's collection may be recalled from an explicitly activated source memo only under the same exact archive bytes, parameters, runtime and owner implementation/producer identity. Captures, pins, issuance, seals and live checks are unchanged; recalled values are proven to decode exactly before they are recorded. Module bytes change implementation identities; historical receipts are not byte-parity claims across this revision."
   },
   "stages": {
     "acs_codec_2024": {
@@ -1755,6 +1765,7 @@
         "microcosm.build/us_runtime/operator_boundary.py",
         "microcosm.build/us_runtime/operator_column_contracts.py",
         "microcosm.build/us_runtime/source_csv_builtin.py",
+        "microcosm.build/us_runtime/source_memo.py",
         "microcosm.frame/__init__.py",
         "microcosm.frame/accounting.py",
         "microcosm.frame/adapters/__init__.py",
@@ -2158,6 +2169,7 @@
         "microcosm.build/us_runtime/operator_column_contracts.py",
         "microcosm.build/us_runtime/reported_coverage_source.py",
         "microcosm.build/us_runtime/source_csv_builtin.py",
+        "microcosm.build/us_runtime/source_memo.py",
         "microcosm.build/us_runtime/spine_assembly.py",
         "microcosm.build/us_runtime/support_provenance.py",
         "microcosm.build/us_runtime/survey_catalogue_selection.py",

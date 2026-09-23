@@ -43,8 +43,8 @@ MAX_EVIDENCE_BYTES = 2 * 1024**2
 _ACCEPTED = {
     "acs_pums.py": "82fc2d3ca969b0c9f68f86efeb0a68a58271fb5d141f1b2eee93106e1b002814",
     "acs_inputs.py": "aa4a8aeaba63dfef2f3e04fb89de59766deb088ed7f4d290aeba0425739916da",
-    "acs_housing_universe_source.py": "0e6ed87395837ccf852611229010a5c021dd75ae8e4ca8d30f206b8f85f588bd",
-    "acs_person_coverage_authentication.py": "b8400706d44fd76f6d9495dafde984c37d261041c38efd5803286a67ca124977",
+    "acs_housing_universe_source.py": "d2fc51fb493dabcbebd16e5145ad0c48e7a4fbce1910c7fee7e69a8bed594988",
+    "acs_person_coverage_authentication.py": "6b0e6723e23a7073a6e3c2ab9ce796ad5ba21b33a746c4b853ab40a2e8880cf7",
 }
 _TOKEN = object()
 _ISSUED = WeakKeyDictionary()
