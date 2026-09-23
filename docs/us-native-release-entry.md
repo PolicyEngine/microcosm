@@ -139,10 +139,11 @@ each unconsumed option refuses; how consumer admission orders its refusals; the
 input gate's codes and name-only diagnostics; that the private composition
 passes the admitted constructors, SPM copy and metadata to materialization,
 attaches weights only to input cells, refuses on the real fit gate, and writes
-only after a verified logical readback; and that the final owner check guards
-the manifest. The composition and wiring tests use invented constructors, a
-byte writer and a stand-in owner. They do not show that a genuine public native
-build succeeds. `test_us_policyengine_h5_readback.py` adds wrong-parent
+only after a verified logical readback; and that a failed final owner check,
+dataset bytes replaced after readback, or a consumer identity that changed
+during export each leave no manifest. The composition and wiring tests use
+invented constructors, a byte writer and a stand-in owner. They do not show
+that a genuine public native build succeeds. `test_us_policyengine_h5_readback.py` adds wrong-parent
 refusals before the writer. It also documents that the pure comparator cannot
 tell apart parents that differ only outside the retained scope. The native
 entry therefore passes the projected parent object it retains, binds the owner

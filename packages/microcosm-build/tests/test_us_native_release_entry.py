@@ -1279,9 +1279,8 @@ def test_public_entry_call_order_with_stand_in_owner_is_wiring_only(
     assert not (result.release_dir / "release_manifest.json").exists()
 
 
-def test_final_owner_failure_leaves_no_manifest(builder, monkeypatch, tmp_path):
-    """Wiring only: the stand-in owner fails its second check after the H5."""
-    run, spec, engine, manifest, owner = _stand_in(builder, monkeypatch, tmp_path)
+def _wire_invented_export(builder, monkeypatch):
+    """Byte writer, logical readback, invented targets and a passing fit gate."""
     _complete_inventory(monkeypatch)
     writer = InventedWriterEngine()
     monkeypatch.setattr(
@@ -1303,6 +1302,13 @@ def test_final_owner_failure_leaves_no_manifest(builder, monkeypatch, tmp_path):
     )
     monkeypatch.setattr(builder, "_load_or_materialize_target_frame", _materializer([]))
     monkeypatch.setattr(builder, "_release_gate_failures", lambda *a, **k: [])
+    return writer
+
+
+def test_final_owner_failure_leaves_no_manifest(builder, monkeypatch, tmp_path):
+    """Wiring only: the stand-in owner fails its second check after the H5."""
+    run, spec, engine, manifest, owner = _stand_in(builder, monkeypatch, tmp_path)
+    _wire_invented_export(builder, monkeypatch)
     original = owner.check
 
     def lose_owner(candidate):
@@ -1320,6 +1326,69 @@ def test_final_owner_failure_leaves_no_manifest(builder, monkeypatch, tmp_path):
             engine=engine,
             consumer_manifest=manifest,
         )
+    release_dir = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY / RELEASE_ID
+    assert (release_dir / builder.NATIVE_RELEASE_DATASET_FILENAME).exists()
+    assert not (release_dir / builder.NATIVE_RELEASE_MANIFEST_FILENAME).exists()
+
+
+def test_dataset_changed_after_readback_leaves_no_manifest(
+    builder, monkeypatch, tmp_path
+):
+    """Wiring only: bytes replaced during the final owner I/O cannot be recorded."""
+    run, spec, engine, manifest, owner = _stand_in(builder, monkeypatch, tmp_path)
+    _wire_invented_export(builder, monkeypatch)
+    release_dir = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY / RELEASE_ID
+    dataset = release_dir / builder.NATIVE_RELEASE_DATASET_FILENAME
+    original = owner.check
+
+    def replace_dataset(candidate):
+        result = original(candidate)
+        if owner.calls == 2:
+            dataset.write_bytes(b"replaced-after-readback")
+        return result
+
+    monkeypatch.setattr(native_owner, "check_survey_enrichment_run", replace_dataset)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder.build_native_survey_release(
+            run,
+            argv=_argv(tmp_path),
+            declaration=spec,
+            engine=engine,
+            consumer_manifest=manifest,
+        )
+    assert refused.value.code == "NATIVE_RELEASE_DATASET_CHANGED"
+    assert owner.calls == 2
+    assert not (release_dir / builder.NATIVE_RELEASE_MANIFEST_FILENAME).exists()
+
+
+@pytest.mark.parametrize("change", ["effective_spm", "unresolvable"])
+def test_consumer_changed_during_export_leaves_no_manifest(
+    builder, monkeypatch, tmp_path, change
+):
+    """Wiring only: a consumer that differs after the writer is not recorded."""
+    run, spec, engine, manifest, owner = _stand_in(builder, monkeypatch, tmp_path)
+    _wire_invented_export(builder, monkeypatch)
+    resolved = []
+
+    def effective_spm(candidate):
+        resolved.append(candidate)
+        if len(resolved) == 1:
+            return dict(EFFECTIVE_SPM)
+        if change == "unresolvable":
+            raise ImportError("invented consumer removed")
+        return {**EFFECTIVE_SPM, "scenario": "replaced"}
+
+    monkeypatch.setattr(builder, "_native_release_effective_spm", effective_spm)
+    with pytest.raises(builder.NativeSurveyReleaseRefusalError) as refused:
+        builder.build_native_survey_release(
+            run,
+            argv=_argv(tmp_path),
+            declaration=spec,
+            engine=engine,
+            consumer_manifest=manifest,
+        )
+    assert refused.value.code == "NATIVE_RELEASE_CONSUMER_CHANGED"
+    assert resolved == [engine, engine]
     release_dir = tmp_path / "out" / builder.NATIVE_RELEASE_DIRECTORY / RELEASE_ID
     assert (release_dir / builder.NATIVE_RELEASE_DATASET_FILENAME).exists()
     assert not (release_dir / builder.NATIVE_RELEASE_MANIFEST_FILENAME).exists()
