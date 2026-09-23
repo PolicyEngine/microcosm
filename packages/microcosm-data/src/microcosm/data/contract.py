@@ -4681,6 +4681,10 @@ def _validate_uk_dense_release_dir(release_dir: Path, release_id: str) -> None:
     if diagnostics_path.is_file():
         diagnostics = _load_json(diagnostics_path, failures)
         if diagnostics is not None:
+            if diagnostics.get("schema_version") == (
+                CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
+            ):
+                _check_calibration_diagnostics(diagnostics, failures)
             _check_local_area_calibration_diagnostics(diagnostics, failures)
     report_path = release_dir / _UK_DENSE_GATE_REPORT_FILE
     if report_path.is_file():
@@ -5107,11 +5111,26 @@ def _check_local_area_gates(gate_summary: Mapping, failures: list[str]) -> None:
 def _check_local_area_calibration_diagnostics(
     diagnostics: Mapping, failures: list[str]
 ) -> None:
-    n_targets = diagnostics.get("n_targets")
+    if diagnostics.get("schema_version") == CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION:
+        target_surface = diagnostics.get("target_surface")
+        n_targets = (
+            target_surface.get("n_targets")
+            if isinstance(target_surface, Mapping)
+            else None
+        )
+        households = diagnostics.get("n_records")
+        n_targets_label = "target_surface.n_targets"
+        households_label = "n_records"
+    else:
+        n_targets = diagnostics.get("n_targets")
+        households = diagnostics.get("households")
+        n_targets_label = "n_targets"
+        households_label = "households"
     targets = diagnostics.get("targets")
     if not isinstance(n_targets, int) or n_targets <= 0:
         failures.append(
-            "calibration_diagnostics.json must carry a positive integer 'n_targets'."
+            "calibration_diagnostics.json must carry a positive integer "
+            f"{n_targets_label!r}."
         )
     if not isinstance(targets, list) or not targets:
         failures.append(
@@ -5161,10 +5180,10 @@ def _check_local_area_calibration_diagnostics(
                     f"calibration_diagnostics.json target row {index} field "
                     f"{field!r} must be a finite number."
                 )
-    households = diagnostics.get("households")
     if not isinstance(households, int) or households <= 0:
         failures.append(
-            "calibration_diagnostics.json must carry a positive integer 'households'."
+            "calibration_diagnostics.json must carry a positive integer "
+            f"{households_label!r}."
         )
     for field in ("final_loss", "fraction_within_10pct"):
         value = diagnostics.get(field)
@@ -6414,20 +6433,37 @@ def _check_uk_dense_surface_files(
         )
         original_diagnostics = loaded["source_calibration_diagnostics.json"]
         if shipped_diagnostics:
-            if (
-                shipped_diagnostics.get("source_diagnostics_sha256")
-                != expected["candidate_diagnostics_sha256"]
+            if original_diagnostics.get("schema_version") == (
+                CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION
             ):
-                failures.append(
-                    "calibration_diagnostics.json source hash does not match the evaluated source."
-                )
-            if any(
-                shipped_diagnostics.get(key) != value
-                for key, value in original_diagnostics.items()
-            ):
-                failures.append(
-                    "calibration_diagnostics.json changed original evaluated diagnostic values."
-                )
+                shipped_sha256 = _sha256(release_dir / "calibration_diagnostics.json")
+                if shipped_sha256 != expected["candidate_diagnostics_sha256"]:
+                    failures.append(
+                        "calibration_diagnostics.json bytes do not match the "
+                        "evaluated canonical diagnostics."
+                    )
+                if shipped_diagnostics != original_diagnostics:
+                    failures.append(
+                        "calibration_diagnostics.json changed original evaluated "
+                        "diagnostic values."
+                    )
+            else:
+                if (
+                    shipped_diagnostics.get("source_diagnostics_sha256")
+                    != expected["candidate_diagnostics_sha256"]
+                ):
+                    failures.append(
+                        "calibration_diagnostics.json source hash does not match "
+                        "the evaluated source."
+                    )
+                if any(
+                    shipped_diagnostics.get(key) != value
+                    for key, value in original_diagnostics.items()
+                ):
+                    failures.append(
+                        "calibration_diagnostics.json changed original evaluated "
+                        "diagnostic values."
+                    )
         score = _load_json(release_dir / _UK_DENSE_SCORE_RECEIPT_FILE, failures)
         for key, identity_key in (
             ("candidate_diagnostics", "candidate_diagnostics_sha256"),

@@ -374,6 +374,56 @@ def _candidate_dir(root: Path) -> tuple[Path, Path, Path]:
     return candidate, spine, incumbent_manifest
 
 
+def test_current_diagnostics_are_validated_then_copied_without_rewriting(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    assembler = _load("assemble_uk_dense_release_dir")
+    source = tmp_path / "source.json"
+    destination = tmp_path / "release.json"
+    source_bytes = b'{"schema_version":8,"source":"exact bytes"}\n'
+    source.write_bytes(source_bytes)
+    diagnostics = {"schema_version": 8, "source": "exact bytes"}
+    captured: dict[str, object] = {}
+
+    def canonical_parser(payload: object) -> object:
+        captured["payload"] = payload
+        return object()
+
+    monkeypatch.setattr(assembler, "parse_calibration_diagnostics", canonical_parser)
+
+    assembler._write_release_diagnostics(
+        destination,
+        source=source,
+        diagnostics=diagnostics,
+        measured_source_sha256=_sha(source),
+        households=3,
+    )
+
+    assert captured["payload"] == diagnostics
+    assert destination.read_bytes() == source_bytes
+
+
+def test_current_diagnostics_are_not_copied_when_canonical_validation_fails(
+    tmp_path: Path,
+) -> None:
+    assembler = _load("assemble_uk_dense_release_dir")
+    source = tmp_path / "source.json"
+    destination = tmp_path / "release.json"
+    source.write_text('{"schema_version":8}\n')
+
+    with pytest.raises(SystemExit, match="canonical schema"):
+        assembler._write_release_diagnostics(
+            destination,
+            source=source,
+            diagnostics={"schema_version": 8},
+            measured_source_sha256=_sha(source),
+            households=3,
+        )
+
+    assert not destination.exists()
+
+
 def test_assembler_stages_a_contract_valid_dense_release(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:

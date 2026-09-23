@@ -315,7 +315,11 @@ from microcosm.data.us_critical_targets import (
 from microcosm.data.us_critical_targets import (
     US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT as SHARED_US_SOI_TABLE_1_4_NATIONAL_DOLLAR_FIT_REQUIREMENT,
 )
-from microcosm.diagnostics import DiagnosticsWriteOutcome, DiagnosticsWriteSuccess
+from microcosm.diagnostics import (
+    CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
+    DiagnosticsWriteOutcome,
+    DiagnosticsWriteSuccess,
+)
 from microcosm.frame import Frame, MassChange, WeightKind, Weights, read_frame_table
 from microcosm.frame.adapters.policyengine_us import (
     PolicyEngineUSEngine,
@@ -8407,7 +8411,7 @@ def _build_manifests(
         diagnostics_outcome = DiagnosticsWriteSuccess(
             status="available",
             path=diagnostics_path,
-            schema_version=8,
+            schema_version=CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION,
             sha256=_sha256(diagnostics_path),
         )
     diagnostics_status = _diagnostics_manifest_status(diagnostics_outcome)

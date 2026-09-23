@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Annotated, Literal
+from typing import Annotated, Final, Literal
 
 from pydantic import (
     AfterValidator,
@@ -16,7 +16,7 @@ from pydantic import (
     model_validator,
 )
 
-CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION = 8
+CALIBRATION_DIAGNOSTICS_SCHEMA_VERSION: Final[Literal[8]] = 8
 SUPPORTED_CALIBRATION_DIAGNOSTICS_SCHEMA_VERSIONS = frozenset({6, 7, 8})
 
 
