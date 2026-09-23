@@ -577,3 +577,72 @@ def test_runner_smoke_code_writes_its_state_file(tmp_path: Path) -> None:
     payload = json.loads((state / "smoke" / "inputs.json").read_text())
     assert payload["inputs"] == [{"input": "ladder", "bytes": 3}]
     assert payload["policyengine_us"]
+
+
+def test_preempted_attempts_are_charged_to_the_wall_budget() -> None:
+    data = _plan_data(max_wall_seconds=20_000)
+    plan = plan_lib.parse_plan(data)
+    sha = plan_lib.plan_digest(data)
+
+    def record(start: float, seen: float, **kw) -> dict:
+        return plan_lib.attempt_record(
+            plan,
+            sha,
+            attempt_id=f"a{start}",
+            started_epoch=start,
+            last_seen_epoch=seen,
+            **kw,
+        )
+
+    preempted = record(0.0, 3_300.0)
+    finished = record(10_000.0, 16_000.0, finished=True, receipt="receipts/x.json")
+    other_plan = {**record(0.0, 9_000.0), "plan_sha256": "0" * 64}
+    other_stage = {**record(0.0, 9_000.0), "stage": "calibrate"}
+    prior = plan_lib.unfinished_attempts(
+        [preempted, finished, other_plan, other_stage, {"schema": "junk"}], plan, sha
+    )
+    # Only this plan's own attempt that never wrote a receipt is charged.
+    assert [item["attempt_id"] for item in prior] == [preempted["attempt_id"]]
+    assert prior[0]["elapsed_seconds"] == 3_300.0
+    assert plan_lib.remaining_wall_seconds(plan, prior) == 16_700
+    assert plan_lib.remaining_wall_seconds(plan, []) == 20_000
+    unbudgeted = plan_lib.parse_plan(_plan_data())
+    assert plan_lib.remaining_wall_seconds(unbudgeted, prior) is None
+    # Two preemptions that used the budget leave nothing to start with.
+    spent = [record(0.0, 10_000.0), record(20_000.0, 30_000.0)]
+    assert plan_lib.remaining_wall_seconds(plan, spent) < plan_lib.MIN_ATTEMPT_SECONDS
+
+
+def test_receipt_prices_earlier_preempted_attempts() -> None:
+    data = _plan_data(max_wall_seconds=20_000)
+    plan = plan_lib.parse_plan(data)
+    sha = plan_lib.plan_digest(data)
+    preempted = plan_lib.attempt_record(
+        plan, sha, attempt_id="a", started_epoch=0.0, last_seen_epoch=3_600.0
+    )
+    receipt = plan_lib.build_receipt(
+        plan,
+        data,
+        argv=plan_lib.planned_argv(plan),
+        returncode=0,
+        started_at="2026-09-23T07:00:00Z",
+        finished_at="2026-09-23T08:00:00Z",
+        wall_seconds=3_000.0,
+        peak_rss_bytes=None,
+        inputs_verified=[],
+        outputs=[],
+        git={"head": COMMIT, "tree_clean": True},
+        runner={},
+        container_wall_seconds=3_600.0,
+        prior_attempts=[preempted],
+        budget_seconds=16_400,
+    )
+    assert receipt["budget_seconds_this_attempt"] == 16_400
+    assert receipt["prior_unfinished_attempts"][0]["elapsed_seconds"] == 3_600.0
+    # Two container-hours of the heavy class at list price: about $2.42.
+    assert receipt["estimated_usd_all_attempts_at_list_price"] == pytest.approx(
+        2.42, abs=0.01
+    )
+    assert receipt["estimated_usd_container_at_list_price"] == pytest.approx(
+        1.21, abs=0.01
+    )

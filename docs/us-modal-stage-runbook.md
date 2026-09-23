@@ -137,6 +137,9 @@ MICROCOSM_MODAL_PLAN=plan.json modal run tools/modal_us_stage.py
 #    the receipt lands on the runs volume either way. Set "max_wall_seconds"
 #    in the plan to cap the cost below the class's hard timeout: the runner
 #    stops the tool then, and the receipt says FAILED, stopped_at_budget.
+#    The budget covers every attempt: when Modal restarts a preempted
+#    container, the time the cut-short attempts ran comes off it (see
+#    "Preemption" below).
 MICROCOSM_MODAL_PLAN=plan.json modal run --detach tools/modal_us_stage.py --run
 
 # 5. Fetch the state and verify it against the receipt.
@@ -252,11 +255,23 @@ hold digests, sizes and paths, never file contents.
   registered either. It takes a directory input (`--inputs-dir`, the ACS
   PUMS archive cache), which the plan format does not support. Supporting it
   would take an archive digest plus extraction.
-- **Preemption and out-of-memory kills.** Functions run with `retries=0` on
-  Modal's default (preemptible) placement. The heavy class sets a memory
-  request but no hard limit. State is only mirrored and the receipt only
-  written when the tool exits, so a container that is preempted or killed
-  for memory leaves no receipt, and the stage has to be run again.
+- **Preemption and out-of-memory kills.** Functions run on Modal's default
+  (preemptible) placement. When Modal preempts a container it restarts the
+  function on the same input, from scratch, whatever `retries` says; this
+  happened to the 23 September acceptance run after 54 minutes. State is
+  only mirrored and the receipt only written when the tool exits, so the
+  cut-short attempt leaves no receipt and its work is lost, but it is
+  billed. Each attempt therefore writes
+  `runs/<run_id>/attempts/<stage>-<utc>.json` when it starts and rewrites
+  it every 120 seconds. A restart charges the time of every earlier attempt
+  of the same plan that never wrote a receipt to `max_wall_seconds`, and
+  refuses to start when less than a minute is left. The check reports those
+  attempts and the time left. To launch again past a spent budget, raise
+  `max_wall_seconds` (a new plan digest) or use a new `run_id`. Setting
+  `nonpreemptible=True` would avoid restarts at three times the list price
+  for CPU and memory (modal.com/docs/guide/preemption, read 23 September
+  2026); the runner does not set it. The heavy class sets a memory request
+  but no hard limit, and a container killed for memory is not restarted.
 - **Certification.** A receipt proves which bytes a stage produced. It does
   not certify a release. Preflight (`tools/preflight_us_release_gates.py`)
   and certification still run on the output as before.

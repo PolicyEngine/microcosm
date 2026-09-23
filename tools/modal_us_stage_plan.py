@@ -813,20 +813,27 @@ def build_receipt(
     prior_receipts: Sequence[Mapping[str, object]] = (),
     stopped_at_budget: bool = False,
     container_wall_seconds: float | None = None,
+    prior_attempts: Sequence[Mapping[str, object]] = (),
+    budget_seconds: int | None = None,
 ) -> dict[str, object]:
     resources = plan.resources
     # The tool's wall leaves out staging the inputs, hashing the state tree
-    # and mirroring it to the volume; the container's wall is what is billed.
-    container = (
-        {
+    # and mirroring it to the volume; the container's wall is what is billed,
+    # and so is every earlier attempt that preemption cut short.
+    container: dict[str, object] = {}
+    if container_wall_seconds is not None:
+        prior_seconds = sum(
+            float(item.get("elapsed_seconds") or 0.0) for item in prior_attempts
+        )
+        container = {
             "container_wall_seconds": round(container_wall_seconds, 1),
             "estimated_usd_container_at_list_price": resources.estimated_usd(
                 container_wall_seconds
             ),
+            "estimated_usd_all_attempts_at_list_price": resources.estimated_usd(
+                container_wall_seconds + prior_seconds
+            ),
         }
-        if container_wall_seconds is not None
-        else {}
-    )
     return {
         "schema": RECEIPT_SCHEMA,
         "status": "COMPLETED"
@@ -853,7 +860,9 @@ def build_receipt(
         "argv": list(argv),
         "returncode": returncode,
         "max_wall_seconds": plan.max_wall_seconds,
+        "budget_seconds_this_attempt": budget_seconds,
         "stopped_at_budget": stopped_at_budget,
+        "prior_unfinished_attempts": [dict(item) for item in prior_attempts],
         "started_at": started_at,
         "finished_at": finished_at,
         "wall_seconds": round(wall_seconds, 1),
@@ -923,6 +932,75 @@ def prior_state_problems(plan: Plan, run_identity: Mapping | None) -> list[str]:
             f"({run_identity.get('ladder_sha256')})"
         )
     return problems
+
+
+# --------------------------------------------------------------------------- #
+# Attempts: a budget that holds across preemption restarts                      #
+# --------------------------------------------------------------------------- #
+
+ATTEMPT_SCHEMA = "microcosm-modal-us-stage-attempt/1"
+# How often a running attempt records that it is still alive; a preempted
+# attempt is charged up to its last heartbeat, so it can be undercounted by
+# at most this much.
+ATTEMPT_HEARTBEAT_SECONDS = 120
+# An attempt left with less tool time than this refuses to start.
+MIN_ATTEMPT_SECONDS = 60
+
+
+def attempt_record(
+    plan: Plan,
+    plan_sha256: str,
+    *,
+    attempt_id: str,
+    started_epoch: float,
+    last_seen_epoch: float,
+    finished: bool = False,
+    receipt: str | None = None,
+) -> dict[str, object]:
+    return {
+        "schema": ATTEMPT_SCHEMA,
+        "attempt_id": attempt_id,
+        "run_id": plan.run_id,
+        "stage": plan.stage,
+        "plan_sha256": plan_sha256,
+        "started_epoch": round(started_epoch, 1),
+        "last_seen_epoch": round(last_seen_epoch, 1),
+        "elapsed_seconds": round(max(0.0, last_seen_epoch - started_epoch), 1),
+        "finished": finished,
+        "receipt": receipt,
+    }
+
+
+def unfinished_attempts(
+    records: Iterable[Mapping], plan: Plan, plan_sha256: str
+) -> list[dict[str, object]]:
+    """Earlier attempts of this exact plan and stage that never wrote a receipt.
+
+    Modal restarts a preempted function on the same input, from scratch and
+    regardless of ``retries``; each such attempt is billed.
+    """
+
+    return [
+        dict(record)
+        for record in records
+        if record.get("schema") == ATTEMPT_SCHEMA
+        and record.get("run_id") == plan.run_id
+        and record.get("stage") == plan.stage
+        and record.get("plan_sha256") == plan_sha256
+        and not record.get("finished")
+    ]
+
+
+def remaining_wall_seconds(
+    plan: Plan, prior_unfinished: Sequence[Mapping]
+) -> int | None:
+    """The tool's wall budget for this attempt: the plan's ``max_wall_seconds``
+    less the container time of every earlier unfinished attempt."""
+
+    if plan.max_wall_seconds is None:
+        return None
+    spent = sum(float(item.get("elapsed_seconds") or 0.0) for item in prior_unfinished)
+    return int(plan.max_wall_seconds - spent)
 
 
 def summarize(plan: Plan) -> dict[str, object]:
