@@ -285,6 +285,30 @@ def write_dense_bundle(
     return release_dir
 
 
+def test_local_area_diagnostics_use_canonical_v8_count_fields() -> None:
+    diagnostics = {
+        "schema_version": 8,
+        "n_records": 4,
+        "target_surface": {"n_targets": 1},
+        "final_loss": 0.01,
+        "fraction_within_10pct": 1.0,
+        "targets": [
+            {
+                "name": "target",
+                "target": 1.0,
+                "compiled_target": 1.0,
+                "initial_estimate": 1.0,
+                "final_estimate": 1.0,
+            }
+        ],
+    }
+    failures: list[str] = []
+
+    dc._check_local_area_calibration_diagnostics(diagnostics, failures)
+
+    assert failures == []
+
+
 def test_valid_dense_bundle_passes(tmp_path: Path) -> None:
     validate_release_dir(write_dense_bundle(tmp_path))
 
