@@ -194,6 +194,92 @@ def test_loose_or_unsafe_plans_are_refused(mutate, message: str) -> None:
         plan_lib.parse_plan(data)
 
 
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (lambda d: d["source"].update(commit=COMMIT + "\n"), "40-hex"),
+        (lambda d: d.update(run_id="acs-local-20260923\n"), "run_id"),
+        (lambda d: d["source"].update(branch="us-modal-stage-runner\n"), "branch"),
+        (
+            lambda d: d["source"].update(repo_url=plan_lib.DEFAULT_REPO_URL + "\n"),
+            "repo_url",
+        ),
+        (lambda d: d.update(env={"MICROCOSM_X\n": "1"}), "not allowlisted"),
+        (lambda d: d["inputs"]["feed"].update(sha256=FEED_SHA + "\n"), "64 lowercase"),
+        (
+            lambda d: d["inputs"]["feed"].update(
+                uri=f"volume://cas/sha256/{FEED_SHA}/consumer_facts.jsonl\n"
+            ),
+            "unsafe file name",
+        ),
+        (
+            lambda d: d["inputs"]["ladder"].update(
+                uri="hf://datasets/policyengine/populace-us@main\n/x.npz"
+            ),
+            "@revision",
+        ),
+    ],
+)
+def test_a_trailing_newline_never_matches(mutate, message: str) -> None:
+    # re.match with a "$" anchor accepts "value\n"; every field uses fullmatch.
+    data = copy.deepcopy(_plan_data())
+    mutate(data)
+    with pytest.raises(plan_lib.PlanError, match=message):
+        plan_lib.parse_plan(data)
+
+
+@pytest.mark.parametrize("field", ["tool", "stage"])
+@pytest.mark.parametrize("value", [["materialize"], {"a": 1}, 3, None])
+def test_non_string_tool_or_stage_is_a_plan_error(field: str, value) -> None:
+    data = _plan_data()
+    data[field] = value
+    with pytest.raises(plan_lib.PlanError):
+        plan_lib.parse_plan(data)
+
+
+def test_validate_cli_refuses_a_non_string_stage(tmp_path: Path, capsys) -> None:
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(_plan_data(stage=["materialize"])))
+    assert plan_lib.main(["validate", str(plan_path)]) == 2
+    assert "REFUSED" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "POPULACE_LEDGER_API_KEY",
+        "POPULACE_LEDGER_KEY",
+        "POPULACE_LEDGER_EXPORT_KEY",
+        "MICROCOSM_UK_TERMINAL_GATE_SIGNING_KEY",
+        "MICROCOSM_HF_TOKEN",
+        "POPULACE_DB_PASSWORD",
+        "MICROCOSM_CLIENT_SECRET",
+        "POPULACE_SERVICE_CREDENTIALS",
+    ],
+)
+def test_credential_env_keys_are_refused_under_allowlisted_prefixes(key: str) -> None:
+    with pytest.raises(plan_lib.PlanError, match="names a credential"):
+        plan_lib.parse_plan(_plan_data(env={key: "x"}))
+
+
+def test_non_credential_env_keys_still_pass() -> None:
+    env = {
+        "MICROCOSM_ACS_POOL_PEAK_LIMIT_BYTES": "100000000000",
+        "POPULACE_FIT_N_JOBS": "1",
+        "OMP_NUM_THREADS": "4",
+    }
+    assert dict(plan_lib.parse_plan(_plan_data(env=env)).env) == env
+
+
+def test_the_committed_plans_parse() -> None:
+    for name in (
+        "us-modal-stage-example-plan.json",
+        "us-modal-stage-smoke-plan.json",
+        "us-modal-stage-acceptance-20260923-plan.json",
+    ):
+        plan_lib.parse_plan(json.loads((ROOT / "docs" / name).read_text()))
+
+
 def test_later_stages_do_not_need_the_feed() -> None:
     data = _plan_data("calibrate")
     data["inputs"].pop("feed")

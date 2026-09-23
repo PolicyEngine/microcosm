@@ -68,21 +68,35 @@ WORK_ROOT = "/work"
 CPU_USD_PER_CORE_SECOND = 0.0000131
 MEMORY_USD_PER_GIB_SECOND = 0.00000222
 
-_SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_COMMIT = re.compile(r"^[0-9a-f]{40}$")
-_RUN_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{2,79}$")
-_BRANCH = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$")
-_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
-_HF_REPO_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*$")
-_HF_REVISION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
+# Every pattern is applied with ``fullmatch``: ``re.match`` with ``$`` would
+# also accept the value followed by a newline.
+_SHA256 = re.compile(r"[0-9a-f]{64}")
+_COMMIT = re.compile(r"[0-9a-f]{40}")
+_RUN_ID = re.compile(r"[a-z0-9][a-z0-9._-]{2,79}")
+_BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]{0,99}")
+_FILENAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
+_HF_REPO_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*")
+_HF_REVISION = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,199}")
 _ENV_KEY = re.compile(
-    r"^(?:(?:MICROCOSM|POPULACE)_[A-Z0-9_]+|(?:OMP|MKL|OPENBLAS|NUMEXPR)_NUM_THREADS)$"
+    r"(?:MICROCOSM|POPULACE)_[A-Z0-9_]+|(?:OMP|MKL|OPENBLAS|NUMEXPR)_NUM_THREADS"
 )
-_GITHUB_URL = re.compile(r"^https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\.git$")
+# Names that look like credentials. A plan may not set one, even under an
+# allowlisted prefix (its value would be copied into every receipt), and the
+# runner removes them from the tool's environment.
+_CREDENTIAL_ENV = re.compile(
+    r"KEY|TOKEN|SECRET|PASSW|SIGNING|CREDENTIAL", re.IGNORECASE
+)
+_GITHUB_URL = re.compile(r"https://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+\.git")
 
 
 class PlanError(ValueError):
     """A plan the runner refuses to execute."""
+
+
+def is_credential_env_key(key: str) -> bool:
+    """Whether an environment variable's name looks like a credential."""
+
+    return _CREDENTIAL_ENV.search(key) is not None
 
 
 # --------------------------------------------------------------------------- #
@@ -351,13 +365,13 @@ class InputRef:
 
 
 def _require_sha256(value: object, what: str) -> str:
-    if not isinstance(value, str) or not _SHA256.match(value):
+    if not isinstance(value, str) or not _SHA256.fullmatch(value):
         raise PlanError(f"{what}: expected 64 lowercase hex characters, got {value!r}")
     return value
 
 
 def _require_filename(name: str) -> str:
-    if not _FILENAME.match(name):
+    if not _FILENAME.fullmatch(name):
         raise PlanError(f"unsafe file name {name!r}")
     return name
 
@@ -420,12 +434,12 @@ def parse_input(name: str, spec: object) -> InputRef:
         name_and_rev, _, path_in_repo = rest.partition("/")
         repo_name, at, revision = name_and_rev.partition("@")
         repo_id = f"{org}/{repo_name}"
-        if not at or not _HF_REVISION.match(revision):
+        if not at or not _HF_REVISION.fullmatch(revision):
             raise PlanError(
                 f"input {name!r}: hf URI needs an explicit @revision "
                 "(tag, branch without '/', or commit)"
             )
-        if not _HF_REPO_ID.match(repo_id):
+        if not _HF_REPO_ID.fullmatch(repo_id):
             raise PlanError(f"input {name!r}: bad Hugging Face repo id {repo_id!r}")
         rel = _safe_relative_path(path_in_repo, f"input {name!r} path")
         return InputRef(
@@ -502,16 +516,17 @@ def parse_plan(data: object) -> Plan:
         raise PlanError(f"unknown plan keys: {sorted(unknown)}")
     if data.get("schema") != PLAN_SCHEMA:
         raise PlanError(f"plan schema must be {PLAN_SCHEMA!r}")
-    tool = TOOLS.get(data.get("tool"))  # type: ignore[arg-type]
+    tool_name = data.get("tool")
+    tool = TOOLS.get(tool_name) if isinstance(tool_name, str) else None
     if tool is None:
-        raise PlanError(f"unknown tool {data.get('tool')!r}; known: {sorted(TOOLS)}")
+        raise PlanError(f"unknown tool {tool_name!r}; known: {sorted(TOOLS)}")
     stage = data.get("stage")
-    if stage not in tool.stages:
+    if not isinstance(stage, str) or stage not in tool.stages:
         raise PlanError(
             f"tool {tool.name!r} has no stage {stage!r}; known: {sorted(tool.stages)}"
         )
     run_id = data.get("run_id")
-    if not isinstance(run_id, str) or not _RUN_ID.match(run_id):
+    if not isinstance(run_id, str) or not _RUN_ID.fullmatch(run_id):
         raise PlanError(
             f"run_id {run_id!r}: 3-80 chars of lowercase letters, digits, . _ -"
         )
@@ -524,13 +539,13 @@ def parse_plan(data: object) -> Plan:
             f"unknown source keys: {sorted(set(source) - {'commit', 'branch', 'repo_url'})}"
         )
     commit = source["commit"]
-    if not isinstance(commit, str) or not _COMMIT.match(commit):
+    if not isinstance(commit, str) or not _COMMIT.fullmatch(commit):
         raise PlanError("source.commit must be a full 40-hex lowercase sha")
     branch = source["branch"]
-    if not isinstance(branch, str) or not _BRANCH.match(branch) or ".." in branch:
+    if not isinstance(branch, str) or not _BRANCH.fullmatch(branch) or ".." in branch:
         raise PlanError(f"source.branch {branch!r} is not a safe branch name")
     repo_url = source.get("repo_url", DEFAULT_REPO_URL)
-    if not isinstance(repo_url, str) or not _GITHUB_URL.match(repo_url):
+    if not isinstance(repo_url, str) or not _GITHUB_URL.fullmatch(repo_url):
         raise PlanError("source.repo_url must be https://github.com/<org>/<repo>.git")
 
     raw_inputs = data.get("inputs")
@@ -583,9 +598,14 @@ def parse_plan(data: object) -> Plan:
         raise PlanError("env must be an object")
     env: dict[str, str] = {}
     for key in sorted(raw_env):
-        if not _ENV_KEY.match(key):
+        if not isinstance(key, str) or not _ENV_KEY.fullmatch(key):
             raise PlanError(
                 f"env {key!r} is not allowlisted (MICROCOSM_*, POPULACE_*, *_NUM_THREADS)"
+            )
+        if is_credential_env_key(key):
+            raise PlanError(
+                f"env {key!r} names a credential; a plan's values are copied into "
+                "every receipt, and the runner never passes credentials to the tool"
             )
         if not isinstance(raw_env[key], str):
             raise PlanError(f"env {key!r} must be a string")
@@ -644,12 +664,13 @@ def image_build_commands(plan: Plan, repo_root: str = IMAGE_REPO_ROOT) -> list[s
     """
 
     root = shlex.quote(repo_root)
+    commit = shlex.quote(plan.commit)
     return [
         f"git init -q {root}",
         f"git -C {root} remote add origin {shlex.quote(plan.repo_url)}",
-        f"git -C {root} fetch -q --depth 1 origin {plan.commit}",
+        f"git -C {root} fetch -q --depth 1 origin {commit}",
         f"git -C {root} checkout -q -B {shlex.quote(plan.branch)} FETCH_HEAD",
-        f'test "$(git -C {root} rev-parse HEAD)" = {plan.commit}',
+        f'test "$(git -C {root} rev-parse HEAD)" = {commit}',
         f"cd {root} && uv sync --all-packages --extra us --frozen",
         f'test -z "$(git -C {root} status --porcelain)"',
     ]
