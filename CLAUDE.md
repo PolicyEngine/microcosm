@@ -34,11 +34,11 @@ through whichever guard they carry — the `requires_*` markers, or the
 based only on the `changes` job outputs: country jobs run on main pushes or
 when that country or shared paths changed. A country PR that merges over a
 fresh change to the other country is certified by main's push run; watch main
-after merging. The `wheels` lane remains the packaging gate: build every
-shard's real wheel, install into a clean uv-export-constrained venv, assert
-the wheel/import boundary and spec digests, and run the suite against installed
-wheels. The `fast` and engine lanes pass `--durations=25`, so each job log ends
-with its slowest tests; check there first when a lane's runtime jumps.
+after merging. The `wheels` lane is a focused packaging check: it builds every
+shard's real wheel once and compares each archive with its source tree. The
+behavioral test jobs provide the runtime coverage; the wheel job does not
+execute the test suite again. The `fast` and engine jobs pass `--durations=25`,
+so each job log reports its slowest tests.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
@@ -62,10 +62,10 @@ load, or it silently receives the spec an earlier test cached.
 **Adding a test file.** It must sit directly in `packages/<shard>/tests/` — flat,
 no subdirectories; `fixtures/` and `golden/` hold data only — and be named
 `test_*.py`. The lanes run explicit file lists built from a flat pathspec, while
-local `uv run pytest` and the wheels lane discover recursively, so a test parked
-next to its fixtures would run locally and stay green in CI without ever
-executing against an engine. `--verify` fails on such a file rather than letting
-it hide. Build tests that exercise a country engine must be named `test_us_*` or
+local `uv run pytest` discovers recursively, so a test parked next to its
+fixtures would run locally and stay green in CI without ever executing there.
+`--verify` fails on such a file rather than letting it hide. Build tests that
+exercise a country engine must be named `test_us_*` or
 `test_uk_*` so they land in that country's lane; an engine-dependent file named
 anything else falls into the always-on `shared-spec` group and runs on every PR.
 After adding one, check `tools/ci_test_groups.py --verify`: your file should
