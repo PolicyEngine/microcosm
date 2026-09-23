@@ -760,11 +760,13 @@ def _source_receiver_rows(
                 "US voluntary-filing support source units carry duplicated "
                 f"support copies; invalid (source, copy rank) pair(s) {bad[:5]}."
             )
-        # Prefer each unit's native copy, but a frozen-support selection may
-        # legitimately keep only its PUF-role copies (the primary PUF-detail
-        # copy, the capital-gains own-tail copy, or both). Copies carry the
-        # unit's source predictors, so the lowest surviving copy rank predicts
-        # for every copy; pick it deterministically, then by tax-unit id.
+        # Prefer each unit's native copy. A frozen-support selection may keep
+        # only its PUF-role copies (the primary PUF-detail copy, the
+        # capital-gains own-tail copy, or both); the lowest surviving copy rank
+        # then supplies the unit's predictors, deterministically, and its one
+        # decision fans out to every copy. Beyond IDs, weight and provenance,
+        # the tail transfer writes only the capital-gains vector onto its
+        # copy, and none of that vector is a predictor here.
         source_rows = rows.sort_values(
             ["_source_id", "_copy_rank", "_tax_unit_id"],
             kind="stable",
