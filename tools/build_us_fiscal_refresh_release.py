@@ -2627,6 +2627,1040 @@ def prepare_native_survey_development_input(
     )
 
 
+# ---------------------------------------------------------------------------
+# Native survey release entry (PolicyEngine/microcosm#956).
+#
+# ``main``/``_main`` remain the legacy H5/pool entry. The native entry below is
+# a separate in-process function: it authenticates a live issued enrichment
+# owner, refuses every option it does not consume, admits one exact consumer,
+# projects declared cells, compiles the shared target surface, materializes
+# targets with the admitted consumer's constructors, runs the shared
+# dense/L0 solve, attaches weights only to the projected input cells, and
+# writes one verified logical H5 candidate. It never runs the legacy source
+# block (``_main``'s base/pool loading, repairs, donor, take-up or assignment
+# stages), never downloads, never starts staging telemetry and never writes a
+# legacy ``release_manifest.json``. Its manifest records outstanding
+# qualifications and is never release-eligible; publication certification is
+# a separate step this entry does not perform. Survey poverty is not a gate,
+# target or selection criterion anywhere in this entry.
+# ---------------------------------------------------------------------------
+
+NATIVE_RELEASE_PROTOCOL = "microcosm.us.native-survey-release-candidate.v1"
+NATIVE_RELEASE_CONSUMER_PROTOCOL = "microcosm.us.native-release-consumer-identity.v1"
+NATIVE_RELEASE_INPUT_GATE_PROTOCOL = "microcosm.us.native-release-input-gate.v1"
+NATIVE_RELEASE_DIRECTORY = "native-releases"
+NATIVE_RELEASE_DATASET_FILENAME = "native_candidate_populace_us_2024.h5"
+NATIVE_RELEASE_MANIFEST_FILENAME = "native_release_manifest.json"
+NATIVE_RELEASE_DIAGNOSTICS_FILENAME = "native_calibration_diagnostics.json"
+# Installed distributions whose RECORD bytes bind the consumer runtime.
+NATIVE_RELEASE_CONSUMER_DISTRIBUTIONS = (
+    "policyengine-us",
+    "policyengine-core",
+    "spm-calculator",
+    "numpy",
+    "pandas",
+    "tables",
+)
+# Options the native entry actually consumes. Every other option must keep the
+# legacy parser's default: an accepted option this entry ignores would make the
+# command line misdescribe the build. New legacy options are refused by default.
+_NATIVE_RELEASE_CONSUMED_OPTIONS = frozenset(
+    {
+        "out",
+        "release_id",
+        "ledger_facts",
+        "ledger_facts_sha256",
+        "ledger_manifest_sha256",
+        "congressional_district_vintage_crosswalk",
+        "gate_congressional_district_targets",
+        "epochs",
+        "learning_rate",
+        "max_weight_ratio",
+        "seed",
+        "l2_lambda",
+        "refit_l2_lambda",
+        "l0_refit_lambda_share",
+        "dense_default_dataset",
+        "target_family_loss_multiplier",
+        "target_family_loss_multipliers",
+        "maximum_microsim_batch_size",
+        "no_staging",
+        "no_target_materialization_cache",
+        "no_target_frame_checkpoint",
+    }
+)
+# The initial native path has no staging telemetry and no native cache identity.
+_NATIVE_RELEASE_REQUIRED_SWITCHES = (
+    "no_staging",
+    "no_target_materialization_cache",
+    "no_target_frame_checkpoint",
+)
+# Exactly the closed option set ``_calibrate_native_input_frame`` accepts.
+_NATIVE_RELEASE_SOLVE_OPTIONS = (
+    "exact_k",
+    "dense_default_dataset",
+    "epochs",
+    "learning_rate",
+    "max_weight_ratio",
+    "seed",
+    "l2_lambda",
+    "refit_l2_lambda",
+    "l0_refit_lambda_share",
+)
+# Legacy gate groups ``_release_gate_failures`` evaluates without source-stage
+# inputs. They are universal fit checks on the solved target surface.
+NATIVE_RELEASE_EVALUATED_GATE_GROUPS = (
+    "native_owner_authentication",
+    "native_option_closure",
+    "consumer_identity_comparison",
+    "projection_declaration_and_consumer_representation",
+    "native_input_roster_and_unknown_values",
+    "export_codec_and_spm_role_scope_profile",
+    "target_geography_columns",
+    "target_parity_manifest",
+    "target_materialization",
+    "fiscal_target_fit",
+    "retained_parent_export_binding",
+    "verified_logical_h5_readback",
+)
+# Qualifications this entry does not evaluate. Their absence is why the
+# manifest is never release-eligible; none may be inferred from a green run.
+NATIVE_RELEASE_OUTSTANDING_QUALIFICATIONS = (
+    "genuine_issued_owner_positive_integration",
+    "root_admitted_consumer_runtime",
+    "closed_native_input_profile_with_reviewed_unknowns",
+    "native_source_signal_and_applicability_gates",
+    "native_take_up_and_benefit_assignment_successors",
+    "owner_bound_geography_and_cd_vintage_evidence",
+    "export_input_mass_and_reference_parity",
+    "written_file_reform_coverage_and_reform_validation",
+    "demographics_and_source_coverage_diagnostics",
+    "national_and_cd_matched_incumbent_scorecard",
+    "publication_preflight",
+)
+
+
+class NativeSurveyReleaseRefusalError(ValueError):
+    """A native release refusal with a code and JSON-safe declared diagnostics.
+
+    Diagnostics carry codes, declared names, counts and digests only: never
+    private row identifiers, cell values or raw exception text from Frames.
+    """
+
+    def __init__(self, code: str, diagnostics: Mapping[str, object] | None = None):
+        super().__init__(code)
+        self.code = code
+        self.diagnostics = (
+            {}
+            if diagnostics is None
+            else json.loads(_strict_json_bytes(dict(diagnostics)))
+        )
+
+
+def _native_release_require(
+    condition: object, code: str, diagnostics: Mapping[str, object] | None = None
+) -> None:
+    if not condition:
+        raise NativeSurveyReleaseRefusalError(code, diagnostics)
+
+
+class _NativeReleaseOptions(NamedTuple):
+    args: argparse.Namespace
+    solve: argparse.Namespace
+
+
+def _parse_native_release_args(argv: Sequence[str]) -> _NativeReleaseOptions:
+    """Parse the shared options and refuse everything the native path ignores.
+
+    Reuses ``_parse_args`` unchanged, then compares every parsed option with the
+    legacy parser's own normalized default. Base/pool/exact-k/selection/warm
+    start/legacy source paths/incumbent/comparison inputs, evidence tiers,
+    skip/allow switches, caches, checkpoint roots and staging all refuse here,
+    before any owner projection, consumer construction, download, telemetry or
+    output directory. Only this function's closed allowlist may differ.
+    """
+    _native_release_require(
+        not isinstance(argv, str | bytes)
+        and isinstance(argv, Sequence)
+        and all(type(value) is str for value in argv),
+        "NATIVE_RELEASE_ARGV",
+    )
+    argv = list(argv)
+    try:
+        args = _parse_args(argv)
+    except SystemExit:
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_OPTIONS_INVALID"
+        ) from None
+    try:
+        baseline = _parse_args(
+            [
+                "--out",
+                str(args.out),
+                "--ledger-facts",
+                str(args.ledger_facts),
+                "--no-staging",
+            ]
+        )
+    except SystemExit:
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_OPTIONS_INVALID"
+        ) from None
+    unsupported = sorted(
+        "--" + name.replace("_", "-")
+        for name in set(vars(args)) | set(vars(baseline))
+        if name not in _NATIVE_RELEASE_CONSUMED_OPTIONS
+        and getattr(args, name, None) != getattr(baseline, name, None)
+    )
+    _native_release_require(
+        not unsupported,
+        "NATIVE_RELEASE_UNSUPPORTED_OPTIONS",
+        {"options": unsupported},
+    )
+    missing_switches = sorted(
+        "--" + name.replace("_", "-")
+        for name in _NATIVE_RELEASE_REQUIRED_SWITCHES
+        if getattr(args, name) is not True
+    )
+    _native_release_require(
+        not missing_switches,
+        "NATIVE_RELEASE_REQUIRED_OPTIONS",
+        {"options": missing_switches},
+    )
+    release_id = args.release_id
+    _native_release_require(
+        type(release_id) is str
+        and re.fullmatch(r"populace-us-[A-Za-z0-9][A-Za-z0-9._-]*", release_id)
+        is not None
+        and ".." not in release_id,
+        "NATIVE_RELEASE_ID",
+    )
+    try:
+        _assert_us_release_id(release_id)
+    except ValueError:
+        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_ID") from None
+    for name in ("ledger_facts_sha256", "ledger_manifest_sha256"):
+        value = getattr(args, name)
+        _native_release_require(
+            (value is None and name == "ledger_manifest_sha256")
+            or (type(value) is str and re.fullmatch(r"[0-9a-f]{64}", value)),
+            "NATIVE_RELEASE_LEDGER_PIN",
+            {"option": "--" + name.replace("_", "-")},
+        )
+    _native_release_require(args.exact_k is None, "NATIVE_RELEASE_UNSUPPORTED_OPTIONS")
+    solve = argparse.Namespace(
+        **{name: getattr(args, name) for name in _NATIVE_RELEASE_SOLVE_OPTIONS}
+    )
+    return _NativeReleaseOptions(args, solve)
+
+
+class _NativeReleaseConsumer(NamedTuple):
+    """The admitted consumer's constructors; resolving them builds nothing."""
+
+    dataset_cls: Any
+    microsimulation_cls: Any
+    system_factory: Any
+
+
+class _AdmittedNativeReleaseConsumer(NamedTuple):
+    constructors: _NativeReleaseConsumer
+    identity: dict
+    identity_sha256: str
+    spm: dict
+
+
+def _native_release_consumer_constructors(engine) -> _NativeReleaseConsumer:
+    """Resolve the same country classes the maintained adapter itself uses."""
+    country = engine._import_policyengine_us()
+    data = importlib.import_module("policyengine_us.data")
+    return _NativeReleaseConsumer(
+        data.USSingleYearDataset,
+        country.Microsimulation,
+        country.CountryTaxBenefitSystem,
+    )
+
+
+def _native_release_effective_spm(engine) -> dict:
+    """Effective SPM settings resolved by the adapter's own country system.
+
+    ``policyengine_us.spm.spm_config`` reports the installed forecast digest,
+    scenario, geography, county vintage and as-of date the provider resolved
+    from the explicit selection; a partial caller mapping is not enough.
+    """
+    from policyengine_us.spm import spm_config
+
+    return dict(spm_config(engine._tax_benefit_system().spm_forecast_provider))
+
+
+def _native_release_code_identity(value) -> dict:
+    import inspect
+
+    source = inspect.getsourcefile(value)
+    return {
+        "module": getattr(value, "__module__", None),
+        "qualname": getattr(value, "__qualname__", None),
+        "source_sha256": None if source is None else _sha256(Path(source)),
+    }
+
+
+def _native_release_distribution_identity(name: str) -> dict | None:
+    try:
+        distribution = importlib.metadata.distribution(name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+    record = distribution.read_text("RECORD")
+    return {
+        "version": distribution.version,
+        "record_sha256": (
+            None
+            if record is None
+            else hashlib.sha256(record.encode("utf-8")).hexdigest()
+        ),
+    }
+
+
+def _native_release_static_consumer_identity(
+    engine, constructors: _NativeReleaseConsumer
+) -> dict:
+    """Consumer identity that needs no country system construction."""
+    return json.loads(
+        _strict_json_bytes(
+            {
+                "protocol": NATIVE_RELEASE_CONSUMER_PROTOCOL,
+                "period": PERIOD,
+                "adapter": _native_release_code_identity(type(engine)),
+                "export_contract": asdict(engine.export_contract()),
+                "explicit_spm": None if engine._spm is None else dict(engine._spm),
+                "constructors": {
+                    "dataset": _native_release_code_identity(constructors.dataset_cls),
+                    "microsimulation": _native_release_code_identity(
+                        constructors.microsimulation_cls
+                    ),
+                    "system": _native_release_code_identity(
+                        constructors.system_factory
+                    ),
+                },
+                "distributions": {
+                    name: _native_release_distribution_identity(name)
+                    for name in NATIVE_RELEASE_CONSUMER_DISTRIBUTIONS
+                },
+            }
+        )
+    )
+
+
+def _admit_native_release_consumer(
+    engine, consumer_manifest, declaration
+) -> _AdmittedNativeReleaseConsumer:
+    """Compare the actual consumer with the caller's expected identity bytes.
+
+    ``consumer_manifest`` is the expected identity recorded for a reviewed
+    runtime, not an approval flag: every field must equal the live adapter,
+    constructors, installed distribution RECORDs, closed export contract and
+    effective SPM settings. The static part is compared before the country
+    system is built for effective SPM resolution. A match describes this
+    process's consumer; root admission of that runtime remains outstanding.
+    """
+    from microcosm.build.us_runtime.native_survey_handoff import (
+        NativeSurveyEngineProjectionSpec,
+        _projection_spec_bytes,
+    )
+
+    _native_release_require(
+        type(engine) is PolicyEngineUSEngine, "NATIVE_RELEASE_CONSUMER_TYPE"
+    )
+    _native_release_require(
+        type(declaration) is NativeSurveyEngineProjectionSpec,
+        "NATIVE_RELEASE_DECLARATION",
+    )
+    try:
+        _projection_spec_bytes(declaration)
+    except (TypeError, ValueError):
+        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_DECLARATION") from None
+    _native_release_require(
+        type(declaration.period) is int and declaration.period == PERIOD,
+        "NATIVE_RELEASE_PERIOD",
+    )
+    _native_release_require(
+        declaration.consumer_id_dtype is not None,
+        "NATIVE_RELEASE_CONSUMER_ID_DTYPE",
+    )
+    _native_release_require(
+        isinstance(consumer_manifest, Mapping), "NATIVE_RELEASE_CONSUMER_MANIFEST"
+    )
+    try:
+        expected = json.loads(_strict_json_bytes(dict(consumer_manifest)))
+    except (TypeError, ValueError):
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_CONSUMER_MANIFEST"
+        ) from None
+    _native_release_require(not engine._defaults, "NATIVE_RELEASE_CONSUMER_DEFAULTS")
+    spm = dict(declaration.spm_settings)
+    _native_release_require(
+        bool(spm) and engine._spm == spm, "NATIVE_RELEASE_CONSUMER_SPM"
+    )
+    _native_release_require(
+        declaration.export_contract.closed is True
+        and engine.export_contract() == declaration.export_contract,
+        "NATIVE_RELEASE_CONSUMER_CONTRACT",
+    )
+    constructors = _native_release_consumer_constructors(engine)
+    static = _native_release_static_consumer_identity(engine, constructors)
+    _native_release_require(
+        set(expected) == {*static, "effective_spm"}
+        and _strict_json_bytes({key: expected[key] for key in static})
+        == _strict_json_bytes(static),
+        "NATIVE_RELEASE_CONSUMER_IDENTITY",
+    )
+    try:
+        effective = json.loads(
+            _strict_json_bytes(_native_release_effective_spm(engine))
+        )
+    except (AttributeError, ImportError, TypeError, ValueError):
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_CONSUMER_SPM_UNRESOLVED"
+        ) from None
+    identity = {**static, "effective_spm": effective}
+    identity_bytes = _strict_json_bytes(identity)
+    _native_release_require(
+        _strict_json_bytes(expected) == identity_bytes,
+        "NATIVE_RELEASE_CONSUMER_IDENTITY",
+    )
+    return _AdmittedNativeReleaseConsumer(
+        constructors,
+        identity,
+        hashlib.sha256(identity_bytes).hexdigest(),
+        spm,
+    )
+
+
+def _native_release_input_gate(projection, *, target_specs) -> dict:
+    """Pure input checks on the projected cells; returns code/count diagnostics.
+
+    Every maintained release-roster input must be selected and complete; this
+    entry has no reviewed native profile of permissible unknowns, so unknown
+    values fail closed rather than being filled. The selected cells must also
+    fit the maintained H5 codec and complete SPM role/scope profile, and carry
+    the household geography the target materializer reads. Presence is not a
+    source-signal or applicability qualification; those remain outstanding.
+    """
+    from microcosm.build.spm_input_contract import UNIVERSE_INPUT, UNIVERSE_STATUSES
+    from microcosm.build.us_runtime import policyengine_h5_readback
+    from microcosm.build.us_runtime.native_survey_handoff import (
+        native_survey_input_inventory,
+    )
+
+    frame = projection.frame
+    inventory = native_survey_input_inventory(frame)
+
+    def rows(status, *fields):
+        # A name whose owning entity cannot be inferred keeps entity None.
+        return sorted(
+            (
+                [row[field] for field in fields]
+                for row in inventory
+                if row["status"] == status
+            ),
+            key=lambda item: (item[0] or "", item[1]),
+        )
+
+    missing = rows("missing", "entity", "variable")
+    unknown = rows("contains_unknowns", "entity", "variable", "missing_values")
+    failures = []
+    if missing:
+        failures.append("NATIVE_RELEASE_INPUT_MISSING")
+    if unknown:
+        failures.append("NATIVE_RELEASE_INPUT_UNKNOWN_VALUES")
+    try:
+        policyengine_h5_readback._frame_profile(frame, calibrated=False)
+    except policyengine_h5_readback.PolicyEngineH5ReadbackError as error:
+        failures.append("NATIVE_RELEASE_EXPORT_PROFILE:" + str(error))
+    household = frame.table("household")
+    if "state_fips" not in household:
+        failures.append("NATIVE_RELEASE_GEOGRAPHY_STATE")
+    if (
+        any(spec.metadata.get("congressional_district_geoid") for spec in target_specs)
+        and "congressional_district_geoid" not in household
+    ):
+        failures.append("NATIVE_RELEASE_GEOGRAPHY_CONGRESSIONAL_DISTRICT")
+    scope = frame.table("spm_unit").get(UNIVERSE_INPUT)
+    return json.loads(
+        _strict_json_bytes(
+            {
+                "protocol": NATIVE_RELEASE_INPUT_GATE_PROTOCOL,
+                "passed": not failures,
+                "failures": failures,
+                "missing_count": len(missing),
+                "missing": missing,
+                "contains_unknowns_count": len(unknown),
+                "contains_unknowns": unknown,
+                "excluded_native_scope": rows(
+                    "excluded_native_scope", "entity", "variable"
+                ),
+                "spm_status_counts": None
+                if scope is None
+                else {
+                    name: int(scope.eq(name).sum())
+                    for name in sorted(UNIVERSE_STATUSES)
+                },
+                "source_signal_verified": False,
+                "applicability_verified": False,
+            }
+        )
+    )
+
+
+class _PreparedNativeRelease(NamedTuple):
+    """Measured outputs of the private composition; no issuer or verdict."""
+
+    dataset_path: Path
+    diagnostics_path: Path
+    h5_receipt: Any
+    attachment: Any
+    registry: TargetRegistry
+    compilation: dict
+    fit_gate_failures: tuple
+    target_loss_weights_sha256: str
+
+
+def _run_prepared_native_fiscal_release(
+    input_frame: Frame,
+    *,
+    target_specs: tuple,
+    options: _NativeReleaseOptions,
+    engine,
+    constructors: _NativeReleaseConsumer,
+    spm: Mapping[str, object],
+    parent_reference: str,
+    calibration_specification: bytes,
+    release_dir: Path,
+) -> _PreparedNativeRelease:
+    """Materialize, solve, gate and write one verified H5 for admitted inputs.
+
+    Private: the public entry must already have authenticated the owner,
+    options, consumer, projection and input gate. Tests may drive this helper
+    with invented Frames and recording constructors; that never proves the
+    public owner's positive path. Target caches stay disabled. Weights attach
+    only to ``input_frame`` cells. A failed fit gate leaves its diagnostics and
+    refuses before any H5 is written.
+    """
+    args = options.args
+    _native_release_require(
+        type(options) is _NativeReleaseOptions
+        and type(options.solve) is argparse.Namespace
+        and tuple(sorted(vars(options.solve)))
+        == tuple(sorted(_NATIVE_RELEASE_SOLVE_OPTIONS))
+        and all(
+            getattr(args, name) is True for name in _NATIVE_RELEASE_REQUIRED_SWITCHES
+        ),
+        "NATIVE_RELEASE_OPTIONS",
+    )
+    _native_release_require(
+        release_dir.is_dir()
+        and not release_dir.is_symlink()
+        and not any(release_dir.iterdir()),
+        "NATIVE_RELEASE_DIRECTORY",
+    )
+    spm = dict(spm)
+    try:
+        target_frame, registry, compilation = _load_or_materialize_target_frame(
+            input_frame,
+            tuple(target_specs),
+            target_frame_checkpoint_path=None,
+            target_frame_checkpoint_identity=None,
+            maximum_microsim_batch_size=args.maximum_microsim_batch_size,
+            target_materialization_cache_dir=None,
+            target_materialization_cache_context=None,
+            gate_congressional_district_targets=(
+                args.gate_congressional_district_targets
+            ),
+            formula_metadata=engine,
+            dataset_cls=constructors.dataset_cls,
+            microsimulation_cls=constructors.microsimulation_cls,
+            system_factory=constructors.system_factory,
+            spm=spm,
+        )
+    except NativeSurveyReleaseRefusalError:
+        raise
+    except (
+        AttributeError,
+        KeyError,
+        TypeError,
+        ValueError,
+        OverflowError,
+        RuntimeError,
+    ):
+        # Materializer errors can include private row examples.
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_TARGET_MATERIALIZATION"
+        ) from None
+    try:
+        target_loss_weights = np.asarray(
+            _fiscal_target_loss_weights(registry, args.target_family_loss_multipliers),
+            dtype=np.float64,
+        )
+    except ValueError:
+        raise NativeSurveyReleaseRefusalError("NATIVE_RELEASE_LOSS_WEIGHTS") from None
+    attachment = _calibrate_native_input_frame(
+        input_frame,
+        target_frame,
+        registry,
+        args=options.solve,
+        target_loss_weights=target_loss_weights,
+        formula_metadata=engine,
+        parent_reference=parent_reference,
+        calibration_specification=calibration_specification,
+    )
+    # Universal target-fit checks only. Legacy source-signal gate arguments
+    # stay None because their inputs are legacy stage outputs; the native
+    # successors are recorded as outstanding, never as passed.
+    fit_gate_failures = tuple(
+        _release_gate_failures(attachment.result, compilation, target_registry=registry)
+    )
+    loss_weights_sha256 = hashlib.sha256(target_loss_weights.tobytes()).hexdigest()
+    diagnostics_path = release_dir / NATIVE_RELEASE_DIAGNOSTICS_FILENAME
+    write_calibration_diagnostics(
+        attachment.result,
+        diagnostics_path,
+        target_registry=registry,
+        build={
+            "protocol": NATIVE_RELEASE_PROTOCOL,
+            "parent_reference": parent_reference,
+            "calibration_specification_sha256": hashlib.sha256(
+                attachment.comparison_specification
+            ).hexdigest(),
+            "target_compilation": compilation,
+            "target_loss_weighting": US_FISCAL_TARGET_LOSS_WEIGHTING,
+            "target_loss_family_multipliers": dict(args.target_family_loss_multipliers)
+            or None,
+            "target_loss_weights_sha256": loss_weights_sha256,
+            "target_loss_cap": US_FISCAL_TARGET_LOSS_CAP,
+            "default_dataset": attachment.default_dataset,
+            "fit_gate_failures": list(fit_gate_failures),
+            "source_signal_gates_evaluated": False,
+            "release_eligible": False,
+        },
+    )
+    _native_release_require(
+        not fit_gate_failures,
+        "NATIVE_RELEASE_FIT_GATES",
+        {"failure_count": len(fit_gate_failures)},
+    )
+    from microcosm.build.us_runtime.policyengine_h5_readback import (
+        write_verified_policyengine_h5_export,
+    )
+
+    dense = options.solve.dense_default_dataset
+    dataset_path = release_dir / NATIVE_RELEASE_DATASET_FILENAME
+    receipt = write_verified_policyengine_h5_export(
+        input_frame,
+        attachment.frame,
+        engine,
+        dataset_path,
+        period=PERIOD,
+        parent_reference=parent_reference,
+        ordered_household_ids=attachment.ordered_household_ids.copy(),
+        calibrated_weights=attachment.full_parent_weights.copy(),
+        calibration_specification=attachment.comparison_specification,
+        scope_household_ids=(
+            None if dense else np.asarray(attachment.result.selected_entity_ids).copy()
+        ),
+        prune_zero_weight=False,
+    )
+    _native_release_require(
+        receipt.binding == attachment.binding
+        and receipt.period == PERIOD
+        and receipt.release_eligible is False,
+        "NATIVE_RELEASE_EXPORT_BINDING",
+    )
+    return _PreparedNativeRelease(
+        dataset_path,
+        diagnostics_path,
+        receipt,
+        attachment,
+        registry,
+        compilation,
+        fit_gate_failures,
+        loss_weights_sha256,
+    )
+
+
+class NativeSurveyReleaseResult(NamedTuple):
+    """Output paths and measured results; no owner, issuer or restore method.
+
+    A NamedTuple rather than a dataclass: this tool is also loaded by file path,
+    where dataclass annotation resolution has no registered module.
+    """
+
+    release_dir: Path
+    dataset_path: Path
+    manifest_path: Path
+    diagnostics_path: Path
+    dataset_sha256: str
+    manifest_sha256: str
+    owner_receipt_sha256: str
+    default_dataset: Mapping[str, object]
+    release_eligible: bool = False
+
+
+def _native_release_source_identity() -> dict:
+    tool = Path(__file__).resolve()
+    identity: dict[str, object] = {"tool_sha256": _sha256(tool)}
+    try:
+        identity["git_commit"] = _git_output("rev-parse", "HEAD")
+        identity["git_dirty"] = _git_dirty()
+    except (OSError, subprocess.CalledProcessError):
+        identity["git_commit"] = None
+        identity["git_dirty"] = None
+    return identity
+
+
+def _native_release_manifest_payload(
+    *,
+    release_id: str,
+    owner_receipt_sha256: str,
+    projection_report: Mapping[str, object],
+    declaration_sha256: str,
+    consumer: _AdmittedNativeReleaseConsumer,
+    input_gate: Mapping[str, object],
+    ledger_provenance: Mapping[str, object],
+    target_parity_gate,
+    medicaid_enrollment_substitutions,
+    crosswalk_metadata: Mapping[str, object] | None,
+    options: _NativeReleaseOptions,
+    prepared: _PreparedNativeRelease,
+    parent_reference: str,
+    source_identity: Mapping[str, object],
+    timing: Mapping[str, float],
+) -> dict:
+    receipt = prepared.h5_receipt
+    registry = prepared.registry
+    return json.loads(
+        _strict_json_bytes(
+            {
+                "protocol": NATIVE_RELEASE_PROTOCOL,
+                "release_id": release_id,
+                "period": PERIOD,
+                "release_eligible": False,
+                "certified": False,
+                "publication_authorized": False,
+                "outstanding_qualifications": list(
+                    NATIVE_RELEASE_OUTSTANDING_QUALIFICATIONS
+                ),
+                "evaluated_gate_groups": list(NATIVE_RELEASE_EVALUATED_GATE_GROUPS),
+                "survey_poverty_role": "comparison_only_never_gate_target_or_selection",
+                "owner": {
+                    "receipt_sha256": owner_receipt_sha256,
+                    "live_checked_before_and_after_output": True,
+                },
+                "projection": {
+                    "declaration_sha256": declaration_sha256,
+                    "projected_frame_sha256": projection_report[
+                        "projected_frame_sha256"
+                    ],
+                    "source_context_sha256": projection_report["source_context_sha256"],
+                    "consumer_representation_compatible": projection_report.get(
+                        "consumer_representation_compatible"
+                    )
+                    is True,
+                },
+                "consumer": {
+                    "identity_sha256": consumer.identity_sha256,
+                    "identity": consumer.identity,
+                    "root_admitted": False,
+                },
+                "input_gate": dict(input_gate),
+                "targets": {
+                    "ledger_artifact": dict(ledger_provenance),
+                    "registry_version": registry.version,
+                    "registry_rows": len(registry),
+                    "target_parity_passed": bool(target_parity_gate.passed),
+                    "medicaid_enrollment_substitution_count": len(
+                        medicaid_enrollment_substitutions
+                    ),
+                    "congressional_district_vintage_crosswalk": None
+                    if crosswalk_metadata is None
+                    else dict(crosswalk_metadata),
+                    "dropped_target_count": len(
+                        prepared.compilation.get("dropped_target_names") or ()
+                    ),
+                    "target_caches_enabled": False,
+                },
+                "calibration": {
+                    "solver_options": vars(options.solve),
+                    "target_loss_family_multipliers": dict(
+                        options.args.target_family_loss_multipliers
+                    ),
+                    "target_loss_weights_sha256": prepared.target_loss_weights_sha256,
+                    "default_dataset": prepared.attachment.default_dataset,
+                    "calibration_specification_sha256": hashlib.sha256(
+                        prepared.attachment.comparison_specification
+                    ).hexdigest(),
+                    "parent_reference": parent_reference,
+                    "export_binding_sha256": hashlib.sha256(
+                        prepared.attachment.binding
+                    ).hexdigest(),
+                    "fit_gate_failures": list(prepared.fit_gate_failures),
+                },
+                "dataset": {
+                    "path_name": prepared.dataset_path.name,
+                    "sha256": receipt.sha256,
+                    "h5_normalizations": list(receipt.normalizations),
+                    "nonserialized_context": list(receipt.nonserialized_context),
+                },
+                "diagnostics": {
+                    "path_name": prepared.diagnostics_path.name,
+                    "sha256": _sha256(prepared.diagnostics_path),
+                },
+                "builder_source": dict(source_identity),
+                "timing_seconds": dict(timing),
+            }
+        )
+    )
+
+
+def _write_native_release_json(path: Path, payload: Mapping[str, object]) -> str:
+    """Write strict JSON once through a same-directory temporary file."""
+    _native_release_require(
+        not path.exists() and not path.is_symlink(), "NATIVE_RELEASE_OUTPUT_EXISTS"
+    )
+    data = _strict_json_text(payload, indent=1).encode("utf-8") + b"\n"
+    temporary = path.with_name(path.name + ".tmp")
+    _native_release_require(
+        not temporary.exists() and not temporary.is_symlink(),
+        "NATIVE_RELEASE_OUTPUT_EXISTS",
+    )
+    with temporary.open("xb") as stream:
+        stream.write(data)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+    return hashlib.sha256(data).hexdigest()
+
+
+def _validate_native_release_after_owner_io(
+    final, *, owner, projection, declaration, expected
+) -> None:
+    """Pure last-fence comparisons after the final owner check; issues nothing."""
+    from microcosm.build.us_runtime import native_survey_handoff as handoff
+
+    try:
+        declaration_bytes, projection_stamp, report_bytes, identity_sha256, actual = (
+            expected
+        )
+        _native_release_require(
+            final.digest == owner.digest
+            and final.population is owner.population
+            and final.population.frame is projection.source_frame,
+            "NATIVE_RELEASE_OWNER_CHANGED",
+        )
+        _native_release_require(
+            handoff._projection_spec_bytes(declaration) == declaration_bytes,
+            "NATIVE_RELEASE_DECLARATION_CHANGED",
+        )
+        _native_release_require(
+            handoff._projection_stamp(projection.frame) == projection_stamp
+            and handoff._json(projection.report) == report_bytes,
+            "NATIVE_RELEASE_PROJECTION_CHANGED",
+        )
+        _native_release_require(
+            identity_sha256 == actual, "NATIVE_RELEASE_CONSUMER_CHANGED"
+        )
+        handoff._compare_engine_projection(
+            projection.source_frame, projection.frame, declaration
+        )
+    except NativeSurveyReleaseRefusalError:
+        raise
+    except (AttributeError, KeyError, TypeError, ValueError, OverflowError):
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_FINAL_STRUCTURE"
+        ) from None
+
+
+def build_native_survey_release(
+    run,
+    *,
+    argv: Sequence[str],
+    declaration,
+    engine: PolicyEngineUSEngine,
+    consumer_manifest: Mapping[str, object],
+) -> NativeSurveyReleaseResult:
+    """Build one native release candidate from a live issued enrichment owner.
+
+    Order: authenticate ``run`` with the owner's own check (a Frame, development
+    checkpoint, receipt, report or forged run refuses here, before anything
+    else); parse and close the options; compare the consumer with
+    ``consumer_manifest``; project the declared cells from the live owner with
+    the consumer's representation check; compile the shared target surface;
+    evaluate the pure input gate. Only then is the fresh output directory
+    created, targets materialized with the admitted constructors, the shared
+    solve run and weights attached to the projected inputs. A fit-gate failure
+    keeps its diagnostics and writes no H5. After the verified H5 write the
+    owner is checked again, all retained inputs are compared, and only then is
+    ``native_release_manifest.json`` written.
+
+    The result is a candidate with measured outputs. It is never release
+    eligible: outstanding qualifications are listed in its manifest and
+    publication remains a separate, human, preflight-gated step.
+    """
+    from microcosm.build.us_runtime import graph_us_survey_enrichment as native_owner
+    from microcosm.build.us_runtime import native_survey_handoff as handoff
+
+    started = time.perf_counter()
+    timing: dict[str, float] = {}
+    owner = native_owner.check_survey_enrichment_run(run)
+    options = _parse_native_release_args(argv)
+    args = options.args
+    release_dir = args.out.resolve() / NATIVE_RELEASE_DIRECTORY / args.release_id
+    _native_release_require(
+        not release_dir.exists() and not release_dir.is_symlink(),
+        "NATIVE_RELEASE_DIRECTORY_EXISTS",
+    )
+    consumer = _admit_native_release_consumer(engine, consumer_manifest, declaration)
+    projection = handoff.prepare_native_survey_engine_input(
+        run, declaration=declaration, consumer=engine
+    )
+    _native_release_require(
+        projection.report.get("owner_receipt_sha256") == owner.digest
+        and projection.report.get("consumer_representation_compatible") is True,
+        "NATIVE_RELEASE_PROJECTION",
+    )
+    declaration_bytes = handoff._projection_spec_bytes(declaration)
+    declaration_sha256 = hashlib.sha256(declaration_bytes).hexdigest()
+    projection_stamp = handoff._projection_stamp(projection.frame)
+    report_bytes = handoff._json(projection.report)
+    timing["admission_and_projection"] = time.perf_counter() - started
+    crosswalk_path = args.congressional_district_vintage_crosswalk
+    crosswalk = load_congressional_district_vintage_crosswalk(crosswalk_path)
+    crosswalk_metadata = {
+        "path_name": crosswalk_path.name,
+        "sha256": _sha256(crosswalk_path),
+    }
+    (
+        ledger_artifact,
+        target_registry,
+        medicaid_enrollment_substitutions,
+        target_parity_gate,
+    ) = _compile_fiscal_release_target_registry(
+        args, congressional_district_vintage_crosswalk=crosswalk
+    )
+    target_specs = tuple(target_registry.specs)
+    input_gate = _native_release_input_gate(projection, target_specs=target_specs)
+    _native_release_require(
+        input_gate["passed"], "NATIVE_RELEASE_INPUT_GATE", input_gate
+    )
+    timing["targets_and_input_gate"] = time.perf_counter() - started
+    parent_reference = (
+        "native-survey-owner:"
+        + owner.digest
+        + ":projection:"
+        + projection_stamp
+        + ":declaration:"
+        + declaration_sha256
+    )
+    calibration_specification = _strict_json_bytes(
+        {
+            "protocol": NATIVE_RELEASE_PROTOCOL,
+            "release_id": args.release_id,
+            "owner_receipt_sha256": owner.digest,
+            "declaration_sha256": declaration_sha256,
+            "projected_frame_sha256": projection_stamp,
+            "consumer_identity_sha256": consumer.identity_sha256,
+            "ledger_artifact": ledger_artifact.provenance(),
+            "registry_version": target_registry.version,
+            "crosswalk_sha256": crosswalk_metadata["sha256"],
+            "target_family_loss_multipliers": dict(args.target_family_loss_multipliers),
+            "maximum_microsim_batch_size": args.maximum_microsim_batch_size,
+            "gate_congressional_district_targets": bool(
+                args.gate_congressional_district_targets
+            ),
+        }
+    )
+    # First output side effect: a fresh directory owned by this build.
+    release_dir.mkdir(parents=True, exist_ok=False)
+    prepared = _run_prepared_native_fiscal_release(
+        projection.frame,
+        target_specs=target_specs,
+        options=options,
+        engine=engine,
+        constructors=consumer.constructors,
+        spm=consumer.spm,
+        parent_reference=parent_reference,
+        calibration_specification=calibration_specification,
+        release_dir=release_dir,
+    )
+    timing["materialize_solve_and_export"] = time.perf_counter() - started
+    source_identity = _native_release_source_identity()
+    # Re-derive the consumer identity after the foreign writer/readback I/O:
+    # a runtime replaced mid-build must not be recorded as the admitted one.
+    try:
+        rechecked_identity_sha256 = hashlib.sha256(
+            _strict_json_bytes(
+                {
+                    **_native_release_static_consumer_identity(
+                        engine, _native_release_consumer_constructors(engine)
+                    ),
+                    "effective_spm": json.loads(
+                        _strict_json_bytes(_native_release_effective_spm(engine))
+                    ),
+                }
+            )
+        ).hexdigest()
+    except (AttributeError, ImportError, TypeError, ValueError):
+        raise NativeSurveyReleaseRefusalError(
+            "NATIVE_RELEASE_CONSUMER_CHANGED"
+        ) from None
+    manifest_payload = _native_release_manifest_payload(
+        release_id=args.release_id,
+        owner_receipt_sha256=owner.digest,
+        projection_report=projection.report,
+        declaration_sha256=declaration_sha256,
+        consumer=consumer,
+        input_gate=input_gate,
+        ledger_provenance=ledger_artifact.provenance(),
+        target_parity_gate=target_parity_gate,
+        medicaid_enrollment_substitutions=medicaid_enrollment_substitutions,
+        crosswalk_metadata=crosswalk_metadata,
+        options=options,
+        prepared=prepared,
+        parent_reference=parent_reference,
+        source_identity=source_identity,
+        timing=timing,
+    )
+    # The owner check performs I/O. Every comparison of retained objects
+    # follows it, and only precomputed bytes are written afterwards.
+    final = native_owner.check_survey_enrichment_run(run)
+    _validate_native_release_after_owner_io(
+        final,
+        owner=owner,
+        projection=projection,
+        declaration=declaration,
+        expected=(
+            declaration_bytes,
+            projection_stamp,
+            report_bytes,
+            consumer.identity_sha256,
+            rechecked_identity_sha256,
+        ),
+    )
+    _native_release_require(
+        _sha256(prepared.dataset_path) == prepared.h5_receipt.sha256,
+        "NATIVE_RELEASE_DATASET_CHANGED",
+    )
+    manifest_path = release_dir / NATIVE_RELEASE_MANIFEST_FILENAME
+    manifest_sha256 = _write_native_release_json(manifest_path, manifest_payload)
+    return NativeSurveyReleaseResult(
+        release_dir=release_dir,
+        dataset_path=prepared.dataset_path,
+        manifest_path=manifest_path,
+        diagnostics_path=prepared.diagnostics_path,
+        dataset_sha256=prepared.h5_receipt.sha256,
+        manifest_sha256=manifest_sha256,
+        owner_receipt_sha256=owner.digest,
+        default_dataset=deepcopy(prepared.attachment.default_dataset),
+    )
+
+
 def _load_frame(
     path: Path, *, expected_sha256: str | None = None, dataset_cls=None
 ) -> Frame:
