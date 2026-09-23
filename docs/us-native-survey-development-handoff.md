@@ -94,14 +94,23 @@ authority, establish target/scientific qualification or authorize publication.
 
 The report preserves the owner's receipt and source content identities, the
 native population version and graph manifest identity, and the amount model's
-source/draw flags. It merges the maintained pool input roster, release-source
+source/draw flags. Its default inventory merges the maintained release-source
 column roster and historical input profile, retaining each named missing or
-unknown-containing input and its declarations. Presence is not proof of
+unknown-containing input and its declarations. `input_inventory_scope` records
+these two checked rosters and the historical profile's source-manifest identity.
+The legacy pool input surface is **not checked** and the live take-up ABI
+inventory remains **unqualified**. The handoff does not import the legacy pool,
+whose eager agreement/take-up registries instantiate the country engine. This
+descriptive inventory does not establish a complete engine input contract;
+historical take-up names are names only, and missing fields without a declared
+grain retain `entity=null`. Presence is not proof of
 applicability, source validity or non-default statistical signal. An optional
 `export_contract=` accepts the consuming adapter's actual `ExportContract` and
 reports missing, forbidden, formula-owned and unexpected columns without
 projecting or default-filling the Frame. No country engine is imported or run by
-this handoff.
+this default handoff. The explicit engine-consumer projection described above
+retains its separate runtime qualification. Release gates, source/applicability
+checks and `simulation_ready=false` / `release_eligible=false` are unchanged.
 
 The approved native scope excludes the legacy prior-year income family:
 `employment_income_last_year`, `self_employment_income_last_year` and

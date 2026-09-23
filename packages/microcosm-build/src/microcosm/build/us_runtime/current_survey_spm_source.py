@@ -643,16 +643,24 @@ def qualify_native_spm_inputs(
     """Only a live issued receiving owner may enter the public bridge."""
     from . import graph_us_survey_enrichment as host
 
-    host.check_survey_enrichment_run(real_issued_enrichment_run)
-    preparation = real_issued_enrichment_run.parent_run.financial_run.prefix.preparation
-    result = qualify_current_survey_spm(
-        preparation,
-        acs_profile=acs_profile,
-        asec_scope_policy=asec_scope_policy,
-        _receiving_run=real_issued_enrichment_run,
-    )
-    host.check_survey_enrichment_run(real_issued_enrichment_run)
-    result.validate()
+    host._issued_run_entry(real_issued_enrichment_run)
+    financial_run = real_issued_enrichment_run.parent_run.financial_run
+    with host.parent.financial.child_verification_operation(financial_run):
+        host.check_survey_enrichment_run(real_issued_enrichment_run)
+        preparation = financial_run.prefix.preparation
+        result = qualify_current_survey_spm(
+            preparation,
+            acs_profile=acs_profile,
+            asec_scope_policy=asec_scope_policy,
+            _receiving_run=real_issued_enrichment_run,
+        )
+        host.check_survey_enrichment_run(real_issued_enrichment_run)
+        result.validate()
+        entry = _ISSUED.get(result)
+        receiving_entry = host._ISSUED.get(id(real_issued_enrichment_run))
+    # Closing callbacks may touch an already validated public result.
+    host._pure_retained_run(real_issued_enrichment_run, receiving_entry)
+    _check_retained_output(result, entry)
     return result
 
 
