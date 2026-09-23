@@ -125,6 +125,81 @@ PRODUCER_SOURCE_FILES = (
     "packages/microcosm-data/src/microcosm/data/source_enrichment.py",
     "packages/microcosm-data/src/microcosm/data/contract.py",
 )
+#: The native SPM role lane's operation; everything above is its lineage.
+SPM_ROLE_OPERATION = "add_native_spm_independent_minor_role"
+
+# Reported-receipt enrichment of the national default (microcosm#978). A second
+# operation of this release type, not a second release type: the same manifest,
+# inheritance, H5 replay, compatibility and producer-identity gates, pinned to
+# its own reviewed parent. Like the Build P pins above, these are constants a
+# caller cannot supply.
+
+#: The operation the donor receipt qualification records
+#: (``tools/build_us_acs_donor_receipt_qualification.py``), reused so the
+#: release names exactly what its receipt proves.
+RECEIPT_OPERATION = "add_reported_receipt_inputs"
+#: The national default ``latest.json`` names from 2026-09-15. The Hub also
+#: carries these H5 bytes as ``populace-us-2024-spm-20260909``; this id is the
+#: one whose release manifest bytes are pinned below.
+RECEIPT_PARENT_BUILD_ID = "populace-us-2024-spm-20260915"
+RECEIPT_PARENT_DATASET_SHA256 = (
+    "6496cc4393d4d3c6574f76eca231de5898c803b9067645591fd5c4d3e65aee84"
+)
+#: Reviewed immutable evidence of that parent, copied unchanged into the child.
+#: The parent release manifest hash-binds the parent H5 and every other parent
+#: file (its build manifest, source-enrichment report, compatibility receipt and
+#: role evidence). The diagnostics and coverage bytes are Build P's own
+#: (``PARENT_FILES``), inherited unchanged through the SPM-role release, so
+#: this lane grants no calibration an inheritance it did not already have.
+RECEIPT_PARENT_FILES = {
+    "parent_release_manifest.json": (
+        "d5c9e2a33d097294af60a816fafb1bdcfbbd81cdda70ae4637daceb829dedc01"
+    ),
+    "calibration_diagnostics.json": (
+        "870449b44e86b13b25bcea1a57f0e7af37f4d4db18be815eea3acdf9fe6eb40e"
+    ),
+    "us_source_coverage.json": (
+        "6406c8686c292015a5bc7265a42402f89935f9395a8b63510efdd4d9562e7ff5"
+    ),
+}
+#: Added input -> owning entity, in the order the qualification appends them.
+RECEIPT_COLUMNS = {
+    "receives_wic": "person",
+    "receives_snap": "spm_unit",
+    "receives_tanf": "spm_unit",
+}
+#: The published root path. Never the national default's ``populace_us_2024.h5``,
+#: so no publication of this donor can overwrite the default's root file.
+RECEIPT_DATASET_FILENAME = "populace_us_2024_receipt_qualified.h5"
+#: The qualification's aggregate receipt, carried verbatim as source evidence.
+RECEIPT_QUALIFICATION_FILE = "donor_receipt_qualification.json"
+#: The qualification tool's ``_PRODUCER_FILES``: every file whose code decides a
+#: receipt value. Declared here, not imported, so the data shard does not depend
+#: on a tool; a build test checks parity.
+RECEIPT_QUALIFICATION_SOURCE_FILES = (
+    "tools/build_us_acs_donor_receipt_qualification.py",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/cps_carried.py",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/public_assistance_type_source.py",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/education_assistance_source.py",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/support_provenance.py",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/h5_io.py",
+    "packages/microcosm-build/src/microcosm/build/us_runtime/acs_transfer.py",
+    "packages/microcosm-frame/src/microcosm/frame/bundle.py",
+    "packages/microcosm-frame/src/microcosm/frame/schema.py",
+    "packages/microcosm-data/src/microcosm/data/h5_enrichment.py",
+    "packages/microcosm-data/src/microcosm/data/h5_boolean_append.py",
+)
+#: The release assembler's producer inventory, authenticated at publication.
+RECEIPT_RELEASE_PRODUCER_FILES = (
+    "tools/build_us_receipt_enrichment_release.py",
+    "packages/microcosm-data/src/microcosm/data/h5_enrichment.py",
+    "packages/microcosm-data/src/microcosm/data/h5_boolean_append.py",
+    "packages/microcosm-data/src/microcosm/data/source_enrichment.py",
+    "packages/microcosm-data/src/microcosm/data/contract.py",
+)
+#: Native inputs the loader qualification checks for a receipt child: the role
+#: it inherits from its parent, then the three receipts.
+RECEIPT_NATIVE_INPUTS = {ROLE_VARIABLE: "person", **RECEIPT_COLUMNS}
 
 
 def sha256_file(path: Path | str) -> str:
@@ -235,6 +310,164 @@ def _check_source_provenance(provenance: Mapping, failures: list[str]) -> None:
                 )
 
 
+def _receipt_added_variables() -> list[dict]:
+    """The qualification's ``added_columns`` for the three receipts, in order."""
+    return [
+        {"name": name, "entity": entity, "dtype": "bool"}
+        for name, entity in RECEIPT_COLUMNS.items()
+    ]
+
+
+def _receipt_plan() -> dict[str, tuple[str, ...]]:
+    """The Boolean-append plan the qualification wrote: group -> ordered names."""
+    plan: dict[str, tuple[str, ...]] = {}
+    for name, entity in RECEIPT_COLUMNS.items():
+        plan[entity] = (*plan.get(entity, ()), name)
+    return plan
+
+
+def _receipt_column_counts(candidate: Path) -> dict[str, dict[str, int]]:
+    """Rows and true values of each appended receipt column, read from the H5."""
+    import h5py
+    import numpy as np
+
+    counts = {}
+    with h5py.File(candidate, "r") as h5:
+        for name, entity in RECEIPT_COLUMNS.items():
+            values = np.asarray(h5[f"{entity}/table"][name])
+            counts[name] = {
+                "rows": int(values.size),
+                "true": int(np.count_nonzero(values)),
+            }
+    return counts
+
+
+def _check_receipt_qualification(
+    release_dir: Path, report: Mapping, candidate: Path | None, failures: list[str]
+) -> None:
+    """Bind the qualification receipt to this release, its parent and its H5.
+
+    The receipt is the qualification tool's own aggregate record, carried
+    verbatim. Its preservation report must equal the release report's, which
+    the caller has just compared with a fresh exhaustive comparison of the
+    actual parent and candidate H5 files; its per-column totals are recounted
+    here from the candidate. The receipt's producer identity is authenticated
+    at certification and publication (:func:`_check_receipt_producers`).
+    """
+    source = _mapping(report.get("source"))
+    path = release_dir / RECEIPT_QUALIFICATION_FILE
+    if (
+        source.get("qualification_filename") != RECEIPT_QUALIFICATION_FILE
+        or not path.is_file()
+        or sha256_file(path) != source.get("qualification_sha256")
+    ):
+        failures.append(
+            "source enrichment qualification must bind the immutable "
+            f"{RECEIPT_QUALIFICATION_FILE}"
+        )
+    if not path.is_file():
+        return
+    receipt = _json(path, failures)
+    if receipt.get("schema_version") != 1 or receipt.get("operation") != (
+        RECEIPT_OPERATION
+    ):
+        failures.append(
+            f"{RECEIPT_QUALIFICATION_FILE} must be a schema-1 {RECEIPT_OPERATION} receipt"
+        )
+    if _mapping(receipt.get("parent")).get("sha256") != RECEIPT_PARENT_DATASET_SHA256:
+        failures.append(
+            f"{RECEIPT_QUALIFICATION_FILE} must name the pinned national default "
+            "as its parent"
+        )
+    if _mapping(receipt.get("dataset")).get("sha256") != _mapping(
+        report.get("dataset")
+    ).get("sha256"):
+        failures.append(f"{RECEIPT_QUALIFICATION_FILE} must describe the enriched H5")
+    if receipt.get("added_columns") != _receipt_added_variables():
+        failures.append(
+            f"{RECEIPT_QUALIFICATION_FILE} must add exactly the three "
+            "reported-receipt bool inputs"
+        )
+    if receipt.get("preservation") != report.get("preservation"):
+        failures.append(
+            f"{RECEIPT_QUALIFICATION_FILE} preservation must equal the release's "
+            "replayed H5 comparison"
+        )
+    counts = _mapping(receipt.get("counts"))
+    actual = None
+    if candidate is not None and candidate.is_file():
+        try:
+            actual = _receipt_column_counts(candidate)
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            failures.append(f"receipt columns could not be counted in the H5: {exc}")
+    for name, entity in RECEIPT_COLUMNS.items():
+        recorded = _mapping(counts.get(name))
+        true = recorded.get("true")
+        channel_true = _mapping(recorded.get("gate_selected_channel")).get("true")
+        if (
+            recorded.get("entity") != entity
+            or type(recorded.get("rows")) is not int
+            or type(true) is not int
+            or recorded.get("false") != recorded["rows"] - true
+        ):
+            failures.append(
+                f"{RECEIPT_QUALIFICATION_FILE} counts for {name} are malformed"
+            )
+            continue
+        if true <= 0 or type(channel_true) is not int or channel_true <= 0:
+            failures.append(
+                f"{RECEIPT_QUALIFICATION_FILE} records no true {name} in the donor "
+                "or in its gate-selected channel"
+            )
+        if actual is not None and (
+            recorded["rows"] != actual[name]["rows"] or true != actual[name]["true"]
+        ):
+            failures.append(
+                f"{RECEIPT_QUALIFICATION_FILE} counts for {name} differ from the "
+                "enriched H5"
+            )
+
+
+def _check_receipt_producers(
+    build: Mapping, release_dir: Path, failures: list[str]
+) -> None:
+    """Authenticate both producers of a receipt child against this checkout.
+
+    The release assembler's build identity covers the files that packaged the
+    release; the qualification receipt's covers every file that decided a
+    receipt value, including the verifier the contract has just replayed.
+    """
+    try:
+        _check_producer_source_identity(
+            _mapping(build.get("code")), inventory=RECEIPT_RELEASE_PRODUCER_FILES
+        )
+    except (OSError, ValueError) as exc:
+        failures.append(f"producer source identity failed: {exc}")
+    try:
+        receipt = json.loads((release_dir / RECEIPT_QUALIFICATION_FILE).read_text())
+        _check_producer_source_identity(
+            _mapping(_mapping(receipt).get("code")),
+            inventory=RECEIPT_QUALIFICATION_SOURCE_FILES,
+        )
+    except (OSError, ValueError) as exc:
+        failures.append(f"qualification producer source identity failed: {exc}")
+
+
+def is_receipt_enrichment(release_dir: Path | str) -> bool:
+    """Whether ``release_dir`` declares the reported-receipt operation.
+
+    A reporting probe for the publisher's latest-pointer guard; it validates
+    nothing, and an unreadable report reads as ``False``.
+    """
+    try:
+        report = json.loads((Path(release_dir) / SOURCE_ENRICHMENT_FILE).read_text())
+    except (OSError, ValueError):
+        return False
+    return isinstance(report, Mapping) and report.get("operation") == (
+        RECEIPT_OPERATION
+    )
+
+
 def validate_source_enrichment_candidate(
     release_dir: Path | str,
     *,
@@ -248,8 +481,17 @@ def validate_source_enrichment_candidate(
     Unlike the standard release contract, this never treats parent diagnostics
     as measurements of the enriched model. Both actual H5 files are mandatory:
     a hand-written preservation receipt is not sufficient evidence.
+
+    ``source_enrichment.json``'s ``operation`` selects the reviewed lineage:
+    the native SPM role added to Build P (every other value, so an unknown
+    operation is still judged, and refused, as the role lane), or
+    :data:`RECEIPT_OPERATION`, the reported-receipt inputs added to the pinned
+    national default. The gates are the same; only the pinned parent, the
+    evidence that proves the addition and the native inputs the loader
+    qualification checks differ.
     """
     from microcosm.data.annual_projections import validate_annual_projection_extension
+    from microcosm.data.h5_boolean_append import compare_boolean_append
     from microcosm.data.h5_enrichment import compare_h5_enrichment
 
     release_dir = Path(release_dir)
@@ -265,6 +507,16 @@ def validate_source_enrichment_candidate(
         ) from exc
     build = _json(release_dir / "build_manifest.json", failures)
     report = _json(release_dir / SOURCE_ENRICHMENT_FILE, failures)
+    receipts = report.get("operation") == RECEIPT_OPERATION
+    # Read at call time, so each lineage is exactly its module-level pins.
+    lineage_build_id = RECEIPT_PARENT_BUILD_ID if receipts else PARENT_BUILD_ID
+    lineage_dataset_sha256 = (
+        RECEIPT_PARENT_DATASET_SHA256 if receipts else PARENT_DATASET_SHA256
+    )
+    lineage_files = RECEIPT_PARENT_FILES if receipts else PARENT_FILES
+    reused_release_ids = (
+        {PARENT_BUILD_ID, RECEIPT_PARENT_BUILD_ID} if receipts else {PARENT_BUILD_ID}
+    )
     if manifest.get("release_type") != SOURCE_ENRICHMENT_RELEASE_TYPE:
         failures.append(
             "release_manifest.json must declare release_type=source_enrichment"
@@ -277,7 +529,7 @@ def validate_source_enrichment_candidate(
         failures.append(
             "release manifest build_id must match its new release directory"
         )
-    if release_dir.name == PARENT_BUILD_ID or not release_dir.name.startswith(
+    if release_dir.name in reused_release_ids or not release_dir.name.startswith(
         "populace-us-2024-"
     ):
         failures.append("source enrichment requires a NEW US 2024 release id")
@@ -293,22 +545,24 @@ def validate_source_enrichment_candidate(
         failures.append(
             "source_enrichment.json must declare source_enrichment schema 1"
         )
-    if report.get("operation") != "add_native_spm_independent_minor_role":
+    if not receipts and report.get("operation") != SPM_ROLE_OPERATION:
         failures.append("source enrichment operation must add only the native SPM role")
     parent = _mapping(report.get("parent"))
     expected_parent = {
-        "build_id": PARENT_BUILD_ID,
+        "build_id": lineage_build_id,
         "repo_id": "policyengine/populace-us",
-        "revision": PARENT_BUILD_ID,
-        "dataset_sha256": PARENT_DATASET_SHA256,
+        "revision": lineage_build_id,
+        "dataset_sha256": lineage_dataset_sha256,
         "calibration_diagnostics_schema_version": 5,
-        "files": PARENT_FILES,
+        "files": lineage_files,
     }
     if parent != expected_parent:
         failures.append(
-            "source enrichment parent must match the reviewed BuildP identity"
+            "source enrichment parent must match the pinned national default identity"
+            if receipts
+            else "source enrichment parent must match the reviewed BuildP identity"
         )
-    for name, expected in PARENT_FILES.items():
+    for name, expected in lineage_files.items():
         path = release_dir / name
         if not path.is_file() or sha256_file(path) != expected:
             failures.append(f"inherited {name} must preserve the reviewed parent bytes")
@@ -318,7 +572,13 @@ def validate_source_enrichment_candidate(
         or diagnostics.get("schema_version") != 5
     ):
         failures.append("inherited calibration_diagnostics must retain schema 5")
-    if report.get("added_variable") != {
+    if receipts:
+        if report.get("added_variables") != _receipt_added_variables():
+            failures.append(
+                "added_variables must declare exactly the three reported-receipt "
+                "bool inputs, in their append order"
+            )
+    elif report.get("added_variable") != {
         "name": ROLE_VARIABLE,
         "entity": "person",
         "dtype": "bool",
@@ -336,6 +596,11 @@ def validate_source_enrichment_candidate(
     ):
         failures.append("source enrichment dataset.filename must be a bare H5 filename")
         filename = None
+    if receipts and filename is not None and filename != RECEIPT_DATASET_FILENAME:
+        failures.append(
+            f"a reported-receipt enrichment publishes its H5 as "
+            f"{RECEIPT_DATASET_FILENAME}, never over the national default's root file"
+        )
     if filename:
         release_local_h5 = release_dir / filename
         if release_local_h5.exists() or release_local_h5.is_symlink():
@@ -355,14 +620,22 @@ def validate_source_enrichment_candidate(
     elif not Path(parent_h5).is_file() or not candidate.is_file():
         failures.append("source enrichment parent and candidate H5 files must exist")
     else:
-        if sha256_file(parent_h5) != PARENT_DATASET_SHA256:
-            failures.append("parent H5 SHA256 differs from reviewed BuildP")
+        if sha256_file(parent_h5) != lineage_dataset_sha256:
+            failures.append(
+                "parent H5 SHA256 differs from the pinned national default"
+                if receipts
+                else "parent H5 SHA256 differs from reviewed BuildP"
+            )
         if candidate.resolve() == Path(parent_h5).resolve():
             failures.append("source enrichment must create a NEW H5")
         if sha256_file(candidate) != dataset.get("sha256"):
             failures.append("candidate H5 SHA256 differs from source enrichment report")
         try:
-            comparison = compare_h5_enrichment(Path(parent_h5), candidate)
+            comparison = (
+                compare_boolean_append(Path(parent_h5), candidate, _receipt_plan())
+                if receipts
+                else compare_h5_enrichment(Path(parent_h5), candidate)
+            )
             if report.get("preservation") != comparison:
                 failures.append(
                     "preservation report differs from actual exhaustive H5 comparison"
@@ -374,61 +647,71 @@ def validate_source_enrichment_candidate(
     calibration = _mapping(build.get("calibration"))
     if calibration != {
         "mode": "inherited",
-        "parent_build_id": PARENT_BUILD_ID,
-        "diagnostics_sha256": PARENT_FILES["calibration_diagnostics.json"],
+        "parent_build_id": lineage_build_id,
+        "diagnostics_sha256": lineage_files["calibration_diagnostics.json"],
         "diagnostics_schema_version": 5,
     }:
         failures.append(
             "build calibration must explicitly inherit schema-5 parent evidence"
         )
-    source = _mapping(report.get("source"))
-    for field, expected_name in (
-        ("person_evidence", SOURCE_EVIDENCE_FILE),
-        ("provenance", SOURCE_PROVENANCE_FILE),
-    ):
-        name = source.get(f"{field}_filename")
-        path = release_dir / expected_name
+    if receipts:
+        _check_receipt_qualification(release_dir, report, candidate, failures)
+        required_artifacts = {
+            *lineage_files,
+            SOURCE_ENRICHMENT_FILE,
+            RECEIPT_QUALIFICATION_FILE,
+        }
+    else:
+        source = _mapping(report.get("source"))
+        for field, expected_name in (
+            ("person_evidence", SOURCE_EVIDENCE_FILE),
+            ("provenance", SOURCE_PROVENANCE_FILE),
+        ):
+            name = source.get(f"{field}_filename")
+            path = release_dir / expected_name
+            if (
+                name != expected_name
+                or not path.is_file()
+                or sha256_file(path) != source.get(f"{field}_sha256")
+            ):
+                failures.append(
+                    f"source enrichment {field} must bind the immutable {expected_name}"
+                )
+        evidence_path = release_dir / SOURCE_EVIDENCE_FILE
         if (
-            name != expected_name
-            or not path.is_file()
-            or sha256_file(path) != source.get(f"{field}_sha256")
+            not evidence_path.is_file()
+            or sha256_file(evidence_path) != SOURCE_EVIDENCE_SHA256
         ):
             failures.append(
-                f"source enrichment {field} must bind the immutable {expected_name}"
+                "source evidence must match the independently reviewed Census-derived person table"
             )
-    evidence_path = release_dir / SOURCE_EVIDENCE_FILE
-    if (
-        not evidence_path.is_file()
-        or sha256_file(evidence_path) != SOURCE_EVIDENCE_SHA256
-    ):
-        failures.append(
-            "source evidence must match the independently reviewed Census-derived person table"
-        )
-    provenance = _json(release_dir / SOURCE_PROVENANCE_FILE, failures)
-    _check_source_provenance(provenance, failures)
-    if report.get("reconciliation") != provenance:
-        failures.append("source enrichment reconciliation must equal source provenance")
-    if (
-        candidate
-        and candidate.is_file()
-        and (release_dir / SOURCE_EVIDENCE_FILE).is_file()
-    ):
-        try:
-            counts = _check_person_evidence(
-                release_dir / SOURCE_EVIDENCE_FILE, candidate
+        provenance = _json(release_dir / SOURCE_PROVENANCE_FILE, failures)
+        _check_source_provenance(provenance, failures)
+        if report.get("reconciliation") != provenance:
+            failures.append(
+                "source enrichment reconciliation must equal source provenance"
             )
-            if any(provenance.get(key) != value for key, value in counts.items()):
-                failures.append(
-                    "source provenance coverage differs from actual person evidence"
+        if (
+            candidate
+            and candidate.is_file()
+            and (release_dir / SOURCE_EVIDENCE_FILE).is_file()
+        ):
+            try:
+                counts = _check_person_evidence(
+                    release_dir / SOURCE_EVIDENCE_FILE, candidate
                 )
-        except (ValueError, KeyError, OSError, TypeError) as exc:
-            failures.append(f"native source evidence reconciliation failed: {exc}")
-    required_artifacts = {
-        *PARENT_FILES,
-        SOURCE_ENRICHMENT_FILE,
-        SOURCE_EVIDENCE_FILE,
-        SOURCE_PROVENANCE_FILE,
-    }
+                if any(provenance.get(key) != value for key, value in counts.items()):
+                    failures.append(
+                        "source provenance coverage differs from actual person evidence"
+                    )
+            except (ValueError, KeyError, OSError, TypeError) as exc:
+                failures.append(f"native source evidence reconciliation failed: {exc}")
+        required_artifacts = {
+            *PARENT_FILES,
+            SOURCE_ENRICHMENT_FILE,
+            SOURCE_EVIDENCE_FILE,
+            SOURCE_PROVENANCE_FILE,
+        }
     artifacts = _mapping(manifest.get("artifacts"))
     annual_artifacts = annual_extension.additional_artifacts if annual_extension else {}
     revision = annual_extension.revision if annual_extension else release_dir.name
@@ -535,12 +818,15 @@ def validate_source_enrichment_candidate(
             compatibility_wheels,
             failures,
             annual_revision=annual_extension.revision if annual_extension else None,
+            native_inputs=RECEIPT_NATIVE_INPUTS if receipts else None,
         )
     else:
         failures.append(
             "source enrichment compatibility status must be pending or passed"
         )
-    if require_compatibility:
+    if require_compatibility and receipts:
+        _check_receipt_producers(build, release_dir, failures)
+    elif require_compatibility:
         try:
             _check_producer_source_identity(_mapping(build.get("code")))
         except (OSError, ValueError) as exc:
@@ -550,16 +836,25 @@ def validate_source_enrichment_candidate(
     return report
 
 
-def _check_producer_source_identity(code: Mapping) -> None:
+def _check_producer_source_identity(
+    code: Mapping, *, inventory: tuple[str, ...] | None = None
+) -> None:
     """Bind clean build provenance to committed and currently executed sources.
 
     Publication/certification runs from a Microcosm checkout. A later docs-only
     commit is fine; each reviewed producer file must still have the exact bytes
     recorded in the build and in its immutable producer commit.
+
+    ``inventory`` defaults to the native SPM role lane's
+    :data:`PRODUCER_SOURCE_FILES`. Whichever data-contract modules the
+    inventory names must also be the modules executing this check.
     """
     import subprocess
 
-    from microcosm.data import contract, h5_enrichment
+    from microcosm.data import contract, h5_boolean_append, h5_enrichment
+
+    if inventory is None:
+        inventory = PRODUCER_SOURCE_FILES
 
     commit = code.get("git_commit")
     if (
@@ -569,7 +864,7 @@ def _check_producer_source_identity(code: Mapping) -> None:
     ):
         raise ValueError("publication requires a recorded clean producer commit")
     hashes = _mapping(code.get("source_files_sha256"))
-    if set(hashes) != set(PRODUCER_SOURCE_FILES) or any(
+    if set(hashes) != set(inventory) or any(
         not isinstance(value, str) or not _SHA256_RE.fullmatch(value)
         for value in hashes.values()
     ):
@@ -591,7 +886,7 @@ def _check_producer_source_identity(code: Mapping) -> None:
     )
     if verified_commit != commit:
         raise ValueError("producer git_commit does not resolve to the recorded commit")
-    for relative in PRODUCER_SOURCE_FILES:
+    for relative in inventory:
         committed = git("show", f"{commit}:{relative}")
         if hashlib.sha256(committed).hexdigest() != hashes[relative]:
             raise ValueError(
@@ -604,10 +899,15 @@ def _check_producer_source_identity(code: Mapping) -> None:
             )
     executing = {
         "packages/microcosm-data/src/microcosm/data/h5_enrichment.py": h5_enrichment.__file__,
+        "packages/microcosm-data/src/microcosm/data/h5_boolean_append.py": (
+            h5_boolean_append.__file__
+        ),
         "packages/microcosm-data/src/microcosm/data/source_enrichment.py": __file__,
         "packages/microcosm-data/src/microcosm/data/contract.py": contract.__file__,
     }
     for relative, actual in executing.items():
+        if relative not in inventory:
+            continue
         if actual is None or sha256_file(actual) != hashes[relative]:
             raise ValueError(
                 f"executing producer contract differs from recorded source: {relative}"
@@ -940,6 +1240,7 @@ def _check_compatibility(
     failures,
     *,
     annual_revision: str | None = None,
+    native_inputs: Mapping[str, str] | None = None,
 ):
     receipt_path = release_dir / COMPATIBILITY_FILE
     receipt = _json(receipt_path, failures)
@@ -955,7 +1256,10 @@ def _check_compatibility(
         return
     try:
         actual = run_native_loader_compatibility(
-            candidate, require_wheels=require_wheel_proof, compatibility_wheels=wheels
+            candidate,
+            require_wheels=require_wheel_proof,
+            compatibility_wheels=wheels,
+            **_native_input_arguments(native_inputs),
         )
         if receipt != actual:
             failures.append(
@@ -1120,17 +1424,48 @@ def _runtime_package_identities(compatibility_wheels, *, require_wheels: bool) -
     return result
 
 
+def _native_input_arguments(native_inputs: Mapping[str, str] | None) -> dict:
+    """Runner keywords for a lineage: none for the role lane, which predates them."""
+    return {} if native_inputs is None else {"native_inputs": native_inputs}
+
+
+def _native_input_label(name: str) -> str:
+    """The loaded-source label of a native input; the role keeps its own."""
+    return "native_role" if name == ROLE_VARIABLE else name
+
+
+def _loaded_source_packages(inputs: Mapping[str, str]) -> dict[str, str]:
+    """Label -> owning distribution for every source the probe binds.
+
+    The role variable is registered from the calculator wheel; any other native
+    input must be the country model's own variable.
+    """
+    packages = LOADED_SOURCE_PACKAGES.copy()
+    for name in inputs:
+        if name != ROLE_VARIABLE:
+            packages[_native_input_label(name)] = "policyengine-us"
+    return packages
+
+
 def run_native_loader_compatibility(
     candidate_h5: Path | str,
     *,
     require_wheels: bool = False,
     compatibility_wheels: tuple[Path | str, ...] = (),
+    native_inputs: Mapping[str, str] | None = None,
 ) -> dict:
     """Run fixed native-loader tests and one complete-household input-precedence probe.
 
     This proves native delivery, not canonical SPM numerical-model acceptance or
     publication of package versions. Those remain the root release gates. An
     installed wheel is checked against its source bytes, never a claimed bool.
+
+    ``native_inputs`` maps each native Boolean input the H5 supplies to its
+    entity. It defaults to the native SPM role alone, and the role lane's
+    receipt is unchanged by this parameter. A reported-receipt child passes the
+    role it inherits plus its three receipts (:data:`RECEIPT_NATIVE_INPUTS`);
+    each must be registered by the tested country as a Boolean of that entity,
+    reach both loaders byte-identical, and override its default in Core.
     """
     import inspect
 
@@ -1141,25 +1476,28 @@ def run_native_loader_compatibility(
     from policyengine_us.system import system
 
     candidate_h5 = Path(candidate_h5)
+    inputs = {ROLE_VARIABLE: "person"} if native_inputs is None else dict(native_inputs)
     packages = _runtime_package_identities(
         compatibility_wheels, require_wheels=require_wheels
     )
-    variable = system.variables.get(ROLE_VARIABLE)
-    if (
-        variable is None
-        or variable.entity.key != "person"
-        or variable.value_type is not bool
-    ):
-        raise ValueError(
-            f"tested country model must register {ROLE_VARIABLE} as a native person bool"
-        )
     source_paths = {
         "country_loader": inspect.getsourcefile(USSingleYearDataset),
         "wrapper_loader": inspect.getsourcefile(PolicyEngineUSDataset),
-        "native_role": inspect.getsourcefile(type(variable)),
     }
+    for name, entity in inputs.items():
+        variable = system.variables.get(name)
+        if (
+            variable is None
+            or variable.entity.key != entity
+            or variable.value_type is not bool
+        ):
+            raise ValueError(
+                f"tested country model must register {name} as a native {entity} bool"
+            )
+        source_paths[_native_input_label(name)] = inspect.getsourcefile(type(variable))
+    loaded_source_packages = _loaded_source_packages(inputs)
     if require_wheels:
-        _check_loaded_source_ownership(source_paths)
+        _check_loaded_source_ownership(source_paths, loaded_source_packages)
     country = USSingleYearDataset(file_path=str(candidate_h5))
     wrapper = PolicyEngineUSDataset(
         name="native_spm_role_compatibility",
@@ -1182,15 +1520,16 @@ def run_native_loader_compatibility(
             weight_column = f"{entity}_weight"
             if weight_column in table.dtype.names:
                 columns.append(weight_column)
+            columns += [name for name, owner in inputs.items() if owner == entity]
             if entity == "person":
-                columns += [ROLE_VARIABLE] + [
+                columns += [
                     name
                     for name in table.dtype.names
                     if name.startswith("person_") and name.endswith("_id")
                 ]
             for column in dict.fromkeys(columns):
                 expected = table[column]
-                if column == ROLE_VARIABLE:
+                if column in inputs:
                     expected = expected.astype(bool)
                 for loader, frame in (
                     ("country", getattr(country, entity)),
@@ -1206,12 +1545,19 @@ def run_native_loader_compatibility(
                             f"{loader} native loader changed {entity}.{column}"
                         )
                     checked.append(f"{loader}:{entity}.{column}")
-        if not np.asarray(country.person[ROLE_VARIABLE]).dtype == np.dtype(bool):
-            raise ValueError("country native role dtype must remain bool")
+        for name, entity in inputs.items():
+            if not np.asarray(getattr(country, entity)[name]).dtype == np.dtype(bool):
+                raise ValueError(
+                    "country native role dtype must remain bool"
+                    if name == ROLE_VARIABLE
+                    else f"country native {entity} input {name} dtype must remain bool"
+                )
     # The country engine may provide a household-role fallback for surveys
     # without this primitive. Opposite supplied values on one complete native
     # household must both reach Core unchanged, overriding any fixed fallback.
-    _check_native_input_precedence(country)
+    _check_native_input_precedence(
+        country, **({} if native_inputs is None else {"native_inputs": inputs})
+    )
     return {
         "schema_version": 1,
         "status": "passed",
@@ -1221,21 +1567,35 @@ def run_native_loader_compatibility(
         "dataset_sha256": sha256_file(candidate_h5),
         "runner_sha256": sha256_file(__file__),
         "packages": packages,
-        "loaded_source_packages": LOADED_SOURCE_PACKAGES.copy(),
+        "loaded_source_packages": loaded_source_packages,
         "loaded_source_sha256": {
             key: sha256_file(path) for key, path in source_paths.items()
         },
         "checks": [
-            "country:registered_person_bool_input",
+            *(
+                f"country:registered_{entity}_bool_input"
+                + ("" if name == ROLE_VARIABLE else f":{name}")
+                for name, entity in inputs.items()
+            ),
             "country:complete_household_native_input_overrides_default",
             *checked,
         ],
     }
 
 
-def _check_loaded_source_ownership(source_paths: Mapping) -> None:
-    """The country registers the native role supplied by the calculator wheel."""
+def _check_loaded_source_ownership(
+    source_paths: Mapping, loaded_source_packages: Mapping | None = None
+) -> None:
+    """The country registers the native role supplied by the calculator wheel.
+
+    ``loaded_source_packages`` (label -> distribution) defaults to the role
+    lane's :data:`LOADED_SOURCE_PACKAGES`; a receipt child adds its country
+    receipt variables, each owned by the country wheel.
+    """
     from importlib import import_module, metadata
+
+    if loaded_source_packages is None:
+        loaded_source_packages = LOADED_SOURCE_PACKAGES
 
     for package in COMPATIBILITY_PACKAGES:
         module_name = package.replace("-", "_")
@@ -1247,7 +1607,7 @@ def _check_loaded_source_ownership(source_paths: Mapping) -> None:
             raise ValueError(
                 f"tested {package} import does not come from the verified installed wheel"
             )
-    for label, package in LOADED_SOURCE_PACKAGES.items():
+    for label, package in loaded_source_packages.items():
         expected_root = Path(
             metadata.distribution(package).locate_file(package.replace("-", "_"))
         ).resolve()
@@ -1258,10 +1618,20 @@ def _check_loaded_source_ownership(source_paths: Mapping) -> None:
             )
 
 
-def _check_native_input_precedence(country) -> None:
+def _check_native_input_precedence(
+    country, native_inputs: Mapping[str, str] | None = None
+) -> None:
+    """Opposite supplied values on one complete household must reach Core.
+
+    ``native_inputs`` (name -> entity) defaults to the native SPM role alone.
+    Every input is supplied on the household's rows of its own entity, all at
+    once, and each must read back unchanged.
+    """
     import numpy as np
     from policyengine_us import Microsimulation
     from policyengine_us.data import USSingleYearDataset
+
+    inputs = {ROLE_VARIABLE: "person"} if native_inputs is None else native_inputs
 
     household_id = country.household["household_id"].iloc[0]
     person = country.person.loc[
@@ -1284,13 +1654,28 @@ def _check_native_input_precedence(country) -> None:
                 .all()
             ):
                 raise ValueError("native compatibility household cuts an SPM unit")
+    unsupplied = dict(tables)
+    names_by_entity: dict[str, list[str]] = {}
+    for name, entity in inputs.items():
+        names_by_entity.setdefault(entity, []).append(name)
     for supplied_value in (False, True):
-        supplied = np.full(len(person), supplied_value, dtype=bool)
-        tables["person"] = person.assign(**{ROLE_VARIABLE: supplied})
+        for entity, names in names_by_entity.items():
+            frame = unsupplied[entity]
+            supplied = np.full(len(frame), supplied_value, dtype=bool)
+            tables[entity] = frame.assign(**dict.fromkeys(names, supplied))
         simulation = Microsimulation(dataset=USSingleYearDataset(**tables))
-        observed = np.asarray(simulation.calculate(ROLE_VARIABLE, 2024))
-        if observed.dtype != supplied.dtype or not np.array_equal(observed, supplied):
-            raise ValueError("country Core discarded the supplied native person role")
+        for name, entity in inputs.items():
+            expected = np.full(len(tables[entity]), supplied_value, dtype=bool)
+            observed = np.asarray(simulation.calculate(name, 2024))
+            if observed.dtype != expected.dtype or not np.array_equal(
+                observed, expected
+            ):
+                raise ValueError(
+                    "country Core discarded the supplied native person role"
+                    if name == ROLE_VARIABLE
+                    else f"country Core discarded the supplied native {entity} "
+                    f"input {name}"
+                )
 
 
 def certify_source_enrichment(
@@ -1349,7 +1734,14 @@ def certify_source_enrichment(
     )
     candidate = Path(artifact_root) / report["dataset"]["filename"]
     receipt = run_native_loader_compatibility(
-        candidate, require_wheels=True, compatibility_wheels=compatibility_wheels
+        candidate,
+        require_wheels=True,
+        compatibility_wheels=compatibility_wheels,
+        **_native_input_arguments(
+            RECEIPT_NATIVE_INPUTS
+            if report.get("operation") == RECEIPT_OPERATION
+            else None
+        ),
     )
     claims = (
         {

@@ -128,7 +128,10 @@ The [native SPM role source-enrichment lane](docs/us-native-spm-role-source-enri
 creates a new US H5 from the exact reviewed BuildP parent, preserves its original
 variables and schema-5 calibration evidence, and requires fresh country/wrapper
 compatibility checks. It has a local candidate builder and uses the regular
-publisher's contract with `--parent-h5` and `--preflight-only`.
+publisher's contract with `--parent-h5` and `--preflight-only`. The same release
+type publishes the [reported-receipt child of the national default](docs/us-reported-receipt-source-enrichment.md)
+as a tag-only donor for the ACS local chain. It is never the `latest.json`
+default.
 
 The non-default ACS local-area chain (`tools/build_us_acs_local_release.py`)
 calibrates to the SOI `state` surface by default, the 4,459-target contract of
