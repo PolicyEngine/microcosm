@@ -1,0 +1,1 @@
+Retire the June-path UK capital gains stage `hmrc_cgt_gains` (the wrapper driven from the certified June H5, its `cgt_source_stages.json` manifest and its coverage family): the FRS spine's `hmrc_cgt_gains_spine` is the only CGT gains stage, its receipt reason is the default for the shared imputation, and the release contract no longer carries the superseded June family.

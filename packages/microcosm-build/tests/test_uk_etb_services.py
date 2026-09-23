@@ -307,3 +307,107 @@ def test_recipient_predictors_derive_education_counts_and_aggregate() -> None:
     assert result["is_SP_age"].tolist() == [1.0, 0.0]
     assert result["dla"].tolist() == [100.0, 0.0]
     assert result["hbai_household_net_income"].tolist() == [1e4, 2e4]
+
+
+def _receipt_frame():
+    import numpy as np
+
+    from microcosm.build.uk_runtime.national_frame import uk_national_frame
+    from microcosm.frame import WeightKind
+
+    return uk_national_frame(
+        person=pd.DataFrame(
+            {
+                "person_id": [1, 2, 3],
+                "person_benunit_id": [1, 2, 2],
+                "person_household_id": [1, 2, 2],
+                "age": [40, 35, 6],
+            }
+        ),
+        benunit=pd.DataFrame({"benunit_id": [1, 2]}),
+        household=pd.DataFrame({"household_id": [1, 2]}),
+        time_period="2024",
+        weight_kind=WeightKind.IMPORTANCE,
+        household_weights=np.array([10.0, 30.0]),
+    )
+
+
+def _receipt_stage(name: str, fit_kind: str):
+    from microcosm.build.source_manifest import SourceStageSpec
+
+    return SourceStageSpec.from_mapping(
+        {
+            "stage": name,
+            "survey": "test",
+            "source": "test",
+            "grain": "household",
+            "artifacts": [],
+            "operations": [{"kind": fit_kind, "seed": 0}],
+            "outputs": [],
+        }
+    )
+
+
+def test_stage_transform_records_its_mass_conservation_receipt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from microcosm.build.uk_runtime import etb_services as module
+
+    frame = _receipt_frame()
+    household_columns = list(module.UK_ETB_SERVICES_HOUSEHOLD_OUTPUT_COLUMNS)
+    draws = pd.DataFrame(
+        {column: [1.0, 2.0] for column in [*household_columns, "rail_subsidy_spending"]}
+    )
+    nhs = pd.DataFrame(
+        {column: [1.0, 2.0, 3.0] for column in module.UK_NHS_OUTPUT_COLUMNS}
+    )
+    monkeypatch.setattr(module, "assert_rules_engine_country", lambda *_: None)
+    monkeypatch.setattr(
+        module,
+        "etb_services_configuration",
+        lambda _stage: {
+            "year": 2024,
+            "weeks_in_year": 52,
+            "rail_fare_index": 1.0,
+            "nhs_budget": 1.0,
+        },
+    )
+    monkeypatch.setattr(module, "etb_donor_uprating", lambda _stage: ({}, {}))
+    monkeypatch.setattr(module, "clean_etb_services_table", lambda raw, **_: raw)
+    monkeypatch.setattr(module, "recipient_predictors", lambda *_: pd.DataFrame())
+    monkeypatch.setattr(module, "_qrf_seed", lambda _stage: 0)
+    monkeypatch.setattr(
+        module,
+        "impute_etb_services",
+        lambda *_, **__: (
+            draws,
+            (module.FitWeightRecord("etb_services:test", "explicit"),),
+        ),
+    )
+    monkeypatch.setattr(module, "support_clip_exempt", lambda _stage: ())
+    monkeypatch.setattr(
+        module,
+        "support_clip_to_donor",
+        lambda d, *_a, **_k: SimpleNamespace(
+            clipped=d, receipt=SimpleNamespace(evidence=lambda: {})
+        ),
+    )
+    monkeypatch.setattr(module, "etb_bus_support_rake", lambda _s, d, **_: (d, {}))
+    monkeypatch.setattr(
+        module, "allocate_nhs_by_age_gender", lambda *_, **__: (nhs, {})
+    )
+    transform = module.UKETBServicesStageTransform(
+        stage=_receipt_stage("etb_services", "fit_weighted_qrf_chain"),
+        engine=object(),
+        donor=pd.DataFrame({"weight": [1.0]}),
+    )
+
+    result = transform(frame)
+
+    assert result.weights_for("household").values.tolist() == [10.0, 30.0]
+    receipt = result.mass_log[-1]
+    assert receipt.reason == module.UK_ETB_SERVICES_MASS_CONSERVATION_REASON
+    assert receipt.old_total == receipt.new_total == 40.0
+    assert receipt.declared_factor == 1.0

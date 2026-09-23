@@ -10,6 +10,10 @@ from microcosm.build.uk_runtime.national_frame import (
     uk_national_frame,
     write_uk_national_frame,
 )
+from microcosm.build.uk_runtime.release_certification import (
+    UKReleaseCertificationError,
+    _verify_score_receipt,
+)
 from microcosm.calibrate import TargetRegistry, TargetSpec
 from microcosm.frame import WeightKind
 from tools.score_uk_national_candidate import (
@@ -170,8 +174,22 @@ def test_score_uk_national_candidate_cli_writes_score_block(tmp_path) -> None:
         == 0
     )
 
-    payload = json.loads(output_json.read_text(encoding="utf-8"))
-    score = payload["score_vs_enhanced_frs"]
+    score = json.loads(output_json.read_text(encoding="utf-8"))
+    # The receipt is the score block itself: the release-cut certifier reads
+    # ``artifacts.candidate.sha256`` and ``evaluation.verdict`` at the top
+    # level, so a wrapper key would leave every CLI receipt unverifiable.
+    assert "score_vs_enhanced_frs" not in score
+    assert score["artifacts"]["candidate"]["sha256"] == _sha256_file(candidate)
+    # Raw-column scoring has nothing to prune; the surface still closes and
+    # the verdict is decided: this candidate fits worse than the incumbent.
+    assert score["incumbent_unresolvable_pruned"]["n_pruned"] == 0
+    assert score["evaluation"]["scored_surface"] == {
+        "n_scored": 2,
+        "n_pruned": 0,
+        "n_surface": 2,
+    }
+    assert score["evaluation"]["rule_1"]["passed"] is False
+    assert score["evaluation"]["verdict"] == "failed"
     assert score["artifacts"]["candidate"]["label"] == "explicit_candidate"
     assert score["artifacts"]["incumbent"]["label"] == "explicit_incumbent"
     assert score["holdout_basis"] == "none_declared"
@@ -183,6 +201,50 @@ def test_score_uk_national_candidate_cli_writes_score_block(tmp_path) -> None:
     assert isinstance(score["candidate_train_loss"], float)
     assert isinstance(score["incumbent_full_loss"], float)
     assert _load_registry(registry_json).version == _registry().version
+
+
+def test_verify_score_receipt_accepts_the_cli_receipt(tmp_path) -> None:
+    """The certifier's receipt check binds to the file the CLI writes."""
+
+    pytest.importorskip("tables")
+    candidate = tmp_path / "candidate.h5"
+    incumbent = tmp_path / "incumbent.h5"
+    registry_json = tmp_path / "registry.json"
+    output_json = tmp_path / "score_vs_incumbent.json"
+    # The candidate hits both targets; the incumbent misses both.
+    _write(candidate, measure_a=[5.0, 5.0], measure_b=[10.0, 10.0])
+    _write(incumbent, measure_a=[4.0, 4.0], measure_b=[6.0, 6.0])
+    _registry().to_json(registry_json)
+    candidate_sha = _sha256_file(candidate)
+
+    assert (
+        main(
+            [
+                "--candidate-h5",
+                str(candidate),
+                "--candidate-sha256",
+                candidate_sha,
+                "--incumbent-h5",
+                str(incumbent),
+                "--incumbent-sha256",
+                _sha256_file(incumbent),
+                "--registry-json",
+                str(registry_json),
+                "--output-json",
+                str(output_json),
+                "--calibration-year",
+                "2025",
+                "--no-measure-resolution",
+            ]
+        )
+        == 0
+    )
+
+    receipt = json.loads(output_json.read_text(encoding="utf-8"))
+    assert receipt["evaluation"]["verdict"] == "passed"
+    _verify_score_receipt(receipt, candidate_sha256=candidate_sha)
+    with pytest.raises(UKReleaseCertificationError, match="artifacts.candidate.sha256"):
+        _verify_score_receipt(receipt, candidate_sha256="0" * 64)
 
 
 def test_scorer_refuses_artifacts_that_do_not_match_their_pins(tmp_path) -> None:

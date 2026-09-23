@@ -8,10 +8,10 @@ from microcosm.build.country_spec import load_country_spec
 from microcosm.build.uk_runtime import cgt_imputation
 from microcosm.build.uk_runtime.cgt_imputation import (
     UK_CGT_AGE_GROUP_LOWER_BOUNDS,
-    UK_CGT_IMPUTATION_STAGE_NAME,
-    UK_CGT_MASS_CONSERVATION_REASON,
     UK_CGT_REGION_GROUP_LABELS,
     UK_CGT_REGION_GROUPS,
+    UK_CGT_SPINE_MASS_CONSERVATION_REASON,
+    UK_CGT_SPINE_STAGE_NAME,
     UK_CGT_TAXABLE_INCOME_PROXY_COMPONENTS,
     UKCGTPolicyParameters,
     _band_plans,
@@ -26,7 +26,6 @@ from microcosm.build.uk_runtime.cgt_imputation import (
     impute_uk_capital_gains,
     impute_uk_capital_gains_with_report,
     summarize_uk_cgt_imputation,
-    uk_capital_gains_imputation_stage,
     uk_cgt_spine_stage_transform,
     uk_cgt_taxable_income_proxy,
 )
@@ -351,7 +350,7 @@ class TestImputation:
         assert result.mass_log[:-1] == frame.mass_log
         receipt = result.mass_log[-1]
         assert receipt.entity == "household"
-        assert receipt.reason == UK_CGT_MASS_CONSERVATION_REASON
+        assert receipt.reason == UK_CGT_SPINE_MASS_CONSERVATION_REASON
         assert receipt.old_total == receipt.new_total
         assert receipt.declared_factor == 1.0
 
@@ -376,7 +375,7 @@ class TestImputation:
         assert drawn[3] == 0.0
         assert (drawn[4:] > 0.0).all()
         receipt = result.mass_log[-1]
-        assert receipt.reason == UK_CGT_MASS_CONSERVATION_REASON
+        assert receipt.reason == UK_CGT_SPINE_MASS_CONSERVATION_REASON
 
     def test_remainder_keeps_existing_amounts_capped_at_the_aea(self) -> None:
         # One income band holds far more gainer mass than the published
@@ -461,15 +460,18 @@ class TestImputation:
         assert {"rows", "age_rows", "region_rows", "age_by_band_rows"} <= set(evidence)
 
 
-class TestStage:
-    def test_stage_runs_end_to_end_on_the_vendored_surface(self) -> None:
-        """The factory's own transform path, on the committed resource.
+def _spine_stage():
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    return spec.sources.stage_map()[UK_CGT_SPINE_STAGE_NAME]
 
-        Regression test for the transform keeping a retired carrier type in
-        its signature: with postponed annotation evaluation, only running the
-        stage exercises the closure.
-        """
-        stage = uk_capital_gains_imputation_stage(parameters=PARAMETERS)
+
+class TestStage:
+    """The spine stage is the only CGT gains stage; the June wrapper is retired."""
+
+    def test_stage_runs_end_to_end_on_the_vendored_surface(self) -> None:
+        """The spine transform's own path, on the committed resource."""
+        transform = uk_cgt_spine_stage_transform(_spine_stage(), parameters=PARAMETERS)
         incomes = [20_000.0, 55_000.0, 80_000.0, 120_000.0, 180_000.0, 400_000.0]
         frame = _frame(
             60,
@@ -477,16 +479,16 @@ class TestStage:
             incomes=[incomes[i % 6] for i in range(60)],
         )
 
-        result = stage.run(frame)
+        result = transform(frame)
 
         drawn = result.table("person")["capital_gains"].to_numpy()
         assert (drawn >= 0).all()
         assert drawn.max() > 0
+        assert result.mass_log[-1].reason == UK_CGT_SPINE_MASS_CONSERVATION_REASON
 
-    def test_stage_carries_the_reviewed_name(self) -> None:
-        stage = uk_capital_gains_imputation_stage(parameters=PARAMETERS)
-
-        assert stage.name == UK_CGT_IMPUTATION_STAGE_NAME
+    def test_the_spine_declares_the_reviewed_stage(self) -> None:
+        assert UK_CGT_SPINE_STAGE_NAME == "hmrc_cgt_gains_spine"
+        assert _spine_stage().stage == UK_CGT_SPINE_STAGE_NAME
 
     def test_stage_checks_the_feed_pin_before_reading(
         self, monkeypatch: pytest.MonkeyPatch
@@ -505,11 +507,11 @@ class TestStage:
         monkeypatch.setattr(
             hmrc_capital_gains, "load_vendored_resource", lambda _name: stale
         )
-        stage = uk_capital_gains_imputation_stage(parameters=PARAMETERS)
+        transform = uk_cgt_spine_stage_transform(_spine_stage(), parameters=PARAMETERS)
         frame = _frame(1, gains=[10_000.0], incomes=[20_000.0])
 
         with pytest.raises(ValueError, match="differs from the committed UK pin"):
-            stage.run(frame)
+            transform(frame)
 
 
 def test_cgt_spine_parsed_inputs_match_the_resource_resolution(

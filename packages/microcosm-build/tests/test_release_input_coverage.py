@@ -32,7 +32,11 @@ import pytest
 
 import microcosm.build.us_runtime.reform_coverage_smoke as smoke_module
 from microcosm.build.us_runtime import (
+    CPS_CARRIED_PERSON_INPUTS,
+    CPS_CARRIED_SPM_UNIT_INPUTS,
+    POST_REFERENCE_ECPS_REQUIRED_INPUTS,
     SSI_COUNTABLE_RESOURCE_ASSETS,
+    US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS,
     US_CGD_ROUTE_REQUIRED_INPUTS,
     US_QBI_OUTPUT_COLUMNS,
     US_RELEASE_INPUT_COVERAGE_RESOURCE,
@@ -1608,3 +1612,250 @@ class TestCapitalGainDistributionRouteGuarantee:
 
         with pytest.raises(ValueError, match=column):
             assert_release_input_coverage_manifest_current(manifest=demoted)
+
+
+def _us_entity_frame(
+    n: int,
+    person_columns: dict[str, np.ndarray | pd.Series],
+    group_columns: dict[str, dict[str, np.ndarray | pd.Series]] | None = None,
+) -> Frame:
+    """A full six-entity US Frame with one group unit per person.
+
+    ``group_columns`` maps a group entity (``"spm_unit"``) to the columns stored
+    on that entity's own table, one row per unit, so an spm_unit-entity input
+    lives where the engine and the export writer expect it.
+    """
+    person = pd.DataFrame(
+        {
+            US_SCHEMA.person_id_column: np.arange(n, dtype="int64"),
+            **{
+                US_SCHEMA.membership_column(entity): np.arange(1, n + 1, dtype="int64")
+                for entity in US_SCHEMA.group_entities
+            },
+            **person_columns,
+        }
+    )
+    tables = {
+        entity: pd.DataFrame(
+            {
+                US_SCHEMA.id_column(entity): np.arange(1, n + 1, dtype="int64"),
+                **(group_columns or {}).get(entity, {}),
+            }
+        )
+        for entity in US_SCHEMA.group_entities
+    }
+    tables["person"] = person
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {
+            "household": Weights(
+                values=np.full(n, 1000.0),
+                kind=WeightKind.DESIGN,
+            )
+        },
+    )
+
+
+_RECEIPT_DEFAULTS = {name: False for name in US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS}
+_RECEIPT_CONTRACT = _manifest(
+    tuple(
+        ReleaseInputColumn(name, "required")
+        for name in US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS
+    )
+)
+
+
+def _receipt_candidate(*, omit: str | None = None, all_default: bool = False) -> Frame:
+    """A candidate export carrying the receipt inputs on their engine entities.
+
+    ``receives_wic`` sits on person; ``receives_snap`` and ``receives_tanf`` on
+    spm_unit. ``omit`` drops that one column from the export entirely;
+    ``all_default`` keeps every column but at the engine default (no signal).
+    """
+    values = (
+        np.zeros(3, dtype=bool) if all_default else np.asarray([False, True, False])
+    )
+    person = {"receives_wic": values.copy()}
+    spm_unit = {"receives_snap": values.copy(), "receives_tanf": values.copy()}
+    person.pop(omit, None)
+    spm_unit.pop(omit, None)
+    return _us_entity_frame(3, person, {"spm_unit": spm_unit})
+
+
+class TestAsecReportedReceiptInputGuarantee:
+    """PolicyEngine/microcosm#978 option 1: the three ASEC reported-receipt
+    inputs are hard requirements of the national release coverage gate. The
+    base build derives them and the ACS local-area transfer requires them in
+    its donor, but nothing national required them, so the published default
+    shipped without them and the local chain could only stage from an
+    unpublished receipt-qualified child the publish contract refuses."""
+
+    def test_constant_names_the_three_receipt_inputs(self) -> None:
+        assert US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS == (
+            "receives_wic",
+            "receives_snap",
+            "receives_tanf",
+        )
+
+    def test_receipt_inputs_are_the_asec_carry_stage_outputs(self) -> None:
+        # The requirement names exactly what derive_us_cps_carried_inputs
+        # produces, on the entity it produces it: WIC on person, SNAP/TANF on
+        # spm_unit. A rename on either side breaks this before it breaks a build.
+        assert "receives_wic" in CPS_CARRIED_PERSON_INPUTS
+        assert {"receives_snap", "receives_tanf"} <= CPS_CARRIED_SPM_UNIT_INPUTS
+        assert (
+            set(US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS)
+            <= CPS_CARRIED_PERSON_INPUTS | CPS_CARRIED_SPM_UNIT_INPUTS
+        )
+
+    def test_receipt_inputs_are_post_reference_hard_requirements(self) -> None:
+        # Absent from the frozen reference eCPS surface, so they enter the
+        # contract through the post-reference set; the shipped manifest must
+        # carry them required, unexcused, and annotated with the owning issue.
+        assert (
+            set(US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS)
+            <= POST_REFERENCE_ECPS_REQUIRED_INPUTS
+        )
+        manifest = load_release_input_coverage_manifest()
+        for column in US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS:
+            assert column in manifest.required_columns
+            assert column not in manifest.reviewed_exclusions
+            entry = next(entry for entry in manifest.columns if entry.name == column)
+            assert "PolicyEngine/microcosm#978" in entry.note
+
+    @pytest.mark.parametrize("column", US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS)
+    def test_receipt_input_cannot_regress_to_reviewed_exclusion(
+        self, column: str
+    ) -> None:
+        manifest = load_release_input_coverage_manifest()
+        demoted = ReleaseInputCoverageManifest(
+            reference=manifest.reference,
+            columns=tuple(
+                ReleaseInputColumn(
+                    name=entry.name,
+                    status="reviewed_exclusion",
+                    reason="regression attempt",
+                    issue="PolicyEngine/microcosm#978",
+                )
+                if entry.name == column
+                else entry
+                for entry in manifest.columns
+            ),
+            probes=manifest.probes,
+            schema_version=manifest.schema_version,
+        )
+
+        with pytest.raises(ValueError, match=column):
+            assert_release_input_coverage_manifest_current(manifest=demoted)
+
+    @pytest.mark.parametrize("column", US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS)
+    def test_receipt_input_cannot_be_dropped_from_the_manifest(
+        self, column: str
+    ) -> None:
+        manifest = load_release_input_coverage_manifest()
+        dropped = ReleaseInputCoverageManifest(
+            reference=manifest.reference,
+            columns=tuple(entry for entry in manifest.columns if entry.name != column),
+            probes=manifest.probes,
+            schema_version=manifest.schema_version,
+        )
+
+        with pytest.raises(ValueError, match=rf"{column}: ASEC reported-receipt"):
+            assert_release_input_coverage_manifest_current(manifest=dropped)
+
+    @pytest.mark.parametrize("column", US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS)
+    def test_candidate_missing_a_receipt_input_fails_the_shipped_gate(
+        self, column: str
+    ) -> None:
+        # Against the SHIPPED manifest: the candidate that drops one receipt
+        # column is failed with that column named as absent, while the other
+        # two (present with signal) are not flagged.
+        frame = _receipt_candidate(omit=column)
+        result = us_release_input_coverage_gate(
+            frame,
+            _StubEngine(_RECEIPT_DEFAULTS),
+            manifest=load_release_input_coverage_manifest(),
+        )
+
+        assert not result.passed
+        assert column in result.details["missing"]
+        others = set(US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS) - {column}
+        assert not others & set(result.details["missing"])
+        assert not others & set(result.details["degenerate_required"])
+        assert any(
+            column in failure and "absent" in failure for failure in result.failures
+        )
+
+    @pytest.mark.parametrize("column", US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS)
+    def test_candidate_missing_a_receipt_input_fails_the_receipt_contract(
+        self, column: str
+    ) -> None:
+        # Isolated to the three-column contract so the missing column is the
+        # ONLY failure.
+        frame = _receipt_candidate(omit=column)
+        result = us_release_input_coverage_gate(
+            frame, _StubEngine(_RECEIPT_DEFAULTS), manifest=_RECEIPT_CONTRACT
+        )
+
+        assert not result.passed
+        assert result.details["missing"] == [column]
+        assert result.details["degenerate_required"] == []
+        assert len(result.failures) == 1
+
+    def test_candidate_carrying_all_receipt_inputs_with_signal_passes(self) -> None:
+        frame = _receipt_candidate()
+        result = us_release_input_coverage_gate(
+            frame, _StubEngine(_RECEIPT_DEFAULTS), manifest=_RECEIPT_CONTRACT
+        )
+        assert result.passed
+        assert result.failures == ()
+
+        # And under the shipped manifest none of the three is flagged (the
+        # other required columns this bare candidate lacks are, by design).
+        shipped = us_release_input_coverage_gate(
+            frame,
+            _StubEngine(_RECEIPT_DEFAULTS),
+            manifest=load_release_input_coverage_manifest(),
+        )
+        flagged = set(shipped.details["missing"]) | set(
+            shipped.details["degenerate_required"]
+        )
+        assert not flagged & set(US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS)
+
+    def test_candidate_carrying_default_only_receipt_inputs_fails(self) -> None:
+        # Present but every value the engine default (False) is the export
+        # writer's default-broadcast: indistinguishable from absent, and there
+        # is no reviewed exclusion to accept it.
+        frame = _receipt_candidate(all_default=True)
+        result = us_release_input_coverage_gate(
+            frame, _StubEngine(_RECEIPT_DEFAULTS), manifest=_RECEIPT_CONTRACT
+        )
+
+        assert not result.passed
+        assert result.details["missing"] == []
+        assert result.details["degenerate_required"] == sorted(
+            US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS
+        )
+
+    def test_real_engine_treats_receipt_inputs_as_false_default_input_leaves(
+        self,
+    ) -> None:
+        pytest.importorskip("policyengine_us")
+        from microcosm.frame.adapters.policyengine_us import PolicyEngineUSEngine
+
+        engine = PolicyEngineUSEngine()
+        names = list(US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS)
+        assert engine.default_values(names) == {name: False for name in names}
+        assert set(names) <= set(engine.variables())
+
+        passing = us_release_input_coverage_gate(
+            _receipt_candidate(), engine, manifest=_RECEIPT_CONTRACT
+        )
+        assert passing.passed
+
+        failing = us_release_input_coverage_gate(
+            _receipt_candidate(all_default=True), engine, manifest=_RECEIPT_CONTRACT
+        )
+        assert not failing.passed
+        assert failing.details["degenerate_required"] == sorted(names)

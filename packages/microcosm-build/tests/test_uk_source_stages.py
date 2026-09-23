@@ -630,9 +630,11 @@ class TestE3ManifestLockstep:
             "fold_into",
             "support_clip",
             "allocate_within_group_waterfall",
+            "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["regional_property_uprating"].operations] == [
             "uprate_to_regional_reference",
+            "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["lcfs_consumption"].operations] == [
             "derive",
@@ -648,12 +650,14 @@ class TestE3ManifestLockstep:
             "rake_to_vendored_facts",
             "fold_into",
             "zero_when_false",
+            "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_vat"].operations] == [
             "derive",
             "materialize_rules_engine_predictors",
             "fit_weighted_qrf",
             "support_clip",
+            "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["etb_services"].operations] == [
             "derive",
@@ -664,6 +668,7 @@ class TestE3ManifestLockstep:
             "rake_to_vendored_facts",
             "compute_ratio",
             "allocate_per_capita_from_cell_table",
+            "record_mass_conservation_receipt",
         ]
         assert [op.kind for op in stages["frs_hmrc_spine_leaves"].operations] == [
             "retain_adjudicated_frs_hmrc_leaves",
@@ -1032,3 +1037,45 @@ class TestE3ManifestLockstep:
             "concept instead of a persisted column, or the runtime constant "
             "moved without the manifest following."
         )
+
+
+def test_every_column_writing_stage_declares_the_receipt_its_module_records() -> None:
+    """One source of truth per stage: the manifest's receipt reason is the
+    module constant the transform appends (the gate matches on the string)."""
+    from microcosm.build.uk_runtime.etb_services import (
+        UK_ETB_SERVICES_MASS_CONSERVATION_REASON,
+    )
+    from microcosm.build.uk_runtime.etb_vat import UK_ETB_VAT_MASS_CONSERVATION_REASON
+    from microcosm.build.uk_runtime.lcfs_consumption import (
+        UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
+    )
+    from microcosm.build.uk_runtime.regional_uprating import (
+        UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON,
+    )
+    from microcosm.build.uk_runtime.was_wealth import (
+        UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
+    )
+
+    spec = load_country_spec("uk")
+    assert spec.sources is not None
+    stages = spec.sources.stage_map()
+    expected = {
+        "was_wealth": UK_WAS_WEALTH_MASS_CONSERVATION_REASON,
+        "regional_property_uprating": (
+            UK_REGIONAL_PROPERTY_UPRATING_MASS_CONSERVATION_REASON
+        ),
+        "lcfs_consumption": UK_LCFS_CONSUMPTION_MASS_CONSERVATION_REASON,
+        "etb_vat": UK_ETB_VAT_MASS_CONSERVATION_REASON,
+        "etb_services": UK_ETB_SERVICES_MASS_CONSERVATION_REASON,
+    }
+    for stage_name, reason in expected.items():
+        receipts = [
+            op
+            for op in stages[stage_name].operations
+            if op.kind == "record_mass_conservation_receipt"
+        ]
+        assert len(receipts) == 1, stage_name
+        assert receipts[0].parameters["reason"] == reason, stage_name
+        assert receipts[0].parameters["entity"] == "household", stage_name
+        assert receipts[0].parameters["declared_factor"] == 1.0, stage_name
+    assert len(set(expected.values())) == len(expected)

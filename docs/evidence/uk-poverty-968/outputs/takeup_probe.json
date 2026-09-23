@@ -1,0 +1,82 @@
+[
+ {
+  "label": "baseline draw (v20 file)",
+  "claim_true_units": 23609,
+  "uc_families_m": 6.366628264195442,
+  "uc_bn": 76.8327281872474,
+  "rel_bhc_pct": 15.301746413861888,
+  "abs_bhc_pct": 9.31103618296997,
+  "child_rel_pct": 18.759402482558862,
+  "median_week": 751.48046875
+ },
+ {
+  "label": "everyone eligible claims (full take-up)",
+  "claim_true_units": 61213,
+  "uc_families_m": 8.608132566101313,
+  "uc_bn": 88.91328865039067,
+  "rel_bhc_pct": 14.84606087017068,
+  "abs_bhc_pct": 8.902365521388054,
+  "child_rel_pct": 18.27018418397132,
+  "median_week": 754.9448617788462
+ },
+ {
+  "label": "alternative random draw seed 1 (same pool count)",
+  "claim_true_units": 23609,
+  "uc_families_m": 6.657901403939485,
+  "uc_bn": 76.35815771604855,
+  "rel_bhc_pct": 15.39889594138504,
+  "abs_bhc_pct": 9.518166877962985,
+  "child_rel_pct": 19.24463304922288,
+  "median_week": 750.5739182692307
+ },
+ {
+  "label": "alternative random draw seed 2 (same pool count)",
+  "claim_true_units": 23609,
+  "uc_families_m": 6.569224635575295,
+  "uc_bn": 75.43458077496157,
+  "rel_bhc_pct": 15.588309795497496,
+  "abs_bhc_pct": 9.713137948514358,
+  "child_rel_pct": 19.379405973636253,
+  "median_week": 750.7356520432693
+ },
+ {
+  "label": "alternative random draw seed 3 (same pool count)",
+  "claim_true_units": 23609,
+  "uc_families_m": 6.649282045759678,
+  "uc_bn": 76.07217339162284,
+  "rel_bhc_pct": 15.466480688055007,
+  "abs_bhc_pct": 9.531617693484717,
+  "child_rel_pct": 19.524596436629892,
+  "median_week": 751.2119891826923
+ },
+ {
+  "label": "residual to the POOREST entitled units (lower bound)",
+  "claim_true_units": 23609,
+  "uc_families_m": 6.282719685167551,
+  "uc_bn": 76.86378259339959,
+  "rel_bhc_pct": 14.048162923518687,
+  "abs_bhc_pct": 8.472403549297532,
+  "child_rel_pct": 17.56077482060928,
+  "median_week": 745.8589242788462
+ },
+ {
+  "label": "residual to the RICHEST entitled units (upper bound)",
+  "claim_true_units": 23609,
+  "uc_families_m": 6.95246468857956,
+  "uc_bn": 75.46329913799686,
+  "rel_bhc_pct": 16.657074318118408,
+  "abs_bhc_pct": 10.561862325491255,
+  "child_rel_pct": 21.044435243000358,
+  "median_week": 755.2287409855769
+ },
+ {
+  "label": "anchored reporters only (no residual draw)",
+  "claim_true_units": 20543,
+  "uc_families_m": 4.66540806167984,
+  "uc_bn": 63.571263130751404,
+  "rel_bhc_pct": 16.11736042406712,
+  "abs_bhc_pct": 10.566948570893295,
+  "child_rel_pct": 20.17302317579314,
+  "median_week": 744.3145282451923
+ }
+]

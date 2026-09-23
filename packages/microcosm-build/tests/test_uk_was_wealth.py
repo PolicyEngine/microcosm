@@ -318,6 +318,13 @@ def test_support_clip_and_integer_vehicle_output(
         module.FitWeightRecord("uk_was_2018_20_wealth:test", "explicit"),
     )
     assert transformed.table("household")["num_vehicles"].tolist() == [1, 3]
+    # The stage records its household-mass conservation receipt: the terminal
+    # family gate asserts positively that the weights passed through.
+    receipt = transformed.mass_log[-1]
+    assert receipt.reason == module.UK_WAS_WEALTH_MASS_CONSERVATION_REASON
+    assert receipt.entity == "household"
+    assert receipt.old_total == receipt.new_total > 0
+    assert receipt.declared_factor == 1.0
     assert transform.last_result is not None
     assert transform.checkpoint_metadata()["evidence"]["support_clip"]["columns"][
         "num_vehicles"

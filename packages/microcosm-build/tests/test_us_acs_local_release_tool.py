@@ -3,13 +3,23 @@
 from __future__ import annotations
 
 import importlib.util
+import inspect
 import json
+import os
 import shlex
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
 import pytest
+
+# Tests that write real H5 bytes go through pandas' HDFStore, which needs
+# pytables; the base wheel gate installs the shards without it.
+requires_pytables = pytest.mark.skipif(
+    importlib.util.find_spec("tables") is None,
+    reason="requires pytables (the build environment)",
+)
 
 
 def _load_tool_module():
@@ -225,17 +235,230 @@ def test_do_finalize_requires_calibration_diagnostics(tmp_path: Path) -> None:
         module.do_finalize(args)
 
 
+def test_local_hours_gate_refuses_missing_source_audit() -> None:
+    module = _load_tool_module()
+    with pytest.raises(SystemExit, match="staging input-null audit"):
+        module._require_local_hours(None, {})
+
+
+def test_local_hours_failure_propagates_to_release_boundary(monkeypatch) -> None:
+    from microcosm.build.gates import GateResult
+
+    module = _load_tool_module()
+    seen = []
+
+    def failed_gate(frame, *, source_null_audit):
+        seen.append((frame, source_null_audit))
+        return GateResult(
+            name="acs_local_hours_signal",
+            passed=False,
+            failures=("acs_2024_1yr: unresolved hours",),
+        )
+
+    monkeypatch.setattr(module, "acs_local_hours_signal_gate", failed_gate)
+    marker = object()
+    audit = [{"entity": "person", "column": "weekly_hours_worked_before_lsr"}]
+    with pytest.raises(SystemExit, match="acs_2024_1yr: unresolved hours"):
+        module._require_local_hours(marker, {"reviewed_engine_input_nulls": audit})
+    assert seen == [(marker, audit)]
+
+
+def _package_evidence_args(module, tmp_path: Path, monkeypatch, *, hours_report):
+    """Every package-stage input, with the finalize report's hours entry given.
+
+    ``hours_report`` is what ``gate_summary.json`` records under
+    ``acs_local_hours_signal`` (``None`` omits the key, as a report finalized
+    before the gate existed would). The staging frame and the hours gate are
+    stubbed: the test is about the binding, not the classification.
+    """
+    from microcosm.build.gates import GateResult
+
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    staging = tmp_path / "staging.h5"
+    staging.write_bytes(b"staging")
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_engine_input_nulls": [],
+                "reviewed_limitations": [],
+                # An uncapped staging run, so the package stage's cap check
+                # (which runs first) lets these inputs reach the hours gates.
+                "orchestration": {"max_households": None},
+            }
+        )
+    )
+    out_h5 = tmp_path / "out.h5"
+    out_h5.write_bytes(b"artifact")
+    artifact_sha = module._sha256(out_h5)
+    gates = {
+        "us_puma_ladder_gate": {"passed": True, "failures": []},
+        # The general hours gate, bound to these bytes: the package stage
+        # requires it before it reaches the ACS local-hours re-check.
+        "hours_worked_signal": {
+            "passed": True,
+            "failures": [],
+            "detail": {},
+            "artifact_sha256": artifact_sha,
+        },
+    }
+    if hours_report is not None:
+        gates["acs_local_hours_signal"] = hours_report
+    evidence = {
+        "calibration_diagnostics.json": {"households": 1},
+        "gate_summary.json": {"gates": gates, "reviewed_limitations": []},
+        "run_identity.json": {
+            "staging_sha256": module._sha256(staging),
+            "population_cells_dropped": [],
+        },
+        "spine_qa.json": {
+            "plain_consumption": True,
+            "artifact_sha256": artifact_sha,
+            "per_spine": {},
+        },
+        "consumer_export.json": {"staging_sha256": module._sha256(staging)},
+        "held_back_columns.json": {"total": 0},
+        "reviewed_null_fills.json": {"columns_filled": []},
+        "materialize_rss.json": {
+            "soi_mode": "totals",
+            "materialize_peak_rss_gb": 1.0,
+            "hh_chunk": 1,
+        },
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, payload in evidence.items():
+        (ckpt / name).write_text(json.dumps(payload))
+    (tmp_path / "out.summary.json").write_text(json.dumps({"simulation_ready": True}))
+    monkeypatch.setattr(module, "_load_staging_frame", lambda *_a, **_k: object())
+    monkeypatch.setattr(
+        module,
+        "acs_local_hours_signal_gate",
+        lambda frame, *, source_null_audit: GateResult(
+            name="acs_local_hours_signal",
+            passed=True,
+            failures=(),
+            details={"per_spine": {"acs_2024_1yr": {"rows": 1}}},
+        ),
+    )
+    return module._parse_args(
+        [
+            "--stage",
+            "package",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(ckpt),
+            "--out-h5",
+            str(out_h5),
+            "--out",
+            str(tmp_path / "release"),
+            "--allow-dirty",
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    "hours_report",
+    [None, {"passed": False, "failures": ["invented"]}, {"passed": "true"}],
+    ids=["finalized-before-the-gate", "finalize-failed", "truthy-not-true"],
+)
+def test_package_requires_a_passing_hours_gate_in_the_finalize_report(
+    tmp_path: Path, monkeypatch, hours_report
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module, tmp_path, monkeypatch, hours_report=hours_report
+    )
+    with pytest.raises(SystemExit, match="Re-run --stage finalize"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+
+
+def test_package_binds_the_hours_gate_to_the_packaged_bytes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    result = module.do_package(args)
+    release_dir = Path(result["release_dir"])
+    expected_sha = module._sha256(args.out_h5)
+    for name in ("build_manifest.json", "gate_summary.json"):
+        gate = json.loads((release_dir / name).read_text())["gates"][
+            "acs_local_hours_signal"
+        ]
+        assert gate["passed"] is True
+        assert gate["artifact_sha256"] == expected_sha
+        assert gate["checked_at_stage"] == "package"
+        assert gate["detail"] == {"per_spine": {"acs_2024_1yr": {"rows": 1}}}
+    # The cap check that runs before the hours gates records what it passed.
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    assert build_manifest["staging_orchestration"]["max_households"] is None
+
+
+def test_package_refuses_when_the_packaged_bytes_fail_the_hours_gate(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A passing finalize entry does not stand in for the package-time re-check.
+
+    The re-check runs on the calibrated H5 being packaged; if it fails, nothing
+    ships: no manifest, no package result, no artifact at the release root.
+    """
+    from microcosm.build.gates import GateResult
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    loaded = []
+
+    def load_frame(path, *_a, **_k):
+        loaded.append(Path(path))
+        return object()
+
+    monkeypatch.setattr(module, "_load_staging_frame", load_frame)
+    monkeypatch.setattr(
+        module,
+        "acs_local_hours_signal_gate",
+        lambda frame, *, source_null_audit: GateResult(
+            name="acs_local_hours_signal",
+            passed=False,
+            failures=("acs_2024_1yr: invented unresolved hours",),
+        ),
+    )
+    with pytest.raises(
+        SystemExit, match="Local hours coverage failed: acs_2024_1yr: invented"
+    ):
+        module.do_package(args)
+    assert loaded == [Path(args.out_h5)]
+    assert not (args.out / "package_result.json").exists()
+    assert not list((args.out / "releases").rglob("*.json"))
+    assert not (args.out / module.ARTIFACT_FILENAME).exists()
+
+
 _UNSET = object()
 
 
-def _package_args_before_evidence(module, tmp_path: Path, *, max_households=_UNSET):
+def _package_args_before_evidence(
+    module, tmp_path: Path, *, max_households=_UNSET, soi_mode="totals"
+):
     """The package stage's inputs up to (not including) the qa/consumer evidence.
 
     ``max_households`` is what the staging summary records under
-    ``orchestration``; the sentinel omits the block entirely.
+    ``orchestration``; the sentinel omits the block entirely. ``soi_mode`` is
+    what ``materialize_rss.json`` records; the sentinel omits the file.
     """
     ckpt = tmp_path / "ckpt"
     ckpt.mkdir()
+    if soi_mode is not _UNSET:
+        (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": soi_mode}))
     staging = tmp_path / "staging.h5"
     staging.write_bytes(b"staging")
     summary: dict = {}
@@ -326,6 +549,7 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     out_h5.write_bytes(b"artifact")
     (ckpt / "calibration_diagnostics.json").write_text(json.dumps({"households": 1}))
     (ckpt / "gate_summary.json").write_text(json.dumps({"gates": {}}))
+    (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": "totals"}))
     (ckpt / "run_identity.json").write_text(
         json.dumps(
             {
@@ -365,3 +589,677 @@ def test_do_package_requires_qa_and_consumer_evidence(tmp_path: Path) -> None:
     )
     with pytest.raises(SystemExit, match="consumer_export.json is missing"):
         module.do_package(args)
+
+
+# ---------------------------------------------------------------------------
+# SOI target surface: state (Build O contract) by default; totals and full opt-in
+# ---------------------------------------------------------------------------
+
+
+def _materialize_argv(tmp_path: Path, *extra: str) -> list[str]:
+    return [
+        "--stage",
+        "materialize",
+        "--staging-h5",
+        str(tmp_path / "staging.h5"),
+        "--checkpoint-dir",
+        str(tmp_path / "ckpt"),
+        "--feed",
+        str(tmp_path / "facts.jsonl"),
+        *extra,
+    ]
+
+
+def test_soi_mode_defaults_to_state_and_totals_and_full_are_explicit_opt_ins(
+    tmp_path: Path,
+) -> None:
+    """Max's ruling of 2026-09-22: the ACS local default is Build O's
+    state-geography SOI contract; ``totals`` and ``full`` are reachable only by
+    asking for them."""
+
+    module = _load_tool_module()
+    assert module.SOI_MODES == ("state", "totals", "full")
+    assert module.DEFAULT_SOI_MODE == module.SOI_MODE_STATE == "state"
+    assert module._parse_args(_materialize_argv(tmp_path)).soi_mode == "state"
+    for mode in ("totals", "full"):
+        assert (
+            module._parse_args(_materialize_argv(tmp_path, "--soi-mode", mode)).soi_mode
+            == mode
+        )
+    signature = inspect.signature(module.state_admin_specs)
+    assert signature.parameters["soi_mode"].default == "state"
+    with pytest.raises(SystemExit):
+        module._parse_args(_materialize_argv(tmp_path, "--soi-mode", "ful"))
+
+
+_HT2_BROAD = "irs_soi.historic_table_2.state_broad_totals.v1"
+_HT2_AGI = "irs_soi.historic_table_2.state_agi_counts_and_amounts.v1"
+_CD_FILE = "irs_soi.congressional_district_2022.all_returns.v1"
+
+
+def _spec(
+    role: str | None,
+    *,
+    state: bool = True,
+    geography: str | None = "state",
+    record_set: str | None = _HT2_BROAD,
+) -> SimpleNamespace:
+    metadata: dict[str, str] = {}
+    if state:
+        metadata["state_fips"] = "06"
+    if role is not None:
+        metadata["target_role"] = role
+    if geography is not None:
+        metadata["ledger_geography_level"] = geography
+    if record_set is not None:
+        metadata["ledger_layout_record_set_spec_id"] = record_set
+    return SimpleNamespace(metadata=metadata)
+
+
+def test_state_soi_surface_is_build_o_contract_by_record_set_and_geography() -> None:
+    """``state`` keeps state-geography specs outside the district file, of any
+    role (AGI-band rows included), and refuses to guess on missing metadata."""
+
+    module = _load_tool_module()
+    state = module.soi_surface_predicate("state")
+
+    for role in ("soi_fiscal_distribution", "aca_ptc_returns", "aca_spending", None):
+        assert state(_spec(role)), role
+        assert state(_spec(role, record_set=_HT2_AGI)), role
+    # The TY2023 congressional-district file is excluded even at state geography
+    # (its <st>_total rows restate the Historic Table 2 totals a year later).
+    assert not state(_spec("soi_fiscal_distribution", record_set=_CD_FILE))
+    assert not state(_spec("aca_ptc_returns", record_set=_CD_FILE))
+    # District geography is excluded even from Historic Table 2.
+    assert not state(
+        _spec("soi_fiscal_distribution", geography="congressional_district")
+    )
+    # No state_fips: never on the state surface.
+    assert not state(_spec("soi_fiscal_distribution", state=False))
+    # Missing either key: the mode cannot tell which contract the spec is in.
+    assert not state(_spec("soi_fiscal_distribution", geography=None))
+    assert not state(_spec("soi_fiscal_distribution", record_set=None))
+    assert not state(_spec("soi_fiscal_distribution", record_set=""))
+
+
+def test_soi_surface_predicate_drops_soi_fiscal_distribution_only_in_totals() -> None:
+    module = _load_tool_module()
+    totals = module.soi_surface_predicate("totals")
+    full = module.soi_surface_predicate("full")
+
+    band = _spec("soi_fiscal_distribution")
+    assert not totals(band)
+    assert full(band)
+    for role in ("aca_ptc_returns", "aca_spending", None):
+        assert totals(_spec(role)) and full(_spec(role)), role
+    # Neither mode reaches past the state surface.
+    for mode_predicate in (totals, full):
+        assert not mode_predicate(_spec("aca_spending", state=False))
+        assert not mode_predicate(_spec("soi_fiscal_distribution", state=False))
+
+
+def test_unknown_soi_mode_is_refused_before_the_feed_is_read(tmp_path: Path) -> None:
+    """A typo must never fall through to either surface (the old predicate
+    treated every value other than ``full`` as totals)."""
+
+    module = _load_tool_module()
+    missing_feed = tmp_path / "never-read.jsonl"
+    for call in (
+        lambda: module.soi_surface_predicate("ful"),
+        lambda: module.state_admin_specs(missing_feed, ["soi"], soi_mode="ful"),
+        lambda: module.release_refresh_recipe("ful"),
+    ):
+        with pytest.raises(ValueError, match="soi_mode must be one of"):
+            call()
+
+
+@pytest.mark.parametrize("soi_mode", ["state", "totals", "full"])
+def test_release_refresh_recipe_reproduces_its_soi_mode(
+    tmp_path: Path, soi_mode: str
+) -> None:
+    """The recipe names the mode, so re-running it cannot drift with the
+    parser default."""
+
+    module = _load_tool_module()
+    recipe = shlex.split(module.release_refresh_recipe(soi_mode))
+    assert recipe[:3] == ["uv", "run", "tools/build_us_acs_local_release.py"]
+    assert recipe[recipe.index("--soi-mode") + 1] == soi_mode
+    args = module._parse_args(recipe[3:])
+    assert args.soi_mode == soi_mode
+    assert args.stages == ["materialize", "calibrate", "qa", "finalize", "package"]
+
+
+@pytest.mark.parametrize(
+    ("recorded", "message"),
+    [
+        (_UNSET, r"records soi_mode=None"),
+        ("bands", r"records soi_mode='bands'"),
+    ],
+    ids=["not-recorded", "unknown"],
+)
+def test_package_refuses_a_checkpoint_without_a_known_soi_mode(
+    tmp_path: Path, recorded, message
+) -> None:
+    module = _load_tool_module()
+    args = _package_args_before_evidence(
+        module, tmp_path, max_households=None, soi_mode=recorded
+    )
+    with pytest.raises(SystemExit, match=message):
+        module.do_package(args)
+    assert not (args.out / "releases").exists(), "a refusal leaves no release"
+
+
+@pytest.mark.parametrize("recorded", ["state", "totals", "full"])
+def test_package_records_the_materialized_soi_mode_not_the_parser_default(
+    tmp_path: Path, monkeypatch, recorded: str
+) -> None:
+    """The package invocation passes no ``--soi-mode`` (so the parser says
+    ``state``); the manifest and recipe must carry what materialize used."""
+
+    module = _load_tool_module()
+    args = _package_evidence_args(
+        module,
+        tmp_path,
+        monkeypatch,
+        hours_report={"passed": True, "failures": [], "detail": {}},
+    )
+    assert args.soi_mode == "state"
+    (args.checkpoint_dir / "materialize_rss.json").write_text(
+        json.dumps({"soi_mode": recorded, "hh_chunk": 1})
+    )
+
+    result = module.do_package(args)
+
+    release_dir = Path(result["release_dir"])
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    assert build_manifest["materialize"]["soi_mode"] == recorded
+    for manifest in (build_manifest, release_manifest):
+        recipe = shlex.split(manifest["refresh_recipe"]["release"])
+        assert recipe[recipe.index("--soi-mode") + 1] == recorded
+
+
+def test_pinned_feed_soi_surfaces_match_their_contracts() -> None:
+    """On the real feed: the default ``state`` surface is Build O/P's
+    3,972-spec admin contract, built only from the three Historic Table 2
+    state tables at state geography; ``totals`` holds no
+    ``soi_fiscal_distribution`` spec; ``full`` adds exactly those specs to
+    ``totals`` and contains ``state``.
+
+    The pinned consumer-facts feed is a 164 MB public aggregate export that
+    no CI lane carries, so this runs only when ``MICROCOSM_US_CHRONICLE_FACTS``
+    points at it (the convention of the #969 state-surface arm). Three
+    registry compiles; about 3 GB peak RSS.
+    """
+
+    feed = os.environ.get("MICROCOSM_US_CHRONICLE_FACTS", "")
+    if not feed or not Path(feed).exists():
+        pytest.skip(
+            "set MICROCOSM_US_CHRONICLE_FACTS to the pinned consumer-facts feed"
+        )
+
+    module = _load_tool_module()
+    families = ["snap", "medicaid", "soi"]
+    state_registry, _ = module.state_admin_specs(feed, families)
+    totals_registry, _ = module.state_admin_specs(feed, families, soi_mode="totals")
+    full_registry, _ = module.state_admin_specs(feed, families, soi_mode="full")
+    state_specs = state_registry.specs
+    totals_names = {spec.name for spec in totals_registry.specs}
+    full_by_name = {spec.name: spec for spec in full_registry.specs}
+
+    # Build P's ACS local contract: 102 SNAP + 51 Medicaid + 3,819 SOI admin
+    # specs (4,459 with the 487 population marginals); Build O's 4,461 plus the
+    # Vermont under-$1 taxable-interest pair the compiler now excludes.
+    families_count = {}
+    for spec in state_specs:
+        families_count[spec.family] = families_count.get(spec.family, 0) + 1
+    assert families_count == {"usda_snap": 102, "cms_medicaid": 51, "irs_soi": 3819}
+    soi = [spec for spec in state_specs if spec.family == "irs_soi"]
+    record_sets = {}
+    for spec in soi:
+        key = spec.metadata["ledger_layout_record_set_spec_id"]
+        record_sets[key] = record_sets.get(key, 0) + 1
+    assert record_sets == {
+        "irs_soi.historic_table_2.state_broad_totals.v1": 2397,
+        "irs_soi.historic_table_2.state_agi_counts_and_amounts.v1": 912,
+        "irs_soi.historic_table_2.state_eitc.v1": 510,
+    }
+    assert {spec.metadata["ledger_geography_level"] for spec in soi} == {"state"}
+    assert {spec.name for spec in state_specs} <= set(full_by_name)
+
+    assert not [
+        spec
+        for spec in totals_registry.specs
+        if spec.metadata.get("target_role") == "soi_fiscal_distribution"
+    ]
+    assert totals_names < set(full_by_name)
+    added = [full_by_name[name] for name in set(full_by_name) - totals_names]
+    assert added
+    assert {(spec.family, spec.metadata.get("target_role")) for spec in added} == {
+        ("irs_soi", "soi_fiscal_distribution")
+    }
+
+
+def _staging_frame_with_hours(weekly: list[float], last_week: list[float]):
+    """A minimal US-schema staging frame carrying the two pool hours columns."""
+
+    from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
+
+    n = len(weekly)
+    ids = np.arange(1, n + 1)
+    person = pd.DataFrame(
+        {
+            "person_id": ids,
+            "person_household_id": ids,
+            "person_tax_unit_id": ids,
+            "person_spm_unit_id": ids,
+            "person_family_id": ids,
+            "person_marital_unit_id": ids,
+            "weekly_hours_worked_before_lsr": np.asarray(weekly, dtype=float),
+            "hours_worked_last_week": np.asarray(last_week, dtype=float),
+        }
+    )
+    tables = {
+        "person": person,
+        "household": pd.DataFrame({"household_id": ids}),
+        "tax_unit": pd.DataFrame({"tax_unit_id": ids}),
+        "spm_unit": pd.DataFrame({"spm_unit_id": ids}),
+        "family": pd.DataFrame({"family_id": ids}),
+        "marital_unit": pd.DataFrame({"marital_unit_id": ids}),
+    }
+    return Frame(
+        tables,
+        US_SCHEMA,
+        {"household": Weights(np.ones(n, dtype=np.float64), WeightKind.DESIGN)},
+    )
+
+
+def _finalize_args(module, tmp_path: Path):
+    staging = tmp_path / "staging.h5"
+    staging.touch()
+    (tmp_path / "staging.summary.json").write_text(
+        json.dumps(
+            {
+                "reviewed_limitations": [],
+                "reviewed_engine_input_nulls": [],
+                # The current staging builder records its cap; an uncapped run
+                # is what the package-stage tests built on this fixture need.
+                "orchestration": {"max_households": None},
+            }
+        )
+    )
+    # finalize hashes the calibrated H5 before loading it; tests that do not
+    # load real bytes still need bytes to hash.
+    (tmp_path / "out.h5").write_bytes(b"invented-finalize-artifact")
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir(exist_ok=True)
+    (ckpt / "calibration_diagnostics.json").write_text(
+        json.dumps(
+            {"final_loss": 0.1, "initial_loss": 0.5, "mass_conserved_ratio": 1.0}
+        )
+    )
+    # Every checkpoint materialize writes records its SOI mode; package
+    # refuses one that does not.
+    (ckpt / "materialize_rss.json").write_text(json.dumps({"soi_mode": "totals"}))
+    ladder = tmp_path / "ladder.npz"
+    ladder.write_bytes(b"ladder-bytes")
+    return module._parse_args(
+        [
+            "--stage",
+            "finalize",
+            "--staging-h5",
+            str(staging),
+            "--checkpoint-dir",
+            str(ckpt),
+            "--out-h5",
+            str(tmp_path / "out.h5"),
+            "--ladder",
+            str(ladder),
+        ]
+    )
+
+
+def _stub_local_hours_gate(module, monkeypatch) -> None:
+    """Make the ACS local-hours classification pass; its own tests cover it."""
+
+    from microcosm.build.gates import GateResult
+
+    monkeypatch.setattr(
+        module,
+        "acs_local_hours_signal_gate",
+        lambda frame, *, source_null_audit: GateResult(
+            name="acs_local_hours_signal", passed=True, failures=(), details={}
+        ),
+    )
+
+
+def _patch_finalize_collaborators(module, monkeypatch, frame=None, *, identity=True):
+    """Stub the ladder gate and composition; ``frame=None`` loads real bytes."""
+
+    import microcosm.build.us_runtime.puma_ladder as puma
+    from microcosm.build.gates import GateResult
+
+    monkeypatch.setattr(puma, "load_us_puma_ladder", lambda *a, **k: None)
+    monkeypatch.setattr(
+        puma,
+        "us_puma_ladder_gate",
+        lambda *a, **k: GateResult(
+            name="us_puma_ladder", passed=True, failures=(), details={}
+        ),
+    )
+    monkeypatch.setattr(module, "spine_composition", lambda *a, **k: {})
+    _stub_local_hours_gate(module, monkeypatch)
+    if frame is not None:
+        monkeypatch.setattr(module, "_load_staging_frame", lambda *a, **k: frame)
+    if identity:
+        monkeypatch.setattr(
+            module,
+            "_verify_run_identity",
+            lambda a: {"ladder_sha256": module._sha256(a.ladder)},
+        )
+
+
+def _run_finalize(module, monkeypatch, args, frame=None):
+    _patch_finalize_collaborators(module, monkeypatch, frame)
+    with pytest.raises(SystemExit) as exc:
+        module.do_finalize(args)
+    report = (
+        json.loads(args.gate_report.read_text()) if args.gate_report.exists() else None
+    )
+    return str(exc.value), report
+
+
+def _write_frame_h5(path: Path, frame) -> None:
+    """Write a staging frame as the tool's loader reads it (fixed format)."""
+
+    from microcosm.frame import put_frame_table
+
+    with pd.HDFStore(path, mode="w") as store:
+        for entity in frame.entities:
+            table = frame.table(entity).copy()
+            if entity == "household":
+                table["household_weight"] = frame.weights_for(entity).values
+            put_frame_table(store, entity, table, preferred_format="fixed")
+
+
+def _plausible_hours_frame():
+    return _staging_frame_with_hours(
+        [40.0, 38.0, 20.0, 45.0, 0.0, 0.0, 0.0, 0.0],
+        [40.0, 35.0, 22.0, 40.0, 0.0, 0.0, 0.0, 5.0],
+    )
+
+
+def test_do_finalize_hard_fails_on_constant_forty_hours(tmp_path, monkeypatch) -> None:
+    # microcosm#765: an artifact whose usual weekly hours are the engine's
+    # constant-40 default must block packaging via the finalize hard gate.
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    frame = _staging_frame_with_hours([40.0] * 8, [40.0] * 8)
+    message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert "hours_worked_signal" in message
+    assert report["gates"]["hours_worked_signal"]["passed"] is False
+
+
+def test_do_finalize_hours_gate_passes_on_plausible_surface(
+    tmp_path, monkeypatch
+) -> None:
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    weekly = [40.0, 38.0, 20.0, 45.0, 0.0, 0.0, 0.0, 0.0]
+    last_week = [40.0, 35.0, 22.0, 40.0, 0.0, 0.0, 0.0, 5.0]
+    frame = _staging_frame_with_hours(weekly, last_week)
+    _message, report = _run_finalize(module, monkeypatch, args, frame)
+    assert report["gates"]["hours_worked_signal"]["passed"] is True
+
+
+@requires_pytables
+def test_finalize_binds_the_hours_gate_to_the_calibrated_artifact_bytes(
+    tmp_path, monkeypatch
+) -> None:
+    """The gate entry must carry the digest of the bytes it evaluated."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    hashed = []
+    original_sha = module._sha256
+
+    def recording_sha(path):
+        result = original_sha(path)
+        if Path(path) == args.out_h5:
+            hashed.append(result)
+        return result
+
+    monkeypatch.setattr(module, "_sha256", recording_sha)
+    loads = []
+    real_load = module._load_staging_frame
+    monkeypatch.setattr(
+        module,
+        "_load_staging_frame",
+        lambda p: (loads.append(len(hashed)), real_load(p))[1],
+    )
+    _message, report = _run_finalize(module, monkeypatch, args)
+    gate = report["gates"]["hours_worked_signal"]
+    assert gate["passed"] is True
+    assert gate["artifact_sha256"] == original_sha(args.out_h5)
+    # Hashed once before the frame was loaded, then re-checked after the gate.
+    assert loads == [1]
+    assert hashed == [gate["artifact_sha256"]] * 2
+
+
+@requires_pytables
+def test_finalize_refuses_artifact_changed_during_hours_validation(
+    tmp_path, monkeypatch
+) -> None:
+    import microcosm.build.us_runtime.hours_worked as hours_worked
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    original_gate = hours_worked.us_hours_worked_signal_gate
+
+    def changed_artifact(frame, **kwargs):
+        result = original_gate(frame, **kwargs)
+        args.out_h5.write_bytes(b"different-invented-artifact")
+        return result
+
+    monkeypatch.setattr(hours_worked, "us_hours_worked_signal_gate", changed_artifact)
+    message, report = _run_finalize(module, monkeypatch, args)
+    assert "changed during hours_worked_signal validation" in message
+    assert report is None
+    assert not args.out_summary.exists()
+
+
+@requires_pytables
+def test_finalize_report_round_trips_into_package(tmp_path, monkeypatch) -> None:
+    """A finalize-written report must satisfy the package stage's binding."""
+
+    module = _load_tool_module()
+    args = _finalize_args(module, tmp_path)
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    artifact_sha = module._sha256(args.out_h5)
+    evidence = {
+        "run_identity.json": {
+            "staging_sha256": module._sha256(args.staging_h5),
+            "ladder_sha256": module._sha256(args.ladder),
+            "population_cells_dropped": [],
+        },
+        "spine_qa.json": {
+            "plain_consumption": True,
+            "artifact_sha256": artifact_sha,
+            "per_spine": {},
+        },
+        "consumer_export.json": {"staging_sha256": artifact_sha},
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, value in evidence.items():
+        (args.checkpoint_dir / name).write_text(json.dumps(value))
+    _patch_finalize_collaborators(module, monkeypatch, identity=False)
+    module.do_finalize(args)
+    report = json.loads(args.gate_report.read_text())
+    assert report["gates"]["hours_worked_signal"]["artifact_sha256"] == artifact_sha
+    assert json.loads(args.out_summary.read_text())["simulation_ready"] is True
+
+    args.out = tmp_path / "release"
+    args.allow_dirty = True
+    result = module.do_package(args)
+    shipped = json.loads(
+        (Path(result["release_dir"]) / "gate_summary.json").read_text()
+    )["gates"]["hours_worked_signal"]
+    assert shipped["passed"] is True
+    assert (
+        shipped["artifact_sha256"]
+        == result["root_artifact"]["sha256"]
+        == module._sha256(Path(result["root_artifact"]["local_path"]))
+        == artifact_sha
+    )
+
+
+def _package_args_with_hours(module, tmp_path, monkeypatch, *, gate_state):
+    """Real tiny H5 bytes; gate edits model stale separately resumed finalize."""
+
+    _stub_local_hours_gate(module, monkeypatch)
+    args = _finalize_args(module, tmp_path)
+    args.out = tmp_path / "release"
+    args.allow_dirty = True
+    _write_frame_h5(args.out_h5, _plausible_hours_frame())
+    artifact_sha = module._sha256(args.out_h5)
+    gate = {"passed": True, "failures": [], "artifact_sha256": artifact_sha}
+    if gate_state == "failed":
+        gate.update(passed=False, failures=["invented hours failure"])
+    elif gate_state == "truthy":
+        gate["passed"] = "true"
+    elif gate_state == "unbound":
+        del gate["artifact_sha256"]
+    elif gate_state == "stale":
+        gate["artifact_sha256"] = "0" * 64
+    local_gate = {
+        "passed": True,
+        "failures": [],
+        "detail": {},
+        "artifact_sha256": artifact_sha,
+    }
+    gates = (
+        {}
+        if gate_state == "missing"
+        else {"hours_worked_signal": gate, "acs_local_hours_signal": local_gate}
+    )
+    args.gate_report.write_text(json.dumps({"gates": gates}))
+    args.out_summary.write_text(json.dumps({"simulation_ready": True}))
+    evidence = {
+        "run_identity.json": {
+            "staging_sha256": module._sha256(args.staging_h5),
+            "population_cells_dropped": [],
+        },
+        "spine_qa.json": {
+            "plain_consumption": True,
+            "artifact_sha256": artifact_sha,
+            "per_spine": {},
+        },
+        "consumer_export.json": {"staging_sha256": artifact_sha},
+        "consumer_reviewed_null_fills.json": {"columns_filled": []},
+    }
+    for name, value in evidence.items():
+        (args.checkpoint_dir / name).write_text(json.dumps(value))
+    return args
+
+
+@requires_pytables
+@pytest.mark.parametrize(
+    "gate_state", ["missing", "failed", "truthy", "unbound", "stale"]
+)
+def test_package_requires_current_hours_gate_even_with_green_old_summary(
+    tmp_path, monkeypatch, gate_state
+):
+    module = _load_tool_module()
+    args = _package_args_with_hours(
+        module, tmp_path, monkeypatch, gate_state=gate_state
+    )
+    with pytest.raises(SystemExit, match="hours_worked_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+
+
+@requires_pytables
+def test_package_accepts_passing_hours_gate_bound_to_the_packaged_bytes(
+    tmp_path, monkeypatch
+):
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    result = module.do_package(args)
+    release_dir = Path(result["release_dir"])
+    gate = json.loads((release_dir / "gate_summary.json").read_text())["gates"][
+        "hours_worked_signal"
+    ]
+    copied_sha = module._sha256(Path(result["root_artifact"]["local_path"]))
+    assert gate["passed"] is True
+    assert gate["artifact_sha256"] == result["root_artifact"]["sha256"] == copied_sha
+
+
+@requires_pytables
+@pytest.mark.parametrize("copy_state", ["new", "already_present", "no_copy"])
+def test_package_rechecks_final_bytes_after_copy_or_reuse(
+    tmp_path, monkeypatch, copy_state
+):
+    import shutil as real_shutil
+
+    module = _load_tool_module()
+    args = _package_args_with_hours(module, tmp_path, monkeypatch, gate_state="passed")
+    root_copy = args.out / module.ARTIFACT_FILENAME
+    original_sha = module._sha256
+    root_hashes = []
+    if copy_state == "new":
+
+        def changed_copy(source, destination):
+            result = real_shutil.copy2(source, destination)
+            Path(destination).write_bytes(b"changed-during-copy")
+            return result
+
+        class _ToolShutil:
+            """Rebind only the tool's own ``shutil`` name, not the global module."""
+
+            copy2 = staticmethod(changed_copy)
+
+            def __getattr__(self, name):
+                return getattr(real_shutil, name)
+
+        monkeypatch.setattr(module, "shutil", _ToolShutil())
+    elif copy_state == "already_present":
+        root_copy.parent.mkdir(parents=True)
+        root_copy.write_bytes(args.out_h5.read_bytes())
+
+        def changed_after_reuse_check(path):
+            result = original_sha(path)
+            if Path(path) == root_copy:
+                root_hashes.append(result)
+                if len(root_hashes) == 1:
+                    root_copy.write_bytes(b"changed-after-reuse-check")
+            return result
+
+        monkeypatch.setattr(module, "_sha256", changed_after_reuse_check)
+    else:
+        # The artifact root IS the calibrated H5, so nothing is copied and only
+        # the final re-hash can notice a source that changed after the gates.
+        root_copy.parent.mkdir(parents=True)
+        args.out_h5.rename(root_copy)
+        args.out_h5 = root_copy
+        releases = args.out / "releases"
+        changed = []
+
+        def changed_while_writing_sums(path):
+            if not changed and releases in Path(path).parents:
+                changed.append(path)
+                with root_copy.open("ab") as stream:
+                    stream.write(b"changed-after-the-gates")
+            return original_sha(path)
+
+        monkeypatch.setattr(module, "_sha256", changed_while_writing_sums)
+    with pytest.raises(SystemExit, match="packaged H5.*hours_worked_signal"):
+        module.do_package(args)
+    assert not (args.out / "package_result.json").exists()
+    if copy_state == "already_present":
+        assert len(root_hashes) == 2, "the reuse check and the final re-hash"
+    if copy_state == "no_copy":
+        assert root_copy.exists(), "the calibrated H5 itself is never removed"
+    else:
+        assert not root_copy.exists(), "a refused copy is not left at the root"

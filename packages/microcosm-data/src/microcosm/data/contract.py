@@ -419,10 +419,10 @@ _UK_GATE_BATTERY_POLICY_SHA256 = (
     "211abff22b4eedf9cf69f4b43a6f77ca8966d61a386c1804c3fdb093b0e27aa0"
 )
 _UK_GATE_BATTERY_GATES_MANIFEST_SHA256 = (
-    "462271cdc72631e4b6780be52b53d7ea7572ad97e9b91a00a1f3da199f56858c"
+    "ee6b1eb9451866654bfeb0d2090a8412e08b8c2caa8bfb16fb9aa3c5b5002d84"
 )
 _UK_GATE_BATTERY_SPEC_FINGERPRINT = (
-    "8baa7f5c0db3f64c5e00859ff7fd2bd4cf2daf611367ec36f519d1e428af1ebd"
+    "55cbe8b9f9dab5817f02c2f690965dfae6406c16facecd9f7ab3b08ba06c272e"
 )
 #: Spec entry id -> the legacy gate name whose observable detail checks
 #: apply unchanged (the battery re-keys the report by entry id; the gate
@@ -576,7 +576,7 @@ _UK_GATE_BATTERY_EVIDENCE_IDS = frozenset(
 # canonical hash; this pins the wrapped digest so the entry's evidence line
 # still binds the enhanced-FRS incumbent totals.
 _UK_GATE_BATTERY_INPUT_MASS_EVIDENCE_SHA256 = (
-    "c9211cbb923e13f4850b834b5bdb1ff1de87fe9237c332b5de63f01ed417aa2d"
+    "17545916b6926c77e9f8fc90876266cc3f8e4a381079bafc8d1c63fa8df43c04"
 )
 # The degenerate binding's evidence payload digests the resolved exclusion
 # records; for a release that must be the committed register, so its digest
@@ -779,7 +779,7 @@ _UK_CERTIFICATION_PART_DIGESTS: Mapping[str, Mapping[str, str]] = {
     },
     "release_cut": {
         "gates_manifest_sha256": (
-            "4becf8d00a08d319a26d33681b4bed159711a9873f6cae221af3d161929c5943"
+            "c65d20de918abd8dd2c31c89a49ed51f0ca75a7c5f31ef00e61089406c4db401"
         ),
         "policy_sha256": (
             "a7250c519e79e22d366316cd4943f5f4bd2cc86a0e76b919ee2ff2eacb2335f3"
@@ -793,6 +793,9 @@ _UK_CERTIFICATION_REQUIRED_FIELDS = frozenset(
         "country",
         "release_id",
         "candidate",
+        # The spine whose stage receipts the release cut measured, bound by
+        # the certifier to the parent the calibration recorded.
+        "parent_spine",
         "parts",
         "spec",
         "doctrine",
@@ -3095,6 +3098,15 @@ def _check_uk_release_certification(
         failures.append(
             f"{file} release_id {certification.get('release_id')!r} does not "
             f"match the release under validation ({release_id!r})."
+        )
+    parent_spine = certification.get("parent_spine")
+    parent_sha = (
+        parent_spine.get("sha256") if isinstance(parent_spine, Mapping) else None
+    )
+    if not isinstance(parent_sha, str) or not _SHA256_RE.match(parent_sha):
+        failures.append(
+            f"{file} parent_spine.sha256 must be the sha256 hex digest of the "
+            "spine the calibration recorded as its parent."
         )
 
     parts = certification.get("parts")
