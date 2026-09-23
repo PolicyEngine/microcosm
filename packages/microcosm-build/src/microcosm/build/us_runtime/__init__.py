@@ -672,6 +672,7 @@ from microcosm.build.us_runtime.relationship_inputs import (
 from microcosm.build.us_runtime.release_input_coverage import (
     POST_REFERENCE_ECPS_REQUIRED_INPUTS,
     SSI_COUNTABLE_RESOURCE_ASSETS,
+    US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS,
     US_CGD_ROUTE_REQUIRED_INPUTS,
     US_RELEASE_INPUT_COVERAGE_RESOURCE,
     ReformCoverageProbe,
@@ -1915,6 +1916,7 @@ __all__ = [
     "assert_validation_leaf_registry_current",
     "SSI_COUNTABLE_RESOURCE_ASSETS",
     "POST_REFERENCE_ECPS_REQUIRED_INPUTS",
+    "US_ASEC_REPORTED_RECEIPT_REQUIRED_INPUTS",
     "US_CGD_ROUTE_REQUIRED_INPUTS",
     "US_RELEASE_INPUT_COVERAGE_RESOURCE",
     "ReformCoverageProbe",
