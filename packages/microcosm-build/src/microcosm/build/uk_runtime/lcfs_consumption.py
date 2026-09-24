@@ -441,7 +441,7 @@ def fuel_litres_audit(
     """Frame road-fuel litres against HMRC clearances times the OBR cars share.
 
     Diagnostic only (microcosm#890 C7): for each fuel column the declared
-    uprating moves by the vendored litre proxy, the frame's design-weighted
+    uprating moves by the vendored litre proxy, the frame's prior-weighted
     spend is divided by the DESNZ pump price of the uprating's target year and
     compared with the HMRC fiscal-year litres scaled by the OBR cars share of
     fuel duty receipts (the household frame carries cars, not lorries or
@@ -902,7 +902,7 @@ def fuel_flag_evidence(
     recipient_weights: Sequence[float],
     ice_share_receipt: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Design-weighted fuel-household shares on both sides of the imputation."""
+    """Weighted fuel-household shares on both sides of the imputation (donor design weights, frame prior weights)."""
 
     donor_weights = _numeric(donor["household_weight"]).to_numpy(dtype=float)
     donor_vehicles = _numeric(donor["num_vehicles"]).to_numpy(dtype=float) > 0
