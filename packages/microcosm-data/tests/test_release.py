@@ -1171,6 +1171,93 @@ def test_exact_k_tag_only_publish_never_mutates_main(
         )
 
 
+@pytest.mark.parametrize("tag_only", [True, False], ids=["tag-only", "no-latest"])
+def test_us_default_flip_after_a_non_default_publish_reuses_the_release_tag(
+    hub: FakeHub, release_dir: Path, artifact_root: Path, tag_only: bool, monkeypatch
+) -> None:
+    """microcosm#450: publish immutable now, make it the default later.
+
+    The first call cuts the release-id tag without touching ``latest.json``
+    (``--tag-only`` or ``--no-latest``). The flip is the plain default
+    publish of the same release directory: it recognises the tag that
+    already describes this release, writes no second immutable revision
+    and no second tag, and lands only the main commit carrying the pointer.
+    Before #966 the flip died on ``create_tag`` with a 409.
+    """
+    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-11T13:53:15+00:00",
+        update_latest=False,
+        tag_only=tag_only,
+    )
+    tags_after_cut = list(hub.tags)
+    assert [tag["tag"] for tag in tags_after_cut] == [RELEASE_ID]
+    tagged_revision = hub._refs[RELEASE_ID]
+    assert LATEST_POINTER_PATH not in hub._commits[hub._refs["main"]]
+    main_before_flip = hub._refs["main"]
+    events_after_cut = len(hub.events)
+
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-12T09:00:00+00:00",
+    )
+
+    flip_events = hub.events[events_after_cut:]
+    assert [event for event, _ in flip_events] == ["create_commit"]
+    flip = flip_events[0][1]
+    assert flip["revision"] == "main"
+    assert flip["parent_commit"] == main_before_flip
+    assert LATEST_POINTER_PATH in flip["paths"]
+    assert hub.tags == tags_after_cut
+    assert hub._refs[RELEASE_ID] == tagged_revision
+    pointer = latest_release("policyengine/populace-us", api=hub)
+    assert pointer.release_id == RELEASE_ID
+
+
+def test_us_default_flip_refuses_a_release_tag_that_describes_another_cut(
+    hub: FakeHub, release_dir: Path, artifact_root: Path, monkeypatch
+) -> None:
+    """microcosm#450: the flip reuses a tag only when it is this release.
+
+    A local release directory whose manifest differs from the tagged one
+    (a rebuilt cut under the same release id) must refuse before any main
+    commit, so the default pointer never names bytes nobody published.
+    """
+    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    publish_release(
+        release_dir,
+        "policyengine/populace-us",
+        api=hub,
+        artifact_root=artifact_root,
+        updated_at="2026-06-11T13:53:15+00:00",
+        update_latest=False,
+        tag_only=True,
+    )
+    main_before_flip = hub._refs["main"]
+    events_after_cut = len(hub.events)
+    manifest_path = release_dir / "release_manifest.json"
+    manifest_path.write_bytes(manifest_path.read_bytes() + b"\n")
+
+    with pytest.raises(ValueError, match="describes another"):
+        publish_release(
+            release_dir,
+            "policyengine/populace-us",
+            api=hub,
+            artifact_root=artifact_root,
+            updated_at="2026-06-12T09:00:00+00:00",
+        )
+
+    assert hub.events[events_after_cut:] == []
+    assert hub._refs["main"] == main_before_flip
+
+
 @pytest.mark.parametrize(
     ("publish_options", "message"),
     [
