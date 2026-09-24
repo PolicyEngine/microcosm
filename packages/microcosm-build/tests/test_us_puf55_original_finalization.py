@@ -402,6 +402,41 @@ def test_numerical_policy_records_every_skipped_arm_one_step():
     assert len(document["candidate_outputs"]) == 40 + 3
 
 
+# Invented donor-like values for the candidate outputs that the maintained tail
+# producer (puf_capital_gains_tail) rewrites on its copies: it zeroes them on
+# every copied person and tax unit, then writes its donor's values on the first
+# person and on the tax unit of each copy.
+TAIL_DONOR = {
+    "long_term_capital_gains_on_collectibles": 4100.0,
+    "non_sch_d_capital_gains": 2600.0,
+    "unrecaptured_section_1250_gain": 1900.0,
+}
+
+
+def _tail_candidate_values(entity, rows):
+    """Give every candidate cell of the copies a value its twin does not hold.
+
+    The donor columns follow the maintained producer, with one invented donor
+    per copied tax unit. The producer copies every other cell from the twin;
+    here each other float gets its own invented value and each boolean is
+    flipped, so a tail cell refilled from its twin is visible in every column.
+    """
+    names = {"person": NON_FIXED_PERSON, "tax_unit": PROFILE.tax_unit_outputs}
+    if entity not in names:
+        return
+    unit = rows["person_tax_unit_id" if entity == "person" else "tax_unit_id"]
+    first = ~unit.duplicated()  # the first copied person of each unit
+    for name in names[entity]:
+        dtype = rows[name].dtype
+        if name in final.BOOLEAN_OUTPUTS:
+            rows[name] = ~rows[name]
+        elif name in TAIL_DONOR:
+            donor = TAIL_DONOR[name] + unit.to_numpy(dtype="float64")
+            rows[name] = np.where(first, donor, 0.0).astype(dtype)
+        else:
+            rows[name] = (555.0 + np.arange(len(rows))).astype(dtype)
+
+
 def with_tail(inputs, units=(1020, 1040), *, interleave=False, defect=None):
     """Append (or interleave) invented own-tail copies of clone-one units.
 
@@ -409,7 +444,9 @@ def with_tail(inputs, units=(1020, 1040), *, interleave=False, defect=None):
     shares its ID) with IDs shifted by 1000 and clone index 2. It keeps its
     twin's source IDs and PUF channel, so only the clone index separates the
     two, and the twin's household weight is split in half between them, like
-    the native tail expansion. This is not the native tail EXPAND itself.
+    the native tail expansion. Every candidate cell of a copy differs from its
+    twin's (:func:`_tail_candidate_values`), so a tail cell carried from the
+    twin instead of the copy is visible. This is not the native tail EXPAND.
     """
     frame = inputs.receiving.frame
     schema = frame.schema
@@ -427,6 +464,7 @@ def with_tail(inputs, units=(1020, 1040), *, interleave=False, defect=None):
             for group in schema.group_entities:
                 rows[schema.membership_column(group)] += 1000
         rows[CLONE(entity)] = 2
+        _tail_candidate_values(entity, rows)
         if defect == "core_group":
             # Copied people stay in their twins' SPM units; no SPM copy exists.
             if entity == "person":
@@ -501,8 +539,12 @@ def test_own_tail_copy_is_carried_and_arm_zero_matches_the_two_clone_run(interle
         assert column.index.equals(incumbent.index)
         assert column.dtype == incumbent.dtype
         copies = column.index >= 2000
-        # Every tail cell is exactly the receiving value (the twin's arm-one
-        # value), and every core cell equals the two-clone result.
+        # The copies' receiving cells differ from their twins' in every
+        # candidate, so a tail carried from the twin cannot pass below.
+        twins = incumbent.loc[column.index[copies] - 1000]
+        assert incumbent[copies].ne(twins.to_numpy()).all()
+        # Every tail cell is exactly its own receiving value, never its twin's,
+        # and every core cell equals the two-clone result.
         pd.testing.assert_series_equal(column[copies], incumbent[copies])
         pd.testing.assert_series_equal(
             column[~copies], two_clone[entity, name].loc[column.index[~copies]]
@@ -548,6 +590,57 @@ def test_relabelled_clone_one_rows_are_not_a_tail_copy():
         key = "person_tax_unit_id" if entity == "person" else entity + "_id"
         rows.loc[rows[key].eq(1040), CLONE(entity)] = 2
     with pytest.raises(ValueError, match="ID_AXIS"):
+        run(qualified, inputs, table)
+
+
+@pytest.mark.parametrize(
+    "entity,name",
+    (
+        ("person", "long_term_capital_gains_on_collectibles"),
+        ("tax_unit", "unrecaptured_section_1250_gain"),
+        ("person", "business_is_sstb"),
+    ),
+)
+def test_a_tail_cell_refilled_from_its_twin_inside_the_carry_is_refused(
+    monkeypatch, entity, name
+):
+    qualified, inputs, table = whole_fixture()
+    tailed = with_tail(inputs)
+    receiving = tailed.receiving.frame.table(entity).set_index(entity + "_id")[name]
+    copies = receiving.index[receiving.index >= 2000]
+    twins = receiving.loc[copies - 1000].to_numpy()
+    assert receiving.loc[copies].ne(twins).all()  # the refill changes every cell
+    copy = pd.Series.copy
+
+    def refill(self, *args, **kwargs):
+        # The carry starts its full-axis output as a copy of the receiving
+        # column. Refill that copy's tail cells from their twins (the #992
+        # confusion) before the carry compares them with the receiving cells.
+        result = copy(self, *args, **kwargs)
+        if self.name == name and self.index.equals(receiving.index):
+            result.loc[copies] = twins
+        return result
+
+    monkeypatch.setattr(pd.Series, "copy", refill)
+    with pytest.raises(ValueError, match="TAIL_CARRIED"):
+        run(qualified, tailed, table)
+    if name in placement.output_policy(PROFILE)[entity]:
+        with pytest.raises(ValueError, match="TAIL_CARRIED"):
+            placement_result(qualified, tailed, table)
+
+
+@pytest.mark.parametrize("tail", (False, True))
+@pytest.mark.parametrize("entity,row", (("tax_unit", 40), ("person", 8)))
+def test_a_recipient_unit_or_member_off_clone_zero_is_refused(entity, row, tail):
+    # Unit 40 is an arm-zero recipient and person 8 its only member. Clone
+    # index 1 is inside the tail split's domain and no shared precondition
+    # reads the clone index, so only the arm-zero guard can refuse it.
+    qualified, inputs, table = whole_fixture()
+    if tail:
+        inputs = with_tail(inputs)
+    rows = inputs.receiving.frame.table(entity)
+    rows.loc[rows[entity + "_id"].eq(row), CLONE(entity)] = 1
+    with pytest.raises(ValueError, match="ARM_ZERO_AXIS"):
         run(qualified, inputs, table)
 
 

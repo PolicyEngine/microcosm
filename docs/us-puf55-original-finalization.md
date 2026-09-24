@@ -171,8 +171,11 @@ template):
 - the earnings universe
 - lossless dtype writes
 - replay invariance
-- tail-copy carry, appended and interleaved
-- tail refusals
+- tail-copy carry, appended and interleaved. Every candidate cell of a copy
+  differs from its twin's, so a tail cell filled from its twin fails the tests
+- tail refusals, including a tail cell changed inside the carry
+  (`TAIL_CARRIED`)
+- the arm-zero clone axis (`ARM_ZERO_AXIS`)
 - declaration compile
 - binding observation
 - kernel policy routing
