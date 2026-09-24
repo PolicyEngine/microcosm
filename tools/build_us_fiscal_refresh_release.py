@@ -276,6 +276,7 @@ from microcosm.build.us_runtime.release_gate_preflight import (  # noqa: TC001
 )
 from microcosm.build.us_runtime.release_input_coverage import (
     REFERENCE_ECPS_LAYER_RENAMES,
+    project_ecps_parity_known_gap_names,
 )
 from microcosm.build.us_runtime.ssi_take_up import (
     US_SSI_TAKE_UP_AGE_TARGETS,
@@ -5770,6 +5771,39 @@ def _project_ecps_reference_layers(
     return projected, applied
 
 
+def _project_ecps_known_gaps(
+    known_gaps: tuple[ParityKnownGap, ...],
+) -> tuple[dict[str, ParityKnownGap], dict[str, str]]:
+    """Resolve exemption-register names onto the live layers they exempt.
+
+    The register may name a gap by the reference's historical spelling. Once
+    the reference layers are graded under live names, an unprojected
+    historical exemption would exempt nothing (an empty live layer fails) and
+    read as dormant (a populated live layer passes instead of flagging the
+    exemption stale). Project each entry with the same register as
+    :func:`_project_ecps_reference_layers`, through the helper the coverage
+    manifest and the cross-register check share, keyed by live name with the
+    entry's own spelling kept for provenance. Two entries that would exempt
+    one live layer are refused: the register must say once which reason and
+    issue own the gap.
+    """
+
+    by_register_name = {gap.variable: gap for gap in known_gaps}
+    live_to_register = project_ecps_parity_known_gap_names(
+        gap.variable for gap in known_gaps
+    )
+    projected = {
+        live: by_register_name[register_name]
+        for live, register_name in live_to_register.items()
+    }
+    applied = {
+        register_name: live
+        for live, register_name in live_to_register.items()
+        if live != register_name
+    }
+    return projected, applied
+
+
 def _ecps_parity_gate(
     base_frame: Frame,
     *,
@@ -5798,15 +5832,19 @@ def _ecps_parity_gate(
     reference_shares, applied_renames = _project_ecps_reference_layers(
         reference.nonzero_shares
     )
+    # Exemptions resolve through the same register, so a historical-name entry
+    # exempts (and goes stale or dormant on) the live layer it names.
+    projected_gaps, applied_gap_renames = _project_ecps_known_gaps(known_gaps)
     gate = parity_gate(
         candidate_shares,
         reference_shares,
-        known_gaps=tuple(gap.variable for gap in known_gaps),
+        known_gaps=tuple(projected_gaps),
     )
     details = dict(gate.details)
     # The pinned reference predates engine input renames; its layers are graded
     # under the live names, and the projection is recorded, not hidden.
     details["reference_layer_renames"] = applied_renames
+    details["known_gap_renames"] = applied_gap_renames
     details["reference"] = {
         "repo_id": reference.source.repo_id,
         "repo_type": reference.source.repo_type,
@@ -5821,8 +5859,15 @@ def _ecps_parity_gate(
     )
     # The reasoned register: names alone say a layer is exempt; the manifest
     # must also carry WHY and which issue owns closing it (the debt ledger).
+    # Keyed by the live layer the gate graded; a renamed entry also names the
+    # register spelling it came from.
     details["known_gaps"] = {
-        gap.variable: {"reason": gap.reason, "issue": gap.issue} for gap in known_gaps
+        live: {
+            "reason": gap.reason,
+            "issue": gap.issue,
+            **({"register_name": gap.variable} if gap.variable != live else {}),
+        }
+        for live, gap in sorted(projected_gaps.items())
     }
     return GateResult(
         name=gate.name,

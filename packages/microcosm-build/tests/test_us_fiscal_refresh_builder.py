@@ -14589,6 +14589,216 @@ def test_ecps_parity_gate_still_fails_an_empty_renamed_layer(monkeypatch) -> Non
     assert gate.failures[0].startswith("takes_up_wic_if_eligible:")
 
 
+# Known-gap exemptions resolve through the same rename register (gate peer P2
+# on #994): a register entry spelled with the reference's retired name must
+# exempt, go stale on, and go dormant on the live layer exactly as the
+# live-name entry does.
+
+_WIC_SPELLINGS = ("would_claim_wic", "takes_up_wic_if_eligible")
+
+
+#: Reference vintages the exemption projection must not depend on: the pinned
+#: historical spelling, a re-pinned reference already on the live name (no
+#: layer rename applies), and one that does not populate WIC at all.
+_WIC_REFERENCES = (
+    {"would_claim_wic": 1.0},
+    {"takes_up_wic_if_eligible": 1.0},
+    {"employment_income": 0.5},
+)
+
+
+def _wic_parity_gate(monkeypatch, *, candidate_share, gap_names, reference=None):
+    builder = _load_builder_module()
+    reference_shares = {"would_claim_wic": 1.0} if reference is None else reference
+    # The candidate populates every non-WIC reference layer, so only the WIC
+    # layer and its exemption decide the verdict.
+    candidate_shares = {
+        name: share
+        for name, share in reference_shares.items()
+        if name not in _WIC_SPELLINGS
+    }
+    candidate_shares["takes_up_wic_if_eligible"] = candidate_share
+    monkeypatch.setattr(
+        builder, "_engine_input_variables", lambda: tuple(candidate_shares)
+    )
+    monkeypatch.setattr(
+        builder, "us_nonzero_shares", lambda frame, *, columns: candidate_shares
+    )
+    return builder._ecps_parity_gate(
+        object(),
+        reference=_parity_reference(builder, reference_shares),
+        known_gaps=tuple(
+            builder.ParityKnownGap(
+                variable=name,
+                reason=f"reason filed as {name}",
+                issue="PolicyEngine/microcosm#994",
+            )
+            for name in gap_names
+        ),
+    )
+
+
+@pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+def test_ecps_parity_gate_exempts_an_empty_wic_layer_under_either_spelling(
+    monkeypatch, spelling
+) -> None:
+    gate = _wic_parity_gate(monkeypatch, candidate_share=0.0, gap_names=(spelling,))
+
+    assert gate.passed, gate.failures
+    assert gate.details["gaps"] == 0
+    assert gate.details["exempted"] == ["takes_up_wic_if_eligible"]
+    assert gate.details["stale_exemptions"] == []
+    assert gate.details["dormant_exemptions"] == []
+    entry = {
+        "reason": f"reason filed as {spelling}",
+        "issue": "PolicyEngine/microcosm#994",
+    }
+    if spelling == "would_claim_wic":
+        entry["register_name"] = "would_claim_wic"
+        assert gate.details["known_gap_renames"] == {
+            "would_claim_wic": "takes_up_wic_if_eligible"
+        }
+    else:
+        assert gate.details["known_gap_renames"] == {}
+    assert gate.details["known_gaps"] == {"takes_up_wic_if_eligible": entry}
+
+
+@pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+def test_ecps_parity_gate_flags_a_stale_wic_exemption_under_either_spelling(
+    monkeypatch, spelling
+) -> None:
+    gate = _wic_parity_gate(monkeypatch, candidate_share=0.42, gap_names=(spelling,))
+
+    assert not gate.passed
+    assert len(gate.failures) == 1
+    assert gate.failures[0].startswith("Stale known-gap exemptions")
+    assert "takes_up_wic_if_eligible" in gate.failures[0]
+    assert gate.details["stale_exemptions"] == ["takes_up_wic_if_eligible"]
+    assert gate.details["dormant_exemptions"] == []
+
+
+@pytest.mark.parametrize("reference", _WIC_REFERENCES)
+@pytest.mark.parametrize("candidate_share", (0.0, 0.42))
+def test_ecps_parity_gate_grades_a_historical_exemption_like_the_live_one(
+    monkeypatch, candidate_share, reference
+) -> None:
+    # The exemption resolves through the rename register on its own, not only
+    # when the reference itself carried the retired name.
+    historical, live = (
+        _wic_parity_gate(
+            monkeypatch,
+            candidate_share=candidate_share,
+            gap_names=(spelling,),
+            reference=reference,
+        )
+        for spelling in _WIC_SPELLINGS
+    )
+
+    provenance_keys = {"known_gaps", "known_gap_renames"}
+    assert historical.passed == live.passed
+    assert historical.failures == live.failures
+    assert {
+        key: value
+        for key, value in historical.details.items()
+        if key not in provenance_keys
+    } == {
+        key: value for key, value in live.details.items() if key not in provenance_keys
+    }
+
+
+@pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+def test_ecps_parity_gate_reports_a_wic_exemption_dormant_under_either_spelling(
+    monkeypatch, spelling
+) -> None:
+    # A reference that does not populate WIC: the exemption is dormant on the
+    # live layer, never on the retired name.
+    gate = _wic_parity_gate(
+        monkeypatch,
+        candidate_share=0.0,
+        gap_names=(spelling,),
+        reference={"employment_income": 0.5},
+    )
+
+    assert gate.passed, gate.failures
+    assert gate.details["exempted"] == ["takes_up_wic_if_eligible"]
+    assert gate.details["dormant_exemptions"] == ["takes_up_wic_if_eligible"]
+    assert gate.details["stale_exemptions"] == []
+
+
+@pytest.mark.parametrize("spelling", _WIC_SPELLINGS)
+def test_ecps_parity_gate_projects_the_exemption_against_a_live_name_reference(
+    monkeypatch, spelling
+) -> None:
+    # A re-pinned reference already on the live name applies no layer rename;
+    # the historical exemption must still exempt the empty live layer.
+    reference = {"takes_up_wic_if_eligible": 1.0}
+    empty = _wic_parity_gate(
+        monkeypatch, candidate_share=0.0, gap_names=(spelling,), reference=reference
+    )
+    populated = _wic_parity_gate(
+        monkeypatch, candidate_share=0.42, gap_names=(spelling,), reference=reference
+    )
+
+    assert empty.details["reference_layer_renames"] == {}
+    assert empty.passed, empty.failures
+    assert empty.details["exempted"] == ["takes_up_wic_if_eligible"]
+    assert not populated.passed
+    assert populated.details["stale_exemptions"] == ["takes_up_wic_if_eligible"]
+
+
+@pytest.mark.parametrize("gap_names", (_WIC_SPELLINGS, _WIC_SPELLINGS[::-1]))
+def test_ecps_parity_gate_refuses_one_layer_exempted_under_both_spellings(
+    monkeypatch, gap_names
+) -> None:
+    with pytest.raises(ValueError, match="would merge two exemptions"):
+        _wic_parity_gate(monkeypatch, candidate_share=0.0, gap_names=gap_names)
+
+
+def test_ecps_known_gap_projection_refuses_identical_entries_too() -> None:
+    # Mirrors the reference-layer collision rule: two register entries for one
+    # live layer are refused even when they agree, so the register names the
+    # gap once.
+    builder = _load_builder_module()
+    gaps = tuple(
+        builder.ParityKnownGap(
+            variable=name, reason="same reason", issue="PolicyEngine/microcosm#994"
+        )
+        for name in _WIC_SPELLINGS
+    )
+
+    with pytest.raises(ValueError, match="would merge two exemptions"):
+        builder._project_ecps_known_gaps(gaps)
+
+
+def test_checked_in_known_gap_register_projects_without_collision() -> None:
+    builder = _load_builder_module()
+    register = builder.load_ecps_parity_known_gaps()
+
+    projected, applied = builder._project_ecps_known_gaps(register)
+
+    assert len(projected) == len(register)
+    assert all(
+        builder.REFERENCE_ECPS_LAYER_RENAMES[historical] == live
+        for historical, live in applied.items()
+    )
+
+
+def test_shipped_registers_pass_the_register_consistency_preflight() -> None:
+    # The exact preflight main() runs (microcosm#377). The parity known-gap
+    # register now reaches it by name (it used to arrive as ParityKnownGap
+    # objects and never intersect a column), so pin that the shipped
+    # registers are consistent with it in play.
+    builder = _load_builder_module()
+
+    gate = builder.us_register_consistency_gate(
+        degenerate_reviewed_exclusions=builder.US_DEGENERATE_INPUT_REVIEWED_EXCLUSIONS,
+        documented_absent_inputs=builder.US_DOCUMENTED_ABSENT_INPUTS,
+        nonconstant_required_columns=builder.US_HEALTH_INPUT_NONCONSTANT_COLUMNS,
+    )
+
+    assert gate.passed, gate.failures
+
+
 # ---------------------------------------------------------------------------
 # --target-surface: calibrate the national release to national + state targets
 # (Max, 2026-09-23, route A d122). The parity and profile-coverage gates keep
