@@ -1,6 +1,8 @@
 # ruff: noqa: F401
+import importlib.util
 import inspect
 import json
+import math
 import re
 from hashlib import sha256
 from importlib.resources import files
@@ -11,7 +13,9 @@ import pytest
 from microcosm.build import nonnegative_columns_gate, target_profile_coverage_gate
 from microcosm.build.us_runtime import (
     US_FISCAL_MACRO_REALISM_BANDS,
+    US_FISCAL_TARGET_ALL_VINTAGE_SUPPORT_EXCLUSIONS,
     US_FISCAL_TARGET_COVERAGE_REQUIREMENTS,
+    US_FISCAL_TARGET_EXCLUSION_VINTAGE_BYPASSES,
     US_FISCAL_TARGET_REFERENCES,
     US_FISCAL_TARGET_SUPPORT_EXCLUSIONS,
     US_JCT_TAX_EXPENDITURE_REFORMS,
@@ -20,10 +24,17 @@ from microcosm.build.us_runtime import (
     US_STATE_INCOME_TAX_TARGET_REFERENCES,
     SimpleTaxExpenditureReform,
     compile_us_fiscal_target_registry,
+    fiscal_targets,
+    us_fiscal_target_exclusion_receipt,
 )
 from microcosm.build.us_runtime.fiscal_targets import (
+    _M_CHIP_STATE_FIPS,
     US_JCT_TAX_EXPENDITURE_TARGET_REFERENCES,
 )
+from microcosm.calibrate.geography_constants import US_STATE_FIPS_TO_POSTAL
+from test_support.paths import paths_for
+
+_TEST_PATHS = paths_for("microcosm-build")
 
 REFERENCE_JCT_TAX_EXPENDITURE_TARGETS = {
     "salt_deduction": "jct.tax_expenditures.cy2024.salt_deduction.revenue_loss",
@@ -106,6 +117,101 @@ CENSUS_PEP_AGE_GROUPS = (
     "80_to_84",
     "85_plus",
 )
+
+
+_OTHER_INCOME_TABLE_1_4_MEASURES = tuple(
+    f"other_income_net_{side}_{measure}"
+    for side in ("income", "loss")
+    for measure in ("amount", "returns")
+)
+
+
+def _other_income_table_1_4_facts(tax_years) -> list[dict[str, object]]:
+    return [
+        _soi_taxable_interest_fact(
+            tax_year,
+            source_record_id=f"irs_soi.ty{tax_year}.table_1_4.all.{measure}",
+            value=1_000_000_000,
+            measure_id=measure,
+            layout_record_set_id=f"irs_soi.ty{tax_year}.table_1_4",
+        )
+        for tax_year in tax_years
+        for measure in _OTHER_INCOME_TABLE_1_4_MEASURES
+    ]
+
+
+_W2_TIPS_RETURN_COUNT = (
+    "irs_soi.ty{year}.form_w2_social_security_tips."
+    "box_7_social_security_tips.return_count"
+)
+
+
+def _w2_tips_return_count_fact(tax_year: int) -> dict[str, object]:
+    return _dynamic_ledger_fact(
+        source_record_id=_W2_TIPS_RETURN_COUNT.format(year=tax_year),
+        source_name="irs_soi",
+        measure_id="return_count",
+        value=6_038_613,
+        period_value=tax_year,
+        layout_record_set_id=f"irs_soi.ty{tax_year}.form_w2_social_security_tips",
+        groupby_dimension="irs_soi.form_w2_item",
+        groupby_value_id="box_7_social_security_tips",
+    )
+
+
+# The pinned-feed checks below run only where the pinned Chronicle feed sits at
+# the target-parity generator's default path; CI has no feed and skips them, so
+# the compile-time vintage guard is the enforcement and these pin the outcome.
+
+
+def _load_repo_tool(name: str):
+    path = _TEST_PATHS.repository / "tools" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.fixture(scope="module")
+def pinned_feed_national_state_surface():
+    """Compile the pinned feed as the release does: compile, Medicaid
+    substitutions, then ``--target-surface national_state``."""
+    feed_path = _load_repo_tool("build_us_target_parity_manifest").DEFAULT_FEED_PATH
+    if not feed_path.exists():
+        pytest.skip(f"pinned feed not present at {feed_path}")
+    from microcosm.build.ledger_artifact import load_ledger_consumer_artifact
+    from microcosm.build.us_runtime import (
+        apply_us_medicaid_enrollment_substitutions,
+        default_congressional_district_vintage_crosswalk_path,
+        load_congressional_district_vintage_crosswalk,
+    )
+    from microcosm.build.us_runtime.chronicle_feed import load_us_chronicle_feed
+    from microcosm.calibrate import TargetRegistry
+
+    facts = load_ledger_consumer_artifact(
+        feed_path,
+        expected_facts_sha256=load_us_chronicle_feed().facts_sha256,
+        expected_manifest_sha256=None,
+    ).facts
+    crosswalk = load_congressional_district_vintage_crosswalk(
+        default_congressional_district_vintage_crosswalk_path()
+    )
+    registry = compile_us_fiscal_target_registry(
+        facts,
+        target_period=2024,
+        congressional_district_vintage_crosswalk=crosswalk,
+        age_targets=True,
+    )
+    registry, _ = apply_us_medicaid_enrollment_substitutions(registry)
+    builder = _load_repo_tool("build_us_fiscal_refresh_release")
+    specs, _ = builder._select_target_surface(registry.specs, "national_state")
+    receipt = us_fiscal_target_exclusion_receipt(
+        facts,
+        target_period=2024,
+        congressional_district_vintage_crosswalk=crosswalk,
+    )
+    return registry, TargetRegistry(specs, country="us"), receipt
 
 
 def _usda_snap_caseload_fact(
@@ -814,6 +920,71 @@ def _cms_medicaid_enrollment_fact(
             "source_table": "Medicaid and CHIP enrollment",
             "source_file": f"enrollment_{normalized_period}.csv",
             "vintage": f"month_{normalized_period}",
+            "url": "https://data.medicaid.gov/",
+        },
+    }
+
+
+def _cms_state_enrollment_fact(
+    source_period: str,
+    *,
+    state: str,
+    state_fips: str,
+    value: float,
+    measure_id: str = "total_chip_enrollment",
+) -> dict[str, object]:
+    """A CMS state-enrollment fact in the pinned feed's id and layout format.
+
+    The pinned feed's ids carry a ``state_enrollment`` record-set token and
+    group by state, e.g. ``cms_medicaid.month2024_12.state_enrollment.ca.
+    total_chip_enrollment``; ``_cms_medicaid_enrollment_fact`` builds the
+    older ``cms_medicaid.month2024_12.ca.<measure>`` form.
+    """
+
+    normalized_period = source_period.replace("-", "_")
+    record_set_id = f"cms_medicaid.month{normalized_period}.state_enrollment"
+    source_record_id = f"{record_set_id}.{state}.{measure_id}"
+    fact_id = source_record_id.replace(".", "_")
+    return {
+        "label": f"Test label for {source_record_id}",
+        "aggregate_fact_key": f"ledger.aggregate_fact.v2:{fact_id}",
+        "semantic_fact_key": f"ledger.semantic_fact.v2:{fact_id}",
+        "legacy_fact_key": f"ledger.fact.v1:{fact_id}",
+        "lineage": {"source_record_id": source_record_id},
+        "value": value,
+        "period": {"type": "month", "value": source_period},
+        "entity": {"name": "person", "role": "medicaid_or_chip_enrollee"},
+        "aggregation": {"method": "sum"},
+        "geography": {
+            "level": "state",
+            "id": f"0400000US{state_fips}",
+            "name": f"Test state {state}",
+        },
+        "dimensions": {},
+        "dimension_labels": {"cms_medicaid.state_abbreviation": "State"},
+        "dimension_value_labels": {
+            "cms_medicaid.state_abbreviation": {state: f"Test state {state}"}
+        },
+        "universe_constraints": {"constraints": []},
+        "layout": {
+            "record_set_id": record_set_id,
+            "groupby_dimension": "cms_medicaid.state_abbreviation",
+            "groupby_dimension_label": "State",
+            "groupby_value_id": state,
+            "groupby_value_label": f"Test state {state}",
+            "measure_id": measure_id,
+        },
+        "observed_measure": {
+            "source_name": "cms_medicaid",
+            "source_table": "Medicaid and CHIP enrollment",
+            "source_measure_id": measure_id,
+            "source_concept": f"cms_medicaid.{measure_id}",
+            "unit": "count",
+        },
+        "source": {
+            "source_name": "cms_medicaid",
+            "source_table": "Medicaid and CHIP enrollment",
+            "vintage": "april_2026_release",
             "url": "https://data.medicaid.gov/",
         },
     }
