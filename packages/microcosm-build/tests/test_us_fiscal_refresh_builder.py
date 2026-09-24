@@ -533,10 +533,14 @@ def test__given_target_frame_checkpoint__then_builder_round_trips_frame(
         selection_identities_sha256=None,
         staged_frame_sha256="staged-frame-sha",
     )
-    # 12 = the identity carries the staged-frame digest (microcosm#956);
-    # schema 2 distinguishes the values+mask codec from schema-1 checkpoints.
+    # 12 = the identity carries the staged-frame digest (microcosm#956); 13 =
+    # the batched base pass. Schema 2 distinguishes the values+mask codec from
+    # schema-1 checkpoints.
     assert identity["schema_version"] == 2
-    assert identity["materializer_version"] == 12
+    assert (
+        identity["materializer_version"]
+        == builder.TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION
+    )
     assert identity["staged_frame_sha256"] == "staged-frame-sha"
     # The SSI prior-weight basis is identity-bearing (microcosm#543 instance
     # 2): unflagged runs carry the key as None.
@@ -753,9 +757,11 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
 ) -> None:
     """A checkpoint stored under a superseded materializer version must not load.
 
-    Version 12 adds the staged-frame digest to the identity (microcosm#956).
-    The version constant participates in the identity comparison; this pins
-    stored-11 versus current-12 rejection directly.
+    Version 12 adds the staged-frame digest to the identity (microcosm#956)
+    and 13 the batched base pass. The version constant participates in the
+    identity comparison; this pins rejection of the immediately preceding
+    version and the one before it, derived from the current constant so every
+    bump moves the test with it.
     """
     builder = _load_builder_module()
     monkeypatch.setattr(builder, "US_SCHEMA", small_frame.schema)
@@ -790,10 +796,11 @@ def test__given_stale_materializer_version_checkpoint__then_builder_rejects_it(
         selection_identities_sha256=None,
         staged_frame_sha256="staged-frame-sha",
     )
-    # 11 = the pre-staged-frame-digest world; 10 = the still-older
-    # pre-nullable-boolean-codec world. Both must miss against version 12.
-    stale_identity = {**dict(identity), "materializer_version": 11}
-    older_identity = {**dict(identity), "materializer_version": 10}
+    current = builder.TARGET_FRAME_CHECKPOINT_MATERIALIZER_VERSION
+    assert identity["materializer_version"] == current
+    # The two preceding versions must both miss against the current version.
+    stale_identity = {**dict(identity), "materializer_version": current - 1}
+    older_identity = {**dict(identity), "materializer_version": current - 2}
     path = tmp_path / "target_frame_checkpoint.h5"
     builder._write_target_frame_checkpoint(
         path,
@@ -9775,6 +9782,11 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
             assert kwargs == {}
             return np.asarray([arrays_by_id[variable][id_] for id_ in tax_unit_ids])
 
+        def get_holder(self, variable):
+            # The batched base pass reads each population-aggregate holder;
+            # this engine never computes one.
+            return SimpleNamespace(get_known_periods=lambda: [])
+
         def _invalidate_all_caches(self):
             self.cache_invalidations += 1
 
@@ -9862,15 +9874,18 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     assert dropped["target_materialization_cache"]["writes"] == 1
     assert len(list(tmp_path.glob("*.json"))) == 1
     assert len(list(tmp_path.glob("*.npy"))) == 1
+    # The base simulation runs over the same one-household batches as the
+    # reform family (route A F-1), so both build one dataset per household.
     assert [dataset[1] for dataset in datasets] == [
+        (),
         (),
         ("mock_credit",),
         ("mock_credit",),
     ]
-    assert [dataset[0].n("household") for dataset in datasets] == [2, 1, 1]
-    assert [dataset[3] for dataset in datasets] == [False, False, False]
+    assert [dataset[0].n("household") for dataset in datasets] == [1, 1, 1, 1]
+    assert [dataset[3] for dataset in datasets] == [False, False, False, False]
     assert formula_owned_assertions == [2, 2]
-    assert len(simulations) == 3
+    assert len(simulations) == 4
     # microcosm#456: one reform system per target family (the metadata system
     # plus one family system), shared by every batch simulation of the family
     # — not one engine build per batch.
@@ -9878,13 +9893,18 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     assert [system.reform is not None for system in reform_systems] == [False, True]
     assert [simulation.tax_benefit_system for simulation in simulations] == [
         None,
+        None,
         reform_systems[1],
         reform_systems[1],
     ]
     # Each simulation was released (dataset reference severed), not merely
     # cache-invalidated.
-    assert [simulation.dataset for simulation in simulations] == [None, None, None]
-    assert [simulation.cache_invalidations for simulation in simulations] == [0, 0, 0]
+    assert [simulation.dataset for simulation in simulations] == [None] * 4
+    assert [simulation.cache_invalidations for simulation in simulations] == [0] * 4
+    assert dropped["target_materialization_batching"]["batches"] == 2
+    assert (
+        dropped["target_materialization_batching"]["jct_reform_families_simulated"] == 1
+    )
 
     target_frame_again, registry_again, dropped_again = (
         builder._materialize_target_frame(
@@ -9907,14 +9927,16 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
     assert dropped_again["target_materialization_cache"]["writes"] == 0
     assert [dataset[1] for dataset in datasets] == [
         (),
+        (),
         ("mock_credit",),
         ("mock_credit",),
         (),
+        (),
     ]
-    assert [dataset[0].n("household") for dataset in datasets] == [2, 1, 1, 2]
-    assert [dataset[3] for dataset in datasets] == [False, False, False, False]
+    assert [dataset[0].n("household") for dataset in datasets] == [1] * 6
+    assert [dataset[3] for dataset in datasets] == [False] * 6
     assert formula_owned_assertions == [2, 2, 2]
-    assert len(simulations) == 4
+    assert len(simulations) == 6
     # The cache hit skips reform materialization entirely, so the second run
     # adds only its metadata system — no new family system is built.
     assert len(reform_systems) == 3
@@ -9923,18 +9945,14 @@ def test_jct_materialization_collapses_reform_tax_units_and_clears_caches(
         True,
         False,
     ]
-    assert [simulation.dataset for simulation in simulations] == [
-        None,
-        None,
-        None,
-        None,
-    ]
-    assert [simulation.cache_invalidations for simulation in simulations] == [
-        0,
-        0,
-        0,
-        0,
-    ]
+    assert [simulation.dataset for simulation in simulations] == [None] * 6
+    assert [simulation.cache_invalidations for simulation in simulations] == [0] * 6
+    assert (
+        dropped_again["target_materialization_batching"][
+            "jct_reform_families_simulated"
+        ]
+        == 0
+    )
 
 
 def test_target_materialization_cache_rejects_value_hash_mismatch(tmp_path) -> None:
@@ -12477,6 +12495,11 @@ def _install_multi_reform_fakes(
                 "state_income_tax": {10: 5.0, 20: 6.0, 30: 7.0},
             }
             return np.asarray([arrays_by_id[variable][id_] for id_ in tax_unit_ids])
+
+        def get_holder(self, variable):
+            # The batched base pass reads each population-aggregate holder;
+            # this engine never computes one.
+            return SimpleNamespace(get_known_periods=lambda: [])
 
         def _invalidate_all_caches(self):
             self.cache_invalidations += 1

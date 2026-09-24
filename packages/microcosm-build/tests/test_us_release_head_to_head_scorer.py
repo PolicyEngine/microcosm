@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import sys
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -937,6 +938,71 @@ def test_chunked_scoring_recombination_matches_one_shot(monkeypatch) -> None:
             row["weighted_loss_contribution"]
             == attribution_row["final_loss_contribution"]
         )
+
+
+def test_slice_digests_ignore_the_per_slice_batching_receipt(monkeypatch) -> None:
+    """A shorter tail changes counts without changing the compiled contract."""
+
+    module = _load_head_to_head_module()
+    _patch_release_seams(module, monkeypatch)
+    stub_materialize = module.release._materialize_target_frame
+
+    def _materialize_with_receipt(frame, specs, **kwargs):
+        target_frame, registry, compilation = stub_materialize(frame, specs, **kwargs)
+        return (
+            target_frame,
+            registry,
+            {
+                **compilation,
+                "target_materialization_batching": {
+                    "households": frame.n("household"),
+                    "batches": 1,
+                },
+            },
+        )
+
+    monkeypatch.setattr(
+        module.release, "_materialize_target_frame", _materialize_with_receipt
+    )
+
+    artifact = _fixture_artifact(module, sha256="e" * 64, measure_values=(1.0, 2.0))
+    tables = {}
+    for entity in artifact.frame.entities:
+        table = artifact.frame.table(entity)
+        third_row = table.iloc[[-1]].copy()
+        for column in table.columns:
+            if column.endswith("_id"):
+                third_row[column] = 3
+        tables[entity] = pd.concat([table, third_row], ignore_index=True)
+    artifact = replace(
+        artifact,
+        frame=Frame(
+            tables,
+            US_SCHEMA,
+            {
+                "household": Weights(
+                    np.asarray([10.0, 20.0, 30.0]),
+                    WeightKind.CALIBRATED,
+                )
+            },
+        ),
+    )
+    payload, _ = module.score_loaded_artifact(
+        artifact=artifact,
+        artifact_name="incumbent",
+        yardstick=_fixture_yardstick(module),
+        maximum_microsim_batch_size=2,
+    )
+
+    chunks = payload["normalization_receipts"]["materialize_score_chunking"]["chunks"]
+    assert chunks
+    for chunk in chunks:
+        compilation = chunk["target_compilation"]
+        assert compilation["household_slices"] == 2
+        assert compilation["household_slice_row_counts"] == [2, 1]
+        assert "target_materialization_batching" not in compilation
+        assert len(compilation["slice_compilation_sha256s"]) == 2
+        assert len(set(compilation["slice_compilation_sha256s"])) == 1
 
 
 def test_dropped_targets_fail_loudly_before_scoring(monkeypatch) -> None:

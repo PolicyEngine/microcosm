@@ -843,9 +843,13 @@ def _score_chunk_household_sliced(
             artifact_name=f"{artifact_name} {slice_label}",
             compilation=slice_compilation,
         )
+        # Slice sizes can differ; record them in household_slice_row_counts
+        # instead of the shared compilation contract or its digest.
+        slice_compilation = dict(slice_compilation)
+        slice_compilation.pop("target_materialization_batching", None)
         if first_compilation is None:
             first_compilation = dict(slice_compilation)
-        compilation_digests.append(_canonical_sha256(dict(slice_compilation)))
+        compilation_digests.append(_canonical_sha256(slice_compilation))
         slice_sizes.append(len(positions))
         if _spec_keys(slice_registry.specs) != expected_keys:
             raise ValueError(
