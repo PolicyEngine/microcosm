@@ -245,10 +245,11 @@ never as namespace squatters.
 **Constellation versioning has a mechanism, not just an intent.** Each shard
 pins `microcosm-frame>=X,<X+1` AND asserts kernel compatibility at import (a
 cheap `frame.__version__` check) so pip's looser resolution can't silently
-assemble an incompatible set. CI builds the wheels and installs them **with
-pip** from a local index before running the contract suite — a standing
-regression against the 2026 "pip ignores `[tool.uv.sources]`" incident, which
-had no test.
+assemble an incompatible set. CI builds every shard wheel once and compares
+each archive's package contents with its source tree. Behavioral contracts run
+from the source checkout in separate environment-specific jobs; wheel validation
+does not install the artifacts or repeat behavioral tests. This validates archive
+composition, not dependency resolution or installed import behavior.
 
 ## Sequencing
 

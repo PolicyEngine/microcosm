@@ -26,8 +26,9 @@ PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
 `engine-uk`, and `wheels` jobs. `tools/classify_ci_changes.py` classifies the
 complete changed-path inventory as shared, US, or UK. Each behavioral job has
 only a Python 3.13/3.14 matrix; pytest distributes files across two workers with
-`--dist loadfile`. The engine-free job installs no country extra and always
-runs shared tests plus the affected countries' engine-free tests. The country
+`--dist loadfile` and reports the 25 slowest tests. The engine-free job
+installs no country extra and always runs shared tests plus the affected
+countries' engine-free tests. The country
 jobs install only their own extra and run only their country directory. Main
 pushes run every environment. Native numerical libraries receive one thread per
 worker. The wheels job builds each wheel once and compares its archive with its

@@ -22,21 +22,20 @@ from unittest.mock import MagicMock
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[3]
-
-
-def _load():
-    path = ROOT / "tools" / "modal_us_stage_plan.py"
-    spec = importlib.util.spec_from_file_location("modal_us_stage_plan", path)
-    module = importlib.util.module_from_spec(spec)
-    assert spec.loader is not None
-    # dataclasses resolve string annotations through sys.modules.
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-plan_lib = _load()
+from test_support.microcosm_build.us_modal_stage_plan_tool import (
+    COMMIT,
+    FEED_SHA,
+    LADDER_SHA,
+    ROOT,
+    STAGING_SHA,
+    plan_lib,
+)
+from test_support.microcosm_build.us_modal_stage_plan_tool import (
+    plan_data as _plan_data,
+)
+from test_support.microcosm_build.us_modal_stage_plan_tool import (
+    smoke_plan_data as _smoke_plan_data,
+)
 
 
 @pytest.fixture
@@ -67,51 +66,6 @@ def app(monkeypatch):
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
-
-
-COMMIT = "4d773a4785a1e2c7f0b9d3e6a8c5b1f2e3d4c5b6"
-STAGING_SHA = "a" * 64
-SUMMARY_SHA = "b" * 64
-FEED_SHA = "4d1dba8c1b6274877bf184fa6de5d99b13fc61f34709ccab1487db2b5c64a79f"
-LADDER_SHA = "c" * 64
-
-
-def _plan_data(stage: str = "materialize", **overrides) -> dict:
-    data = {
-        "schema": plan_lib.PLAN_SCHEMA,
-        "tool": "us-acs-local-release",
-        "stage": stage,
-        "run_id": "acs-local-20260923",
-        "source": {"commit": COMMIT, "branch": "us-modal-stage-runner"},
-        "inputs": {
-            "staging_h5": {
-                "uri": f"volume://cas/sha256/{STAGING_SHA}/acs_multispine_staging.h5",
-                "sha256": STAGING_SHA,
-            },
-            "staging_summary": {
-                "uri": (
-                    f"volume://cas/sha256/{SUMMARY_SHA}/"
-                    "acs_multispine_staging.summary.json"
-                ),
-                "sha256": SUMMARY_SHA,
-            },
-            "feed": {
-                "uri": f"volume://cas/sha256/{FEED_SHA}/consumer_facts.jsonl",
-                "sha256": FEED_SHA,
-            },
-            "ladder": {
-                "uri": (
-                    "hf://datasets/policyengine/populace-us@"
-                    "populace-us-2024-spm-receipts-20260923/"
-                    "inputs/us_puma_ladder_2020.npz"
-                ),
-                "sha256": LADDER_SHA,
-            },
-        },
-        "options": {"soi_mode": "totals", "hh_chunk": 20000},
-    }
-    data.update(overrides)
-    return data
 
 
 # --------------------------------------------------------------------------- #
@@ -658,22 +612,6 @@ def test_budget_stop_marks_the_receipt_failed(tmp_path: Path) -> None:
     assert (receipt["max_wall_seconds"], receipt["stopped_at_budget"]) == (3600, True)
 
 
-def _smoke_plan_data() -> dict:
-    return {
-        "schema": plan_lib.PLAN_SCHEMA,
-        "tool": "runner-smoke",
-        "stage": "smoke",
-        "run_id": "runner-smoke-20260923",
-        "source": {"commit": COMMIT, "branch": "us-modal-stage-runner"},
-        "inputs": {
-            "ladder": {
-                "uri": f"volume://cas/sha256/{LADDER_SHA}/us_puma_ladder_2020.npz",
-                "sha256": LADDER_SHA,
-            },
-        },
-    }
-
-
 def test_runner_smoke_is_inline_and_check_sized() -> None:
     plan = plan_lib.parse_plan(_smoke_plan_data())
     assert plan.resources is plan_lib.CHECK
@@ -684,24 +622,6 @@ def test_runner_smoke_is_inline_and_check_sized() -> None:
         "/work/state",
         "/work/inputs/ladder/us_puma_ladder_2020.npz",
     ]
-
-
-@pytest.mark.skipif(
-    importlib.util.find_spec("policyengine_us") is None,
-    reason="the smoke records the policyengine-us version (the us extra)",
-)
-def test_runner_smoke_code_writes_its_state_file(tmp_path: Path) -> None:
-    # The inline code runs as written: it writes the state file the receipt
-    # lists (executed here against a local stand-in input).
-    code = plan_lib.planned_argv(plan_lib.parse_plan(_smoke_plan_data()))[3]
-    ladder = tmp_path / "inputs" / "ladder" / "us_puma_ladder_2020.npz"
-    ladder.parent.mkdir(parents=True)
-    ladder.write_bytes(b"npz")
-    state = tmp_path / "state"
-    subprocess.run([sys.executable, "-c", code, str(state), str(ladder)], check=True)
-    payload = json.loads((state / "smoke" / "inputs.json").read_text())
-    assert payload["inputs"] == [{"input": "ladder", "bytes": 3}]
-    assert payload["policyengine_us"]
 
 
 def test_preempted_attempts_are_charged_to_the_wall_budget() -> None:

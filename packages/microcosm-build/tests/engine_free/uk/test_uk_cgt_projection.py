@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib.util
 import math
 
 import numpy as np
@@ -31,8 +30,7 @@ from microcosm.build.uk_runtime.hmrc_capital_gains import (
 )
 from microcosm.build.uk_runtime.national_frame import uk_national_frame
 from microcosm.build.uk_runtime.terminal_gates import uk_cgt_projection_entrants_gate
-
-GATE_ID = "uk_cgt_projection_entrants"
+from test_support.microcosm_build.uk_cgt_projection import GATE_ID, manifest_entry
 
 
 class _Reader:
@@ -58,15 +56,11 @@ def _projection(base_year: int = 2024, horizon_year: int = 2030, **reader_kwargs
     )
 
 
-def _manifest_entry():
-    return next(g for g in load_country_spec("uk").gates.gates if g.id == GATE_ID)
-
-
 class _PinnedReader:
     """A reader that returns the manifest's pinned growth path and exempt amount."""
 
     def __init__(self, *, growth_offset: float = 0.0) -> None:
-        parameters = _manifest_entry().parameters
+        parameters = manifest_entry().parameters
         self.growth = {
             int(year): float(rate) + growth_offset
             for year, rate in parameters["expected_yoy_growth_by_year"].items()
@@ -293,7 +287,7 @@ def test_binding_names_the_year_the_pins_do_not_cover() -> None:
     drift check, and the failure names the year for both the growth rate and
     the exempt amount, so the re-pin a horizon change needs is spelled out."""
 
-    parameters = dict(_manifest_entry().parameters)
+    parameters = dict(manifest_entry().parameters)
     parameters["expected_yoy_growth_by_year"] = {
         year: rate
         for year, rate in parameters["expected_yoy_growth_by_year"].items()
@@ -316,7 +310,7 @@ def test_binding_names_the_year_the_pins_do_not_cover() -> None:
 
 
 def test_manifest_entry_and_bound_are_the_reviewed_ones() -> None:
-    entry = next(g for g in load_country_spec("uk").gates.gates if g.id == GATE_ID)
+    entry = manifest_entry()
     assert entry.gate == "cgt_projection_entrants"
     assert entry.phase == "terminal"
     assert entry.criticality == "release_blocking"
@@ -361,33 +355,8 @@ def test_manifest_entry_and_bound_are_the_reviewed_ones() -> None:
     )
 
 
-@pytest.mark.requires_uk
-def test_engine_projection_matches_the_published_growth_path() -> None:
-    projection = uk_cgt_projection(2024, 2030)
-
-    assert projection.engine.startswith("policyengine-uk==")
-    # The label the release certifier accepts on the seam's fence.
-    assert uk_cgt_projection_read_from_engine(projection.engine)
-    assert set(projection.exempt_amount_by_year.values()) == {3_000.0}
-    assert list(projection.yoy_growth_by_year.values()) == pytest.approx(
-        [0.0438, 0.0292, 0.0323, 0.0310, 0.0296, 0.0315], abs=5e-4
-    )
-    assert projection.cumulative_gains_factor_by_year["2030"] == pytest.approx(
-        1.2143, abs=5e-4
-    )
-    pinned = _manifest_entry().parameters
-    for year, rate in projection.yoy_growth_by_year.items():
-        assert rate == pytest.approx(
-            float(pinned["expected_yoy_growth_by_year"][year]),
-            abs=float(pinned["maximum_growth_drift"]),
-        )
-    # Beyond the pinned horizon the engine repeats the 2030 rate.
-    beyond = uk_cgt_projection(2024, 2033)
-    assert beyond.yoy_growth_by_year["2033"] == projection.yoy_growth_by_year["2030"]
-
-
 def test_projection_from_pins_is_the_engine_free_statement_of_the_path() -> None:
-    parameters = _manifest_entry().parameters
+    parameters = manifest_entry().parameters
     pinned = uk_cgt_projection_from_pins(
         2023,
         2030,
@@ -453,10 +422,8 @@ def test_seam_artifact_lets_an_installed_engine_that_will_not_import_raise(
         calibration_run.uk_cgt_projection_artifact(frame, load_country_spec("uk").gates)
 
 
-def test_engine_availability_is_decided_by_find_spec() -> None:
-    assert uk_engine_installed() is (
-        importlib.util.find_spec("policyengine_uk") is not None
-    )
+def test_engine_is_reported_unavailable_without_the_uk_extra() -> None:
+    assert not uk_engine_installed()
 
 
 def test_only_a_versioned_engine_label_reads_as_the_engine() -> None:
