@@ -2429,3 +2429,56 @@ def test_line_promotion_refuses_a_release_whose_role_is_not_the_lines(
             tag_name=UK_NATIONAL_CUT_TAG,
             line="national",
         )
+
+
+def test_transient_errors_while_checking_an_existing_tag_propagate(
+    release_dir: Path, artifact_root: Path, tmp_path: Path, monkeypatch
+) -> None:
+    """Only "absent" answers are swallowed: a transient failure looking up
+    the tag or its manifest propagates, so a good cut is never orphaned
+    and the create path is never re-entered with the tag in place."""
+    national = _as_uk_national_line_release(release_dir)
+    monkeypatch.setattr(
+        release_module, "validate_release_dir", lambda _path, **_kwargs: None
+    )
+    monkeypatch.setattr(release_module, "notify_release", lambda *a, **k: None)
+    hub = _uk_hub(tmp_path)
+    original_repo_info = hub.repo_info
+
+    def flaky_repo_info(*, repo_id, repo_type, revision=None):
+        if revision == UK_NATIONAL_CUT_TAG:
+            raise RuntimeError("injected transient Hub failure")
+        return original_repo_info(
+            repo_id=repo_id, repo_type=repo_type, revision=revision
+        )
+
+    monkeypatch.setattr(hub, "repo_info", flaky_repo_info)
+    with pytest.raises(RuntimeError, match="injected transient Hub failure"):
+        publish_release(
+            national,
+            "policyengine/populace-uk-private",
+            api=hub,
+            artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
+        )
+    assert hub.tags == []
+    assert not [event for event, _ in hub.events if event == "create_branch"]
+
+    monkeypatch.setattr(hub, "repo_info", original_repo_info)
+    hub._refs[UK_NATIONAL_CUT_TAG] = hub._refs["main"]
+
+    def flaky_download(*, repo_id, filename, repo_type, revision=None):
+        raise RuntimeError("injected transient download failure")
+
+    monkeypatch.setattr(hub, "hf_hub_download", flaky_download)
+    with pytest.raises(RuntimeError, match="injected transient download failure"):
+        publish_release(
+            national,
+            "policyengine/populace-uk-private",
+            api=hub,
+            artifact_root=artifact_root,
+            tag_name=UK_NATIONAL_CUT_TAG,
+            line="national",
+        )
+    assert line_pointer_path("national") not in hub._commits[hub._refs["main"]]

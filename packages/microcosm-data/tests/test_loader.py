@@ -816,14 +816,13 @@ def _is_offline_error(exc: Exception) -> bool:
     )
 
 
-def _is_missing_pointer_error(exc: BaseException) -> bool:
+def _is_missing_pointer_error(exc: BaseException, pointer_path: str) -> bool:
+    """The pointer file itself is absent at the repo root: an
+    ``EntryNotFoundError`` naming that path (the Hub's answer for a file that
+    does not exist at the revision). Repository, auth and manifest errors are
+    not this, and must not skip as "not yet promoted"."""
     names = {cls.__name__ for cls in type(exc).__mro__}
-    text = str(exc)
-    return bool(
-        names & {"EntryNotFoundError", "FileNotFoundError"}
-        or "404" in text
-        or "Entry Not Found" in text
-    )
+    return "EntryNotFoundError" in names and pointer_path in str(exc)
 
 
 @pytest.mark.skipif(_hf_offline(), reason="Hugging Face offline mode is enabled")
@@ -856,16 +855,19 @@ def test_live_latest_pointer_resolves_to_a_coherent_certified_release(
     except Exception as exc:
         if _is_offline_error(exc):
             pytest.skip(f"Hugging Face metadata unavailable offline: {exc}")
-        if variant != DEFAULT_VARIANT and _is_missing_pointer_error(exc):
-            # A line pointer exists only once its first cut is promoted;
-            # until then the line is registered but not yet live.
-            pytest.skip(f"line pointer {spec.pointer_path} not yet promoted: {exc}")
         if isinstance(exc, (RepositoryNotFoundError, GatedRepoError)) or "401" in str(
             exc
         ):
             pytest.skip(
                 f"repo requires credentials this environment lacks (private): {exc}"
             )
+        if variant != DEFAULT_VARIANT and _is_missing_pointer_error(
+            exc, spec.pointer_path
+        ):
+            # A line pointer exists only once its first cut is promoted;
+            # until then the line is registered but not yet live. Anything
+            # else on a promoted line (a manifest 404, a bad pin) fails.
+            pytest.skip(f"line pointer {spec.pointer_path} not yet promoted: {exc}")
         raise
 
     assert certified.release_id.startswith(

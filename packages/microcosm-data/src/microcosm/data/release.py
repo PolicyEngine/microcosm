@@ -972,10 +972,30 @@ def _tag_revision(api: object, *, repo_id: str, tag: str) -> str | None:
         return None
     try:
         info = repo_info(repo_id=repo_id, repo_type="dataset", revision=tag)
-    except Exception:  # noqa: BLE001 - an absent revision is the common case
-        return None
+    except Exception as exc:
+        # Only "no such revision" means the tag is absent. Anything else (a
+        # transient network failure, an auth error) must propagate: treating
+        # it as absent would re-enter the create path and die on create_tag
+        # with the staging branch left behind.
+        if _is_absent_revision_error(exc):
+            return None
+        raise
     value = info.get("sha") if isinstance(info, Mapping) else getattr(info, "sha", None)
     return str(value) if value else None
+
+
+_ABSENT_REVISION_ERRORS = frozenset({"RevisionNotFoundError", "KeyError"})
+_ABSENT_ENTRY_ERRORS = frozenset({"EntryNotFoundError", "FileNotFoundError"})
+
+
+def _is_absent_revision_error(exc: BaseException) -> bool:
+    """A Hub (or fake) answer that the revision does not exist, nothing else."""
+    return bool({cls.__name__ for cls in type(exc).__mro__} & _ABSENT_REVISION_ERRORS)
+
+
+def _is_absent_entry_error(exc: BaseException) -> bool:
+    """A Hub (or fake) answer that the file does not exist at that revision."""
+    return bool({cls.__name__ for cls in type(exc).__mro__} & _ABSENT_ENTRY_ERRORS)
 
 
 def _require_tag_describes_release(
@@ -1002,9 +1022,14 @@ def _require_tag_describes_release(
                 revision=tag,
             )
         ).read_bytes()
-    except Exception as exc:  # noqa: BLE001 - the refusal names the cause
+    except Exception as exc:
+        # Only an absent manifest means the tag describes another release; a
+        # transient failure must propagate rather than send the operator to a
+        # fresh cut tag and orphan a good one.
+        if not _is_absent_entry_error(exc):
+            raise
         raise ValueError(
-            f"tag {tag!r} already exists in {repo_id} but carries no readable "
+            f"tag {tag!r} already exists in {repo_id} but carries no "
             f"{manifest_path} ({exc}); it does not describe this release, so "
             "it cannot be reused. Publish under a fresh cut tag."
         ) from exc
