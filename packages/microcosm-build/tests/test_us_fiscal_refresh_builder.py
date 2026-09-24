@@ -5906,6 +5906,216 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
     assert diagnostics["build"]["default_dataset"]["final_loss"] is None
 
 
+def _run_green_register_release(
+    builder,
+    monkeypatch,
+    *,
+    captured,
+    out: Path,
+    release_id: str,
+    tail_register: Path,
+    export_mass_reference: Path,
+    skipped_smoke: bool,
+) -> None:
+    """Drive the harness's green register run through main() and check that
+    both manifests bind the run's gate evidence (route A remediation PR-3).
+    """
+    from microcosm.data.contract import (
+        _check_build_manifest,
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    release_dir = out / "releases" / release_id
+    # The harness stubs every hash to a constant. The run's own outputs, the
+    # register and the export-mass reference hash for real, so the manifests
+    # can be checked against the bytes on disk.
+    stub_sha256 = builder._sha256
+
+    def sha256(path):
+        path = Path(path)
+        if path in {tail_register, export_mass_reference} or out in path.parents:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+        return stub_sha256(path)
+
+    monkeypatch.setattr(builder, "_sha256", sha256)
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "2.2.1",
+            "torch": "2.12.0",
+        },
+    )
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, *, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "e" * 64, "n_targets": 1},
+        },
+    )
+    reference_frame = object()
+
+    def fake_load_us_frame(path):
+        captured["export_reference_loaded"] = Path(path)
+        return reference_frame
+
+    monkeypatch.setattr(builder, "load_us_frame", fake_load_us_frame)
+    monkeypatch.setattr(builder, "default_simulate_factory", lambda path: path)
+
+    def fake_smoke(*, simulate, period):
+        captured["smoke_scored"] = simulate
+        return builder.GateResult(
+            name="reform_coverage_smoke",
+            passed=True,
+            details={"probes": ["ssi_asset_limit"]},
+        )
+
+    monkeypatch.setattr(builder, "us_reform_coverage_smoke_gate", fake_smoke)
+    monkeypatch.setattr(
+        builder,
+        "us_take_up_participation_diagnostics",
+        lambda frame: {"programs": []},
+    )
+    monkeypatch.setattr(
+        builder, "_fiscal_target_source_provenance", lambda target_specs: []
+    )
+    # A superseded attempt under the same --release-id left a verdict for
+    # every gate behind. Each gate this run evaluates rewrites its file; the
+    # smoke, when skipped, must leave no verdict at all rather than the old one.
+    release_dir.mkdir(parents=True, exist_ok=True)
+    for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values():
+        (release_dir / filename).write_text('{"stale": true}')
+
+    builder.main()
+
+    assert captured["terminal_gate_events"] == [
+        "input_coverage",
+        "input_mass_parity",
+        "qrf_tail_concentration",
+    ]
+    # All four stale verdicts were cleared before any gate ran, including the
+    # three this run goes on to rewrite: a gate that crashed or was skipped
+    # must leave no verdict rather than the superseded one.
+    assert captured["gate_evidence_on_disk_at_first_gate"] == []
+    assert captured["qrf_tail_register_seen"] == {
+        "estate_income": "donor tail concentrated before calibration"
+    }
+    if skipped_smoke:
+        assert "smoke_scored" not in captured
+        assert not (release_dir / "reform_coverage_smoke.json").exists()
+    else:
+        assert captured["smoke_scored"] == captured["written_dataset"]
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+
+    artifacts = release_manifest["artifacts"]
+    bound = dict(builder.US_RELEASE_GATE_EVIDENCE_FILES)
+    if skipped_smoke:
+        bound.pop("reform_coverage_smoke")
+        assert "reform_coverage_smoke" not in artifacts
+    for key, filename in bound.items():
+        assert json.loads((release_dir / filename).read_text()) != {"stale": True}
+        assert artifacts[key] == {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": builder.REPO_ID,
+            "revision": release_id,
+            "sha256": hashlib.sha256((release_dir / filename).read_bytes()).hexdigest(),
+        }
+    if not skipped_smoke:
+        smoke = json.loads((release_dir / "reform_coverage_smoke.json").read_text())
+        assert smoke["reform_coverage_smoke"]["passed"] is True
+    tail = json.loads((release_dir / "qrf_tail_concentration.json").read_text())
+    assert tail["tail_concentration"]["passed"] is True
+    assert set(tail["tail_concentration"]["details"]["reviewed_exclusions"]) == {
+        "estate_income"
+    }
+
+    register_sha256 = hashlib.sha256(tail_register.read_bytes()).hexdigest()
+    # The manifests bind the register the gate recorded, byte for byte.
+    assert tail["surface"]["reviewed_exclusions_sha256"] == register_sha256
+    expected_register = {
+        "path": str(tail_register),
+        "sha256": register_sha256,
+        "entries": {"estate_income": "donor tail concentrated before calibration"},
+        "mismatch": {"stale": [], "unused": []},
+        "enforced": True,
+    }
+    expected_reference = {
+        "path": str(export_mass_reference),
+        "sha256": hashlib.sha256(b"reference h5").hexdigest(),
+        "reference_name": export_mass_reference.name,
+        "evaluated": True,
+    }
+    # Whether the coverage file carries the PR-1 receipt depends on merge
+    # order; the reference must describe whichever bytes were written. Once
+    # PR-1's receipt compiler is in the tool, the receipt must be present:
+    # a writer/reader key drift would otherwise read as "no receipt".
+    coverage_path = release_dir / "us_source_coverage.json"
+    written_receipt = json.loads(coverage_path.read_text()).get(
+        builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY
+    )
+    if hasattr(builder, "us_fiscal_target_exclusion_receipt"):
+        assert written_receipt is not None
+    expected_receipt = {
+        "artifact": "us_source_coverage",
+        "path": "us_source_coverage.json",
+        "sha256": hashlib.sha256(coverage_path.read_bytes()).hexdigest(),
+        "key": builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY,
+        "present": written_receipt is not None,
+        "receipt_sha256": (
+            hashlib.sha256(
+                json.dumps(
+                    written_receipt, sort_keys=True, separators=(",", ":")
+                ).encode()
+            ).hexdigest()
+            if written_receipt is not None
+            else None
+        ),
+    }
+    expected_gate_evidence = {
+        "input_coverage": "bound",
+        "input_mass_parity": "bound",
+        "qrf_tail_concentration": "bound",
+        "reform_coverage_smoke": "skipped" if skipped_smoke else "bound",
+    }
+    for block in (build_manifest, release_manifest["build"]):
+        assert block["gate_evidence"] == expected_gate_evidence
+        assert block["qrf_tail_register"] == expected_register
+        assert block["export_input_mass_reference"] == expected_reference
+        runtime = block["calibration_runtime"]
+        assert set(runtime) == {"torch", "torch_num_threads", "omp_num_threads"}
+        assert runtime["torch_num_threads"] >= 1
+        assert runtime["omp_num_threads"] == os.environ["OMP_NUM_THREADS"]
+        # One reading, recorded in the diagnostics and both manifests.
+        assert runtime == captured["diagnostics"]["calibration_runtime"]
+        assert block["fiscal_target_exclusion_receipt"] == expected_receipt
+    # The manifests pin the reference the export-mass gate compared against.
+    assert captured["export_reference_loaded"] == export_mass_reference
+    parity_kwargs = captured["export_input_mass_kwargs"]
+    assert parity_kwargs["reference_frame"] is reference_frame
+    assert parity_kwargs["reference_name"] == export_mass_reference.name
+
+    # The publisher contract accepts both manifests, verifies every gate
+    # evidence hash against the local bytes, and uploads the files.
+    failures: list[str] = []
+    _check_build_manifest(build_manifest, release_id, failures)
+    _check_release_manifest(release_manifest, release_id, failures)
+    _check_local_artifact_hashes(release_dir, release_manifest, failures)
+    assert failures == []
+    assert set(bound.values()) <= set(_release_manifest_release_artifacts(release_dir))
+    assert not list(release_dir.glob("final_household_weight*"))
+
+
 @pytest.mark.parametrize(
     "terminal_mode",
     [
@@ -5919,6 +6129,8 @@ def test_release_calibration_diagnostics_writes_nan_final_loss_as_null(
         "qrf_tail_register",
         "qrf_tail_register_clean",
         "target_frame_checkpoint",
+        "qrf_tail_register_green",
+        "qrf_tail_register_green_skipped_smoke",
     ],
 )
 def test_main_writes_diagnostics_before_post_calibration_gate_failure(
@@ -5965,11 +6177,30 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     writer's payload, source commit included, must reach the written
     diagnostics. Every other mode passes ``--no-target-frame-checkpoint`` and
     must record the checkpoint as disabled.
+    ``qrf_tail_register_green``: the register names exactly the concentrated
+    column, so every terminal gate passes and the run goes on to write the
+    H5 and both manifests (route A remediation PR-3). The manifests must
+    bind the four gate-evidence files as release artifacts and record the
+    register the gate evaluated, the export-mass reference, the solve's
+    thread geometry, and where the fiscal-target exclusion receipt lives.
+    ``qrf_tail_register_green_skipped_smoke``: the same green run with the
+    reform-coverage smoke skipped, over a release directory a superseded
+    attempt left a smoke verdict in. That stale verdict must not be bound as
+    this run's.
     """
     builder = _load_builder_module()
     prepared_pool = terminal_mode in {"puf_tail", "spm_missing_pool"}
-    qrf_tail_register_modes = {"qrf_tail_register", "qrf_tail_register_clean"}
-    clean_run = terminal_mode == "qrf_tail_register_clean"
+    green_run = terminal_mode in {
+        "qrf_tail_register_green",
+        "qrf_tail_register_green_skipped_smoke",
+    }
+    qrf_tail_register_modes = {
+        "qrf_tail_register",
+        "qrf_tail_register_clean",
+        "qrf_tail_register_green",
+        "qrf_tail_register_green_skipped_smoke",
+    }
+    clean_run = terminal_mode == "qrf_tail_register_clean" or green_run
     checkpoint_run = terminal_mode == "target_frame_checkpoint"
     # Outside ``out``, so the no-H5-under-out sweep below still pins that a
     # failed run leaves no release artifact.
@@ -6181,13 +6412,26 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         tail_register = tmp_path / "qrf_tail_exclusions.json"
         tail_register.write_text(
             json.dumps(
-                {
+                {"estate_income": "donor tail concentrated before calibration"}
+                if green_run
+                else {
                     "estate_income": "measured concentrated on another lineage",
                     "bond_assets": "measured concentrated on another lineage",
                 }
             )
         )
         argv += ["--qrf-tail-concentration-exclusions", str(tail_register)]
+    if green_run:
+        export_mass_reference = tmp_path / "reference_populace_us_2024.h5"
+        export_mass_reference.write_bytes(b"reference h5")
+        argv += [
+            "--export-input-mass-reference-h5",
+            str(export_mass_reference),
+            "--skip-reform-validation",
+            "--skip-demographics",
+        ]
+        if terminal_mode == "qrf_tail_register_green_skipped_smoke":
+            argv.append("--skip-reform-coverage-smoke")
     monkeypatch.setattr(sys, "argv", argv)
     monkeypatch.setattr(builder, "_git_dirty", lambda: False)
 
@@ -6264,15 +6508,31 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "spm_missing_pool",
         "qrf_tail_register",
         "qrf_tail_register_clean",
+        "qrf_tail_register_green",
+        "qrf_tail_register_green_skipped_smoke",
     }:
+
+        def fake_write_dataset(frame, path, *, period):
+            captured["written_dataset"] = Path(path)
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_bytes(b"release h5")
+
         monkeypatch.setattr(
             builder,
             "PolicyEngineUSEngine",
-            lambda: SimpleNamespace(),
+            lambda: SimpleNamespace(write_dataset=fake_write_dataset),
         )
 
         def fake_input_coverage_gate(frame, engine):
             captured["terminal_gate_events"].append("input_coverage")
+            # Route A PR-3: by the first terminal gate, no verdict from a
+            # superseded attempt may remain, whether or not this run's gate
+            # would rewrite it.
+            captured["gate_evidence_on_disk_at_first_gate"] = sorted(
+                filename
+                for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values()
+                if (out / "releases" / release_id / filename).exists()
+            )
             return builder.GateResult(
                 name="input_coverage",
                 passed=True,
@@ -6281,6 +6541,7 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
         def fake_export_input_mass_gate(export_frame, base_frame, **kwargs):
             captured["terminal_gate_events"].append("input_mass_parity")
+            captured["export_input_mass_kwargs"] = kwargs
             return builder.GateResult(
                 name="export_input_mass_parity",
                 passed=True,
@@ -6293,6 +6554,22 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             reviewed_exclusions,
         ):
             captured["terminal_gate_events"].append("qrf_tail_concentration")
+            if green_run:
+                # The register's one column is genuinely concentrated (a
+                # repeated donor-ceiling value in 100 of 600 carriers), so
+                # the reviewed exclusion is used and the register matches.
+                captured["qrf_tail_register_seen"] = dict(reviewed_exclusions)
+                concentrated = np.zeros(12_000)
+                concentrated[:100] = 594_484.0
+                concentrated[100:600] = 2_979.0
+                return (
+                    builder.tail_concentration_gate(
+                        {"estate_income": concentrated},
+                        {"estate_income": np.ones(12_000)},
+                        reviewed_exclusions=reviewed_exclusions,
+                    ),
+                    {"checked_sparse_columns": ["estate_income"]},
+                )
             if terminal_mode in qrf_tail_register_modes:
                 # The real gate on a dispersed column: estate_income is
                 # checked and below threshold (stale), bond_assets never
@@ -7695,6 +7972,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
                         # The real writer copies ``build`` whole; this block
                         # carries the checkpoint provenance (microcosm#956).
                         "target_compilation": build["target_compilation"],
+                        # Route A PR-3: the solve's thread geometry must
+                        # survive a gate-failed run, which mints no manifest.
+                        **(
+                            {"calibration_runtime": build["calibration_runtime"]}
+                            if "calibration_runtime" in build
+                            else {}
+                        ),
                     }
                 },
                 allow_nan=False,
@@ -7800,6 +8084,8 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
             "retirement",
             "puf_tail",
             "qrf_tail_register_clean",
+            "qrf_tail_register_green",
+            "qrf_tail_register_green_skipped_smoke",
         }
         return builder.GateResult(
             name="ssi_take_up_delivery",
@@ -7873,6 +8159,19 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "write_calibration_diagnostics",
         fake_write_calibration_diagnostics,
     )
+
+    if green_run:
+        _run_green_register_release(
+            builder,
+            monkeypatch,
+            captured=captured,
+            out=out,
+            release_id=release_id,
+            tail_register=tail_register,
+            export_mass_reference=export_mass_reference,
+            skipped_smoke=terminal_mode == "qrf_tail_register_green_skipped_smoke",
+        )
+        return
 
     try:
         builder.main()
@@ -7980,6 +8279,13 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     written_diagnostics = json.loads(
         (release_dir / "calibration_diagnostics.json").read_text()
     )
+    # Route A PR-3: a gate-failed run writes no manifest, so its diagnostics
+    # are where the solve's thread geometry survives.
+    assert not (release_dir / "build_manifest.json").exists()
+    failed_runtime = written_diagnostics["build"]["calibration_runtime"]
+    assert set(failed_runtime) == {"torch", "torch_num_threads", "omp_num_threads"}
+    assert failed_runtime["torch_num_threads"] >= 1
+    assert failed_runtime["omp_num_threads"] == os.environ["OMP_NUM_THREADS"]
     if terminal_mode == "puf_tail":
         assert (
             "Exact-k PUF capital-gains tail failed: "
@@ -11507,6 +11813,435 @@ def test_build_manifests_uses_loadable_paths_and_round_trips_exact_count_receipt
     assert (
         release_manifest["artifacts"][calibration_key]["path"] == calibration_filename
     )
+
+
+def _gate_evidence_release_dir(builder, monkeypatch, tmp_path, *, coverage):
+    """A release dir with the contract files a manifest build hashes."""
+    release_id = "populace-us-2024-abcdef1-20260923"
+    release_dir = tmp_path / "release" / release_id
+    release_dir.mkdir(parents=True)
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    (artifact_root / builder.DATASET_FILENAME).write_bytes(b"h5")
+    (artifact_root / builder.CALIBRATION_FILENAME).write_bytes(b"npz")
+    (release_dir / "calibration_diagnostics.json").write_text("{}")
+    (release_dir / "us_source_coverage.json").write_text(json.dumps(coverage))
+    (release_dir / "us_ssi_take_up.json").write_text("{}")
+    monkeypatch.setattr(
+        builder,
+        "_runtime_versions",
+        lambda: {
+            "python": "3.14.0",
+            "microcosm-data": "0.1.0",
+            "policyengine-core": "3.26.11",
+            "policyengine-us": "2.2.1",
+        },
+    )
+    monkeypatch.setattr(builder, "_git_output", lambda *args: "a" * 40)
+    monkeypatch.setattr(
+        builder,
+        "diagnostics_payload",
+        lambda result, target_registry: {
+            "initial_loss": 2.0,
+            "final_loss": 1.0,
+            "fraction_within_10pct": 1.0,
+            "target_surface": {"sha256": "b" * 64, "n_targets": 1},
+        },
+    )
+    return release_id, release_dir, artifact_root
+
+
+def test_build_manifests_binds_gate_evidence_and_the_qrf_tail_register(
+    monkeypatch, tmp_path
+) -> None:
+    """Route A remediation PR-3: a certified waiver must ship with the
+    release. The four gate verdicts become release artifacts, and both
+    manifests record the register the tail gate evaluated, the export-mass
+    reference, the solve's thread geometry and the exclusion receipt."""
+    from microcosm.data.contract import (
+        _check_build_manifest,
+        _check_local_artifact_hashes,
+        _check_release_manifest,
+    )
+    from microcosm.data.release import _release_manifest_release_artifacts
+
+    builder = _load_builder_module()
+    receipt = {
+        "reviewed_exclusion": ["irs_soi.ty2023.fixture_row"],
+        "vintage_bypass_allowlist": ["irs_soi.ty2020.fixture_row"],
+    }
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder,
+        monkeypatch,
+        tmp_path,
+        coverage={builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY: receipt},
+    )
+    register = _qrf_tail_register(
+        tmp_path, {"non_sch_d_capital_gains": "donor-ceiling tail, tracked #481"}
+    )
+    failures: list[str] = []
+    assert (
+        _record_qrf_tail(
+            builder,
+            release_dir,
+            _qrf_export_frame(builder, _qrf_build_m_values()),
+            register=register,
+            allow=False,
+            failures=failures,
+        )[0]
+        == []
+    )
+    assert failures == []
+    for filename in ("input_coverage.json", "input_mass_parity.json"):
+        (release_dir / filename).write_text('{"schema_version": 1, "enforced": true}')
+    (release_dir / "reform_coverage_smoke.json").write_text(
+        '{"schema_version": 1, "enforced": true}'
+    )
+    reference = {
+        "path": "/runtime/forensics/populace_us_2024.h5",
+        "sha256": "c" * 64,
+        "reference_name": "populace_us_2024.h5",
+    }
+    runtime = builder._calibration_runtime()
+    # The register the gate evaluated, then an operator edit during the hours
+    # before the manifest write: the manifests must still bind the evaluated
+    # bytes and entries, never the file as it stands at manifest time.
+    evaluated_register_sha256 = hashlib.sha256(register.read_bytes()).hexdigest()
+    register.write_text(json.dumps({"estate_income": "edited after the gate ran"}))
+
+    builder._build_manifests(
+        export_input_mass_reference=reference,
+        calibration_runtime=runtime,
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root),
+    )
+
+    build_manifest = json.loads((release_dir / "build_manifest.json").read_text())
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    for key, filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.items():
+        assert release_manifest["artifacts"][key] == {
+            "kind": "diagnostics",
+            "path": filename,
+            "repo_id": builder.REPO_ID,
+            "revision": release_id,
+            "sha256": hashlib.sha256((release_dir / filename).read_bytes()).hexdigest(),
+        }
+    coverage_bytes = (release_dir / "us_source_coverage.json").read_bytes()
+    tail_surface = json.loads(
+        (release_dir / "qrf_tail_concentration.json").read_text()
+    )["surface"]
+    assert tail_surface["reviewed_exclusions_sha256"] == evaluated_register_sha256
+    assert (
+        evaluated_register_sha256 != hashlib.sha256(register.read_bytes()).hexdigest()
+    )
+    expected = {
+        "gate_evidence": dict.fromkeys(builder.US_RELEASE_GATE_EVIDENCE_FILES, "bound"),
+        "qrf_tail_register": {
+            "path": str(register),
+            "sha256": evaluated_register_sha256,
+            "entries": {"non_sch_d_capital_gains": "donor-ceiling tail, tracked #481"},
+            "mismatch": {"stale": [], "unused": []},
+            "enforced": True,
+        },
+        "export_input_mass_reference": reference,
+        "calibration_runtime": runtime,
+        "fiscal_target_exclusion_receipt": {
+            "artifact": "us_source_coverage",
+            "path": "us_source_coverage.json",
+            "sha256": hashlib.sha256(coverage_bytes).hexdigest(),
+            "key": builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY,
+            "present": True,
+            "receipt_sha256": hashlib.sha256(
+                json.dumps(receipt, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest(),
+        },
+    }
+    for key, block in expected.items():
+        assert build_manifest[key] == block
+        assert release_manifest["build"][key] == block
+
+    # The publisher contract accepts the manifests and uploads the evidence.
+    contract_failures: list[str] = []
+    _check_build_manifest(build_manifest, release_id, contract_failures)
+    _check_release_manifest(release_manifest, release_id, contract_failures)
+    _check_local_artifact_hashes(release_dir, release_manifest, contract_failures)
+    assert contract_failures == []
+    assert set(builder.US_RELEASE_GATE_EVIDENCE_FILES.values()) <= set(
+        _release_manifest_release_artifacts(release_dir)
+    )
+    # ...and its local hash check covers each file: an edited verdict fails.
+    for key, filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.items():
+        original = (release_dir / filename).read_bytes()
+        (release_dir / filename).write_bytes(original + b"\n")
+        contract_failures = []
+        _check_local_artifact_hashes(release_dir, release_manifest, contract_failures)
+        assert len(contract_failures) == 1
+        assert f"artifact {key!r} declares sha256" in contract_failures[0]
+        (release_dir / filename).write_bytes(original)
+
+
+def test_build_manifests_records_a_blanket_waiver_without_register_and_absent_receipt(
+    monkeypatch, tmp_path
+) -> None:
+    """A --allow-qrf-tail-concentration run on concentrated values, with no
+    register: the block still says so (null path and sha256, no entries) and
+    records that the tail gate was not enforced, and a coverage file without
+    the PR-1 receipt is referenced as absent rather than silently omitted."""
+    builder = _load_builder_module()
+    release_id, release_dir, artifact_root = _gate_evidence_release_dir(
+        builder, monkeypatch, tmp_path, coverage={}
+    )
+    failures: list[str] = []
+    _record_qrf_tail(
+        builder,
+        release_dir,
+        _qrf_export_frame(builder, _qrf_build_m_values()),
+        register=None,
+        allow=True,
+        failures=failures,
+    )
+    assert failures == []
+
+    builder._build_manifests(
+        **_minimal_manifest_kwargs(builder, release_id, release_dir, artifact_root)
+    )
+
+    release_manifest = json.loads((release_dir / "release_manifest.json").read_text())
+    build = release_manifest["build"]
+    assert build["qrf_tail_register"] == {
+        "path": None,
+        "sha256": None,
+        "entries": {},
+        "mismatch": {"stale": [], "unused": []},
+        "enforced": False,
+    }
+    assert build["fiscal_target_exclusion_receipt"]["present"] is False
+    assert build["fiscal_target_exclusion_receipt"]["receipt_sha256"] is None
+    # A verdict that was not written is named, never silently missing.
+    assert build["gate_evidence"] == {
+        "input_coverage": "not_evaluated",
+        "input_mass_parity": "not_evaluated",
+        "qrf_tail_concentration": "bound",
+        "reform_coverage_smoke": "not_evaluated",
+    }
+    # Only the verdict this run wrote is an artifact; direct callers that
+    # pass no reference or runtime get no such block.
+    evidence_keys = set(builder.US_RELEASE_GATE_EVIDENCE_FILES)
+    assert evidence_keys & set(release_manifest["artifacts"]) == {
+        "qrf_tail_concentration"
+    }
+    assert "export_input_mass_reference" not in build
+    assert "calibration_runtime" not in build
+
+
+def test_build_manifests_without_gate_evidence_binds_none() -> None:
+    builder = _load_builder_module()
+    assert builder._qrf_tail_register_manifest_block(Path("/nonexistent")) is None
+    assert builder._gate_evidence_artifacts(Path("/nonexistent"), revision="r") == {}
+
+
+def test_gate_evidence_status_names_skipped_and_unevaluated_gates() -> None:
+    """A skipped smoke and a gate that crashed under earlier failures both
+    leave no verdict; the status block tells them apart. A gate cannot be
+    both skipped and bound, and only the four bound gates can be skipped."""
+    builder = _load_builder_module()
+    bound = {"input_coverage": {}, "input_mass_parity": {}}
+
+    assert builder._gate_evidence_status(
+        bound, skipped_gates=("reform_coverage_smoke",)
+    ) == {
+        "input_coverage": "bound",
+        "input_mass_parity": "bound",
+        "qrf_tail_concentration": "not_evaluated",
+        "reform_coverage_smoke": "skipped",
+    }
+    with pytest.raises(ValueError, match=r"skipped have a verdict.*input_coverage"):
+        builder._gate_evidence_status(bound, skipped_gates=("input_coverage",))
+    with pytest.raises(ValueError, match=r"Unknown skipped release gates"):
+        builder._gate_evidence_status(bound, skipped_gates=("reform_validation",))
+
+
+def test_release_calibration_diagnostics_record_calibration_runtime(
+    monkeypatch, tmp_path
+) -> None:
+    """Route A PR-3: the diagnostics file is written before the batched
+    pre-export raise, so it is where a gate-failed run keeps the solve's
+    thread geometry. Direct callers that pass none get no block."""
+    builder = _load_builder_module()
+    builds: list[dict] = []
+    monkeypatch.setattr(
+        builder,
+        "write_calibration_diagnostics",
+        lambda result, path, *, target_registry, build: builds.append(build),
+    )
+    gate = SimpleNamespace(passed=True, failures=(), details={})
+    kwargs = dict(
+        result=SimpleNamespace(),
+        release_dir=tmp_path,
+        registry=TargetRegistry((), country="us"),
+        base_dataset_sha256="base-sha",
+        compilation={"dropped_target_names": []},
+        target_profile_gate=gate,
+        health_input_gate=None,
+        base_population_gate=None,
+        support_value_repairs={},
+        audit_export_targets=False,
+        gate_failures=["QRF tail concentration failed: fixture"],
+    )
+    runtime = {"torch": "2.12.0", "torch_num_threads": 16, "omp_num_threads": "16"}
+
+    builder._write_release_calibration_diagnostics(
+        calibration_runtime=runtime, **kwargs
+    )
+    builder._write_release_calibration_diagnostics(**kwargs)
+
+    assert builds[0]["calibration_runtime"] == runtime
+    assert builds[0]["release_gates"]["passed"] is False
+    assert "calibration_runtime" not in builds[1]
+
+
+def test_gate_evidence_files_are_the_files_their_gates_write() -> None:
+    """Structural pin: every bound file name is the literal a gate writes,
+    and _main() clears them all before the first gate writes, so a rename
+    or a reordering cannot silently drop a verdict or bind a stale one."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    for filename in builder.US_RELEASE_GATE_EVIDENCE_FILES.values():
+        assert f'release_dir / "{filename}"' in source, filename
+    tree = ast.parse(source)
+    main_fn = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    [clear_loop] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.For)
+        and ast.unparse(node.iter) == "US_RELEASE_GATE_EVIDENCE_FILES.values()"
+    ]
+    # Unconditional: a statement of _main itself (not under an if/try), whose
+    # whole body is one unlink of every file, so no edit can narrow it to
+    # some gates or some runs without failing here.
+    assert clear_loop in main_fn.body
+    assert [ast.unparse(statement) for statement in clear_loop.body] == [
+        f"(release_dir / {ast.unparse(clear_loop.target)}).unlink(missing_ok=True)"
+    ]
+    assert not clear_loop.orelse
+    first_gate = min(
+        node.lineno
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id
+        in {
+            "us_release_input_coverage_gate",
+            "_export_input_mass_gate",
+            "_record_qrf_tail_concentration_gate",
+            "us_reform_coverage_smoke_gate",
+        }
+    )
+    assert clear_loop.lineno < first_gate
+    [runtime_call] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_calibration_runtime"
+    ]
+    solves = [
+        node.lineno
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id
+        in {"calibrate", "calibrate_l0_refit", "calibrate_exact_k_ladder"}
+    ]
+    assert len(solves) == 3
+    assert runtime_call.lineno < min(solves)
+    [manifest_call] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_build_manifests"
+    ]
+    keywords = {
+        keyword.arg: ast.unparse(keyword.value) for keyword in manifest_call.keywords
+    }
+    assert keywords["export_input_mass_reference"] == "export_input_mass_reference"
+    assert keywords["calibration_runtime"] == "calibration_runtime"
+    assert keywords["skipped_gates"] == (
+        "('reform_coverage_smoke',) if args.skip_reform_coverage_smoke else ()"
+    )
+    [diagnostics_call] = [
+        node
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_write_release_calibration_diagnostics"
+    ]
+    assert {
+        keyword.arg: ast.unparse(keyword.value) for keyword in diagnostics_call.keywords
+    }["calibration_runtime"] == "calibration_runtime"
+
+
+def test_fiscal_target_exclusion_receipt_writer_uses_the_manifest_key() -> None:
+    """The manifests look the PR-1 receipt up under
+    US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY. A writer keyed by its own string
+    literal would drift silently on a rename: every manifest would then say
+    present=false. So the coverage write must use the constant, and once the
+    receipt compiler is in the tool, exactly one such write must exist."""
+    import ast
+
+    builder = _load_builder_module()
+    source = Path(builder.__file__).read_text()
+    main_fn = next(
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.FunctionDef) and node.name == "_main"
+    )
+    coverage_keys = [
+        target.slice
+        for node in ast.walk(main_fn)
+        if isinstance(node, ast.Assign)
+        for target in node.targets
+        if isinstance(target, ast.Subscript)
+        and isinstance(target.value, ast.Name)
+        and target.value.id == "coverage"
+    ]
+    assert coverage_keys, "the source-coverage writes moved; re-anchor this pin"
+    assert not [
+        key
+        for key in coverage_keys
+        if isinstance(key, ast.Constant)
+        and key.value == builder.US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY
+    ], "write the receipt under US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY"
+    receipt_writes = [
+        key
+        for key in coverage_keys
+        if isinstance(key, ast.Name)
+        and key.id == "US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY"
+    ]
+    if hasattr(builder, "us_fiscal_target_exclusion_receipt"):
+        assert len(receipt_writes) == 1
+
+
+def test_calibration_runtime_records_the_solve_thread_geometry(monkeypatch) -> None:
+    import torch
+
+    builder = _load_builder_module()
+    monkeypatch.setenv("OMP_NUM_THREADS", "7")
+
+    runtime = builder._calibration_runtime()
+
+    assert runtime == {
+        "torch": str(torch.__version__),
+        "torch_num_threads": torch.get_num_threads(),
+        "omp_num_threads": "7",
+    }
+    json.dumps(runtime, allow_nan=False)
 
 
 def test_pool_owned_fiscal_transforms_are_guarded_for_prepared_pool_input() -> None:

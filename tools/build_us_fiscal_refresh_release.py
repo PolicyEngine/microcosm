@@ -1099,8 +1099,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Optional JSON object of export column -> reason for sparse "
             "QRF-imputed columns allowed past the tail-concentration "
             "top-share threshold (microcosm#464 gate). Stale entries fail the "
-            "gate; the file sha and entries are recorded in the release "
-            "diagnostics."
+            "gate; the file path, sha256, entries and any mismatch are "
+            "recorded in qrf_tail_concentration.json and bound into both "
+            "manifests as qrf_tail_register, with that file a release "
+            "artifact."
         ),
     )
     parser.add_argument(
@@ -1237,7 +1239,8 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "Do not run the reform-coverage smoke gate (microcosm#368): the "
             "pinned bound-reform probes (SSI $10k/$20k asset limits) that must "
             "score nonzero on the written release. Skipping loses the "
-            "end-to-end $0-reform backstop; release builds should leave it on."
+            "end-to-end $0-reform backstop; release builds should leave it on. "
+            "Both manifests' gate_evidence block records the smoke as skipped."
         ),
     )
     parser.add_argument(
@@ -8145,6 +8148,7 @@ def _write_release_calibration_diagnostics(
     target_loss_family_multipliers: Mapping[str, float] | None = None,
     target_loss_basis: Mapping[str, object] | None = None,
     exact_k_ladder: Mapping[str, object] | None = None,
+    calibration_runtime: Mapping[str, object] | None = None,
 ) -> None:
     """Write calibration diagnostics even when hard release gates fail."""
     failures = list(gate_failures)
@@ -8324,6 +8328,14 @@ def _write_release_calibration_diagnostics(
                 else {}
             ),
             "timing": dict(timing or {}),
+            # Route A PR-3: this file is written before the batched pre-export
+            # raise, so unlike the manifests it records the solve's thread
+            # geometry on a gate-failed run too.
+            **(
+                {"calibration_runtime": dict(calibration_runtime)}
+                if calibration_runtime is not None
+                else {}
+            ),
             "release_gates": {
                 "passed": not failures,
                 "failures": failures,
@@ -8404,6 +8416,148 @@ def _artifact_entry(path: str, sha: str, *, kind: str, revision: str) -> dict[st
         "repo_id": REPO_ID,
         "revision": revision,
         "sha256": sha,
+    }
+
+
+#: Terminal gate verdicts written into the release directory, keyed by their
+#: release-manifest artifact key. ``prepare_release`` uploads only contract
+#: files, manifest artifacts and ``--extra-file`` entries, so a verdict that is
+#: not a manifest artifact never ships — including the QRF tail register a
+#: certified waiver rests on (route A remediation PR-3). _main() clears these
+#: before the terminal gates run, so any present at manifest time are this
+#: run's own.
+US_RELEASE_GATE_EVIDENCE_FILES: dict[str, str] = {
+    "input_coverage": "input_coverage.json",
+    "input_mass_parity": "input_mass_parity.json",
+    "qrf_tail_concentration": "qrf_tail_concentration.json",
+    "reform_coverage_smoke": "reform_coverage_smoke.json",
+}
+
+#: Key under which ``us_source_coverage.json`` carries the fiscal-target
+#: exclusion receipt: the concrete source record ids each exclusion rule
+#: dropped or allowed on this feed (route A remediation PR-1). The manifests
+#: reference it by file sha and key; ``present`` stays false until the
+#: compiler writes the receipt.
+US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY = "fiscal_target_exclusion_receipt"
+
+
+def _gate_evidence_artifacts(release_dir: Path, *, revision: str) -> dict[str, dict]:
+    """Release-manifest artifact entries for this run's gate evidence files."""
+    return {
+        key: _artifact_entry(
+            filename,
+            _sha256(release_dir / filename),
+            kind="diagnostics",
+            revision=revision,
+        )
+        for key, filename in US_RELEASE_GATE_EVIDENCE_FILES.items()
+        if (release_dir / filename).is_file()
+    }
+
+
+def _gate_evidence_status(
+    gate_evidence_artifacts: Mapping[str, object],
+    *,
+    skipped_gates: Iterable[str],
+) -> dict[str, str]:
+    """Why each gate's verdict is, or is not, a release artifact.
+
+    A missing verdict alone cannot tell a gate the operator skipped by flag
+    (``skipped``: only --skip-reform-coverage-smoke can) from one whose
+    evaluation crashed under earlier failures on an evidence-tier run and so
+    wrote nothing (``not_evaluated``), or from a release built before gate
+    evidence was bound at all. This block names which, in both manifests.
+    """
+    skipped = set(skipped_gates)
+    unknown = sorted(skipped - set(US_RELEASE_GATE_EVIDENCE_FILES))
+    if unknown:
+        raise ValueError(f"Unknown skipped release gates: {unknown}.")
+    contradictory = sorted(skipped & set(gate_evidence_artifacts))
+    if contradictory:
+        raise ValueError(
+            "Release gates recorded as skipped have a verdict in the release "
+            f"directory: {contradictory}."
+        )
+    return {
+        key: (
+            "bound"
+            if key in gate_evidence_artifacts
+            else "skipped"
+            if key in skipped
+            else "not_evaluated"
+        )
+        for key in US_RELEASE_GATE_EVIDENCE_FILES
+    }
+
+
+def _qrf_tail_register_manifest_block(release_dir: Path) -> dict[str, object] | None:
+    """The per-run QRF tail register, as the gate recorded it.
+
+    Read back from ``qrf_tail_concentration.json`` rather than re-hashed, so
+    the manifest binds the register the gate actually evaluated (its path,
+    sha256 and entries at evaluation time) and the mismatch it measured. A
+    null path/sha256 with no entries means no per-column register was passed;
+    ``enforced`` says whether the gate held, since ``enforced: false`` means
+    --allow-qrf-tail-concentration waived the whole gate. ``None`` when the
+    gate never wrote its evidence.
+    """
+    path = release_dir / US_RELEASE_GATE_EVIDENCE_FILES["qrf_tail_concentration"]
+    if not path.is_file():
+        return None
+    payload = json.loads(path.read_text())
+    surface = payload["surface"]
+    mismatch = surface["register_mismatch"]
+    return {
+        "path": surface["reviewed_exclusions_file"],
+        "sha256": surface["reviewed_exclusions_sha256"],
+        "entries": dict(surface["reviewed_exclusions"]),
+        "mismatch": {
+            "stale": list(mismatch["stale"]),
+            "unused": list(mismatch["unused"]),
+        },
+        "enforced": payload["enforced"],
+    }
+
+
+def _fiscal_target_exclusion_receipt_reference(
+    coverage_path: Path, coverage_sha256: str
+) -> dict[str, object]:
+    """Where the fiscal-target exclusion receipt lives, and which bytes."""
+    coverage = json.loads(coverage_path.read_text())
+    receipt = (
+        coverage.get(US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY)
+        if isinstance(coverage, Mapping)
+        else None
+    )
+    return {
+        "artifact": "us_source_coverage",
+        "path": coverage_path.name,
+        "sha256": coverage_sha256,
+        "key": US_FISCAL_TARGET_EXCLUSION_RECEIPT_KEY,
+        "present": receipt is not None,
+        "receipt_sha256": (
+            hashlib.sha256(_strict_json_bytes(receipt)).hexdigest()
+            if receipt is not None
+            else None
+        ),
+    }
+
+
+def _calibration_runtime() -> dict[str, object]:
+    """Thread geometry the calibration solve runs under.
+
+    The solve's floating-point summation order, and so its exact weights,
+    depends on the torch intra-op thread count; recording it lets a later
+    pass (a checkpoint hit, an offline replay) say whether it can reproduce
+    this one bit for bit. ``OMP_NUM_THREADS`` is the value after this
+    module's bounded default, so it is never missing.
+    """
+    import torch
+
+    return {
+        "torch": str(torch.__version__),
+        "torch_num_threads": int(torch.get_num_threads()),
+        "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
     }
 
 
@@ -8551,6 +8705,9 @@ def _build_manifests(
     base_pool: Mapping[str, object] | None = None,
     acs_predictor_join: Mapping[str, object] | None = None,
     evidence_known_failures: Sequence[Mapping[str, str]] | None = None,
+    export_input_mass_reference: Mapping[str, object] | None = None,
+    calibration_runtime: Mapping[str, object] | None = None,
+    skipped_gates: Iterable[str] = (),
 ) -> None:
     dataset_path = artifact_root / dataset_filename
     calibration_path = artifact_root / calibration_filename
@@ -8561,6 +8718,35 @@ def _build_manifests(
     diagnostics_sha = _sha256(diagnostics_path)
     coverage_sha = _sha256(coverage_path)
     diag = diagnostics_payload(result, target_registry=registry)
+    # Route A remediation PR-3: every certified-surface exception, and the
+    # inputs the gates judged against, must be recorded in the manifests
+    # rather than only in loose diagnostics that never ship. The same blocks
+    # ride build_manifest.json and release_manifest.json's build section.
+    gate_evidence_artifacts = _gate_evidence_artifacts(release_dir, revision=release_id)
+    qrf_tail_register = _qrf_tail_register_manifest_block(release_dir)
+    evidence_bindings: dict[str, object] = {
+        "gate_evidence": _gate_evidence_status(
+            gate_evidence_artifacts, skipped_gates=skipped_gates
+        ),
+        **(
+            {"qrf_tail_register": qrf_tail_register}
+            if qrf_tail_register is not None
+            else {}
+        ),
+        **(
+            {"export_input_mass_reference": dict(export_input_mass_reference)}
+            if export_input_mass_reference is not None
+            else {}
+        ),
+        **(
+            {"calibration_runtime": dict(calibration_runtime)}
+            if calibration_runtime is not None
+            else {}
+        ),
+        "fiscal_target_exclusion_receipt": _fiscal_target_exclusion_receipt_reference(
+            coverage_path, coverage_sha
+        ),
+    }
     gate_failures = _release_gate_failures(
         result,
         dropped,
@@ -8622,6 +8808,7 @@ def _build_manifests(
             if acs_predictor_join is not None
             else {}
         ),
+        **evidence_bindings,
         "dataset": {
             "filename": dataset_filename,
             "sha256": dataset_sha,
@@ -8858,6 +9045,7 @@ def _build_manifests(
                 if acs_predictor_join is not None
                 else {}
             ),
+            **evidence_bindings,
             "warm_start_calibration": warm_start_payload,
             "selection_source": selection_source_payload,
             # Present only when --target-surface narrows the calibrated
@@ -9042,6 +9230,7 @@ def _build_manifests(
                 if (release_dir / "demographics.json").exists()
                 else {}
             ),
+            **gate_evidence_artifacts,
         },
     }
     if evidence_known_failures is not None:
@@ -11864,6 +12053,10 @@ def _main(argv: Sequence[str] | None = None) -> None:
             target_compilation_seconds=timing["target_compilation_seconds"],
         )
     calibration_started = time.perf_counter()
+    # Route A PR-3: the solve's thread geometry, read as it starts. It rides
+    # calibration_diagnostics.json (every run, gate-failed ones included) and
+    # both manifests.
+    calibration_runtime = _calibration_runtime()
     ladder_outcome = None
     exact_k_puf_tail_gate: GateResult | None = None
     if args.exact_k is not None:
@@ -12410,6 +12603,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
         target_loss_family_multipliers=args.target_family_loss_multipliers,
         target_loss_basis=target_loss_basis,
         exact_k_ladder=exact_k_ladder_provenance,
+        calibration_runtime=calibration_runtime,
     )
     # Terminal-gate batching: evaluate EVERY terminal gate
     # group and raise once with the full failure list, instead of aborting at
@@ -12492,6 +12686,12 @@ def _main(argv: Sequence[str] | None = None) -> None:
         message="Writing PolicyEngine-US H5.",
     )
     release_engine = PolicyEngineUSEngine()
+    # Route A PR-3: _build_manifests binds every gate-evidence file present in
+    # the release directory as this run's verdict. With --out/--release-id
+    # reuse, a superseded attempt's file (for example a reform-coverage smoke
+    # this run skips) would otherwise be certified as this run's own.
+    for stale_gate_evidence in US_RELEASE_GATE_EVIDENCE_FILES.values():
+        (release_dir / stale_gate_evidence).unlink(missing_ok=True)
     # microcosm#368: full eCPS input-column coverage as a HARD release gate.
     # Every input column the reference eCPS exports must be persisted by the
     # export as a key with non-default signal, or carry a reviewed exclusion.
@@ -12568,7 +12768,27 @@ def _main(argv: Sequence[str] | None = None) -> None:
     # still fails. This is a DISTINCT flag from --input-mass-reference-h5: the
     # base-vs-reference gate compares the *pre-calibration* base and would
     # over-fire against a calibrated reference on the same PUF columns.
+    # Route A PR-3: the gate details carry only the reference's basename, so
+    # the manifests record its path and the sha256 of the bytes loaded here.
+    export_reference_name = (
+        args.export_input_mass_reference_h5.name
+        if args.export_input_mass_reference_h5 is not None
+        else "base_frame"
+    )
+    export_input_mass_reference: dict[str, object] = {
+        "path": (
+            str(args.export_input_mass_reference_h5)
+            if args.export_input_mass_reference_h5 is not None
+            else None
+        ),
+        "sha256": None,
+        "reference_name": export_reference_name,
+    }
     try:
+        if args.export_input_mass_reference_h5 is not None:
+            export_input_mass_reference["sha256"] = _sha256(
+                args.export_input_mass_reference_h5
+            )
         export_reference_frame = (
             load_us_frame(args.export_input_mass_reference_h5)
             if args.export_input_mass_reference_h5 is not None
@@ -12580,11 +12800,7 @@ def _main(argv: Sequence[str] | None = None) -> None:
             relative_tolerance=args.input_mass_relative_tolerance,
             minimum_reference_total=args.input_mass_minimum_reference_total,
             reference_frame=export_reference_frame,
-            reference_name=(
-                args.export_input_mass_reference_h5.name
-                if args.export_input_mass_reference_h5 is not None
-                else "base_frame"
-            ),
+            reference_name=export_reference_name,
             # Build H (microcosm#299): the two SOI-identified columns whose true
             # target level provably cannot sit inside the live-default reference
             # band (estate_income, non_sch_d_capital_gains). miscellaneous_income
@@ -12602,6 +12818,9 @@ def _main(argv: Sequence[str] | None = None) -> None:
             f"failures: {type(exc).__name__}: {exc}"
         )
         export_input_mass_gate = None
+    # A reference the gate never evaluated is still named, but marked so no
+    # reader takes its bytes as what the parity verdict saw.
+    export_input_mass_reference["evaluated"] = export_input_mass_gate is not None
     if export_input_mass_gate is not None:
         input_mass_parity_failed = (
             not export_input_mass_gate.passed and not args.allow_input_mass_drift
@@ -13039,6 +13258,11 @@ def _main(argv: Sequence[str] | None = None) -> None:
         base_pool=base_pool_receipt,
         acs_predictor_join=acs_predictor_join_receipt,
         evidence_known_failures=evidence_known_failures,
+        export_input_mass_reference=export_input_mass_reference,
+        calibration_runtime=calibration_runtime,
+        skipped_gates=(
+            ("reform_coverage_smoke",) if args.skip_reform_coverage_smoke else ()
+        ),
     )
     if telemetry is not None:
         telemetry.attach_artifact("build_manifest", release_dir / "build_manifest.json")

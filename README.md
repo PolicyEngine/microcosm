@@ -189,6 +189,15 @@ reviewed cut with `--promote-line <line> --tag-name <cut-tag>`. Promotion moves
 only that line pointer; the UK repository-global `latest.json` remains frozen
 on the June 2023 release. Promotion reuses the immutable cut tag the inspect publication created (it checks the tagged manifest is byte-identical) and writes only the pointer commit, so the two-step sequence and a retry after a failed pointer commit both work. A line's registry entry is registered off the default variant until its first promotion; the default flips in a follow-up after the pointer exists.
 
+The publisher uploads only the contract files, the release manifest's
+artifacts and any `--extra-file`. The US fiscal-refresh tool therefore binds
+its terminal gate verdicts as manifest artifacts: `input_coverage.json`,
+`input_mass_parity.json`, `qrf_tail_concentration.json` and
+`reform_coverage_smoke.json`. Both manifests also record the per-run QRF tail
+register (`qrf_tail_register`) and the export-mass reference, so a waiver
+ships with the release it waives, and a `gate_evidence` block that says of
+each verdict whether it is bound, skipped by flag or never evaluated.
+
 US exact-k ladder candidates use a tag-only lane. Run
 `tools/build_us_exact_k_ladder_release.py`, then execute the `publish_command`
 recorded in `package_result.json`. That command includes `--create-tag`,
