@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 
 from microcosm.build.uk_runtime.stage_health import uk_stage_health_gate
+from test_support.paths import paths_for
+
+_TEST_PATHS = paths_for("microcosm-build")
 
 
 def _passed(result) -> bool:
@@ -819,16 +824,9 @@ def test_cgt_incidence_anchor_gate_holds_the_composition_and_the_pairs() -> None
         )
     with pytest.raises(ValueError, match="pair_count"):
         _anchor_gate(_anchor_evidence(pair_count=1.5))
-
-
 def _gate_parameters(gate_id: str) -> dict:
-    import json
-    from pathlib import Path
-
     gates = json.loads(
-        (
-            Path(__file__).resolve().parents[1] / "src/microcosm/build/uk/gates.json"
-        ).read_text("utf-8")
+        (_TEST_PATHS.package / "src/microcosm/build/uk/gates.json").read_text("utf-8")
     )
     entry = next(g for g in gates["gates"] if g["id"] == gate_id)
     assert entry["gate"] == "stage_health"
