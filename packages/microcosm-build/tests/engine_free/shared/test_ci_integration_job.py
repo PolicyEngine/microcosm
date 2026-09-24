@@ -45,8 +45,8 @@ def test_integration_job_is_required_and_read_only() -> None:
     assert 'require_success integration-uk "$INTEGRATION_UK_RESULT"' in workflow
 
 
-def test_country_engine_jobs_run_serially() -> None:
-    """Country engines must not be duplicated across concurrent pytest workers."""
+def test_us_engine_uses_two_workers_with_memory_diagnostics() -> None:
+    """US engine tests should match engine-free pytest reporting and concurrency."""
     workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
 
     engine_free = workflow.split("\n  engine-free:\n", 1)[1].split(
@@ -58,9 +58,13 @@ def test_country_engine_jobs_run_serially() -> None:
     )[0]
 
     assert "-n 2 --dist loadfile" in engine_free
-    for country_job in (engine_us, engine_uk):
-        assert "-n 2" not in country_job
-        assert "--dist loadfile" not in country_job
+    assert "-n 2 --dist loadfile" in engine_us
+    assert "tools/ci_memory_monitor.py" in engine_us
+    assert "engine-us-memory-${{ matrix.python-version }}.jsonl" in engine_us
+    assert "uses: actions/upload-artifact@v4" in engine_us
+    assert "if: always()" in engine_us
+    assert "-n 2" not in engine_uk
+    assert "--dist loadfile" not in engine_uk
 
 
 def test_ordinary_jobs_report_the_first_failure_with_test_names() -> None:
