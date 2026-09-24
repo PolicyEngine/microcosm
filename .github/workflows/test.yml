@@ -76,7 +76,8 @@ jobs:
             )
           done
           /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-            -n 2 --dist loadfile --durations=25 -p no:cacheprovider
+            -n 2 --dist loadfile -v --tb=short --maxfail=1 \
+            --durations=25 -p no:cacheprovider
 
   engine-us:
     needs: changes
@@ -101,7 +102,7 @@ jobs:
           # Country engines retain substantial process-local state. Running
           # concurrent pytest workers can exceed the hosted runner's memory.
           /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-            --durations=25 -p no:cacheprovider
+            -v --tb=short --maxfail=1 --durations=25 -p no:cacheprovider
 
   engine-uk:
     needs: changes
@@ -126,7 +127,7 @@ jobs:
           # Keep country-engine execution serial for the same bounded-memory
           # contract as the US engine job.
           /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-            --durations=25 -p no:cacheprovider
+            -v --tb=short --maxfail=1 --durations=25 -p no:cacheprovider
 
   integration-uk:
     permissions:

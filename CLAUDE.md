@@ -38,7 +38,8 @@ process. The wheels job builds each wheel once and compares its archive with its
 source tree; it does not repeat behavioral tests. The integration job runs the
 UK staging smoke test serially on Python 3.13. `ci-ok` requires every selected
 ordinary job and the integration job to pass. Ordinary behavioral jobs pass
-`--durations=25`, so each job log reports its 25 slowest tests.
+`-v --tb=short --maxfail=1 --durations=25`, so each job log names tests as they
+run, prints a concise first-failure traceback, and reports its 25 slowest tests.
 
 Every automated test must run from `.github/workflows/test.yml`. Add new test
 jobs to that workflow and include their results in `ci-ok`; do not create a

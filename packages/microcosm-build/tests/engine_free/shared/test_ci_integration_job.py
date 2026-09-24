@@ -61,3 +61,19 @@ def test_country_engine_jobs_run_serially() -> None:
     for country_job in (engine_us, engine_uk):
         assert "-n 2" not in country_job
         assert "--dist loadfile" not in country_job
+
+
+def test_ordinary_jobs_report_the_first_failure_with_test_names() -> None:
+    """CI must identify each test and finish reporting the first failure."""
+    workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
+
+    engine_free = workflow.split("\n  engine-free:\n", 1)[1].split(
+        "\n  engine-us:\n", 1
+    )[0]
+    engine_us = workflow.split("\n  engine-us:\n", 1)[1].split("\n  engine-uk:\n", 1)[0]
+    engine_uk = workflow.split("\n  engine-uk:\n", 1)[1].split(
+        "\n  integration-uk:\n", 1
+    )[0]
+
+    for ordinary_job in (engine_free, engine_us, engine_uk):
+        assert "-v --tb=short --maxfail=1" in ordinary_job
