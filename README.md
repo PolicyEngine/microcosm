@@ -198,7 +198,12 @@ main branch. The launcher also forces `--no-staging`, so the build writes neithe
 a production nor a staging pointer. The candidate is therefore available only
 by its explicit release id or tag until a separate promotion updates
 `latest.json`. Because Slack alerts are coupled to that production pointer
-update, tag-only publication sends no release alert.
+update, tag-only publication sends no release alert. The promotion is the
+standard publish of the same release directory, without `--no-latest` and
+`--tag-only`: it reuses the existing release-id tag once the tagged
+`release_manifest.json` is byte-identical to the local one, and writes only the
+main commit that carries `latest.json` (microcosm#450). A tag that describes
+another cut refuses before any commit.
 
 Evidence-tier releases (microcosm#506) are the third lane: the best available
 artifact when terminal gates failed, built with
