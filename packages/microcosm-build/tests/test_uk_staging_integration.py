@@ -147,7 +147,10 @@ def test_synthetic_smoke_command_refuses_release_options(tmp_path: Path) -> None
         cwd=ROOT,
         text=True,
         capture_output=True,
-        timeout=30,
+        # The refusal comes from argparse, but reaching it imports the build
+        # package and the engine; the 3.14 CI runner has taken over 30 s for
+        # that alone (a flake seen on #966), so allow what a cold import needs.
+        timeout=120,
     )
 
     assert result.returncode == 2
