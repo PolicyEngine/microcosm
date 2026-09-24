@@ -23,3 +23,35 @@ def test_obbba_no_tax_channels_are_absent_from_2024_law_deduction_lists() -> Non
             for instant in ("2025-01-01", "2026-01-01", "2028-01-01"):
                 assert deduction in node(instant), (list_name, deduction, instant)
             assert deduction not in node("2029-01-01"), (list_name, deduction)
+
+
+def test_m_chip_state_set_matches_engine_separate_chip_child_limits() -> None:
+    """Two-way engine consistency for the #321 state set.
+
+    PolicyEngine-US marks a state that runs no separate CHIP for children
+    with a -inf ``gov.hhs.chip.child.income_limit``; its children are covered
+    through Medicaid (M-CHIP), so ``chip_enrolled`` there can come only from
+    the pregnant-person paths. That -inf set must equal ``_M_CHIP_STATE_FIPS``
+    plus one reviewed carve-out: Rhode Island ("44") has a -inf child limit
+    but sits outside the #321 set, so its CHIP row stays on the surface (the
+    pinned feed's 2024-12 RI CHIP count is 0, the month RI did not report
+    Medicaid enrollment either per the #386 substitution register; 2025-12
+    is 33,661).
+    An engine bump that adds or removes a -inf state fails here, so the set
+    is re-reviewed instead of silently drifting from the engine.
+    """
+    from policyengine_us import CountryTaxBenefitSystem
+
+    limits = (
+        CountryTaxBenefitSystem()
+        .parameters("2024-01-01")
+        .gov.hhs.chip.child.income_limit
+    )
+    no_separate_child_chip = {
+        state_fips
+        for state_fips, postal in US_STATE_FIPS_TO_POSTAL.items()
+        if limits[postal.upper()] == -math.inf
+    }
+    reviewed_carve_outs = {"44"}
+    assert no_separate_child_chip == _M_CHIP_STATE_FIPS | reviewed_carve_outs
+    assert not reviewed_carve_outs & _M_CHIP_STATE_FIPS
