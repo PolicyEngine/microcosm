@@ -413,7 +413,13 @@ def test_engine_absent_environment_validates_lock_structurally(
         raise im.PackageNotFoundError(package)
 
     monkeypatch.setattr(engine_abi, "_installed_engine_version", absent)
-    spec = cs.load_country_spec("us")
+    # Bypass the per-process spec cache: a spec an earlier test loaded with the
+    # engine present would otherwise come back without this path running.
+    cs._load_packaged_country_spec.cache_clear()
+    try:
+        spec = cs.load_country_spec("us")
+    finally:
+        cs._load_packaged_country_spec.cache_clear()
     assert spec.country == "us"
 
 

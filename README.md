@@ -36,6 +36,14 @@ uv run pytest            # all packages, incl. behavioral contract tests
 uv run ruff check .
 ```
 
+Packaged country specs load once per process: `load_country_spec("uk")`
+returns the same object on every call. In a notebook or other long-lived
+session, edits to a country package under
+`packages/microcosm-build/src/microcosm/build/<country>/` are not picked up
+until you restart the kernel, load it by path with
+`load_country_spec(Path(...))` (always re-read), or call
+`microcosm.build.country_spec._load_packaged_country_spec.cache_clear()`.
+
 ## Staging build telemetry
 
 US fiscal refresh builds emit pre-release staging telemetry **by default**:

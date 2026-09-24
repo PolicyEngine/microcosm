@@ -37,7 +37,8 @@ fresh change to the other country is certified by main's push run; watch main
 after merging. The `wheels` lane remains the packaging gate: build every
 shard's real wheel, install into a clean uv-export-constrained venv, assert
 the wheel/import boundary and spec digests, and run the suite against installed
-wheels.
+wheels. The `fast` and engine lanes pass `--durations=25`, so each job log ends
+with its slowest tests; check there first when a lane's runtime jumps.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
@@ -50,6 +51,13 @@ makes `-m requires_uk` a real selector. Do not add new module-local skip
 aliases. Existing `importorskip` guards (still the norm across the US files)
 keep working and were deliberately left in place — convert one only when you
 are already editing that test for another reason.
+
+`load_country_spec("<code>")` loads each packaged country spec once per
+process and hands every caller the same immutable object; a `Path` argument is
+re-read on every call. A test that patches something the loader itself runs and
+then loads a packaged spec by code must call
+`country_spec._load_packaged_country_spec.cache_clear()` before and after that
+load, or it silently receives the spec an earlier test cached.
 
 **Adding a test file.** It must sit directly in `packages/<shard>/tests/` — flat,
 no subdirectories; `fixtures/` and `golden/` hold data only — and be named
