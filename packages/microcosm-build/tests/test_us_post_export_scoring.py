@@ -1559,9 +1559,13 @@ def test_calibration_result_holds_no_reference_to_the_target_frame() -> None:
 
 
 def test_calibration_results_drop_their_frames_and_keep_everything_else(
-    builder,
+    builder, monkeypatch
 ) -> None:
     """Dropping target tables preserves diagnostics, estimates and weights."""
+    # The export helpers check formula ownership against the installed engine's
+    # metadata index; that check is not under test here, and the fast CI groups
+    # run without policyengine-us.
+    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
     from microcosm.build.us_runtime.exact_k_ladder import (
         ExactKLadderCalibration,
         assert_exact_k_realized_count,
@@ -1670,9 +1674,11 @@ def test_main_drops_the_calibration_frames_before_the_export(builder) -> None:
 @pytest.mark.parametrize("full_pool", [True, False])
 @pytest.mark.parametrize("exact_k", [True, False])
 def test_main_has_no_calibrated_target_frame_at_the_export_write(
-    builder, full_pool, exact_k
+    builder, full_pool, exact_k, monkeypatch
 ) -> None:
     """Execute the export/cleanup statements with real calibration results."""
+    # As above: formula ownership needs the engine and is not under test.
+    monkeypatch.setattr(builder, "_assert_no_formula_owned_columns", lambda frame: None)
     from microcosm.calibrate import calibrate_l0_refit
 
     target_frame, targets = _small_calibration_problem()
