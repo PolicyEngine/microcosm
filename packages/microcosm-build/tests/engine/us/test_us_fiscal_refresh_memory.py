@@ -293,7 +293,13 @@ def test_reform_materialization_builds_one_engine_system_per_family() -> None:
     import subprocess
 
     result = subprocess.run(
-        [sys.executable, str(Path(__file__).resolve())],
+        [
+            sys.executable,
+            "-c",
+            "import runpy, sys; runpy.run_path(sys.argv[1], run_name='__main__')",
+            str(Path(__file__).resolve()),
+        ],
+        cwd=_TEST_PATHS.repository,
         capture_output=True,
         text=True,
         timeout=600,

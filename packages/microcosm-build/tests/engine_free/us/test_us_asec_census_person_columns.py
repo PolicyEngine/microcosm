@@ -27,8 +27,9 @@ from microcosm.build.us_runtime.spm_role_source import (
     ASEC_SPM_ROLE_SOURCES,
     AsecSpmRoleSource,
 )
+from test_support.paths import paths_for
 
-_REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+_REPOSITORY_ROOT = paths_for("microcosm-build").repository
 _MODULE = (
     _REPOSITORY_ROOT
     / "packages/microcosm-build/src/microcosm/build/us_runtime"
