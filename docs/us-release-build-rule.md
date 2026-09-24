@@ -79,16 +79,19 @@ waits on that fix.
 
 In policyengine-us 2.2.1 one SPM unit with no classified adult (age 18 or over,
 or age 15 or over with `is_spm_independent_minor_role`) refuses the SPM
-measurement for the whole population. The first whole-dataset simulation of the
-written release file is the reform-coverage smoke gate
-(`tools/build_us_fiscal_refresh_release.py:11657`), which runs after the export
-write (`:11641`) and before the calibration NPZ (`:11723`); its LIHEAP probe
-reaches SPM composition through `spm_unit_benefits`
-(`tools/build_us_release_input_coverage_manifest.py:513-520`), so a population
-with such a unit refuses there. The reform-validation diagnostics that follow
-the NPZ (`_write_reform_validation`, near `:11725`; 104 `in_poverty` rows from
-`us/state_spm_poverty_levels.json` on one whole-dataset simulation) would
-refuse the same way; they record, they do not gate.
+measurement for every unit in the simulation that holds it. The first
+simulation of the written release file is the reform-coverage smoke gate
+(`us_reform_coverage_smoke_gate` in `tools/build_us_fiscal_refresh_release.py`),
+which runs after the export write and before the calibration NPZ; its LIHEAP
+probe reaches SPM composition through `spm_unit_benefits` (the probe list in
+`tools/build_us_release_input_coverage_manifest.py`), so a population with such
+a unit refuses there. The reform-validation diagnostics that follow the NPZ
+(`_write_reform_validation`; 104 `in_poverty` rows from
+`us/state_spm_poverty_levels.json`) would refuse the same way; they record, they
+do not gate. These stages now score the written file in household batches, not
+one whole-dataset simulation each (see
+[Post-export scoring](#post-export-scoring)); the batch that holds such a unit
+refuses, and the refusal still aborts the stage.
 
 The certified default passes because `tools/build_us_spm_role_enrichment.py`
 added the role afterwards, and that tool accepts only Build P's exact bytes
@@ -176,8 +179,14 @@ stable source IDs, and their outputs are compared with or merged into the
 original assembled table. This lets historical source kernels consume the
 projection without treating intentionally removed provenance as corruption.
 
-`--dense-default-dataset` is diagnostic only. A release build leaves it unset,
-so the default is the sparse dataset that runs on standard machines.
+Until 23 September 2026, `--dense-default-dataset` was diagnostic only and a
+release build left it unset, so the default was the sparse dataset that runs on
+standard machines. Decided 23 September 2026 (microcosm#956): route A's first
+certified release, which is not the default, calibrates the whole base dense
+(`--dense-default-dataset`) on the national and state target surface
+(`--target-surface national_state`), and sparse L0 tuning is pursued after it.
+The standing principle for the graph era is the same target surface for every
+dataset size, with L0 the only difference across sizes.
 
 ### 4. Three raw inputs exist in one untracked directory
 
@@ -193,6 +202,99 @@ PolicyEngine dataset repository on Hugging Face; microcosm pins revision, digest
 and size and fetches them as it fetches the SIPP donor; the base stage verifies
 the digest it is given. `us/spec/sources.yaml` is generated from a sealed
 six-role receipt and does not change until a real build re-cuts it.
+
+## Post-export scoring
+
+The reform-coverage smoke, reform validation and demographics score the written
+release H5 through one household-batched scorer
+(`_HouseholdBatchedPostExportScorer` in
+`tools/build_us_fiscal_refresh_release.py`, microcosm#956). Each used to build
+one Microsimulation over the whole file.
+
+- The scorer loads the written H5 once, binds its SHA-256, and refuses to let
+  the release manifest pin different bytes.
+- It refuses a file whose group units do not each nest in one household, or
+  whose batches do not partition every entity, before any engine exists.
+- Batches hold at most `--maximum-microsim-batch-size` households (default
+  5,000; route A runs 2,000). Every engine declares the release SPM selection
+  (`US_RELEASE_SPM_SELECTION`, county geography) and is released before the
+  next batch builds.
+- Each stage's baseline requests are learned before export by an engine-free
+  dry run and scored in one pass over the batches, in ascending period order.
+  One engine refuses a period earlier than one it has already computed.
+  The real-engine test probes the MD CCS request-order premise by requesting
+  2025 state taxes after 2027 keys. It checks for the
+  `md.msde.ccs.payment.informal.rates` error and warns if that error is absent;
+  it does not require the upstream bug to persist.
+- Each reform builds one tax-benefit system and scores its measure batch by
+  batch. Each batch engine gets that system alone, without `reform=`: given
+  both, policyengine-us creates a baseline branch, which clones the system.
+- Every statistic reads full-length values with their engine weights.
+
+The totals equal a whole-file simulation's up to floating-point summation order
+only if every scored measure is additive across households and never reads the
+`baseline` branch that a batch reform engine lacks. The scorer rejects these
+known violations at run time:
+
+- In a multi-batch pass, an engine refuses once it has computed a formula that
+  aggregates over its whole simulation. In policyengine-us 2.2.1 these are the
+  Medicaid SLCSP state sums behind `medicaid_cost` and the weighted household
+  and SPM-unit income deciles (`POST_EXPORT_POPULATION_AGGREGATE_VARIABLES`).
+  Each batch would compute them over itself alone.
+- A reform engine refuses once it has computed a formula that reads the
+  baseline branch (`POST_EXPORT_BASELINE_BRANCH_READERS`). These are the
+  Medicaid denominator a reform holds at baseline, and the behavioral-response
+  measurements.
+- A reform pass refuses a reform that sets the labor-supply or capital-gains
+  response parameters off their baseline values. Without a baseline branch,
+  those responses score 0. A whole-file engine also scores 0 at the engine's
+  zero default elasticities.
+
+Tests pin the watched lists against the installed engine's formula sources,
+exercise each guard on a real engine, and compare the shipped baseline plans
+(18 smoke keys, 75 validation keys and 1 demographics key) against whole-file
+values on a small written H5 in three batches.
+
+On 2026-09-24, the sweep below completed on a written fixture containing eight
+households across five states, with Medicaid enrollees, under policyengine-us
+2.2.1. All 107 reform passes cleared the guards in three batches: 41 smoke
+passes and 66 validation passes, covering 52 out-of-sample specs, 12 in-sample
+fallbacks and two OBBBA pre-baselines. The 18 OBBBA stacked provision states
+were included. All three baseline plans and four selected reform passes
+matched whole-file values at `rtol=1e-12, atol=1e-6`; their weights matched
+exactly. This is evidence for the fixture's calculation paths.
+
+The complete reform sweep is a separate pre-rerun step:
+
+```bash
+uv run --no-sync python tools/sweep_us_post_export_scoring.py \
+  --dataset-path /path/to/small-written-export.h5 --batch-size 3 \
+  --output /path/to/guard-sweep.json
+```
+
+The input must contain enough households for at least two batches. The tool
+records the shipped consumers' requests, including every out-of-sample
+validation reform and the OBBBA pre-baseline and stacked states. It also
+exercises the fallback simulations used when an in-sample estimate is absent.
+It scores at most four reform passes per worker, serially, and compares all
+baseline values and four reform passes with whole-file engines. Workers stop
+at a sampled 7 GiB RSS threshold and report their peak RSS, elapsed time,
+counts and the scored H5 digest.
+Run this fixture sweep before R4's full-export timing steps, and repeat it
+after a probe, spec or engine-lock change before starting a release.
+R4's existing full-export rehearsal times the smoke and validation
+baseline plans plus three selected reform passes; it does not cover every
+reform and does not replace this sweep.
+
+`calibration_diagnostics.json` records the plan under `build.post_export_scoring`
+(method, batch size, batch count, each stage's baseline keys and periods), and
+`reform_coverage_smoke.json` records what the smoke scored under
+`post_export_scoring`. Poverty rows stay record-only. Before the export write
+the build frees the target frame and the calibration result's target tables:
+`Frame.with_weights` copies every table, target columns included. Dense and
+L0 results drop those frames; exact-k substitutes the clean export frame for
+its receipt's later household-count check. The fixture sweep does not measure
+memory or wall time of the batched stages at full size.
 
 ## Measured stage times
 

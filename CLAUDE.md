@@ -118,6 +118,12 @@ to the private repository; when you run `tools/build_uk_rowwise_candidate.py`
 yourself, pass `--staging-local-only` unless the operator asked for a staged
 upload.
 
+The US fiscal-refresh builder scores its written H5 in household batches.
+Before a release rerun, run the small-H5 guard sweep described in
+[the release build rule](docs/us-release-build-rule.md#post-export-scoring).
+That fixture check is separate from full-export timing and release
+certification.
+
 The US native-SPM-role source-enrichment lane is a separate release type:
 `tools/build_us_spm_role_enrichment.py` creates a local candidate from the exact
 reviewed BuildP parent, preserving original variables and inherited schema-5

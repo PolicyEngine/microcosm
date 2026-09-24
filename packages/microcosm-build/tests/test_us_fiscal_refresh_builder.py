@@ -6247,6 +6247,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
     result = SimpleNamespace(
         skipped=(),
         diagnostics=(),
+        # A calibration result always carries its compiled problem; the
+        # pre-export post-export-scoring plan reads its targets (#956).
+        problem=SimpleNamespace(targets=()),
         initial_loss=2.0,
         final_loss=1.0,
         l0_lambda=0.2,
@@ -7996,7 +7999,9 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
 
     monkeypatch.setattr(builder, "calibrate_l0_refit", fake_calibrate_l0_refit)
     if terminal_mode == "puf_tail":
-        ladder_outcome = SimpleNamespace(
+        # The real receipt type, so ``_main``'s exact-k branch that drops the
+        # calibration frames before the export (microcosm#956) runs here.
+        ladder_outcome = builder.ExactKLadderCalibration(
             result=result,
             support=np.asarray([0, 1], dtype=np.int64),
             selected_inclusion_probabilities=np.ones(2),
@@ -8166,6 +8171,24 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         builder,
         "write_calibration_diagnostics",
         fake_write_calibration_diagnostics,
+    )
+    # The pre-export post-export-scoring plan (microcosm#956) dry-runs the real
+    # smoke and reform-validation consumers without an engine; only the reform
+    # objects they build need policyengine-core, which the engine-free lane
+    # does not install.
+    import microcosm.build.us_runtime.reform_coverage_smoke as smoke_module
+    import microcosm.build.us_runtime.reform_validation as reform_validation_module
+
+    monkeypatch.setattr(smoke_module, "_build_reform", lambda probe: probe.id)
+    monkeypatch.setattr(
+        reform_validation_module.ReformValidationSpec,
+        "build_reform",
+        lambda spec: spec.id,
+    )
+    monkeypatch.setattr(
+        reform_validation_module,
+        "_build_parameter_reform",
+        lambda changes: tuple(sorted(changes)),
     )
 
     if green_run:
@@ -8521,6 +8544,15 @@ def test_main_writes_diagnostics_before_post_calibration_gate_failure(
         "social_security_components": ss_repair_payload,
         "non_sch_d_capital_gains": cgd_repair_payload,
     }
+    # The diagnostics carry a complete post-export scoring plan, never an
+    # error record, so no plan line joins the terminal batch (#956).
+    post_export_scoring = captured["diagnostics"]["post_export_scoring"]
+    assert "error" not in post_export_scoring
+    assert list(post_export_scoring["consumers"]) == [
+        "reform_coverage_smoke",
+        "reform_validation",
+        "demographics",
+    ]
     assert captured["diagnostics"]["default_dataset"] == {
         "method": "l0_refit",
         "sparse": True,

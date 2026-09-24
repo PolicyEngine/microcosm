@@ -16,8 +16,10 @@ probe fails by design — that is the gate doing its job.
 
 The gate takes an injected ``simulate(reform) -> simulation`` (the same seam as
 :mod:`microcosm.build.us_runtime.reform_validation`), so it unit-tests without
-policyengine-us and runs live against the written release H5 in the build via
-:func:`microcosm.build.us_runtime.reform_validation.default_simulate_factory`.
+policyengine-us. In the build it runs live against the written release H5
+through the release tool's household-batched post-export scorer
+(``tools/build_us_fiscal_refresh_release.py``, microcosm#956), which serves the
+same seam from one engine per household batch.
 """
 
 from __future__ import annotations
