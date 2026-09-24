@@ -56,7 +56,7 @@ from microcosm.frame import engine_tables
 KEY = base64.b64encode(b"\x07" * 32).decode("ascii")
 #: The shared exclusion-expiry clock, fixed inside the committed registers'
 #: validity window (latest approval 2026-09-23, the two v21b deferrals on the
-#: target-fit register from the microcosm#280 lane; earliest expiry
+#: target-fit register from the PolicyEngine/chronicle#280 lane; earliest expiry
 #: 2026-10-21, the same entries) so the suite never drifts across an approval
 #: or expiry boundary. Move it forward when a register gains a later approval.
 CLOCK = date(2026, 9, 23)

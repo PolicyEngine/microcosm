@@ -3813,7 +3813,6 @@
     "dfe.funded_childcare.working_parent_children_2_to_4",
     "dfi_ni.bus.passenger_receipts",
     "nithc.public_transport_support",
-    "obr.universal_credit",
     "ons.population.age_0_9_by_region@E12000001",
     "ons.population.age_0_9_by_region@E12000002",
     "ons.population.age_0_9_by_region@E12000003",
@@ -19138,9 +19137,9 @@
           "matched_fact_count_overall": 14,
           "matched_fact_count_at_or_before_period": 4,
           "resolved_period": 2025,
-          "resolved_value": 79286349139.54411,
+          "resolved_value": 76054754387.77309,
           "resolved_fact_period": "2025",
-          "resolved_fact_key": "ledger_aggregate_fact_v2_e680fe36115d1372d12072e1"
+          "resolved_fact_key": "ledger_aggregate_fact_v2_4c927d7b33d1eee2455bdbd0"
         }
       ]
     },
@@ -27317,7 +27316,7 @@
       "family": "hmrc_itl",
       "status": "active_calendar_year_window_anchors",
       "active_reference_count": 33,
-      "signed_rationale": "The three HMRC Income Tax liabilities statistics targets (Income Tax payers, total income and Income Tax liabilities by eleven total-income bands, Table 2.5, July 2026) fan out by strict total-income-band pins and bind at the calendar-2025 window of HMRC's 2024-25 and 2025-26 source projections (three twelfths and nine twelfths; microcosm#280 lane, Mar\u00eda's ruling of 2026-09-22). They are the calibration-year anchors the SPI component bands lack; the OBR fiscal-year receipts row stays bound beside them."
+      "signed_rationale": "The three HMRC Income Tax liabilities statistics targets (Income Tax payers, total income and Income Tax liabilities by eleven total-income bands, Table 2.5, July 2026) fan out by strict total-income-band pins and bind at the calendar-2025 window of HMRC's 2024-25 and 2025-26 source projections (three twelfths and nine twelfths; PolicyEngine/chronicle#280 lane, Mar\u00eda's ruling of 2026-09-22). They are the calibration-year anchors the SPI component bands lack; the OBR fiscal-year receipts row stays bound beside them."
     },
     {
       "family": "hmrc_spi_region",

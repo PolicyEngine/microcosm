@@ -622,7 +622,7 @@ _A16_UNREACHABLE_ROWS = (
     "ons.savings_interest_income",
 )
 _A16_READJUDICATED_ROWS = ("obr.housing_benefit", "dwp.jsa_claimants")
-# microcosm#280 lane (María's ruling of 2026-09-22, R3): the SPI 2023-24
+# PolicyEngine/chronicle#280 lane (María's ruling of 2026-09-22, R3): the SPI 2023-24
 # interest rows by band are the fitting anchor for interest, uprated to the
 # calibration year; the ONS D.41 row stays on the register as a measured
 # diagnostic with the concept reason and the UC-tranche clock.
@@ -706,12 +706,12 @@ def test_packaged_exclusions_load():
     for name in _A16_CONCEPT_ROWS:
         entry = next(e for e in exclusions if e["name"] == name)
         assert entry["approved_on"] == "2026-09-22", name
-        assert entry["expires_on"] == "2026-12-08", name
+        assert entry["expires_on"] == "2026-10-22", name
         assert entry["tracking"] == a16_issues[name], name
-        assert "microcosm#280" in entry["adjudication"], name
+        assert "microcosm#1006" in entry["adjudication"], name
         assert "D.41" in entry["reason"] and "diagnostic" in entry["reason"], name
         # The fitting anchor the row hands over to: the SPI Table 3.7 interest
-        # rows, uprated (microcosm#280 lane).
+        # rows, uprated (PolicyEngine/chronicle#280 lane).
         assert "hmrc.spi.savings_interest_income" in entry["reason"], name
         assert "never fitted" in entry["reason"], name
 

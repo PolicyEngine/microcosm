@@ -1,4 +1,4 @@
-"""The HMRC SPI uprating appliers (microcosm#280 lane)."""
+"""The HMRC SPI uprating appliers (PolicyEngine/chronicle#280 lane)."""
 
 from __future__ import annotations
 

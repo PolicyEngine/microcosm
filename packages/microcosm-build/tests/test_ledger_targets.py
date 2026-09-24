@@ -4822,6 +4822,79 @@ def test__given_the_two_overlapping_years__then_calendar_year_window_weights_the
     assert spec.metadata["ledger_resolved_assertion"] == "source_projection"
 
 
+def test__given_a_two_series_selector__then_calendar_year_window_sums_the_windowed_series() -> (
+    None
+):
+    # Given: a total declared as two series (the welfare-cap cells of one
+    # expenditure line), each with both years of the window.
+    facts = [
+        _cy_window_fact(
+            key="in_cap_fy2024", value=100.0, opening_year=2024, measure_id="in_cap"
+        ),
+        _cy_window_fact(
+            key="in_cap_fy2025", value=120.0, opening_year=2025, measure_id="in_cap"
+        ),
+        _cy_window_fact(
+            key="out_fy2024", value=300.0, opening_year=2024, measure_id="outside_cap"
+        ),
+        _cy_window_fact(
+            key="out_fy2025", value=340.0, opening_year=2025, measure_id="outside_cap"
+        ),
+    ]
+    reference = _cy_window_reference(
+        name="universal credit, calendar 2025",
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": ["in_cap", "outside_cap"],
+            "geography_level": "country",
+            "geography_id": "0100000US",
+        },
+    )
+    registry = compile_ledger_target_references(facts, [reference], country="uk")
+
+    spec = registry.specs[0]
+    assert spec.value == pytest.approx(0.25 * (100.0 + 300.0) + 0.75 * (120.0 + 340.0))
+    assert spec.metadata["ledger_calendar_year_window_series"] == "2"
+    assert spec.metadata["ledger_value_formula"].startswith(
+        "sum over 2 series of [3/12 * FY2024"
+    )
+    members = json.loads(spec.metadata["ledger_calendar_year_window_members"])
+    assert set(members) == {
+        "in_cap@2024",
+        "in_cap@2025",
+        "outside_cap@2024",
+        "outside_cap@2025",
+    }
+    assert members["outside_cap@2025"]["weight"] == "0.75"
+
+
+def test__given_a_two_series_selector_short_of_a_year__then_calendar_year_window_refuses() -> (
+    None
+):
+    facts = [
+        _cy_window_fact(
+            key="in_cap_fy2024", value=100.0, opening_year=2024, measure_id="in_cap"
+        ),
+        _cy_window_fact(
+            key="in_cap_fy2025", value=120.0, opening_year=2025, measure_id="in_cap"
+        ),
+        _cy_window_fact(
+            key="out_fy2025", value=340.0, opening_year=2025, measure_id="outside_cap"
+        ),
+    ]
+    reference = _cy_window_reference(
+        ledger_selector={
+            "source_name": "irs_soi",
+            "source_measure_id": ["in_cap", "outside_cap"],
+            "geography_level": "country",
+            "geography_id": "0100000US",
+        },
+    )
+
+    with pytest.raises(ValueError, match="1 of 2 matched series carry both"):
+        compile_ledger_target_references(facts, [reference], country="uk")
+
+
 def test__given_a_year_missing__then_calendar_year_window_refuses() -> None:
     facts = [_cy_window_fact(key="fy2025", value=329.0, opening_year=2025)]
 

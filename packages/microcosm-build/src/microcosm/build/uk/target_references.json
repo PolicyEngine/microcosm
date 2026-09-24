@@ -23536,7 +23536,8 @@
       "period": 2025,
       "metadata": {
         "contract_target_id": "obr.fuel_duties_cars",
-        "measure_kind": "prepared_column"
+        "measure_kind": "prepared_column",
+        "period_basis": "fiscal_year_2024_held: the OBR vehicle-type split of fuel duty receipts is published for FY2024-25 only, the base data's fiscal year; the row is held there, not windowed to calendar 2025 (#890 E1, ruling 2026-09-10; kept by design on the income-anchor lane, microcosm#1006)"
       },
       "assertion_policy": "allow_source_projection",
       "uprating_from_period": "2024",
@@ -24073,7 +24074,7 @@
         "measure_kind": "prepared_column"
       },
       "assertion_policy": "allow_source_projection",
-      "value_operation": "sum",
+      "value_operation": "calendar_year_window",
       "expected_member_count": 2
     },
     {

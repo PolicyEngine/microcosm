@@ -3147,7 +3147,7 @@
   {
    "stage": "spi_income_band_donors",
    "survey": "Survey of Personal Incomes Public Use Tape 2022-23 and HMRC Income Tax liabilities statistics July 2026 Table 2.5",
-   "source": "Reserved SPI support households for the HMRC Table 2.5 total-income bands from GBP 200,000, stacked at the published band taxpayer count over the donors per band (microcosm#280 lane).",
+   "source": "Reserved SPI support households for the HMRC Table 2.5 total-income bands from GBP 200,000, stacked at the published band taxpayer count over the donors per band (PolicyEngine/chronicle#280 lane).",
    "grain": "household",
    "artifacts": [
     {

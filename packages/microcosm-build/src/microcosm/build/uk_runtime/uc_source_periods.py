@@ -25,7 +25,7 @@ EXPECTED_SOURCE_MONTHS = "uk_uc_expected_source_months"
 # The DWP families whose monthly Stat-Xplore series declare their source
 # window: Universal Credit (the paid-claim and element rows), since #882 the
 # Housing Benefit caseload rows bound on the same calendar-2025 window, and
-# since the microcosm#280 lane the three ESA caseload rows, bound on the four
+# since the PolicyEngine/chronicle#280 lane the three ESA caseload rows, bound on the four
 # quarterly points DWP publishes inside calendar 2025 (February, May, August,
 # November) from the payment-type cube (chronicle#282).
 SOURCE_MONTH_FAMILIES = frozenset(

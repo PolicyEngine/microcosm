@@ -983,7 +983,7 @@ class TestE3ManifestLockstep:
 
         assert stages["spi_support_channel"].operations[0].parameters["seed"] == 42
         assert stages["hmrc_spi_income_spine"].operations[2].parameters["seed"] == 42
-        # The reserved carriers' resample draws at stage seed + 2 (microcosm#280).
+        # The reserved carriers' resample draws at stage seed + 2 (PolicyEngine/chronicle#280 lane).
         assert stages["hmrc_spi_income_spine"].operations[3].parameters["seed"] == 44
         assert stages["hmrc_spi_income_spine"].operations[4].parameters["seed"] == 43
         assert stages["spi_income_band_donors"].operations[0].parameters["seed"] == 3

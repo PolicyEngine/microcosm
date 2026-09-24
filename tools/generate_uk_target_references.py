@@ -605,6 +605,11 @@ def _reference_metadata(contract: Mapping[str, Any]) -> dict[str, dict[str, str]
         metadata = {}
         if measurement.get("observation_basis") is not None:
             metadata["observation_basis"] = str(measurement["observation_basis"])
+        if measurement.get("period_basis") is not None:
+            # A declared exception to the period convention (a fiscal-year
+            # row held at its publication year) rides the spec as metadata,
+            # not as prose alone.
+            metadata["period_basis"] = str(measurement["period_basis"])
         binding = target.get("bindings", {}).get("policyengine", {})
         if binding.get("measurement_period") is not None:
             metadata["measurement_period"] = str(binding["measurement_period"])
@@ -793,7 +798,7 @@ def _add_uk_membership_accounting(
                 "by eleven total-income bands, Table 2.5, July 2026) fan out "
                 "by strict total-income-band pins and bind at the calendar-"
                 "2025 window of HMRC's 2024-25 and 2025-26 source projections "
-                "(three twelfths and nine twelfths; microcosm#280 lane, "
+                "(three twelfths and nine twelfths; PolicyEngine/chronicle#280 lane, "
                 "María's ruling of 2026-09-22). They are the calibration-year "
                 "anchors the SPI component bands lack; the OBR fiscal-year "
                 "receipts row stays bound beside them."

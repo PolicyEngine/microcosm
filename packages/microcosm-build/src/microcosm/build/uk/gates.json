@@ -460,7 +460,7 @@
           2000000
         ]
       },
-      "notes": "Stage-time support gate for spi_income_band_donors (microcosm#280 lane): every HMRC Table 2.5 band from GBP 200,000 carries its reserved donor households at positive band-exact weight with one carrier each, and the bands are exactly the declared four."
+      "notes": "Stage-time support gate for spi_income_band_donors (PolicyEngine/chronicle#280 lane): every HMRC Table 2.5 band from GBP 200,000 carries its reserved donor households at positive band-exact weight with one carrier each, and the bands are exactly the declared four."
     },
     {
       "id": "uk_stage_hmrc_cgt_gains_spine_summary",

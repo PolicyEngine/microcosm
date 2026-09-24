@@ -1003,7 +1003,7 @@ class TestUKCountryPackage:
         # 33 spine stages (uc_reporter_redraw #832, uc_deduction_attributes
         # #685, frs_relationships #791, hmrc_cgt_asset_type_spine #725,
         # cgt_incidence_anchor #970, nts_bus_travel #930, then
-        # spi_income_band_donors (microcosm#280 lane) as the newest) plus the two
+        # spi_income_band_donors (PolicyEngine/chronicle#280 lane) as the newest) plus the two
         # certified-pair stages the June path still uses.
         assert len(spec.sources.stages) == 35
 
@@ -1117,7 +1117,7 @@ class TestExistingPackagesGeneralize:
         references = {reference.name: reference for reference in spec.target_references}
         assert (
             len(references) == 1124
-        )  # microcosm#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
+        )  # PolicyEngine/chronicle#280 lane: 705 + 33 HMRC liabilities rows (Table 2.5, three
         # measures by eleven bands) + 26 SPI savings-interest rows (two measures by
         # thirteen bands) + 360 SPI Table 3.11 region-tier rows (three measures by
         # ten regional bands over twelve areas); microcosm#905: 424 - 18 country

@@ -2447,11 +2447,16 @@ def _resolve_calendar_year_window_reference_facts(
     months of the year opening in Y-1 and nine of the year opening in Y. The
     resolver takes both facts from one series identity (one publication, one
     measure, one cell) and refuses a window with either year absent, so a
-    partial window never lands as a value.
+    partial window never lands as a value. A selector that names several
+    series (a list-valued ``source_concept``, ``source_measure_id`` or
+    ``source_table``) resolves both years of every one of them, so the window
+    of a sum of series is the sum of the windowed series; a series short of a
+    year refuses the whole window.
     """
 
     target_year = _calendar_year_from_reference(reference)
     wanted = {target_year + offset for offset in CALENDAR_YEAR_WINDOW_WEIGHTS}
+    expected_series = _calendar_year_window_series_count(reference)
     partitions: dict[tuple[str, ...], dict[int, list[object]]] = {}
     for fact in eligible_matches:
         opening_year = _calendar_year_window_opening_year(fact, reference)
@@ -2460,32 +2465,70 @@ def _resolve_calendar_year_window_reference_facts(
         partitions.setdefault(_selector_period_invariant_key(fact), {}).setdefault(
             opening_year, []
         ).append(fact)
-    complete = [years for years in partitions.values() if set(years) == wanted]
-    if not complete:
+    complete = {key: years for key, years in partitions.items() if set(years) == wanted}
+    if not complete or len(complete) != expected_series:
         present = sorted({year for years in partitions.values() for year in years})
-        raise ValueError(
-            f"Ledger target reference {reference.name!r}: calendar_year_window "
-            f"needs the years opening in {sorted(wanted)} from one series; "
-            f"found {present or 'none'}."
+        series_phrase = (
+            "one series"
+            if expected_series == 1
+            else f"each of {expected_series} series (one per declared selector member)"
         )
-    if len(complete) != 1:
-        raise ValueError(
-            f"Ledger target reference {reference.name!r}: calendar_year_window "
-            f"matched {len(complete)} series identities carrying both years; "
-            "narrow the selector to one."
-        )
-    (years,) = complete
-    resolved: list[object] = []
-    for year in sorted(years):
-        members = years[year]
-        if len(members) != 1:
+        if not complete:
             raise ValueError(
                 f"Ledger target reference {reference.name!r}: calendar_year_window "
-                f"matched {len(members)} facts for the year opening in {year}; "
-                "expected exactly one."
+                f"needs the years opening in {sorted(wanted)} from {series_phrase}; "
+                f"found {present or 'none'}."
             )
-        resolved.append(members[0])
+        if expected_series == 1:
+            raise ValueError(
+                f"Ledger target reference {reference.name!r}: calendar_year_window "
+                f"matched {len(complete)} series identities carrying both years; "
+                "narrow the selector to one."
+            )
+        raise ValueError(
+            f"Ledger target reference {reference.name!r}: calendar_year_window "
+            f"needs both years opening in {sorted(wanted)} from {series_phrase}; "
+            f"{len(complete)} of {len(partitions)} matched series carry both."
+        )
+    resolved: list[object] = []
+    for key in sorted(complete):
+        years = complete[key]
+        for year in sorted(years):
+            members = years[year]
+            if len(members) != 1:
+                raise ValueError(
+                    f"Ledger target reference {reference.name!r}: calendar_year_window "
+                    f"matched {len(members)} facts for the year opening in {year}; "
+                    "expected exactly one per series."
+                )
+            resolved.append(members[0])
     return tuple(resolved)
+
+
+_CALENDAR_YEAR_WINDOW_SERIES_KEYS = (
+    "source_concept",
+    "source_measure_id",
+    "source_table",
+)
+
+
+def _calendar_year_window_series_count(reference: LedgerTargetReference) -> int:
+    """How many series the window composes: one per declared selector member."""
+
+    count = 1
+    for key in _CALENDAR_YEAR_WINDOW_SERIES_KEYS:
+        value = (reference.ledger_selector or {}).get(key)
+        if isinstance(value, (list, tuple)):
+            count *= len(value)
+    return count
+
+
+def _calendar_year_window_series_label(fact: object) -> str:
+    return (
+        _str_at(fact, "observed_measure", "source_measure_id")
+        or _str_at(fact, "layout", "measure_id")
+        or _source_measure_concept(fact)
+    )
 
 
 def _calendar_year_window_weights(
@@ -2504,10 +2547,16 @@ def _calendar_year_window_metadata(
     reference: LedgerTargetReference, facts: tuple[object, ...]
 ) -> dict[str, str]:
     target_year = _calendar_year_from_reference(reference)
+    series_count = _calendar_year_window_series_count(reference)
     members: dict[str, dict[str, str]] = {}
     for fact in facts:
         opening_year = _calendar_year_window_opening_year(fact, reference)
-        members[str(opening_year)] = {
+        member_key = (
+            str(opening_year)
+            if series_count == 1
+            else f"{_calendar_year_window_series_label(fact)}@{opening_year}"
+        )
+        members[member_key] = {
             "weight": f"{CALENDAR_YEAR_WINDOW_WEIGHTS[opening_year - target_year]:.15g}",
             "value": f"{_numeric_fact_value(fact, reference):.15g}",
             "assertion": _fact_assertion(fact),
@@ -2515,6 +2564,7 @@ def _calendar_year_window_metadata(
         }
     return {
         "ledger_calendar_year_window_target_year": str(target_year),
+        "ledger_calendar_year_window_series": str(series_count),
         "ledger_calendar_year_window_members": json.dumps(
             members, sort_keys=True, separators=(",", ":")
         ),
@@ -3207,9 +3257,15 @@ def _reference_metadata(reference: LedgerTargetReference) -> dict[str, str]:
         metadata["ledger_value_formula"] = _linear_combination_formula(reference)
     if reference.value_operation == "calendar_year_window":
         target_year = _calendar_year_from_reference(reference)
-        metadata["ledger_value_formula"] = (
+        window = (
             f"3/12 * FY{target_year - 1} + 9/12 * FY{target_year} "
             f"(the months to the end of calendar year {target_year})"
+        )
+        series_count = _calendar_year_window_series_count(reference)
+        metadata["ledger_value_formula"] = (
+            window
+            if series_count == 1
+            else f"sum over {series_count} series of [{window}]"
         )
     if reference.metadata.get("composed_from_level"):
         # A composed row's Ledger geography is the row's own, not the

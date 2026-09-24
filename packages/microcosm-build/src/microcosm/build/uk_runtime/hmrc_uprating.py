@@ -5,7 +5,7 @@ only published distribution of taxable income by component, and the
 calibration binds them at period 2025. Bound as published they hold 2023-24
 nominal levels against a spine the engine has already uprated to 2025, which
 the v20 national build measured as a 13 percent income-tax shortfall and
-state-pension bands 8 to 18 percent over (microcosm#280 lane, assessment of
+state-pension bands 8 to 18 percent over (PolicyEngine/chronicle#280 lane, assessment of
 2026-09-21). Every reference in the family now declares an ``uprating_index``
 and one of the two appliers below transports its value:
 
@@ -101,7 +101,7 @@ UK_HMRC_ITL_GROWTH_BASIS = (
     "the SPI band spans"
 )
 UK_INCOME_UPRATING_ADJUDICATION = (
-    "microcosm#280 lane (María, 2026-09-22): the calibration binds at calendar "
+    "PolicyEngine/chronicle#280 lane (María, 2026-09-22): the calibration binds at calendar "
     "2025; facts published by fiscal or tax year use the months to the end of "
     "that year; policy amounts move by the rate the engine pays at the period"
 )

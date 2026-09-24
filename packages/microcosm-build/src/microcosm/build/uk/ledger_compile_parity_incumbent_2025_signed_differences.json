@@ -4090,7 +4090,7 @@
   },
   {
    "kind": "ledger_only",
-   "ledger_value": 79286349139.54411,
+   "ledger_value": 76054754387.77309,
    "name": "obr.universal_credit",
    "period": 2025,
    "reason": "Ledger-compiled row has no fixture counterpart at this comparison period."

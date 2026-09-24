@@ -389,7 +389,7 @@ def test_target_fit_out_of_force_exclusion_fails_even_without_a_breach() -> None
 def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     register = uk_default_target_fit_reviewed_exclusions()
     # The v21b (2026-09-23) national line on spine-u with the reserved income
-    # band donors (microcosm#280 lane): the SE 20-30k deferral of 2026-09-18
+    # band donors (PolicyEngine/chronicle#280 lane): the SE 20-30k deferral of 2026-09-18
     # is retired because the row is back inside the bound, and two
     # calibration-competition residuals are deferred for four weeks.
     assert set(register) == {
@@ -399,7 +399,9 @@ def test_committed_target_fit_register_retains_only_live_deferrals() -> None:
     for name in sorted(register):
         record = register[name]
         assert record.approved_by == "juaristi22"
-        assert record.adjudication.startswith("microcosm#280 lane")
+        assert record.adjudication.startswith(
+            "PolicyEngine/microcosm#1006 (issue comment 5812206367"
+        )
         assert record.approved_on == "2026-09-23"
         assert record.expires_on == "2026-10-21"
 

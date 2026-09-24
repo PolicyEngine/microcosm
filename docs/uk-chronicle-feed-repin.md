@@ -73,7 +73,7 @@ Tables 7, 8 and 9 (asset type, residential property, carried interest), 276,205 
 compiled value moving on either surface.
 The `7846605` re-pin (microcosm#930, chronicle #274 via PR #275, on top of `c5e5bf8`) brought the DfT BUS01 passenger and concessionary journeys by area, the BUS05i operating-revenue and support components, the NTS0303/NTS0601 trip rates by mode and age and the DfI full-fare concession journeys (277,183 rows), with the NTS0705a selection pinned to its quintile groupby because the new packages reuse the trip-rate concepts.
 
-The `00b4b14` re-pin (microcosm#280 lane, chronicle #280/#282 and #274/#275) moved the rows to
+The `00b4b14` re-pin (PolicyEngine/chronicle#280 lane, chronicle #280/#282 and #274/#275) moved the rows to
 `chronicle.consumer_fact.v4`, which names every geography once per identifier from Chronicle's
 register and keeps the publisher's own text as an optional `geography.publisher_name`, and brought
 the HMRC Income Tax liabilities statistics of July 2026 (Tables 2.1 to 2.6, 2023-24 outturn and the

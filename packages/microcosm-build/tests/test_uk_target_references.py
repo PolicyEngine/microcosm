@@ -290,6 +290,10 @@ def test_uk_target_references_follow_contract_derivation_rules() -> None:
         observation_basis = target["measurement"].get("observation_basis")
         if observation_basis is not None:
             expected_metadata["observation_basis"] = observation_basis
+        period_basis = target["measurement"].get("period_basis")
+        if period_basis is not None:
+            # A declared exception to the period convention rides the spec.
+            expected_metadata["period_basis"] = period_basis
         source_months = target["measurement"].get("source_months")
         if source_months is not None:
             expected_metadata["uk_uc_expected_source_months"] = json.dumps(
@@ -781,7 +785,7 @@ def test_uk_target_reference_membership_report_is_packaged() -> None:
                 "by eleven total-income bands, Table 2.5, July 2026) fan out "
                 "by strict total-income-band pins and bind at the calendar-"
                 "2025 window of HMRC's 2024-25 and 2025-26 source projections "
-                "(three twelfths and nine twelfths; microcosm#280 lane, "
+                "(three twelfths and nine twelfths; PolicyEngine/chronicle#280 lane, "
                 "María's ruling of 2026-09-22). They are the calibration-year "
                 "anchors the SPI component bands lack; the OBR fiscal-year "
                 "receipts row stays bound beside them."
@@ -1072,7 +1076,7 @@ def test_uk_generator_averages_paid_monthly_sums_and_preserves_other_uc_operatio
     )
     facts = _fixture_feed_rows()
     # Author the UC family alone: the fixture feed carries a 2023 SPI row whose
-    # reference now declares an engine-index uprating (microcosm#280 lane), and
+    # reference now declares an engine-index uprating (PolicyEngine/chronicle#280 lane), and
     # the country's appliers need the engine this test does not require.
     uc_contract = {
         **contract,
@@ -1477,7 +1481,7 @@ def test_two_level_targets_fan_out_over_the_region_tier() -> None:
     ons = [target_id for target_id in two_level if target_id.startswith("ons.")]
     mhclg = [target_id for target_id in two_level if target_id.startswith("mhclg.")]
     hmrc = [target_id for target_id in two_level if target_id.startswith("hmrc.cgt.")]
-    # SPI 2023-24 Table 3.11 by region, uprated (microcosm#280 lane): three
+    # SPI 2023-24 Table 3.11 by region, uprated (PolicyEngine/chronicle#280 lane): three
     # measures by ten regional total-income bands.
     spi_region = [
         target_id for target_id in two_level if target_id.startswith("hmrc.spi_region.")
