@@ -43,3 +43,21 @@ def test_integration_job_is_required_and_read_only() -> None:
     )
     assert "INTEGRATION_UK_RESULT: ${{ needs['integration-uk'].result }}" in workflow
     assert 'require_success integration-uk "$INTEGRATION_UK_RESULT"' in workflow
+
+
+def test_country_engine_jobs_run_serially() -> None:
+    """Country engines must not be duplicated across concurrent pytest workers."""
+    workflow = _TEST_WORKFLOW.read_text(encoding="utf-8")
+
+    engine_free = workflow.split("\n  engine-free:\n", 1)[1].split(
+        "\n  engine-us:\n", 1
+    )[0]
+    engine_us = workflow.split("\n  engine-us:\n", 1)[1].split("\n  engine-uk:\n", 1)[0]
+    engine_uk = workflow.split("\n  engine-uk:\n", 1)[1].split(
+        "\n  integration-uk:\n", 1
+    )[0]
+
+    assert "-n 2 --dist loadfile" in engine_free
+    for country_job in (engine_us, engine_uk):
+        assert "-n 2" not in country_job
+        assert "--dist loadfile" not in country_job
