@@ -124,6 +124,23 @@ jobs:
           /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
             -n 2 --dist loadfile --durations=25 -p no:cacheprovider
 
+  integration-uk:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.13"
+      - name: Run UK integration tests
+        env:
+          HF_STAGING_READ_TOKEN: ${{ secrets.HF_STAGING_READ_TOKEN }}
+        run: bash tools/run_integration_tests.sh
+
   wheels:
     # Editable installs can hide missing package directories and namespace
     # mistakes. Build each wheel once and compare its contents with source.
@@ -137,7 +154,7 @@ jobs:
         run: tools/build_and_inspect_wheels.sh
 
   ci-ok:
-    needs: [changes, lint, engine-free, engine-us, engine-uk, wheels]
+    needs: [changes, lint, engine-free, engine-us, engine-uk, integration-uk, wheels]
     if: always()
     runs-on: ubuntu-latest
     env:
@@ -151,6 +168,7 @@ jobs:
           ENGINE_FREE_RESULT: ${{ needs['engine-free'].result }}
           ENGINE_US_RESULT: ${{ needs['engine-us'].result }}
           ENGINE_UK_RESULT: ${{ needs['engine-uk'].result }}
+          INTEGRATION_UK_RESULT: ${{ needs['integration-uk'].result }}
           WHEELS_RESULT: ${{ needs.wheels.result }}
         run: |
           set -euo pipefail
@@ -175,6 +193,7 @@ jobs:
           require_success changes "$CHANGES_RESULT"
           require_success lint "$LINT_RESULT"
           require_success engine-free "$ENGINE_FREE_RESULT"
+          require_success integration-uk "$INTEGRATION_UK_RESULT"
           require_success wheels "$WHEELS_RESULT"
           require_conditional engine-us "$EXPECT_US" "$ENGINE_US_RESULT"
           require_conditional engine-uk "$EXPECT_UK" "$ENGINE_UK_RESULT"

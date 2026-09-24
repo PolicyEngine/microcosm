@@ -23,17 +23,24 @@ uv run ruff check .      # lint
 ```
 
 PR CI (`.github/workflows/test.yml`) has `lint`, `engine-free`, `engine-us`,
-`engine-uk`, and `wheels` jobs. `tools/classify_ci_changes.py` classifies the
-complete changed-path inventory as shared, US, or UK. Each behavioral job has
-only a Python 3.13/3.14 matrix; pytest distributes files across two workers with
-`--dist loadfile` and reports the 25 slowest tests. The engine-free job
+`engine-uk`, `integration-uk`, and `wheels` jobs.
+`tools/classify_ci_changes.py` classifies the complete changed-path inventory
+as shared, US, or UK. Each ordinary behavioral job has only a Python 3.13/3.14
+matrix; pytest distributes files across two workers with `--dist loadfile` and
+reports the 25 slowest tests. The engine-free job
 installs no country extra and always runs shared tests plus the affected
 countries' engine-free tests. The country
 jobs install only their own extra and run only their country directory. Main
 pushes run every environment. Native numerical libraries receive one thread per
 worker. The wheels job builds each wheel once and compares its archive with its
-source tree; it does not repeat behavioral tests. Behavioral jobs pass
+source tree; it does not repeat behavioral tests. The integration job runs the
+UK staging smoke test serially on Python 3.13. `ci-ok` requires every selected
+ordinary job and the integration job to pass. Ordinary behavioral jobs pass
 `--durations=25`, so each job log reports its 25 slowest tests.
+
+Every automated test must run from `.github/workflows/test.yml`. Add new test
+jobs to that workflow and include their results in `ci-ok`; do not create a
+separate test workflow.
 
 New commits to a PR cancel older unfinished CI runs for that same PR.
 Each main-push run has a unique concurrency group, so all main-push runs
@@ -53,7 +60,8 @@ of these directories below its package's `tests/` directory:
 - `engine_free/us/` or `engine_free/uk/`: does not import a country engine but
   tests country-specific code or data.
 - `engine/us/` or `engine/uk/`: imports or executes that country engine.
-- `integration/uk/`: runs only through the dedicated integration workflow.
+- `integration/uk/`: runs serially through the `integration-uk` job with the
+  explicit `--run-integration` option.
 
 The directory is the execution authority. Do not create `both/`,
 `engine/shared/`, another category, or a module-local country-engine
@@ -78,20 +86,19 @@ module or dependency. CI tests the merge ref, so merge main and re-pin rather
 than hunting for an environment leak. Editable installs hide packaging breaks;
 if you touch packaging, build wheels locally before pushing.
 
-The separate `.github/workflows/integration-tests.yml` workflow runs the
+The `integration-uk` job in `.github/workflows/test.yml` runs the
 `integration/uk/` directory serially on Python 3.13 for every pull request to
-`main` and on manual dispatch. Integration tests must not also run in the
-ordinary UK job; they require the explicit `--run-integration` option. The
-current UK job runs the real spine command against the complete committed
-synthetic fixture with seed 42, uses `--smoke --staging-local-only`, writes only
-under the runner's temporary directory, and is not part of `ci-ok`. The job has
-`contents: read`, does not persist checkout credentials,
-does not reference a protected GitHub environment, and receives no external
-writer credential. Fork pull requests run the synthetic test without secrets.
-An optional repository-level `HF_STAGING_READ_TOKEN` permits a separate
-private-repository access check. The workflow invokes
-`tools/run_integration_tests.sh` so
-its shell logic remains locally executable. Run it locally without the optional
+`main` and every push to `main`. Integration tests do not run in the ordinary
+UK job; they require the explicit `--run-integration` option. The current test
+runs the real spine command against the complete committed synthetic fixture
+with seed 42, uses `--smoke --staging-local-only`, and writes only below the
+runner's temporary directory. `ci-ok` requires this job to pass. The job has
+`contents: read`, does not persist checkout credentials, does not reference a
+protected GitHub environment, and receives no external writer credential. Fork
+pull requests run the synthetic test without secrets. An optional
+repository-level `HF_STAGING_READ_TOKEN` permits a separate private-repository
+access check. The job invokes `tools/run_integration_tests.sh`, so its shell
+logic remains locally executable. Run it locally without the optional
 repository access check with:
 
 ```bash
@@ -100,8 +107,11 @@ HF_STAGING_READ_TOKEN= bash tools/run_integration_tests.sh
 
 ## The PR-CI / certification boundary
 
-PR CI is secrets-free and never touches restricted microdata. Green PR checks
-mean the code contracts hold — they do **not** certify data artifacts.
+PR CI never receives external writer credentials or touches restricted
+microdata. Same-repository runs may receive the optional read-only
+`HF_STAGING_READ_TOKEN` in the `integration-uk` job; fork pull requests receive
+no secret. Green PR checks mean the code contracts hold — they do **not**
+certify data artifacts.
 Builds, calibrations, and releases run outside PR CI, need gated Hugging Face
 data and credentials, and cannot run from forks. Release publication is a
 deliberate human step (`tools/publish_release.sh` →
