@@ -39,6 +39,7 @@ from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
 from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
+    require_assembled_support_provenance,
     support_clone_index_column,
     support_copy_rank_series,
     support_role_series,
@@ -724,10 +725,13 @@ def _source_receiver_rows(
 
     The canonical row is the lowest surviving support-copy rank: the native
     ASEC copy when present, then the primary PUF-detail copy, then the
-    capital-gains own-tail copy.
+    capital-gains own-tail copy. An assembled table missing a provenance
+    column is refused first, so it can reach neither the copy ranking nor the
+    one-row-per-source path for tables without support metadata.
     """
 
     tax_unit = frame.table("tax_unit")
+    require_assembled_support_provenance(tax_unit, entity="tax_unit")
     if _TAX_UNIT_SOURCE_ID_COLUMN in tax_unit:
         source_ids = tax_unit[_TAX_UNIT_SOURCE_ID_COLUMN]
         if source_ids.isna().any():
@@ -949,6 +953,7 @@ def us_voluntary_filing_summary(frame: Frame) -> dict[str, object]:
     """Return weighted incidence, boolean validity, and clone diagnostics."""
 
     tax_unit = frame.table("tax_unit")
+    require_assembled_support_provenance(tax_unit, entity="tax_unit")
     values = pd.to_numeric(tax_unit[_OUTPUT], errors="coerce").to_numpy(
         dtype=np.float64
     )
@@ -998,7 +1003,9 @@ def us_voluntary_filing_summary(frame: Frame) -> dict[str, object]:
                     }
                 )
                 # With clone provenance every copy of a source unit, the
-                # capital-gains own-tail copy included, must agree.
+                # capital-gains own-tail copy included, must agree. Assembled
+                # tables always reach this branch (validated above); only
+                # channel-only historical tables pair copies by occurrence.
                 if support_clone_index_column("tax_unit") in tax_unit:
                     clone_groups = ["source_id"]
                 else:
@@ -1032,6 +1039,7 @@ def us_voluntary_filing_signal_gate(frame: Frame) -> GateResult:
     """Require nonconstant boolean signal and identical support clones."""
 
     tax_unit = frame.table("tax_unit")
+    require_assembled_support_provenance(tax_unit, entity="tax_unit")
     if _OUTPUT not in tax_unit:
         return GateResult(
             name="voluntary_filing_signal",

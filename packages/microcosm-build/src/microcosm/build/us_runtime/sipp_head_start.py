@@ -36,6 +36,7 @@ from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
 from microcosm.build.us_runtime.support_provenance import (
     has_support_role_metadata,
+    require_assembled_support_provenance,
     support_copy_rank_series,
     support_role_series,
 )
@@ -486,14 +487,19 @@ def _support_group_keys(
     copies (native first) and, with the source ID, identifies exactly one row:
     the capital-gains own-tail copy is a second PUF-role row of its source
     person, distinguished from the primary PUF-detail copy by clone index.
+
+    Only a historical table without support metadata ranks every row 0. An
+    assembled table that lost its provenance columns is refused before that
+    early return, so a stripped assembled copy cannot become canonical.
     """
 
-    if not has_support_role_metadata(person, entity="person"):
-        return (
-            source_id.astype(object),
-            pd.Series(0, index=person.index, dtype="int64"),
-        )
     try:
+        require_assembled_support_provenance(person, entity="person")
+        if not has_support_role_metadata(person, entity="person"):
+            return (
+                source_id.astype(object),
+                pd.Series(0, index=person.index, dtype="int64"),
+            )
         copy_rank = support_copy_rank_series(person, entity="person")
     except ValueError as exc:
         raise ValueError(
@@ -505,6 +511,7 @@ def _support_group_keys(
 
 def _recipient_predictors(frame: Frame) -> tuple[pd.DataFrame, pd.Series, np.ndarray]:
     person = frame.table("person")
+    require_assembled_support_provenance(person, entity="person")
     missing = [
         column
         for column in US_SIPP_HEAD_START_REQUIRED_SOURCE_COLUMNS
@@ -640,6 +647,7 @@ def impute_us_sipp_head_start(
 
     if frame.schema != US_SCHEMA:
         raise ValueError("US SIPP Head Start imputation requires the US schema.")
+    require_assembled_support_provenance(frame.table("person"), entity="person")
     if n_estimators < 1:
         raise ValueError("n_estimators must be positive")
     required = [
@@ -775,11 +783,15 @@ def us_sipp_head_start_summary(frame: Frame) -> dict[str, object]:
     )
     role_invalid = False
     roles: pd.Series | None = None
-    if has_support_role_metadata(person, entity="person"):
-        try:
+    try:
+        # Flag an assembled table missing a provenance column before the
+        # metadata check could read it as a historical table without support
+        # roles. Its copies are still grouped by source ID below.
+        require_assembled_support_provenance(person, entity="person")
+        if has_support_role_metadata(person, entity="person"):
             roles = support_role_series(person, entity="person")
-        except ValueError:
-            role_invalid = True
+    except ValueError:
+        role_invalid = True
     clone_groups = clone_mismatches = 0
     if not provenance_missing:
         source_ids = _decoded_strings(person[_PERSON_SOURCE_ID_COLUMN])
@@ -831,12 +843,22 @@ def us_sipp_head_start_signal_gate(frame: Frame) -> GateResult:
     """Require a nondefault, in-domain, source-clone-consistent take-up flag."""
 
     person = frame.table("person")
+    provenance_failures: tuple[str, ...] = ()
+    try:
+        require_assembled_support_provenance(person, entity="person")
+    except ValueError as exc:
+        # Retain the summary's clone diagnostics when output is available,
+        # and report invalid provenance even on the missing-output path.
+        provenance_failures = (str(exc),)
     if _OUTPUT not in person:
         return GateResult(
             name="sipp_head_start_signal",
             passed=False,
-            failures=(f"person.{_OUTPUT}: missing",),
-            details={"missing": [_OUTPUT]},
+            failures=(f"person.{_OUTPUT}: missing", *provenance_failures),
+            details={
+                "missing": [_OUTPUT],
+                "support_channel_invalid": bool(provenance_failures),
+            },
         )
     try:
         summary = us_sipp_head_start_summary(frame)

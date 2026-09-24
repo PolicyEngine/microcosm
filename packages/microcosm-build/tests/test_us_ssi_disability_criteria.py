@@ -705,6 +705,104 @@ def test_historical_tail_copy_divergence_joins_its_source_group() -> None:
     assert summary["clone_divergence_source_people"] == 1
 
 
+@pytest.mark.parametrize(
+    "columns",
+    [
+        pytest.param({"person_support_channel": ["asec"] * 4}, id="all_asec"),
+        pytest.param(
+            {"person_support_channel": ["asec", "puf_tax_detail"] * 2},
+            id="role_labels",
+        ),
+        pytest.param({}, id="no_channel_no_clone"),
+        pytest.param(
+            {"person_support_clone_index": [0, 1, 0, 1]},
+            id="clone_index_without_channel",
+        ),
+    ],
+)
+def test_assembled_frame_missing_support_provenance_is_flagged(
+    columns: dict[str, list[object]],
+) -> None:
+    # Microcosm #992 gate finding: with raw spine IDs present but the
+    # clone-index column gone, the divergence diagnostic paired copies by
+    # (source, role) occurrence and reported 0 diverging source people where
+    # the base, grouping by source ID, reported 1; the gate did not notice,
+    # because that count is not gated. The role reader now refuses an
+    # assembled table missing either provenance column, so the summary flags
+    # missing provenance, exactly like invalid role metadata: its channels are
+    # never read as roles, its copies are never paired by occurrence, and the
+    # gate fails. A table with neither column was already flagged.
+    frame = _replace_person(
+        _frame(4),
+        **{
+            "person_source_id": np.asarray([10, 10, 20, 20]),
+            "person_spine_source_id": np.asarray([10, 10, 20, 20]),
+            _OUTPUT: np.asarray([False, True, True, True]),
+            **{column: np.asarray(values) for column, values in columns.items()},
+        },
+    )
+
+    summary = us_ssi_disability_criteria_summary(frame)
+    assert summary["support_provenance_missing"] is True
+    assert summary["channels"] == {}
+    gate = us_ssi_disability_criteria_signal_gate(frame)
+    assert not gate.passed
+    assert (
+        "SSI disability support rows lack complete clone-role or "
+        "person_source_id provenance." in gate.failures
+    )
+
+
+def test_divergence_compares_repeated_historical_clone_index() -> None:
+    # A malformed historical table whose tail copy repeats clone index 1:
+    # grouping by source ID still compares that copy (the old role-occurrence
+    # pairing left it unpaired and hid the divergence).
+    tailed = _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(_frame(3)), [2]
+    )
+    person = tailed.table("person")
+    tail = person["person_support_clone_index"].eq(2).to_numpy()
+    clone_index = person["person_support_clone_index"].to_numpy().copy()
+    clone_index[tail] = 1
+    values = np.zeros(len(person), dtype=bool)
+    values[tail] = True
+
+    summary = us_ssi_disability_criteria_summary(
+        _replace_person(
+            tailed,
+            **{"person_support_clone_index": clone_index, _OUTPUT: values},
+        )
+    )
+
+    assert summary["support_provenance_missing"] is False
+    assert summary["clone_divergence_source_people"] == 1
+
+
+def test_clone_index_past_int64_is_flagged() -> None:
+    # float(2**63) is the first float past int64; the base let it wrap to
+    # INT64_MAX and read the row as a PUF-role copy.
+    tailed = _TAIL.with_capital_gains_tail_copies(
+        clone_us_frame_for_puf_support(_frame(3)), [2]
+    )
+    person = tailed.table("person")
+    clone_index = person["person_support_clone_index"].to_numpy(dtype=np.float64)
+    clone_index = clone_index.copy()
+    clone_index[clone_index == 2.0] = float(2**63)
+
+    summary = us_ssi_disability_criteria_summary(
+        _replace_person(
+            tailed,
+            **{
+                "person_support_clone_index": clone_index,
+                _OUTPUT: np.zeros(len(person), dtype=bool),
+            },
+        )
+    )
+
+    assert summary["support_provenance_missing"] is True
+    assert summary["channels"] == {}
+
+
 def test_summary_checks_harmonized_ssi_on_native_role() -> None:
     expanded = clone_us_frame_for_puf_support(_frame())
     person = expanded.table("person")
@@ -713,9 +811,7 @@ def test_summary_checks_harmonized_ssi_on_native_role() -> None:
     source_two = person["person_source_id"].eq(2)
     person.loc[native & source_two, "SSI_VAL"] = np.nan
     person.loc[native & source_two, "ssi_reported"] = 900.0
-    preserved_existing_anchor = (
-        native & person["person_source_id"].eq(1)
-    ).to_numpy()
+    preserved_existing_anchor = (native & person["person_source_id"].eq(1)).to_numpy()
     invalid = _replace_person(
         expanded,
         **{_OUTPUT: preserved_existing_anchor},

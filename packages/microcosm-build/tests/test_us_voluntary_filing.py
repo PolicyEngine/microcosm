@@ -836,6 +836,244 @@ def test_assembled_frame_without_clone_indices_fails_closed() -> None:
         module._source_receiver_rows(TaxUnitFrame(), receiver)
 
 
+def _assembled_gate_frame(
+    output: list[bool],
+    *,
+    channels: list[str] | None,
+    clone_indices: list[int] | None = None,
+) -> Frame:
+    """Four tax units over source IDs [10, 10, 20, 20] with raw spine IDs."""
+
+    columns: dict[str, np.ndarray] = {
+        _OUTPUT: np.asarray(output),
+        "tax_unit_source_id": np.asarray([10, 10, 20, 20]),
+        "tax_unit_spine_source_id": np.asarray([10, 10, 20, 20]),
+    }
+    if channels is not None:
+        columns["tax_unit_support_channel"] = np.asarray(channels, dtype=object)
+    if clone_indices is not None:
+        columns["tax_unit_support_clone_index"] = np.asarray(clone_indices)
+    return _replace_tax_unit(_frame(4), **columns)
+
+
+@pytest.mark.parametrize(
+    "channels",
+    [["asec"] * 4, ["asec", "puf_tax_detail"] * 2],
+    ids=["all_asec", "role_labels"],
+)
+@pytest.mark.parametrize(
+    "output",
+    [[False, True, True, True], [False, False, True, True]],
+    ids=["copies_disagree", "copies_agree"],
+)
+def test_gate_refuses_assembled_frame_without_clone_indices(
+    channels: list[str],
+    output: list[bool],
+) -> None:
+    # Microcosm #992 gate finding (c), exactly as reported: source IDs
+    # [10, 10, 20, 20] with matching spine IDs, all 'asec' channels and
+    # outputs [F, T, T, T]. With the clone-index column gone the summary fell
+    # back to (source, role) occurrence pairing, reported 0 mismatched source
+    # units and the gate passed; the base grouped by source ID and failed.
+    # When the copies agree the fallback still under-reported
+    # clone_source_units (0 instead of 2). The gate now refuses the table.
+    frame = _assembled_gate_frame(output, channels=channels)
+    pattern = (
+        r"assembled support metadata requires 'tax_unit_support_clone_index' "
+        r"alongside 'tax_unit_spine_source_id'"
+    )
+    with pytest.raises(ValueError, match=pattern):
+        us_voluntary_filing_summary(frame)
+    with pytest.raises(ValueError, match=pattern):
+        us_voluntary_filing_signal_gate(frame)
+
+
+@pytest.mark.parametrize(
+    ("channels", "clone_indices", "missing"),
+    [
+        pytest.param(
+            None,
+            None,
+            r"'tax_unit_support_channel' and 'tax_unit_support_clone_index'",
+            id="no_channel_no_clone",
+        ),
+        pytest.param(
+            None,
+            [0, 1, 0, 1],
+            r"'tax_unit_support_channel'",
+            id="clone_index_without_channel",
+        ),
+    ],
+)
+def test_gate_refuses_assembled_frame_without_support_channel(
+    channels: list[str] | None,
+    clone_indices: list[int] | None,
+    missing: str,
+) -> None:
+    # Before #992 the gate skipped the clone comparison entirely for a table
+    # with neither provenance column, even with raw spine IDs and copies that
+    # disagree. An assembled table must carry complete provenance.
+    frame = _assembled_gate_frame(
+        [False, True, True, True],
+        channels=channels,
+        clone_indices=clone_indices,
+    )
+    with pytest.raises(
+        ValueError,
+        match=r"assembled support metadata requires " + missing,
+    ):
+        us_voluntary_filing_signal_gate(frame)
+
+
+@pytest.mark.parametrize(
+    "consumer", [us_voluntary_filing_summary, us_voluntary_filing_signal_gate]
+)
+@pytest.mark.parametrize(
+    "missing_columns",
+    [
+        ("tax_unit_support_channel",),
+        ("tax_unit_support_clone_index",),
+        ("tax_unit_support_channel", "tax_unit_support_clone_index"),
+    ],
+    ids=["no_channel", "no_clone_index", "no_support_metadata"],
+)
+@pytest.mark.parametrize("empty", [False, True], ids=["missing_output", "empty"])
+def test_gate_validates_assembled_provenance_before_output_or_weights(
+    consumer,
+    missing_columns: tuple[str, ...],
+    empty: bool,
+) -> None:
+    # The earlier fix checked provenance only after reading the output and
+    # weights. The gate's missing-output return bypassed that check entirely.
+    # Empty tables cannot form a valid Frame, but direct callers still need
+    # the same provenance refusal before any output/weight processing.
+    tax_unit = pd.DataFrame(
+        {
+            "tax_unit_id": [100],
+            "tax_unit_source_id": [10],
+            "tax_unit_spine_source_id": [1],
+            "tax_unit_support_channel": ["asec"],
+            "tax_unit_support_clone_index": [0],
+        }
+    ).drop(columns=list(missing_columns))
+    if empty:
+        tax_unit = tax_unit.iloc[:0].assign(**{_OUTPUT: pd.Series(dtype=bool)})
+
+    class TaxUnitFrame:
+        def table(self, entity: str) -> pd.DataFrame:
+            assert entity == "tax_unit"
+            return tax_unit
+
+        def resolve_weights(self, entity: str):
+            pytest.fail("Incomplete assembled provenance must precede weights")
+
+    with pytest.raises(ValueError, match="assembled support metadata requires"):
+        consumer(TaxUnitFrame())
+
+
+def test_receiver_refuses_assembled_frame_without_support_metadata() -> None:
+    # Unique source IDs give the one-row-per-source path nothing to reject,
+    # so the stripped assembled table must be refused by provenance alone.
+    tax_unit = pd.DataFrame(
+        {
+            "tax_unit_id": [100, 200, 300, 400],
+            "tax_unit_source_id": [10, 20, 30, 40],
+            "tax_unit_spine_source_id": [1, 2, 3, 4],
+        }
+    )
+    receiver = pd.DataFrame(
+        {
+            predictor: np.arange(4, dtype=np.float64)
+            for predictor in SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS
+        },
+        index=tax_unit["tax_unit_id"],
+    )
+
+    class TaxUnitFrame:
+        def table(self, entity: str) -> pd.DataFrame:
+            assert entity == "tax_unit"
+            return tax_unit
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            r"assembled support metadata requires 'tax_unit_support_channel' "
+            r"and 'tax_unit_support_clone_index'"
+        ),
+    ):
+        module._source_receiver_rows(TaxUnitFrame(), receiver)
+
+
+def test_gate_compares_every_historical_copy_with_repeated_clone_indices() -> None:
+    # A historical table whose tail copy repeats clone index 1 is malformed
+    # (both imputers refuse it). The gate still compares every copy of the
+    # source unit, so the duplicated copy's disagreement is caught; the old
+    # (source, role) occurrence pairing left it unpaired and unchecked.
+    frame = _historical_tail_frame()
+    tax_unit = frame.table("tax_unit")
+    clone_index = tax_unit["tax_unit_support_clone_index"].to_numpy().copy()
+    tail = clone_index == 2
+    clone_index[tail] = 1
+    output = tax_unit["tax_unit_source_id"].isin([103, 104, 105, 106]).to_numpy()
+    agreeing = _replace_tax_unit(
+        frame,
+        **{"tax_unit_support_clone_index": clone_index, _OUTPUT: output},
+    )
+    summary = us_voluntary_filing_summary(agreeing)
+    assert summary["clone_source_units"] == 6
+    assert summary["clone_mismatch_source_units"] == 0
+
+    disagreeing_output = output.copy()
+    disagreeing_output[np.flatnonzero(tail)[0]] = False
+    disagreeing = _replace_tax_unit(agreeing, **{_OUTPUT: disagreeing_output})
+    assert us_voluntary_filing_summary(disagreeing)["clone_mismatch_source_units"] == 1
+    gate = us_voluntary_filing_signal_gate(disagreeing)
+    assert any("disagree for 1 source unit" in failure for failure in gate.failures)
+
+
+@pytest.mark.parametrize("assembled", [True, False], ids=["assembled", "historical"])
+def test_clone_index_past_int64_fails_closed(assembled: bool) -> None:
+    # float(2**63) is the first float past int64; the base let it wrap to
+    # INT64_MAX and both the receiver and the gate ran normally.
+    malformed = (
+        r"PUF support metadata column 'tax_unit_support_clone_index' must "
+        r"contain nonnegative integers \(finite and representable as int64\)"
+    )
+    if assembled:
+        frame = _assembled_gate_frame(
+            [False, False, True, True],
+            channels=["acs"] * 4,
+            clone_indices=[0, 1, 0, 1],
+        )
+        frame = _replace_tax_unit(
+            frame,
+            tax_unit_support_clone_index=np.asarray([0.0, 1.0, 0.0, float(2**63)]),
+        )
+    else:
+        frame = _historical_tail_frame()
+        clone_index = frame.table("tax_unit")["tax_unit_support_clone_index"]
+        values = clone_index.to_numpy(dtype=np.float64).copy()
+        values[clone_index.eq(2).to_numpy()] = float(2**63)
+        frame = _replace_tax_unit(
+            frame,
+            **{
+                "tax_unit_support_clone_index": values,
+                _OUTPUT: np.ones(len(values), dtype=bool),
+            },
+        )
+    with pytest.raises(ValueError, match=malformed):
+        us_voluntary_filing_signal_gate(frame)
+    receiver = pd.DataFrame(
+        {
+            predictor: np.zeros(len(frame.table("tax_unit")))
+            for predictor in SIPP_VOLUNTARY_FILING_MODEL_PREDICTORS
+        },
+        index=frame.table("tax_unit")["tax_unit_id"],
+    )
+    with pytest.raises(ValueError, match=malformed):
+        module._source_receiver_rows(frame, receiver)
+
+
 def test_assembled_clone_two_uses_explicit_index_and_checks_every_clone() -> None:
     tax_unit = pd.DataFrame(
         {

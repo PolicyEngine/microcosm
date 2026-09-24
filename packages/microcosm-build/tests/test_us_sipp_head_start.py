@@ -603,8 +603,15 @@ def test_historical_duplicate_clone_index_still_fails_closed(
 @pytest.mark.parametrize("assembled", [True, False], ids=["assembled", "historical"])
 @pytest.mark.parametrize(
     "bad_index",
-    [np.inf, -np.inf, np.nan, 1.5, -1.0],
-    ids=["inf", "negative_inf", "nan", "non_integer", "negative_float"],
+    [np.inf, -np.inf, np.nan, 1.5, -1.0, float(2**63)],
+    ids=[
+        "inf",
+        "negative_inf",
+        "nan",
+        "non_integer",
+        "negative_float",
+        "float_past_int64",
+    ],
 )
 def test_malformed_clone_index_fails_closed_before_canonical_selection(
     monkeypatch: pytest.MonkeyPatch,
@@ -656,12 +663,141 @@ def test_assembled_frame_without_clone_indices_fails_closed(
     with pytest.raises(
         ValueError,
         match=(
-            r"clone-role metadata: assembled support metadata requires "
+            r"assembled support metadata requires "
             r"'person_support_clone_index'"
         ),
     ):
         impute_us_sipp_head_start(_replace_person(frame, person), _donor(), seed=3)
     assert not _FakeQRF.instances
+
+
+@pytest.mark.parametrize(
+    ("source_ids", "clone_indices", "missing"),
+    [
+        pytest.param(
+            [10, 20, 30, 40],
+            None,
+            r"'person_support_channel' and 'person_support_clone_index'",
+            id="no_channel_no_clone_unique_ids",
+        ),
+        pytest.param(
+            [10, 10, 20, 20],
+            None,
+            r"'person_support_channel' and 'person_support_clone_index'",
+            id="no_channel_no_clone_repeated_ids",
+        ),
+        pytest.param(
+            [10, 10, 20, 20],
+            [0, 1, 0, 1],
+            r"'person_support_channel'",
+            id="clone_index_without_channel",
+        ),
+    ],
+)
+def test_assembled_frame_missing_support_provenance_fails_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    source_ids: list[int],
+    clone_indices: list[int] | None,
+    missing: str,
+) -> None:
+    # Microcosm #992 gate finding (b): an assembled person table (raw spine
+    # IDs present) stripped of both provenance columns reached the
+    # no-metadata early return in _support_group_keys, ranked every row 0 and
+    # passed canonical selection; the base raised KeyError here. Unique IDs
+    # hid it best: nothing even looked duplicated.
+    monkeypatch.setattr(module, "QRF", _FakeQRF)
+    frame = _frame(source_ids, ages=[4] * len(source_ids))
+    person = frame.table("person").copy()
+    person["person_spine_source_id"] = source_ids
+    if clone_indices is not None:
+        person["person_support_clone_index"] = clone_indices
+    stripped = _replace_person(frame, person)
+
+    pattern = (
+        r"assembled support metadata requires "
+        + missing
+        + r" alongside 'person_spine_source_id'"
+    )
+    with pytest.raises(ValueError, match=pattern):
+        module._recipient_predictors(stripped)
+    with pytest.raises(ValueError, match=pattern):
+        impute_us_sipp_head_start(stripped, _donor(), seed=3)
+    assert not _FakeQRF.instances
+
+
+@pytest.mark.parametrize("entry", ["predictors", "impute", "gate"])
+def test_assembled_provenance_checked_before_other_receiver_inputs(
+    monkeypatch: pytest.MonkeyPatch, entry: str
+) -> None:
+    # Missing predictor/output inputs must not bypass the provenance check.
+    # The pre-fix predictors reported missing age, imputation read the donor,
+    # and the gate returned only the missing-output failure.
+    frame = _frame([10, 20, 30, 40])
+    person = frame.table("person").copy()
+    person["person_spine_source_id"] = person["person_source_id"]
+    person = person.drop(columns=["age"])
+    stripped = _replace_person(frame, person)
+    message = "assembled support metadata requires"
+    if entry == "gate":
+        gate = us_sipp_head_start_signal_gate(stripped)
+        assert not gate.passed
+        assert any(message in failure for failure in gate.failures)
+        assert gate.details["support_channel_invalid"] is True
+    else:
+        monkeypatch.setattr(module, "QRF", _FakeQRF)
+        with pytest.raises(ValueError, match=message):
+            if entry == "predictors":
+                module._recipient_predictors(stripped)
+            else:
+                impute_us_sipp_head_start(stripped, pd.DataFrame(), seed=3)
+        assert not _FakeQRF.instances
+
+
+@pytest.mark.parametrize(
+    "channels",
+    [None, ["asec"] * 4, ["asec", "puf_tax_detail"] * 2],
+    ids=["no_channel", "all_asec", "role_labels"],
+)
+def test_gate_flags_assembled_frame_missing_clone_indices(
+    channels: list[str] | None,
+) -> None:
+    # The summary groups copies by source ID and flags the incomplete
+    # provenance instead of raising, so the gate reports every failure. It
+    # must never read an assembled channel as a historical role.
+    frame = _frame(
+        [10, 10, 20, 20],
+        channels=channels,
+        output=[False, True, True, True],
+    )
+    person = frame.table("person").copy()
+    person["person_spine_source_id"] = [10, 10, 20, 20]
+    stripped = _replace_person(frame, person)
+
+    summary = us_sipp_head_start_summary(stripped)
+    assert summary["support_channel_invalid"] is True
+    assert summary["clone_group_count"] == 2
+    assert summary["clone_mismatch_count"] == 1
+    assert "channel_eligible_weighted_take_up_shares" not in summary
+    gate = us_sipp_head_start_signal_gate(stripped)
+    assert not gate.passed
+    assert f"{_OUTPUT}: support-channel provenance is invalid" in gate.failures
+
+
+def test_gate_flags_clone_index_past_int64() -> None:
+    # float(2**63) is the first float past int64; the base let it wrap to
+    # INT64_MAX. The gate now flags it as invalid provenance.
+    frame = _historical_tail_frame()
+    person = frame.table("person").copy()
+    column = "person_support_clone_index"
+    tail = person[column].eq(2)
+    person[column] = person[column].astype(np.float64)
+    person.loc[tail, column] = float(2**63)
+    person[_OUTPUT] = [True, False, False, True, False, False, True]
+
+    summary = us_sipp_head_start_summary(_replace_person(frame, person))
+    assert summary["support_channel_invalid"] is True
+    gate = us_sipp_head_start_signal_gate(_replace_person(frame, person))
+    assert f"{_OUTPUT}: support-channel provenance is invalid" in gate.failures
 
 
 def test_wrapper_heals_stale_output_and_is_exactly_idempotent(

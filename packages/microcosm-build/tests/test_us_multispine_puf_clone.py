@@ -25,9 +25,11 @@ from microcosm.build.us_runtime.puf_support import (
     support_source_id_column,
 )
 from microcosm.build.us_runtime.support_provenance import (
+    require_assembled_support_provenance,
     spine_assembly_manifest,
     support_copy_rank_series,
     support_gate_source_channel_series,
+    without_support_role_metadata,
 )
 from microcosm.frame import US_SCHEMA, Frame, WeightKind, Weights
 
@@ -280,6 +282,108 @@ def test_support_copy_rank_uses_clone_index_on_every_frame_kind() -> None:
         support_copy_rank_series(inconsistent, entity="person")
     with pytest.raises(ValueError, match="missing both"):
         support_copy_rank_series(pd.DataFrame({"x": [1]}), entity="person")
+
+
+def _assembled_copies(*, channel: bool, clone_index: bool) -> pd.DataFrame:
+    """Two assembled source people, each with a native and a donor copy."""
+
+    table = pd.DataFrame(
+        {
+            support_source_id_column("tax_unit"): [7, 7, 8, 8],
+            spine_source_id_column("tax_unit"): [70, 70, 80, 80],
+        },
+        index=[30, 31, 32, 33],
+    )
+    if channel:
+        table[support_channel_column("tax_unit")] = ["asec"] * 4
+    if clone_index:
+        table[support_clone_index_column("tax_unit")] = [0, 1, 0, 1]
+    return table
+
+
+@pytest.mark.parametrize(
+    ("channel", "clone_index", "missing"),
+    [
+        pytest.param(
+            False,
+            False,
+            "'tax_unit_support_channel' and 'tax_unit_support_clone_index'",
+            id="both_missing",
+        ),
+        pytest.param(
+            True, False, "'tax_unit_support_clone_index'", id="clone_index_missing"
+        ),
+        pytest.param(False, True, "'tax_unit_support_channel'", id="channel_missing"),
+    ],
+)
+def test_assembled_support_provenance_requires_channel_and_clone_index(
+    channel: bool,
+    clone_index: bool,
+    missing: str,
+) -> None:
+    # Microcosm #992 gate findings: assembled tables that lost a provenance
+    # column fell back to channel-only role ranks, (source, role) occurrence
+    # pairing or the no-metadata one-row-per-source path, each of which hid a
+    # support-copy disagreement. One owner-level validator refuses them all.
+    # The role reader calls it first, so every role reader refuses, including
+    # the prior-year and SSI summaries; the copy rank also calls it before its
+    # role-rank fallback, and the Head Start and voluntary-filing consumers
+    # call it at entry (pinned in the consumer tests).
+    table = _assembled_copies(channel=channel, clone_index=clone_index)
+    assert has_support_role_metadata(table, entity="tax_unit")
+    message = (
+        f"assembled support metadata requires {missing} alongside "
+        "'tax_unit_spine_source_id': "
+    )
+    for accessor in (
+        require_assembled_support_provenance,
+        support_role_series,
+        support_copy_rank_series,
+        puf_tax_detail_clone_mask,
+        support_gate_source_channel_series,
+        without_support_role_metadata,
+    ):
+        with pytest.raises(ValueError) as refused:
+            accessor(table, entity="tax_unit")
+        assert str(refused.value).startswith(message), accessor.__name__
+
+
+def test_assembled_support_provenance_accepts_complete_and_historical_tables() -> None:
+    complete = _assembled_copies(channel=True, clone_index=True)
+    assert require_assembled_support_provenance(complete, entity="tax_unit") is None
+    assert support_copy_rank_series(complete, entity="tax_unit").tolist() == [
+        0,
+        1,
+        0,
+        1,
+    ]
+    roles = support_role_series(complete, entity="tax_unit")
+    assert roles.tolist() == ["asec", "puf_tax_detail"] * 2
+    channels = support_gate_source_channel_series(complete, entity="tax_unit")
+    assert channels.tolist() == ["asec"] * 4
+    # Without a raw spine ID the table is historical: clone-index, channel-only
+    # and metadata-free layouts are all left to their own validators.
+    for channel, clone_index in ((True, True), (True, False), (False, False)):
+        historical = _assembled_copies(channel=channel, clone_index=clone_index).drop(
+            columns=[spine_source_id_column("tax_unit")]
+        )
+        assert (
+            require_assembled_support_provenance(historical, entity="tax_unit") is None
+        )
+    with pytest.raises(ValueError, match="entity must be a non-empty string"):
+        require_assembled_support_provenance(complete, entity="")
+
+
+def test_support_projection_removes_assembly_marker_without_mutating_input() -> None:
+    table = _assembled_copies(channel=True, clone_index=True)
+    original = table.copy(deep=True)
+    projected = without_support_role_metadata(table, entity="tax_unit")
+    assert not has_support_role_metadata(projected, entity="tax_unit")
+    assert not has_assembled_support_metadata(projected, entity="tax_unit")
+    pd.testing.assert_frame_equal(
+        projected, table[[support_source_id_column("tax_unit")]]
+    )
+    pd.testing.assert_frame_equal(table, original)
 
 
 _CLONE_INDEX_ACCESSORS = pytest.mark.parametrize(

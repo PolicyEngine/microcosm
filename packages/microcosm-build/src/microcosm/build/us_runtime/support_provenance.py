@@ -19,6 +19,7 @@ __all__ = [
     "has_assembled_support_metadata",
     "has_support_role_metadata",
     "puf_tax_detail_clone_mask",
+    "require_assembled_support_provenance",
     "spine_assembly_manifest",
     "spine_assembly_receipt",
     "spine_provenance_counts",
@@ -320,10 +321,16 @@ def has_support_role_metadata(
     *,
     entity: str,
 ) -> bool:
-    """Return whether clone-role or legacy support-role metadata is present."""
+    """Return whether assembly or legacy support-role metadata is present.
+
+    A raw spine ID still marks an assembled table after either role column
+    is lost. Role readers must validate it instead of taking a historical
+    no-metadata fallback.
+    """
 
     return (
-        support_clone_index_column(entity) in table
+        has_assembled_support_metadata(table, entity=entity)
+        or support_clone_index_column(entity) in table
         or support_channel_column(entity) in table
     )
 
@@ -341,6 +348,49 @@ def has_assembled_support_metadata(
     """
 
     return spine_source_id_column(entity) in table
+
+
+def require_assembled_support_provenance(
+    table: pd.DataFrame,
+    *,
+    entity: str,
+) -> None:
+    """Refuse an assembled table whose support provenance is incomplete.
+
+    Multispine assembly writes the raw spine-record ID together with both the
+    support channel and the clone index. On an assembled table the channel
+    names a physical source (for example ``asec`` or ``acs``), not an operator
+    role, so only the clone index can tell a native row from its donor
+    copies. An assembled table that has lost either column must not fall back
+    to the logic for historical tables without clone indices: channel-only
+    role ranks, ``(source, role)`` occurrence pairing, or one row per source
+    ID. That fallback hides copies that disagree.
+
+    :func:`has_support_role_metadata` recognizes the raw spine ID even when
+    both role columns are missing, routing role readers through this check in
+    :func:`support_role_series`. Consumers with earlier fallbacks also call
+    it at entry. Historical tables without a raw spine ID pass unchanged.
+    """
+
+    if not has_assembled_support_metadata(table, entity=entity):
+        return
+    missing = [
+        column
+        for column in (
+            support_channel_column(entity),
+            support_clone_index_column(entity),
+        )
+        if column not in table
+    ]
+    if missing:
+        raise ValueError(
+            "assembled support metadata requires "
+            + " and ".join(repr(column) for column in missing)
+            + f" alongside {spine_source_id_column(entity)!r}: an assembled "
+            "table's channel names a physical source rather than a support "
+            "copy, so without complete channel and clone-index provenance its "
+            "copies cannot be ranked, paired or compared."
+        )
 
 
 def spine_source_id_column(entity: str) -> str:
@@ -376,12 +426,19 @@ def without_support_role_metadata(
     *,
     entity: str,
 ) -> pd.DataFrame:
-    """Copy a table without source-channel or clone-role metadata."""
+    """Project validated support rows into a historical source-kernel input.
 
+    Remove the assembly discriminator with the role columns so deliberately
+    stripped projections are not mistaken for incomplete assembled tables.
+    Stable source IDs remain available for reconciliation and output merging.
+    """
+
+    require_assembled_support_provenance(table, entity=entity)
     return table.drop(
         columns=[
             support_channel_column(entity),
             support_clone_index_column(entity),
+            spine_source_id_column(entity),
         ],
         errors="ignore",
     ).copy(deep=True)
@@ -397,9 +454,14 @@ def support_role_series(
     Native records have the ASEC-compatible role and every donor-detail clone
     has the PUF-compatible role. Clone provenance takes precedence. Legacy
     fixtures without clone indices may use the two historical role labels in
-    their support-channel column.
+    their support-channel column. An assembled table's channel names a
+    physical source, never a role, so an assembled table missing either
+    provenance column is refused first
+    (:func:`require_assembled_support_provenance`); its channel is never read
+    as a historical role.
     """
 
+    require_assembled_support_provenance(table, entity=entity)
     clone_index_column = support_clone_index_column(entity)
     if clone_index_column not in table:
         channel_column = support_channel_column(entity)
@@ -505,8 +567,14 @@ def support_copy_rank_series(
     A source unit may carry at most one row per rank. Source-unit operators
     refuse a repeated ``(source ID, rank)`` pair as a genuinely duplicated
     support copy instead of choosing between its rows.
+
+    An assembled table missing its channel or clone index is refused first
+    (:func:`require_assembled_support_provenance`): its channel names a
+    physical source, so it cannot fall back to role ranks. Only a channel-only
+    historical table ranks by role.
     """
 
+    require_assembled_support_provenance(table, entity=entity)
     roles = support_role_series(table, entity=entity)
     clone_index_column = support_clone_index_column(entity)
     if clone_index_column in table:
@@ -514,14 +582,6 @@ def support_copy_rank_series(
             table,
             clone_index_column,
             owner="PUF support metadata",
-        )
-    elif has_assembled_support_metadata(table, entity=entity):
-        # An assembled channel names a physical source, not a copy, so without
-        # clone indices a surviving row cannot be told native from donor copy.
-        raise ValueError(
-            f"assembled support metadata requires {clone_index_column!r} to "
-            "rank support copies; only channel-only historical frames may "
-            "rank by role."
         )
     else:
         ranks = np.where(
