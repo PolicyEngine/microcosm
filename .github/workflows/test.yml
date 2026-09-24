@@ -98,8 +98,10 @@ jobs:
           mapfile -t files < <(
             uv run --no-sync python tools/ci_test_groups.py --list engine-us
           )
+          # Country engines retain substantial process-local state. Running
+          # concurrent pytest workers can exceed the hosted runner's memory.
           /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-            -n 2 --dist loadfile --durations=25 -p no:cacheprovider
+            --durations=25 -p no:cacheprovider
 
   engine-uk:
     needs: changes
@@ -121,8 +123,10 @@ jobs:
           mapfile -t files < <(
             uv run --no-sync python tools/ci_test_groups.py --list engine-uk
           )
+          # Keep country-engine execution serial for the same bounded-memory
+          # contract as the US engine job.
           /usr/bin/time -v uv run --no-sync pytest "${files[@]}" \
-            -n 2 --dist loadfile --durations=25 -p no:cacheprovider
+            --durations=25 -p no:cacheprovider
 
   integration-uk:
     permissions:
