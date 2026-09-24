@@ -17,8 +17,10 @@ import pytest
 from microcosm.build.us_runtime.asec_census_person_columns import (
     ASEC_CENSUS_PERSON_COLUMN_NAMES,
     ASEC_CENSUS_PERSON_COLUMNS,
+    ASEC_CENSUS_PERSON_COLUMNS_BEYOND_OFFLINE_FIX,
     ASEC_CENSUS_PERSON_COLUMNS_NOT_RESTORED,
     ASEC_CENSUS_PERSON_IDENTITY_COLUMNS,
+    WEIND_TO_WEMIND,
     AsecCensusPersonColumnsError,
     restore_asec_census_person_columns,
 )
@@ -70,6 +72,12 @@ _RECEIPT_720_ADDED = frozenset(
 #: H5 row order differs from the member's, so a positional copy would fail.
 _H5_ORDER = [3, 0, 7, 5, 1, 6, 2, 4]
 
+#: Member-order industry codes: six workers (one in the Armed Forces) and two
+#: people 15+ who did not work last year. Every member person is 16+.
+_WEIND = [7, 16, 23, 22, 23, 9, 1, 21]
+#: Weeks worked last year consistent with ``_WEIND`` (positive iff 1--22).
+_WKSWORK = [52, 40, 0, 52, 0, 12, 26, 3]
+
 
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -95,6 +103,9 @@ def _member() -> pd.DataFrame:
         else:
             codes = sorted(spec.domain)
             member[spec.name] = [codes[(row * 3) % len(codes)] for row in range(8)]
+    # The industry pair is rigid: WEMIND is the major group of WEIND.
+    member["WEIND"] = _WEIND
+    member["WEMIND"] = [WEIND_TO_WEMIND[code] for code in _WEIND]
     return member
 
 
@@ -364,10 +375,94 @@ def test_default_pins_are_the_shared_census_person_pins(sources):
 def test_the_review_places_every_offline_fix_column_exactly_once():
     restored = set(ASEC_CENSUS_PERSON_COLUMN_NAMES)
     not_restored = set(ASEC_CENSUS_PERSON_COLUMNS_NOT_RESTORED)
+    beyond = set(ASEC_CENSUS_PERSON_COLUMNS_BEYOND_OFFLINE_FIX)
     assert len(restored) == len(ASEC_CENSUS_PERSON_COLUMN_NAMES)
     assert restored.isdisjoint(not_restored)
-    assert restored | not_restored == _RECEIPT_720_ADDED
+    assert beyond == {"WEIND", "WEMIND"}
+    assert beyond <= restored
+    assert beyond.isdisjoint(_RECEIPT_720_ADDED)
+    assert (restored - beyond) | not_restored == _RECEIPT_720_ADDED
     assert not restored & set(ASEC_CENSUS_PERSON_IDENTITY_COLUMNS)
+
+
+def test_weind_to_wemind_is_the_codebook_nesting():
+    """Pinned from all three members; every major group nests detailed ones."""
+
+    assert dict(WEIND_TO_WEMIND) == {
+        0: 0,
+        1: 1,
+        2: 2,
+        3: 3,
+        4: 4,
+        5: 4,
+        6: 5,
+        7: 5,
+        8: 6,
+        9: 6,
+        10: 7,
+        11: 8,
+        12: 8,
+        13: 9,
+        14: 9,
+        15: 10,
+        16: 10,
+        17: 11,
+        18: 11,
+        19: 12,
+        20: 12,
+        21: 13,
+        22: 14,
+        23: 15,
+    }
+    specs = {spec.name: spec for spec in ASEC_CENSUS_PERSON_COLUMNS}
+    assert set(WEIND_TO_WEMIND) == specs["WEIND"].domain
+    assert set(WEIND_TO_WEMIND.values()) == specs["WEMIND"].domain
+    majors = list(WEIND_TO_WEMIND.values())
+    assert majors == sorted(majors)
+
+
+def test_restores_industry_and_verifies_the_worker_universe(sources):
+    member, csv, _, pin = sources
+    person = _h5_person(member)
+    person["WKSWORK"] = np.asarray(_WKSWORK, dtype=np.int64)[_H5_ORDER]
+    result, record = _restore(person, csv, pin)
+    joined = member.set_index("PERIDNUM").loc[person["PERIDNUM"].astype(str)]
+    assert result["WEIND"].tolist() == joined["WEIND"].tolist()
+    assert result["WEMIND"].tolist() == joined["WEMIND"].tolist()
+    assert record["work_experience_universe"] == {
+        "weind_to_wemind_rows_verified": 8,
+        "worker_code_iff_weeks_worked": "verified",
+        "worker_rows": 6,
+    }
+
+
+def test_records_that_the_worker_universe_needs_wkswork(sources):
+    member, csv, _, pin = sources
+    _, record = _restore(_h5_person(member), csv, pin)
+    assert record["work_experience_universe"] == {
+        "weind_to_wemind_rows_verified": 8,
+        "worker_code_iff_weeks_worked": "not checked: H5 lacks WKSWORK",
+    }
+
+
+@pytest.mark.parametrize("weeks", [0, 30])
+def test_refuses_a_worker_code_that_disagrees_with_weeks_worked(sources, weeks):
+    member, csv, _, pin = sources
+    person = _h5_person(member)
+    wkswork = np.asarray(_WKSWORK, dtype=np.int64)[_H5_ORDER]
+    # H5 row 1 is member row 0 (a worker); H5 row 6 is member row 2 (no work).
+    wkswork[1 if weeks == 0 else 6] = weeks
+    person["WKSWORK"] = wkswork
+    with pytest.raises(AsecCensusPersonColumnsError, match="worker code"):
+        _restore(person, csv, pin)
+
+
+def test_refuses_a_major_group_that_is_not_the_detailed_groups_parent(tmp_path):
+    member = _member()
+    member.loc[0, "WEMIND"] = 6  # WEIND 7 nests in major group 5
+    csv, _, pin = _write(tmp_path, member)
+    with pytest.raises(AsecCensusPersonColumnsError, match="major group of WEIND"):
+        _restore(_h5_person(member), csv, pin)
 
 
 def _cited_objects(reader: str):

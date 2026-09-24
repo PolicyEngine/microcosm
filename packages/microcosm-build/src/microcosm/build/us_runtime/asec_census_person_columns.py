@@ -57,10 +57,24 @@ Column                  Build reader
 ``A_FTPT``              same; ``eligibility_inputs``
                         ``derive_us_eligibility_inputs_from_manifest``
                         (``is_full_time_college_student``)
+``WEIND``               ``org_wages.derive_us_org_occupation_inputs`` ->
+                        ``detailed_industry_recode`` (#719)
+``WEMIND``              same -> ``major_industry_recode`` (#719)
 ======================  ======================================================
 
 The other thirteen columns the 2026-08-23 offline fix appended are not
 restored; :data:`ASEC_CENSUS_PERSON_COLUMNS_NOT_RESTORED` records why.
+
+``WEIND`` and ``WEMIND`` (industry of the longest job last year, detailed and
+major groups) were never in that offline fix: no H5 vintage carries them, not
+even 2024, so every vintage gets them from its member.
+:data:`ASEC_CENSUS_PERSON_COLUMNS_BEYOND_OFFLINE_FIX` records that. Once they
+are restored, two identities that hold in all three pinned members are
+checked on the vintage (:func:`_check_work_experience_universe`): ``WEMIND``
+is the function :data:`WEIND_TO_WEMIND` of ``WEIND``, and ``WEIND`` carries a
+worker code (1--22) exactly where ``WKSWORK > 0``. The second identity is
+ASEC-only: an ACS person may carry an industry from a job held one to five
+years ago, so the release-time consumer can check only its forward half.
 """
 
 from __future__ import annotations
@@ -81,9 +95,11 @@ from .spm_role_source import (
 
 __all__ = [
     "ASEC_CENSUS_PERSON_COLUMNS",
+    "ASEC_CENSUS_PERSON_COLUMNS_BEYOND_OFFLINE_FIX",
     "ASEC_CENSUS_PERSON_COLUMNS_NOT_RESTORED",
     "ASEC_CENSUS_PERSON_COLUMN_NAMES",
     "ASEC_CENSUS_PERSON_IDENTITY_COLUMNS",
+    "WEIND_TO_WEMIND",
     "AsecCensusPersonColumn",
     "AsecCensusPersonColumnsError",
     "restore_asec_census_person_columns",
@@ -107,6 +123,48 @@ class AsecCensusPersonColumn:
 
 _NOW_YES_NO = frozenset({1, 2})
 _ENROLLMENT = frozenset({0, 1, 2})
+#: ``WEIND``: 0 = not in universe (under 15), 1--21 = civilian industry of the
+#: longest job last year, 22 = Armed Forces, 23 = did not work last year (age
+#: 15+). ``WEMIND`` aggregates it into 15 major groups (0 = not in universe).
+_DETAILED_INDUSTRY_CODES = frozenset(range(24))
+_MAJOR_INDUSTRY_CODES = frozenset(range(16))
+_WORK_EXPERIENCE_READER = (
+    "microcosm.build.us_runtime.org_wages.derive_us_org_occupation_inputs"
+)
+
+#: ``WEMIND`` as a function of ``WEIND``, identical in all three pinned person
+#: members (pppub23/24/25, 2026-09-24: every ``WEIND`` value co-occurs with
+#: exactly one ``WEMIND`` value) and nested as the codebook's major and
+#: detailed industry groups are.
+WEIND_TO_WEMIND: MappingProxyType[int, int] = MappingProxyType(
+    {
+        0: 0,
+        1: 1,
+        2: 2,
+        3: 3,
+        4: 4,
+        5: 4,
+        6: 5,
+        7: 5,
+        8: 6,
+        9: 6,
+        10: 7,
+        11: 8,
+        12: 8,
+        13: 9,
+        14: 9,
+        15: 10,
+        16: 10,
+        17: 11,
+        18: 11,
+        19: 12,
+        20: 12,
+        21: 13,
+        22: 14,
+        23: 15,
+    }
+)
+_WORKER_INDUSTRY_CODES = frozenset(range(1, 23))
 _HEALTH_COVERAGE_READER = (
     "microcosm.build.us_runtime.cps_carried._fill_health_coverage_inputs"
 )
@@ -204,6 +262,16 @@ ASEC_CENSUS_PERSON_COLUMNS: tuple[AsecCensusPersonColumn, ...] = (
             "(is_full_time_college_student <- A_HSCOL == 2 & A_FTPT == 1)",
         ),
     ),
+    AsecCensusPersonColumn(
+        "WEIND",
+        _DETAILED_INDUSTRY_CODES,
+        (f"{_WORK_EXPERIENCE_READER} -> detailed_industry_recode",),
+    ),
+    AsecCensusPersonColumn(
+        "WEMIND",
+        _MAJOR_INDUSTRY_CODES,
+        (f"{_WORK_EXPERIENCE_READER} -> major_industry_recode",),
+    ),
 )
 ASEC_CENSUS_PERSON_COLUMN_NAMES: tuple[str, ...] = tuple(
     column.name for column in ASEC_CENSUS_PERSON_COLUMNS
@@ -245,6 +313,22 @@ ASEC_CENSUS_PERSON_COLUMNS_NOT_RESTORED: MappingProxyType[str, str] = MappingPro
             "reader; census_cps_2023.h5 and census_cps_2024.h5 carry it."
         ),
     }
+)
+
+#: Reviewed columns that the 2026-08-23 offline fix never appended, and why
+#: they are restored anyway.
+ASEC_CENSUS_PERSON_COLUMNS_BEYOND_OFFLINE_FIX: MappingProxyType[str, str] = (
+    MappingProxyType(
+        {
+            column: (
+                "Industry of the longest job last year (#719): the county-file "
+                "person schema carries industry with occupation (POCCU2) on "
+                "every record. No H5 vintage carries it, not even 2024, so "
+                "every vintage restores it from its pinned member."
+            )
+            for column in ("WEIND", "WEMIND")
+        }
+    )
 )
 
 #: Census identity carried by both the H5 and the person member. After the
@@ -368,6 +452,40 @@ def _value_summary(spec: AsecCensusPersonColumn, values: pd.Series) -> dict[str,
     return {str(code): int(counts.get(code, 0)) for code in sorted(spec.domain)}
 
 
+def _check_work_experience_universe(
+    table: pd.DataFrame, h5_label: str
+) -> dict[str, object]:
+    """Check the ASEC work-experience identities on one restored vintage."""
+
+    detailed = table["WEIND"].to_numpy(dtype=np.int64)
+    major = table["WEMIND"].to_numpy(dtype=np.int64)
+    expected_major = np.array([WEIND_TO_WEMIND[code] for code in detailed])
+    mismatch = major != expected_major
+    if mismatch.any():
+        _refuse(
+            f"{h5_label} WEMIND disagrees with the major group of WEIND on "
+            f"{int(mismatch.sum())} rows; the join paired the wrong people or "
+            "the member changed its industry recodes."
+        )
+    record: dict[str, object] = {"weind_to_wemind_rows_verified": len(table)}
+    if "WKSWORK" not in table.columns:
+        record["worker_code_iff_weeks_worked"] = "not checked: H5 lacks WKSWORK"
+        return record
+    weeks = pd.to_numeric(table["WKSWORK"], errors="coerce")
+    if weeks.isna().any():
+        _refuse(f"{h5_label} WKSWORK has missing or non-numeric values.")
+    worker = np.isin(detailed, list(_WORKER_INDUSTRY_CODES))
+    disagree = worker != weeks.gt(0).to_numpy()
+    if disagree.any():
+        _refuse(
+            f"{h5_label} WEIND carries a worker code (1--22) where WKSWORK is "
+            f"not positive, or the reverse, on {int(disagree.sum())} rows."
+        )
+    record["worker_code_iff_weeks_worked"] = "verified"
+    record["worker_rows"] = int(worker.sum())
+    return record
+
+
 def restore_asec_census_person_columns(
     person: pd.DataFrame,
     *,
@@ -391,7 +509,10 @@ def restore_asec_census_person_columns(
     person has no member row, or a member person is absent from the H5; when
     ``PH_SEQ``/``P_SEQ``/``A_LINENO``/``A_AGE`` disagree after the join; and
     when a reviewed column the H5 already carries is not integer or differs
-    from the member on any row. A column the H5 carries is never overwritten.
+    from the member on any row; and when ``WEMIND`` is not the major group of
+    ``WEIND``, or (where the H5 carries ``WKSWORK``) ``WEIND`` holds a worker
+    code on a row without positive weeks worked or the reverse. A column the
+    H5 carries is never overwritten.
     New columns are appended as ``int64`` after the H5's own, in reviewed
     order; every H5 column keeps its position, dtype and values (checked).
 
@@ -482,6 +603,7 @@ def restore_asec_census_person_columns(
     )
     if not unchanged:
         _refuse(f"Restoring Census columns changed an existing {h5_label} column.")
+    work_experience = _check_work_experience_universe(result, h5_label)
 
     return result, {
         "operation": "exact_source_join",
@@ -503,4 +625,5 @@ def restore_asec_census_person_columns(
         "columns_added": list(added),
         "columns_verified_equal": verified,
         "member_values": values,
+        "work_experience_universe": work_experience,
     }

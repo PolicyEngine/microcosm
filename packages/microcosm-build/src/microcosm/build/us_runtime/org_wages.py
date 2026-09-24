@@ -53,6 +53,7 @@ import pandas as pd
 
 from microcosm.build.gates import GateResult
 from microcosm.build.source_manifest import SourceStageSpec, load_source_manifest
+from microcosm.build.us_runtime.asec_census_person_columns import WEIND_TO_WEMIND
 from microcosm.frame import Frame
 from microcosm.frame.units import US_SCHEMA
 
@@ -119,6 +120,9 @@ US_ORG_WAGES_OUTPUT_COLUMNS: tuple[str, ...] = (
     "cps_race",
     "is_hispanic",
     "detailed_occupation_recode",
+    "detailed_industry_recode",
+    "major_industry_recode",
+    "worked_last_year",
     "has_never_worked",
     "is_military",
     "is_computer_scientist",
@@ -137,11 +141,17 @@ US_ORG_WAGES_REQUIRED_SOURCE_COLUMNS: tuple[str, ...] = (
     "PRDTRACE",
     "PRDTHSP",
     "POCCU2",
+    "WEIND",
+    "WEMIND",
+    "WKSWORK",
     "employment_income_before_lsr",
     "weekly_hours_worked_before_lsr",
     "hours_worked_last_week",
     "weeks_worked",
 )
+
+#: WEIND worker codes: civilian industry groups 1--21 and Armed Forces 22.
+_WORKER_INDUSTRY_CODES = np.arange(1, 23)
 
 FLSA_OVERTIME_OCCUPATION_CODES: dict[str, int] = {
     "has_never_worked": 53,
@@ -307,6 +317,12 @@ _SHARE_BANDS: dict[str, tuple[float, float]] = {
     "cps_race": (0.95, 1.0),
     "is_hispanic": (0.05, 0.30),
     "detailed_occupation_recode": (0.65, 0.95),
+    # Measured on the pinned inputs: 0.822-0.824 of weighted ASEC persons (all
+    # of age 15+) and 0.80 of ACS persons (age 16+) carry a nonzero industry
+    # recode; 0.520-0.523 (ASEC) and 0.52 (ACS) worked last year.
+    "detailed_industry_recode": (0.70, 0.92),
+    "major_industry_recode": (0.70, 0.92),
+    "worked_last_year": (0.40, 0.62),
     "has_never_worked": (0.15, 0.35),
     "is_military": (0.0005, 0.01),
     "is_computer_scientist": (0.005, 0.05),
@@ -532,15 +548,59 @@ def load_org_2024_donor(
     return result
 
 
+def _complete_codes(person: pd.DataFrame, column: str, upper: int) -> np.ndarray:
+    values = pd.to_numeric(person[column], errors="coerce").to_numpy(dtype=np.float64)
+    invalid = ~np.isfinite(values) | (values != np.floor(values))
+    invalid |= (values < 0) | (values > upper)
+    if invalid.any():
+        raise ValueError(
+            f"ORG work-experience carry needs {column} as complete integer codes "
+            f"in [0, {upper}]; {int(invalid.sum())} row(s) are missing or outside."
+        )
+    return values.astype(np.int64)
+
+
 def derive_us_org_occupation_inputs(person: pd.DataFrame) -> pd.DataFrame:
-    """Carry CPS race/ethnicity and derive the exact POCCU2 FLSA flags."""
+    """Carry CPS race/ethnicity, occupation, industry and worked-last-year.
+
+    Occupation derives the exact POCCU2 FLSA flags. The work-experience
+    carries (#719) are the longest-job industry recodes ``WEIND`` and
+    ``WEMIND`` and ``worked_last_year = WKSWORK > 0``; on ACS rows the release
+    predictor join supplies all three from native ``INDP``/``WKWN`` before this
+    runs. Both spines satisfy the checked identities: ``WEMIND`` is the major
+    group of ``WEIND``, and positive weeks worked carry a worker industry code.
+    The converse holds on ASEC rows only (an ACS industry can come from a job
+    held one to five years ago) and is checked before pooling, where the rows
+    are known to be ASEC (``asec_census_person_columns``).
+    """
 
     missing = [
-        column for column in ("PRDTRACE", "PRDTHSP", "POCCU2") if column not in person
+        column
+        for column in ("PRDTRACE", "PRDTHSP", "POCCU2", "WEIND", "WEMIND", "WKSWORK")
+        if column not in person
     ]
     if missing:
         raise ValueError(
             f"ORG occupation derivation needs person column(s): {missing}."
+        )
+    detailed_industry = _complete_codes(person, "WEIND", 23)
+    major_industry = _complete_codes(person, "WEMIND", 15)
+    weeks_worked = _complete_codes(person, "WKSWORK", 52)
+    expected_major = np.array([WEIND_TO_WEMIND[code] for code in detailed_industry])
+    mismatched_major = int((major_industry != expected_major).sum())
+    if mismatched_major:
+        raise ValueError(
+            f"ORG work-experience carry: WEMIND is not the major group of WEIND "
+            f"on {mismatched_major} row(s)."
+        )
+    worked = weeks_worked > 0
+    worked_without_industry = int(
+        (worked & ~np.isin(detailed_industry, _WORKER_INDUSTRY_CODES)).sum()
+    )
+    if worked_without_industry:
+        raise ValueError(
+            "ORG work-experience carry: positive WKSWORK without a worker WEIND "
+            f"code (1--22) on {worked_without_industry} row(s)."
         )
     occupation = pd.to_numeric(person["POCCU2"], errors="coerce").fillna(0).astype(int)
     result = pd.DataFrame(index=person.index)
@@ -551,6 +611,9 @@ def derive_us_org_occupation_inputs(person: pd.DataFrame) -> pd.DataFrame:
         pd.to_numeric(person["PRDTHSP"], errors="coerce").fillna(0).ne(0)
     )
     result["detailed_occupation_recode"] = occupation.astype(np.int16)
+    result["detailed_industry_recode"] = detailed_industry.astype(np.int16)
+    result["major_industry_recode"] = major_industry.astype(np.int16)
+    result["worked_last_year"] = worked
     for variable, code in FLSA_OVERTIME_OCCUPATION_CODES.items():
         result[variable] = occupation.eq(code)
     result["is_executive_administrative_professional"] = occupation.isin(
@@ -993,6 +1056,27 @@ def us_org_wages_summary(frame: Frame) -> dict[str, object]:
         "positive_without_weeks": int(((premium > 0) & (weeks <= 0)).sum()),
         "positive_always_exempt": int(((premium > 0) & (never | military)).sum()),
     }
+    detailed_industry = pd.to_numeric(
+        person["detailed_industry_recode"], errors="coerce"
+    ).to_numpy(dtype=np.float64)
+    major_industry = pd.to_numeric(
+        person["major_industry_recode"], errors="coerce"
+    ).to_numpy(dtype=np.float64)
+    worked = person["worked_last_year"].fillna(False).astype(bool).to_numpy()
+    known_detailed = np.isin(detailed_industry, list(WEIND_TO_WEMIND))
+    expected_major = np.full(detailed_industry.shape, np.nan)
+    expected_major[known_detailed] = [
+        WEIND_TO_WEMIND[int(code)] for code in detailed_industry[known_detailed]
+    ]
+    work_experience_violations = {
+        "unknown_industry_code": int((~known_detailed).sum()),
+        "major_group_mismatch": int(
+            (known_detailed & (major_industry != expected_major)).sum()
+        ),
+        "worked_without_worker_industry": int(
+            (worked & ~np.isin(detailed_industry, _WORKER_INDUSTRY_CODES)).sum()
+        ),
+    }
     return {
         "nonzero_shares": {column: share(column) for column in _SHARE_BANDS},
         "share_bands": {column: list(band) for column, band in _SHARE_BANDS.items()},
@@ -1002,6 +1086,7 @@ def us_org_wages_summary(frame: Frame) -> dict[str, object]:
         },
         "fsla_overtime_premium_weighted_total": float(np.nansum(premium * weights)),
         "constraint_violations": violations,
+        "work_experience_violations": work_experience_violations,
     }
 
 
@@ -1032,6 +1117,9 @@ def us_org_wages_signal_gate(frame: Frame) -> GateResult:
     for name, count in summary["constraint_violations"].items():
         if count:
             failures.append(f"fsla_overtime_premium: {count} {name} violation(s).")
+    for name, count in summary["work_experience_violations"].items():
+        if count:
+            failures.append(f"industry/worked_last_year: {count} {name} row(s).")
     return GateResult(
         name="org_wages_signal",
         passed=not failures,
